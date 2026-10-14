@@ -502,7 +502,7 @@ fn the_genetic_mutator_target_matches_native() {
                 let entity = sim.substrate.entities.get(id).unwrap();
                 let (sub_cell, insertion) = (
                     entity.sub_cell,
-                    crate::sim::occupancy::CellListInsertion::from_category(entity.category),
+                    crate::sim::occupancy::CellListInsertion::from_category(entity.category()),
                 );
                 sim.substrate.occupancy.add(
                     at.0,
@@ -665,7 +665,7 @@ fn retail_walk_reads_each_object() {
         .get_mut(dead)
         .unwrap()
         .lifecycle
-        .object_alive = false;
+        .set_object_alive_for_test(false);
     let flying = spawn(&mut sim, "ORCA", "Russians", (20, 50), 0);
     sim.set_object_height(
         flying,
@@ -968,7 +968,7 @@ fn the_psychic_dominator_target_matches_native() {
                 let entity = sim.substrate.entities.get(id).unwrap();
                 let (sub_cell, insertion) = (
                     entity.sub_cell,
-                    crate::sim::occupancy::CellListInsertion::from_category(entity.category),
+                    crate::sim::occupancy::CellListInsertion::from_category(entity.category()),
                 );
                 sim.substrate.occupancy.add(
                     at.0,

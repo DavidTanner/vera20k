@@ -61,7 +61,7 @@ pub(super) fn approach(
     let Some(entity) = sim.substrate.entities.get(id) else {
         return frames;
     };
-    let target = entity.attack_target.as_ref().map(|attack| attack.target);
+    let target = entity.attack_target.target();
     let distance = super::target_distance(sim, id, target);
     let range = weapon(sim, id, rules).map(|(range, _)| range);
     match target {
@@ -101,7 +101,7 @@ pub(super) fn overfly(
     let Some(entity) = sim.substrate.entities.get(id) else {
         return OVERFLY_FRAMES;
     };
-    let target = entity.attack_target.as_ref().map(|attack| attack.target);
+    let target = entity.attack_target.target();
     let distance = super::target_distance(sim, id, target);
     if weapon(sim, id, rules).is_some_and(|(range, _)| distance <= range) {
         snapshot(sim, id, rules, false);
@@ -118,8 +118,9 @@ pub(super) fn overfly(
 fn weapon(sim: &Simulation, id: u64, rules: &RuleSet) -> Option<(i32, i32)> {
     let plane = sim.substrate.entities.get(id)?;
     let object = rules.object(sim.interner.resolve(plane.type_ref()))?;
-    let weapon = crate::sim::combat::combat_weapon::primary_for_tier(object, plane.veterancy())
-        .and_then(|weapon| rules.weapon(weapon))?;
+    let weapon =
+        crate::sim::combat::combat_weapon::primary_for_tier(object, plane.veterancy.rank())
+            .and_then(|weapon| rules.weapon(weapon))?;
     Some((weapon.range_leptons, weapon.damage))
 }
 
@@ -178,6 +179,7 @@ fn snapshot(sim: &mut Simulation, id: u64, rules: &RuleSet, sound: bool) {
             plane,
             &config,
             heights.as_deref(),
+            sim.resolved_terrain.as_ref(),
             ability,
             &sim.interner,
             damage,

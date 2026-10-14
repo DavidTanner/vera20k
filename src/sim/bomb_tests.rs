@@ -150,7 +150,7 @@ fn entity(sim: &Simulation, id: u64) -> &GameEntity {
 fn place(sim: &mut Simulation, rules: &RuleSet, id: u64, (x, y): (i32, i32)) {
     let entity = sim.substrate.entities.get(id).unwrap();
     let old = crate::sim::movement::ground_pose::position_world_coord(&entity.position);
-    let infantry = entity.category == crate::map::entities::EntityCategory::Infantry;
+    let infantry = entity.category() == crate::map::entities::EntityCategory::Infantry;
     // Foot Mark's list hooks skip Infantry raw callbacks. Unit Mark owns
     // its own raw writes, so only Infantry needs the explicit class receiver.
     if infantry {
@@ -183,7 +183,7 @@ fn place(sim: &mut Simulation, rules: &RuleSet, id: u64, (x, y): (i32, i32)) {
 
 /// Kill `id` with one sourceless hit.
 fn kill(sim: &mut Simulation, rules: &RuleSet, id: u64) {
-    let strength = entity(sim, id).health.current;
+    let strength = entity(sim, id).health.current();
     let super_wh = sim.interner.intern("Super");
     let hit = crate::sim::combat::EntityDamageEvent::direct_receiver(
         id,
@@ -198,7 +198,7 @@ fn kill(sim: &mut Simulation, rules: &RuleSet, id: u64) {
         },
     );
     sim.commit_direct_damage_receiver(rules, None, hit, crate::sim::world::FrameEffects::default());
-    assert_eq!(entity(sim, id).health.current, 0);
+    assert_eq!(entity(sim, id).health.current(), 0);
 }
 
 fn bomb(sim: &Simulation, id: u64) -> Option<Bomb> {
@@ -454,8 +454,9 @@ fn native_world(input: &serde_json::Value, rules: &RuleSet) -> NativeWorld {
                     .into_iter()
                     .flatten()
                     .any(|listed| listed.as_u64() == Some(n as u64));
-            entity.lifecycle.in_limbo =
-                techno["in_limbo"].as_bool() == Some(true) || unlisted_detector;
+            entity.lifecycle.set_in_limbo_for_test(
+                techno["in_limbo"].as_bool() == Some(true) || unlisted_detector,
+            );
             id
         })
         .collect();
@@ -721,7 +722,7 @@ fn a_crazy_ivan_bombs_a_tank() {
     assert_eq!(planted.planter, Some(ivan));
     assert_eq!(sim.interner.resolve(planted.planter_house), "Russians");
     assert_eq!(
-        entity(&sim, tank).health.current,
+        entity(&sim, tank).health.current(),
         1000,
         "the shot deals nothing"
     );
@@ -729,7 +730,7 @@ fn a_crazy_ivan_bombs_a_tank() {
     // The idle Ivan may bomb the survivor again in the very frame the first
     // bomb goes off, so the blast, not the bomb's absence, marks it.
     let went_off = run_until(&mut sim, &rules, &grid, 600, |sim| {
-        let off = entity(sim, tank).health.current < 1000;
+        let off = entity(sim, tank).health.current() < 1000;
         if !off {
             assert_eq!(
                 bomb(sim, tank).map(|bomb| bomb.start_frame),
@@ -741,7 +742,7 @@ fn a_crazy_ivan_bombs_a_tank() {
     })
     .expect("the bomb goes off");
     assert_eq!(went_off, planted.start_frame + 451, "IvanTimedDelay + 1");
-    assert_eq!(entity(&sim, tank).health.current, 1000 - 450);
+    assert_eq!(entity(&sim, tank).health.current(), 1000 - 450);
     assert!(
         sim.substrate
             .entities
@@ -773,7 +774,7 @@ fn retail_fire_once_ivan_releases_target_on_attach() {
         .expect("the stock shot attaches a bomb");
     assert_eq!(bomb(&sim, tank).unwrap().planter, Some(ivan));
     assert!(
-        entity(&sim, ivan).attack_target.is_none(),
+        entity(&sim, ivan).attack_target.target().is_none(),
         "FireAt must clear the FireOnce target in the attach frame"
     );
 
@@ -791,7 +792,7 @@ fn retail_fire_once_ivan_releases_target_on_attach() {
     // gameplay after aligning that unrelated owner.
     restored.scenario_rng = sim.scenario_rng.clone();
     assert_eq!(restored.state_hash(), sim.state_hash());
-    assert!(entity(&restored, ivan).attack_target.is_none());
+    assert!(entity(&restored, ivan).attack_target.target().is_none());
     assert_eq!(bomb(&restored, tank), bomb(&sim, tank));
     assert_eq!(restored.bomb_carriers(), sim.bomb_carriers());
 
@@ -800,7 +801,7 @@ fn retail_fire_once_ivan_releases_target_on_attach() {
     run_until(&mut sim, rules, &grid, 200, |sim| bomb(sim, next).is_some())
         .expect("Ivan accepts a subsequent explicit attack");
     assert_eq!(bomb(&sim, next).unwrap().planter, Some(ivan));
-    assert!(entity(&sim, ivan).attack_target.is_none());
+    assert!(entity(&sim, ivan).attack_target.target().is_none());
 }
 
 /// The other stock one-shot bomb route uses the same FireAt tail; defusing
@@ -818,7 +819,7 @@ fn retail_fire_once_defuse_releases_target_and_carrier() {
     let engineer = spawn(&mut sim, rules, "ENGINEER", "Americans", 11, 10);
     assert!(rules.weapon("DefuseKit").unwrap().fire_once);
     sim.bomb_attach(ivan, Some(tank), rules);
-    let health = entity(&sim, tank).health.current;
+    let health = entity(&sim, tank).health.current();
     // The ordinary DisarmBomb click emits ForceAttack for an allied object
     // (`app/input/context_order.rs::bomb_order`), retaining native Attack
     // admission without Command::Attack's enemy-only convenience gate.
@@ -832,9 +833,9 @@ fn retail_fire_once_defuse_releases_target_and_carrier() {
     ));
     run_until(&mut sim, rules, &grid, 100, |sim| bomb(sim, tank).is_none())
         .expect("the stock kit defuses the friendly tank");
-    assert_eq!(entity(&sim, tank).health.current, health);
+    assert_eq!(entity(&sim, tank).health.current(), health);
     assert!(!sim.bomb_carriers().contains(&tank));
-    assert!(entity(&sim, engineer).attack_target.is_none());
+    assert!(entity(&sim, engineer).attack_target.target().is_none());
 }
 
 /// A normal retail weapon must keep attacking its surviving target.
@@ -855,7 +856,7 @@ fn retail_non_fire_once_shot_retains_target() {
     })
     .expect("the stock GI fires");
     assert_eq!(
-        entity(&sim, gi).attack_target.as_ref().unwrap().target,
+        entity(&sim, gi).attack_target.target().unwrap(),
         crate::sim::combat::TargetKind::Entity(tank)
     );
 }
@@ -876,7 +877,7 @@ fn the_fuse_waits_while_the_carrier_is_in_limbo() {
         .get_mut(tank)
         .unwrap()
         .lifecycle
-        .in_limbo = true;
+        .set_in_limbo_for_test(true);
     sim.bomb_fuse_step(
         tank,
         &rules,
@@ -889,7 +890,7 @@ fn the_fuse_waits_while_the_carrier_is_in_limbo() {
         .get_mut(tank)
         .unwrap()
         .lifecycle
-        .in_limbo = false;
+        .set_in_limbo_for_test(false);
     sim.bomb_fuse_step(
         tank,
         &rules,
@@ -897,7 +898,7 @@ fn the_fuse_waits_while_the_carrier_is_in_limbo() {
         crate::sim::world::FrameEffects::default(),
     );
     assert!(bomb(&sim, tank).is_none());
-    assert_eq!(entity(&sim, tank).health.current, 1000 - 450);
+    assert_eq!(entity(&sim, tank).health.current(), 1000 - 450);
 }
 
 /// A bomb outlives its planter (PointerGotInvalid only nulls it) and then
@@ -922,7 +923,7 @@ fn a_bomb_outlives_its_planter_and_credits_no_one() {
         crate::sim::world::FrameEffects::default(),
     );
     let tank = entity(&sim, tank);
-    assert_eq!(tank.health.current, 0, "450 kills the 300-strength tank");
+    assert_eq!(tank.health.current(), 0, "450 kills the 300-strength tank");
     assert!(tank.killed_by.is_none(), "no kill credit");
 }
 
@@ -979,7 +980,7 @@ fn removal_and_capture_defuse_silently() {
         sim.bomb_carriers().iter().copied().collect::<Vec<_>>(),
         vec![garrison, tank]
     );
-    assert_eq!(entity(&sim, sold).health.current, 750, "silently");
+    assert_eq!(entity(&sim, sold).health.current(), 750, "silently");
 }
 
 /// A dying Crazy Ivan's death weapon is his own bomber: it plants a bomb on
@@ -1002,9 +1003,9 @@ fn a_dying_crazy_ivan_explodes() {
         sim.bomb_carriers().is_empty(),
         "planted and gone off at once"
     );
-    assert_eq!(entity(&sim, tank).health.current, 1000 - 450);
+    assert_eq!(entity(&sim, tank).health.current(), 1000 - 450);
     let engineer = entity(&sim, engineer);
-    assert_eq!(engineer.health.current, 0);
+    assert_eq!(engineer.health.current(), 0);
     assert_eq!(engineer.killed_by, sim.interner.get("Russians"));
 }
 
@@ -1025,9 +1026,9 @@ fn a_bombed_crazy_ivan_blows_up_once() {
     sim.bomb_attach(planter, Some(carrier), &rules);
     kill(&mut sim, &rules, carrier);
     assert!(sim.bomb_carriers().is_empty());
-    assert_eq!(entity(&sim, tank).health.current, 1000 - 450, "one blast");
+    assert_eq!(entity(&sim, tank).health.current(), 1000 - 450, "one blast");
     let engineer = entity(&sim, engineer);
-    assert_eq!(engineer.health.current, 0);
+    assert_eq!(engineer.health.current(), 0);
     assert_eq!(engineer.killed_by, sim.interner.get("Americans"));
 }
 
@@ -1055,9 +1056,9 @@ fn the_blast_is_centred_on_the_carrier() {
         None,
         crate::sim::world::FrameEffects::default(),
     );
-    assert_eq!(entity(&sim, tank).health.current, 1000 - 450);
+    assert_eq!(entity(&sim, tank).health.current(), 1000 - 450);
     let engineer = entity(&sim, engineer);
-    assert_eq!(engineer.health.current, 0);
+    assert_eq!(engineer.health.current(), 0);
     assert_eq!(engineer.killed_by, sim.interner.get("Russians"));
 }
 
@@ -1085,9 +1086,9 @@ fn a_blast_sets_off_the_bombs_it_kills() {
         None,
         crate::sim::world::FrameEffects::default(),
     );
-    assert_eq!(entity(&sim, second).health.current, 0);
+    assert_eq!(entity(&sim, second).health.current(), 0);
     assert!(sim.bomb_carriers().is_empty(), "both went off");
-    assert_eq!(entity(&sim, first).health.current, 1000 - 2 * 450);
+    assert_eq!(entity(&sim, first).health.current(), 1000 - 2 * 450);
 }
 
 /// GetFireError's bomb gates (`0x006FCB8D`, `0x006FCBAD`) and the BombDisarm
@@ -1108,14 +1109,14 @@ fn an_engineer_defuses_a_bomb() {
     for _ in 0..60 {
         step(&mut sim, &rules, &grid);
     }
-    assert_eq!(entity(&sim, clean).health.current, 1000);
+    assert_eq!(entity(&sim, clean).health.current(), 1000);
 
     attack(&mut sim, engineer, tank);
     run_until(&mut sim, &rules, &grid, 300, |sim| {
         bomb(sim, tank).is_none()
     })
     .expect("the engineer defuses it");
-    assert_eq!(entity(&sim, tank).health.current, 1000, "no damage");
+    assert_eq!(entity(&sim, tank).health.current(), 1000, "no damage");
 }
 
 /// Neither player's Engineer defuses a bomb it was not ordered to.
@@ -1277,7 +1278,7 @@ fn the_ticking_loop_follows_the_carrier() {
         .get_mut(tank)
         .unwrap()
         .lifecycle
-        .in_limbo = true;
+        .set_in_limbo_for_test(true);
     assert_eq!(
         sim.looping_sound_owner_coord(owner),
         None,

@@ -50,7 +50,7 @@ fn dolphin_rules() -> RuleSet {
 }
 
 fn live(mut entity: GameEntity) -> GameEntity {
-    entity.lifecycle.in_limbo = false;
+    entity.lifecycle.set_in_limbo_for_test(false);
     entity.in_playfield = true;
     entity
 }
@@ -106,7 +106,7 @@ fn hit_records(
     let soviet = interner.intern("Soviet");
     let allies = interner.intern("Americans");
     let warhead_ref = interner.intern(warhead);
-    let attacker_owner = entities.get(1).map(|attacker| attacker.owner);
+    let attacker_owner = entities.get(1).map(|attacker| attacker.owner());
 
     let mut houses = BTreeMap::from([
         (soviet, HouseState::new(soviet, 0, None, false, 0, 10)),
@@ -150,7 +150,7 @@ fn hit_records(
     Landed {
         cloak_state: victim.cloak.as_ref().map_or(-1, |cloak| cloak.state),
         sounds: collected,
-        victim_hp: victim.health.current,
+        victim_hp: victim.health.current(),
     }
 }
 
@@ -161,7 +161,7 @@ fn healing_overflow_stays_on_techno_nonzero_continuation_and_uncloaks() {
     let rules = dolphin_rules();
     let mut entities = store("DEST", "Americans");
     let victim = entities.get_mut(2).unwrap();
-    victim.health.current = i32::MAX;
+    victim.health.set_for_test(i32::MAX);
     victim.estimated_health = crate::sim::estimated_health::EstimatedHealth::from_raw(-1234);
     let landed = hit_records(
         &mut entities,
@@ -173,7 +173,7 @@ fn healing_overflow_stays_on_techno_nonzero_continuation_and_uncloaks() {
     assert_eq!(landed.victim_hp, i32::MIN);
     assert_eq!(landed.cloak_state, 3, "negative HP must still uncloak");
     let victim = entities.get(2).unwrap();
-    assert!(victim.lifecycle.object_alive);
+    assert!(victim.lifecycle.object_alive());
     assert!(!victim.dying);
     assert_eq!(victim.estimated_health.get(), -1234);
 }
@@ -359,7 +359,11 @@ fn a_second_record_of_the_same_blast_leaves_a_dead_cloaked_dolphin_submerged() {
 fn a_hit_on_an_already_dead_cloaked_dolphin_never_reaches_the_uncloak() {
     let rules = dolphin_rules();
     let mut entities = store("DEST", "Americans");
-    entities.get_mut(2).expect("victim present").health.current = 0;
+    entities
+        .get_mut(2)
+        .expect("victim present")
+        .health
+        .set_for_test(0);
     let landed = hit(&mut entities, &rules, "SonicWH", &HouseAllianceMap::new());
 
     assert_eq!(landed.victim_hp, 0, "the kernel is skipped for a corpse");

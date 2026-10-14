@@ -11,7 +11,7 @@ use crate::map::resolved_terrain::NativeCellQuery;
 use crate::rules::ini_parser::IniFile;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::aircraft::drop_payload::{OBSERVED, Observed, drop_payload};
-use crate::sim::combat::{AttackTarget, TargetKind};
+use crate::sim::combat::TargetKind;
 use crate::sim::components::NavTargetRef;
 use crate::sim::game_entity::GameEntity;
 use crate::sim::intern::InternedId;
@@ -200,9 +200,9 @@ fn fill_spots(sim: &mut Simulation, cell: (u16, u16)) {
     for spot in [2, 3, 4] {
         let id = sim.allocate_stable_id();
         let mut blocker = GameEntity::test_default(id, "E1", "Americans", cell.0, cell.1);
-        blocker.owner = sim.interner.intern("Americans");
-        blocker.type_ref = sim.interner.intern("E1");
-        blocker.category = EntityCategory::Infantry;
+        blocker.set_owner_for_test(sim.interner.intern("Americans"));
+        blocker.set_type_ref_for_test(sim.interner.intern("E1"));
+        blocker.set_category_for_test(EntityCategory::Infantry);
         blocker.is_voxel = false;
         blocker.sub_cell = Some(spot);
         (blocker.position.sub_x, blocker.position.sub_y) =
@@ -351,11 +351,7 @@ fn launch_cases_five_and_six_match_native() {
         for (&plane, send) in planes.iter().zip(&sends) {
             let entity = sim.substrate.entities.get(plane).unwrap();
             let sent_to = TargetKind::Cell(int(&send[4][0]) as u16, int(&send[4][1]) as u16);
-            assert_eq!(
-                entity.attack_target.as_ref().map(|attack| attack.target),
-                Some(sent_to),
-                "{row}"
-            );
+            assert_eq!(entity.attack_target.target(), Some(sent_to), "{row}");
             // The counts RESIDUAL in `paradrop`'s module doc: a count read
             // past the list or a negative one sends the plane empty.
             let num = int(&send[7]);
@@ -474,8 +470,7 @@ fn a_water_click_sends_the_plane_to_land_beside_it() {
         .get(plane)
         .unwrap()
         .attack_target
-        .as_ref()
-        .map(|attack| attack.target);
+        .target();
     let Some(TargetKind::Cell(x, y)) = target else {
         panic!("a cell target: {target:?}");
     };
@@ -592,7 +587,7 @@ fn send_paradrop_planes_matches_native() {
         );
         assert_eq!(entity.mission.queued(), MissionId::NONE);
         assert_eq!(
-            entity.attack_target.as_ref().map(|attack| attack.target),
+            entity.attack_target.target(),
             Some(TargetKind::Cell(TARGET.0, TARGET.1))
         );
         assert_eq!(entity.navigation.nav_com, None);
@@ -606,7 +601,7 @@ fn send_paradrop_planes_matches_native() {
             .substrate
             .entities
             .values()
-            .filter(|entity| entity.category == EntityCategory::Infantry)
+            .filter(|entity| entity.category() == EntityCategory::Infantry)
             .map(|entity| entity.stable_id())
             .collect();
         infantry.sort_unstable();
@@ -615,7 +610,7 @@ fn send_paradrop_planes_matches_native() {
         assert_eq!(infantry.len(), int(&row["cargo"][0]) as usize, "{row}");
         for &passenger in &infantry {
             let passenger = sim.substrate.entities.get(passenger).unwrap();
-            assert!(passenger.lifecycle.in_limbo);
+            assert!(passenger.lifecycle.in_limbo());
             assert_eq!(passenger.passenger_role.inside_transport_id(), Some(plane));
         }
         replayed += 1;
@@ -674,7 +669,9 @@ fn mission_plane(sim: &mut Simulation, rules: &RuleSet, row: &Value, target: (u1
         MissionType::ParadropOverfly
     };
     let plane = sim.substrate.entities.get_mut(id).unwrap();
-    plane.attack_target = flag(row, "target").then(|| AttackTarget::for_cell(target.0, target.1));
+    plane
+        .attack_target
+        .set_for_test(flag(row, "target").then(|| TargetKind::Cell(target.0, target.1)));
     if !flag(row, "nav_com") {
         plane.navigation.nav_com = None;
     }
@@ -752,7 +749,7 @@ fn paradrop_missions_match_native() {
         assert_eq!(plane.navigation.nav_com, nav, "{row}");
         let targeted = flag(row, "target") && events(row, "target").all(|call| call[1] != "null");
         assert_eq!(
-            plane.attack_target.as_ref().map(|attack| attack.target),
+            plane.attack_target.target(),
             targeted.then_some(TargetKind::Cell(target.0, target.1)),
             "{row}"
         );
@@ -1051,7 +1048,7 @@ fn fly_out(
             sim.substrate
                 .entities
                 .get(id)
-                .is_some_and(|entity| entity.lifecycle.in_limbo || entity.is_falling_down())
+                .is_some_and(|entity| entity.lifecycle.in_limbo() || entity.is_falling_down())
         })
     };
     let mut frames = 0;
@@ -1062,7 +1059,7 @@ fn fly_out(
         chutes += chute_sounds(sim).len();
         for (n, &id) in passengers.iter().enumerate() {
             if let Some(entity) = sim.substrate.entities.get(id)
-                && !entity.lifecycle.in_limbo
+                && !entity.lifecycle.in_limbo()
                 && missions[n].is_none()
             {
                 missions[n] = Some((entity.mission.queued(), entity.mission.current()));
@@ -1085,7 +1082,7 @@ fn assert_landed(
     let mission = MissionId::from_known(mission);
     for (&id, missions) in passengers.iter().zip(missions) {
         let entity = sim.substrate.entities.get(id).expect("landed");
-        assert!(!entity.lifecycle.in_limbo && !entity.is_falling_down());
+        assert!(!entity.lifecycle.in_limbo() && !entity.is_falling_down());
         let off = |at: u16, centre: u16| (i32::from(at) - i32::from(centre)).abs();
         assert!(
             off(entity.position.rx, around.0) <= 5 && off(entity.position.ry, around.1) <= 5,
@@ -1132,7 +1129,7 @@ fn retail_paradrops_land_their_lists_around_the_target() {
             MissionId::from_known(MissionType::ParadropApproach)
         );
         assert_eq!(
-            entity.attack_target.as_ref().map(|attack| attack.target),
+            entity.attack_target.target(),
             Some(TargetKind::Cell(TARGET.0, TARGET.1))
         );
         assert_eq!(entity.position.rx + entity.position.ry, 36);
@@ -1181,7 +1178,7 @@ fn retail_computer_paradrops_conscripts_past_the_enemy_base() {
     assert_eq!(entity.owner(), russians);
     let target = (TARGET.0 + 2, TARGET.1 + 2);
     assert_eq!(
-        entity.attack_target.as_ref().map(|attack| attack.target),
+        entity.attack_target.target(),
         Some(TargetKind::Cell(target.0, target.1))
     );
     let passengers = cargo(&sim, plane);

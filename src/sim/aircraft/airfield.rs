@@ -7,8 +7,7 @@
 use crate::rules::locomotor_type::{MovementZone, SpeedType};
 use crate::rules::ruleset::RuleSet;
 use crate::sim::find_nearby_cell::{
-    NearbyAnchorGate, NearbyFootprint, NearbyQuery, PassabilityArgs, find_nearby_passable_cell,
-    map_owned_radius_cap,
+    NearbyFootprint, NearbyQuery, PassabilityArgs, find_nearby_passable_cell, map_owned_radius_cap,
 };
 use crate::sim::movement::ground_pose;
 use crate::sim::world::{FrameEffects, Simulation};
@@ -74,7 +73,7 @@ impl Simulation {
                 let Some(building) = self.substrate.entities.get(building) else {
                     continue;
                 };
-                if building.lifecycle.in_limbo {
+                if building.lifecycle.in_limbo() {
                     continue;
                 }
                 let mut d = distance(building);
@@ -101,7 +100,7 @@ impl Simulation {
             }
         }
         for other in self.substrate.entities.values() {
-            if other.stable_id() == id || other.lifecycle.in_limbo || other.owner() != owner {
+            if other.stable_id() == id || other.lifecycle.in_limbo() || other.owner() != owner {
                 continue;
             }
             let d = distance(other);
@@ -218,7 +217,6 @@ impl Simulation {
                     bridge_aware_zone: false,
                 },
                 footprint: NearbyFootprint::new(size, size),
-                anchor_gate: NearbyAnchorGate::NativeHeightAware,
                 allow_bridge_cells: true,
                 check_height: false,
                 check_occupancy: false,

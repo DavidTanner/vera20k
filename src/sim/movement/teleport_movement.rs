@@ -27,7 +27,6 @@ use crate::rules::ruleset::GeneralRules;
 use crate::sim::components::AnimClassSpawnDescriptor;
 use crate::sim::components::DriveCoord;
 use crate::sim::debug_event_log::DebugEventKind;
-use crate::sim::entity_store::EntityStore;
 
 const TELEPORT_WARP_DRAW_FLAGS: u32 = 0x600;
 
@@ -123,9 +122,8 @@ pub enum TeleportPhase {
 
 /// Per-frame result returned by the special locomotor Process adapters.
 ///
-/// The native Process vtable slot owns the completion return; keeping that
-/// result explicit prevents callers from inferring completion from an absent
-/// movement target.
+/// The native Process vtable slot owns the completion return; callers read
+/// completion from it, not from other state.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SpecialMovementOutcome {
     Continue,
@@ -503,7 +501,7 @@ impl crate::sim::world::Simulation {
         {
             return Ok(false);
         }
-        if actor.is_paralyzed(self.session.binary_frame)
+        if actor.parasite.is_paralyzed(self.session.binary_frame)
             || actor.is_warped_out()
             || actor.is_warping_in()
         {
@@ -515,7 +513,7 @@ impl crate::sim::world::Simulation {
                 .nav_com = None;
             return Ok(false);
         }
-        let infantry = actor.category == EntityCategory::Infantry;
+        let infantry = actor.category() == EntityCategory::Infantry;
         let latched = actor.chrono_warp_latch();
         let physical = super::ground_pose::position_world_coord(&actor.position);
         let marked = actor
@@ -645,7 +643,7 @@ impl crate::sim::world::Simulation {
                         return false;
                     };
                     let cell = ((input.x / 256) as u16, (input.y / 256) as u16);
-                    match target.category {
+                    match target.category() {
                         EntityCategory::Unit | EntityCategory::Aircraft => {
                             (target.position.rx, target.position.ry) == cell
                         }
@@ -796,7 +794,7 @@ impl crate::sim::world::Simulation {
     /// (`0x0047EAFE`).
     pub(crate) fn release_teleport_occupation_before_foot_limbo(&mut self, id: u64) {
         let Some(coord) = self.substrate.entities.get(id).and_then(|entity| {
-            (!entity.lifecycle.in_limbo && teleport_process_active(entity))
+            (!entity.lifecycle.in_limbo() && teleport_process_active(entity))
                 .then(|| super::ground_pose::position_world_coord(&entity.position))
         }) else {
             return;
@@ -851,9 +849,6 @@ fn arm_teleport(
         compute_chrono_delay(rules, distance_leptons)
     };
 
-    // Remove any existing ground movement.
-    entity.movement_target = None;
-
     // Attach the teleport state machine — starts in Relocate (instant).
     let teleport_state = TeleportState {
         phase: TeleportPhase::Relocate,
@@ -883,33 +878,6 @@ fn arm_teleport(
     );
 
     true
-}
-
-/// Drop attack locks that name `teleporting_id`, the warp's first step: the
-/// analogue of its Techno detach sweep (`0x0070D4A0`, called at
-/// `0x007193C7`). Radio and presentation links remain root-owned integration
-/// work.
-///
-/// RESIDUAL: the bullet sweep after it (`0x007193CC..0x007193F4`) retargets
-/// every live bullet aimed at the owner (+0x10C) to the cell the owner leaves
-/// (`0x00468430`; NULL for an airborne owner). VERA's projectiles keep homing
-/// on the owner. Trigger: a shot in flight at a Chrono Miner, Legionnaire,
-/// Commando or Ivan the frame it warps. Effect: the shot follows it to the
-/// destination instead of landing on the old cell.
-pub(crate) fn release_incoming_target_locks(entities: &mut EntityStore, teleporting_id: u64) {
-    for id in entities.keys_sorted() {
-        if id == teleporting_id {
-            continue;
-        }
-        let Some(entity) = entities.get_mut(id) else {
-            continue;
-        };
-        if entity.attack_target.as_ref().is_some_and(|target| {
-            matches!(target.target, crate::sim::combat::TargetKind::Entity(id) if id == teleporting_id)
-        }) {
-            entity.attack_target = None;
-        }
-    }
 }
 
 impl crate::sim::world::Simulation {
@@ -977,7 +945,7 @@ impl crate::sim::world::Simulation {
                 .substrate
                 .entities
                 .get(id)
-                .is_some_and(|entity| entity.attack_target.is_none())
+                .is_some_and(|entity| entity.attack_target.target().is_none())
         {
             self.shorten_passive_scan_timer(id);
             if !crate::sim::world::passive_target_acquire(self, id, rules, ctx) {
@@ -1084,6 +1052,10 @@ impl crate::sim::world::Simulation {
                         (destination.y / 256) as i16,
                     ));
                     entity.on_bridge = terrain.native_cell_flags(cell) & 0x100 != 0;
+                    entity.position.z = super::movement_bridge::stored_level(
+                        terrain.native_cell_ground_fields(cell).0,
+                        entity.on_bridge,
+                    );
                 }
                 super::ground_pose::set_height(
                     &mut entity.position,
@@ -1178,8 +1150,10 @@ mod tests {
             let input = &row["input"];
             let mut sim = crate::sim::world::Simulation::new();
             let mut actor = teleport_owner(1, "CLEG", 5, 5);
-            actor.category = crate::map::entities::EntityCategory::Infantry;
-            actor.lifecycle.in_limbo = input["in_limbo"].as_bool().unwrap();
+            actor.set_category_for_test(crate::map::entities::EntityCategory::Infantry);
+            actor
+                .lifecycle
+                .set_in_limbo_for_test(input["in_limbo"].as_bool().unwrap());
             if input["in_open_transport"].as_bool().unwrap() {
                 actor.passenger_role = crate::sim::passenger::PassengerRole::Inside {
                     transport_id: 3,
@@ -1188,7 +1162,9 @@ mod tests {
             }
             // Like the native control, a non-null TarCom avoids the separate
             // scan/idle callback path. Production boarding tests cover it.
-            actor.attack_target = Some(crate::sim::combat::AttackTarget::new(2));
+            actor
+                .attack_target
+                .set_for_test(Some(crate::sim::combat::TargetKind::Entity(2)));
             actor.install_teleport_state_for_test(Some(TeleportState {
                 phase: TeleportPhase::ChronoDelay,
                 destination: Some(DriveCoord::cell(5, 5, 0)),
@@ -1213,12 +1189,12 @@ mod tests {
                 "{row}"
             );
             assert_eq!(
-                actor.attack_target.as_ref().unwrap().target,
+                actor.attack_target.target().unwrap(),
                 crate::sim::combat::TargetKind::Entity(2)
             );
             assert_eq!((actor.position.rx, actor.position.ry), (5, 5));
             assert_eq!(
-                actor.lifecycle.in_limbo,
+                actor.lifecycle.in_limbo(),
                 input["in_limbo"].as_bool().unwrap()
             );
             assert!(!bridge_changed);

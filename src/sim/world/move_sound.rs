@@ -36,7 +36,7 @@ impl Simulation {
     /// ordinary paid Foot visit may start a new sound and spends its own draw.
     pub(crate) fn restore_move_sound_state_after_load(&mut self, id: u64) {
         if let Some(entity) = self.substrate.entities.get_mut(id)
-            && entity.category != EntityCategory::Structure
+            && entity.category() != EntityCategory::Structure
         {
             entity.move_sound = MoveSoundState::default();
         }
@@ -62,7 +62,7 @@ impl Simulation {
         let Some(entity) = self.substrate.entities.get(stable_id) else {
             return;
         };
-        if entity.category == EntityCategory::Structure || entity.locomotor.is_none() {
+        if entity.category() == EntityCategory::Structure || entity.locomotor.is_none() {
             return;
         }
         let changed_or_moving = body_frame_before_process != entity.body_frame_counter
@@ -79,7 +79,7 @@ impl Simulation {
                 self.session.binary_frame,
             );
         // Native +8D/+425. A retained parachute object alone is not this gate.
-        let falling_or_crashing = entity.is_falling_down() || entity.crashing;
+        let falling_or_crashing = entity.is_falling_down() || entity.crash.is_crashing();
         let state = entity.move_sound;
         if changed_or_moving && !falling_or_crashing {
             let sounds = rules

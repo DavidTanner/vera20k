@@ -135,9 +135,9 @@ impl Simulation {
         let Some(infantry) = self.substrate.entities.get(stable_id) else {
             return Ok(false);
         };
-        if infantry.category != EntityCategory::Infantry
-            || !infantry.lifecycle.object_alive
-            || infantry.lifecycle.in_limbo
+        if infantry.category() != EntityCategory::Infantry
+            || !infantry.lifecycle.object_alive()
+            || infantry.lifecycle.in_limbo()
             || !matches!(
                 infantry.mission.effective().known(),
                 Some(MissionType::Guard | MissionType::AreaGuard)
@@ -231,7 +231,7 @@ impl Simulation {
                 .map_or((None, false), |entity| {
                     let sinking = entity.sinking.is_active();
                     let admitted = entity.locomotor.as_ref().and_then(|locomotor| {
-                        (!sinking && !entity.is_falling_down() && !entity.lifecycle.in_limbo)
+                        (!sinking && !entity.is_falling_down() && !entity.lifecycle.in_limbo())
                             .then(|| locomotor.active_kind())
                     });
                     (admitted, sinking)
@@ -306,7 +306,7 @@ impl Simulation {
                 .substrate
                 .entities
                 .get(stable_id)
-                .is_some_and(|entity| entity.category == EntityCategory::Unit);
+                .is_some_and(|entity| entity.category() == EntityCategory::Unit);
         if air.touched_down && jumpjet_unit_touchdown {
             // Jumpjet54C8F0/54C8FF now run Unit PerCell2 and the class NULL
             // setter synchronously while the installed instance is phase4.
@@ -332,7 +332,7 @@ impl Simulation {
         let Some(entity) = self.substrate.entities.get(stable_id) else {
             return Ok(process);
         };
-        if entity.category == EntityCategory::Infantry {
+        if entity.category() == EntityCategory::Infantry {
             // The Infantry notice keeps the infantryman: its class AI runs on
             // to the sequencer and locomotion actions.
             if let Some(rules) = rules {
@@ -401,12 +401,19 @@ impl Simulation {
         });
         let teleport_relocating = teleport_armed && !teleport_reached;
         if teleport_relocating {
-            // 0x007193C7: the Techno detach sweep drops the locks aimed at
-            // the owner; 0x00719442: the departure WarpOut at its Location.
-            teleport_movement::release_incoming_target_locks(
-                &mut sim.substrate.entities,
-                stable_id,
-            );
+            // `0x007193C7`: the detach sweep (`0x0070D4A0`) with the owner,
+            // so every Techno aiming at it restores its mission and takes the
+            // class NULL target setter.
+            //
+            // RESIDUAL: the bullet sweep after it (`0x007193CC..0x007193F4`)
+            // retargets every live bullet aimed at the owner (+0x10C) to the
+            // cell the owner leaves (`0x00468430`; NULL for an airborne
+            // owner). VERA's projectiles keep homing on the owner. Trigger: a
+            // shot in flight at a Chrono Miner, Legionnaire, Commando or Ivan
+            // the frame it warps. Effect: the shot follows it to the
+            // destination instead of landing on the old cell.
+            sim.stop_all_targeting_on_detach(stable_id, rules, overlay_registry, ctx.effects);
+            // `0x00719442`: the departure WarpOut at its Location.
             if let Some(rules) = rules {
                 sim.teleport_warp_out(stable_id, rules);
             }
@@ -417,7 +424,7 @@ impl Simulation {
                     .substrate
                     .entities
                     .get(stable_id)
-                    .and_then(|entity| entity.parasite_eating_me)
+                    .and_then(|entity| entity.parasite.eater())
             {
                 sim.parasite_exit_unit(eater, rules, ctx.effects);
             }
@@ -665,7 +672,7 @@ impl Simulation {
                         .substrate
                         .entities
                         .get(id)
-                        .is_some_and(|entity| entity.lifecycle.object_alive)
+                        .is_some_and(|entity| entity.lifecycle.object_alive())
                 {
                     pending_movement.record_native_track(
                         movement::track_process::TrackInvocation::after_process_movement(
@@ -681,7 +688,7 @@ impl Simulation {
                     sim.substrate
                         .entities
                         .get(invocation.entity_id)
-                        .is_some_and(|entity| entity.lifecycle.object_alive)
+                        .is_some_and(|entity| entity.lifecycle.object_alive())
                 })
             else {
                 break;
@@ -727,7 +734,6 @@ impl Simulation {
         if let Some((id, head)) = pending_movement.take_walk_per_cell() {
             outcome.bridge_state_changed |=
                 sim.run_completed_walk_step(id, head, rules, overlay_registry, effects)?;
-            pending_movement.retain_walk_completion(id, &sim.substrate.entities);
         }
         if let Some((id, coord)) = pending_movement.take_walk_boundary() {
             sim.run_walk_boundary(id, coord, rules, overlay_registry, effects);
@@ -738,7 +744,6 @@ impl Simulation {
             .movement
             .merge(movement::movement_tick::finish_movement_pass(
                 pending_movement,
-                &mut sim.substrate.entities,
             ));
         if let Some(tube_active) = movement_before {
             // Tube exits Unit73603F / Infantry51BA9B call vt+0x18C(2).
@@ -766,6 +771,7 @@ impl Simulation {
         overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
         effects: super::FrameEffects<'_>,
     ) -> Result<LiveObjectPassOutcome, super::FrameAdvanceError> {
+        self.answer_batched_path_searches(rules, overlay_registry);
         let miner_config = rules.map(crate::sim::miner::MinerConfig::from_rules);
         let terrain_spawner_cells = self
             .production
@@ -781,7 +787,7 @@ impl Simulation {
         };
 
         let mut outcome = LiveObjectPassOutcome::default();
-        self.try_for_each_live_object::<super::FrameAdvanceError>(|sim, stable_id| {
+        let walked = self.try_for_each_live_object::<super::FrameAdvanceError>(|sim, stable_id| {
             let turn = sim.advance_live_object_turn(stable_id, rules, object_ctx)?;
             outcome.movement.merge(turn.movement);
             outcome.destroyed_structure |= turn.destroyed_structure;
@@ -791,7 +797,9 @@ impl Simulation {
                 outcome.tube_turn_owned_ids.insert(stable_id);
             }
             Ok(())
-        })?;
+        });
+        self.finish_batched_path_searches();
+        walked?;
         Ok(outcome)
     }
 
@@ -811,7 +819,7 @@ impl Simulation {
         let tube_active_at_entry = sim.substrate.entities.get(stable_id).is_some_and(|entity| {
             !entity.dying
                 && matches!(
-                    entity.category,
+                    entity.category(),
                     EntityCategory::Unit | EntityCategory::Infantry
                 )
                 && entity.low_bridge_tube_state.is_some()
@@ -820,7 +828,7 @@ impl Simulation {
             .substrate
             .entities
             .get(stable_id)
-            .is_some_and(|entity| entity.category == EntityCategory::Structure);
+            .is_some_and(|entity| entity.category() == EntityCategory::Structure);
         let mut ai = sim.object_ai_visit_one_with_effects(stable_id, rules, object_ctx);
         if let Some(error) = ai.fall_error.take() {
             return Err(error);
@@ -841,10 +849,10 @@ impl Simulation {
             entity.dying
                 || (!tube_active_at_entry
                     && matches!(
-                        entity.category,
+                        entity.category(),
                         EntityCategory::Unit | EntityCategory::Infantry | EntityCategory::Aircraft
                     )
-                    && !entity.lifecycle.object_alive)
+                    && !entity.lifecycle.object_alive())
         }) {
             // Foot4DA53E..548 reloads Object+90 after TechnoAI and returns
             // before locomotor Process when false. Health and the Rust dying
@@ -871,7 +879,7 @@ impl Simulation {
         if !tube_active_at_entry
             && let Some(entity) = sim.substrate.entities.get_mut(stable_id)
             && matches!(
-                entity.category,
+                entity.category(),
                 EntityCategory::Unit | EntityCategory::Infantry | EntityCategory::Aircraft
             )
         {
@@ -929,7 +937,7 @@ impl Simulation {
                 .substrate
                 .entities
                 .get(stable_id)
-                .is_none_or(|e| e.dying || !e.lifecycle.object_alive)
+                .is_none_or(|e| e.dying || !e.lifecycle.object_alive())
         {
             return Ok(outcome);
         }
@@ -941,7 +949,7 @@ impl Simulation {
         // the complete live-object pass.
         if process.admitted && unit_body_counter_admitted(tube_active_at_entry) {
             let unit_body_cadence = sim.substrate.entities.get(stable_id).and_then(|entity| {
-                if entity.category != EntityCategory::Unit {
+                if entity.category() != EntityCategory::Unit {
                     return None;
                 }
                 let object = rules?.object(sim.interner.resolve(entity.type_ref()))?;
@@ -970,6 +978,7 @@ impl Simulation {
                     cadence,
                     hover_attack,
                     deploy_to_land,
+                    sim.resolved_terrain.as_ref(),
                     sim.session.binary_frame,
                 );
             }
@@ -982,7 +991,7 @@ impl Simulation {
         let tube_owns_whole_turn = tube_active_at_entry
             || sim.substrate.entities.get(stable_id).is_some_and(|entity| {
                 matches!(
-                    entity.category,
+                    entity.category(),
                     EntityCategory::Unit | EntityCategory::Infantry
                 ) && entity.low_bridge_tube_state.is_some()
             });
@@ -1100,7 +1109,7 @@ impl Simulation {
             .substrate
             .entities
             .get(stable_id)
-            .is_some_and(|entity| entity.category == EntityCategory::Infantry);
+            .is_some_and(|entity| entity.category() == EntityCategory::Infantry);
         if let (Some(rules), true) = (rules, infantry) {
             //51BCA4..51BDCF follows the entire FootAI, including Process and
             // its tails. A successful Scatter invokes Process a second time

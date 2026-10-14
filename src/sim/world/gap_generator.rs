@@ -22,7 +22,7 @@ impl Simulation {
     /// this adapter's established domain; do not infer them from visual state.
     pub(crate) fn building_operational_state(&self, id: u64, rules: &RuleSet) -> Option<bool> {
         let entity = self.substrate.entities.get(id)?;
-        if entity.category != EntityCategory::Structure {
+        if entity.category() != EntityCategory::Structure {
             return None;
         }
         let object = rules.object(self.interner.resolve(entity.type_ref()))?;
@@ -34,7 +34,7 @@ impl Simulation {
             online: entity.building_online(),
             tesla_chargers: 0,
             emp_remaining: 0,
-            health: entity.health.current,
+            health: entity.health.current(),
             powered: object.powered,
             power_drain: power_system::native_building_power_drain(object.power),
             powered_special: object.powered_special,
@@ -63,7 +63,7 @@ impl Simulation {
 
     pub(super) fn gap_operational_state(&self, id: u64, rules: &RuleSet) -> Option<(bool, i32)> {
         let entity = self.substrate.entities.get(id)?;
-        if !entity.lifecycle.object_alive || entity.lifecycle.in_limbo {
+        if !entity.lifecycle.object_alive() || entity.lifecycle.in_limbo() {
             return None;
         }
         let object = rules.object(self.interner.resolve(entity.type_ref()))?;
@@ -91,7 +91,7 @@ impl Simulation {
             .substrate
             .entities
             .get(id)
-            .is_none_or(|entity| !entity.lifecycle.object_alive || entity.lifecycle.in_limbo)
+            .is_none_or(|entity| !entity.lifecycle.object_alive() || entity.lifecycle.in_limbo())
         {
             return;
         }
@@ -220,7 +220,7 @@ impl Simulation {
         let Some(entity) = self.substrate.entities.get(id) else {
             return;
         };
-        if entity.category != EntityCategory::Structure {
+        if entity.category() != EntityCategory::Structure {
             return;
         }
         self.fog.alliances = self.house_alliances.clone();
@@ -232,6 +232,7 @@ impl Simulation {
             entity,
             &config,
             heights.as_deref(),
+            self.resolved_terrain.as_ref(),
             ability,
             &self.interner,
         );

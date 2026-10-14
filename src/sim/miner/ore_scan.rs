@@ -101,7 +101,7 @@ pub(crate) fn search_for_tiberium_and_move(
     if cell == own {
         return true;
     }
-    let _ = super::miner_system::issue_stock_miner_drive_move(
+    super::miner_system::assign_miner_cell_destination(
         sim,
         rules,
         id,
@@ -126,7 +126,7 @@ pub(crate) fn scan_for_tiberium(
     range: i32,
 ) -> Option<(u16, u16)> {
     let entity = sim.substrate.entities.get(id)?;
-    if entity.category == crate::map::entities::EntityCategory::Structure {
+    if entity.category() == crate::map::entities::EntityCategory::Structure {
         return techno_scan_for_tiberium(sim, rules, overlay_registry, id, range);
     }
     foot_scan_for_tiberium(sim, rules, overlay_registry, id, range)

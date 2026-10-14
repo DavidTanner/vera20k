@@ -109,8 +109,12 @@ fn retail_prerequisite_loss_refunds_after_the_factory_charge_sweep() {
                 10 + index as u16 * 5,
                 10,
             );
-            sim.substrate.entities.get_mut(id).unwrap().health.current =
-                rules.object(name).unwrap().strength;
+            sim.substrate
+                .entities
+                .get_mut(id)
+                .unwrap()
+                .health
+                .set_for_test(rules.object(name).unwrap().strength);
             sim.remove_entity_occupancy(id);
             super::tests::stamp_type_foundation(&mut sim, rules, id);
             sim.add_entity_occupancy(id);
@@ -463,8 +467,12 @@ fn retail_superweapon_construction_survives_revalidation() {
                 10 + index as u16 * 5,
                 10,
             );
-            sim.substrate.entities.get_mut(id).unwrap().health.current =
-                rules.object(name).unwrap().strength;
+            sim.substrate
+                .entities
+                .get_mut(id)
+                .unwrap()
+                .health
+                .set_for_test(rules.object(name).unwrap().strength);
             // The compact helper marks one cell. Install the stock foundation
             // through the occupancy boundary before running whole-world ticks.
             sim.remove_entity_occupancy(id);
@@ -506,7 +514,14 @@ fn retail_superweapon_construction_survives_revalidation() {
             super::PRODUCTION_STEPS,
             "{building}: reaches placement readiness"
         );
-        assert!(sim.substrate.entities.get(head).unwrap().lifecycle.in_limbo);
+        assert!(
+            sim.substrate
+                .entities
+                .get(head)
+                .unwrap()
+                .lifecycle
+                .in_limbo()
+        );
         assert!(
             !enqueue_by_type(
                 &mut sim,
@@ -537,7 +552,12 @@ fn retail_superweapon_construction_survives_revalidation() {
         );
         sim.advance_tick(&[place], Some(rules), None, None, 67);
         assert!(
-            !sim.substrate.entities.get(head).unwrap().lifecycle.in_limbo,
+            !sim.substrate
+                .entities
+                .get(head)
+                .unwrap()
+                .lifecycle
+                .in_limbo(),
             "{building}: the completed object is placed without replacement"
         );
         assert!(sim.production.factories.view(owner, category).is_none());
@@ -676,7 +696,7 @@ pub(super) fn children(sim: &Simulation, parent: u64) -> Vec<u64> {
             .entities
             .get(id)
             .expect("held manager child remains represented");
-        assert!(child.lifecycle.in_limbo && !child.lifecycle.cell_marked);
+        assert!(child.lifecycle.in_limbo() && !child.lifecycle.cell_marked);
         assert!(child.spawn_owner_id == Some(parent) || child.slave.owner() == Some(parent));
     }
     ids
@@ -701,7 +721,7 @@ pub(super) fn assert_constructor_words(sim: &Simulation, parent: u64, expected: 
                 .entities
                 .get(id)
                 .unwrap()
-                .techno_ctor_random_word,
+                .techno_ctor_random_word(),
             word
         );
     }
@@ -855,9 +875,9 @@ fn a_produced_slave_miner_hunts_instead_of_taking_the_rally_point() {
             &mut sim, &rules, None
         ));
         let entity = sim.substrate.entities.get(produced).unwrap();
-        assert!(!entity.lifecycle.in_limbo, "{unit_type} delivered");
+        assert!(!entity.lifecycle.in_limbo(), "{unit_type} delivered");
         assert_eq!(
-            entity.movement_target.is_some(),
+            crate::sim::movement::motion_query::is_moving(&entity) == Some(true),
             !hunts,
             "{unit_type}: the rally move"
         );
@@ -906,7 +926,7 @@ fn produced_infantry_retains_its_barracks_rally_until_exit_handoff() {
         &mut sim, &rules, None
     ));
     let entity = sim.substrate.entities.get(produced).unwrap();
-    assert!(!entity.lifecycle.in_limbo, "E1 delivered");
+    assert!(!entity.lifecycle.in_limbo(), "E1 delivered");
     // Nonzero rally: TechnoUnlimbo's InfIdle establishes Nav, then Exit
     // saves it back to Archive444CE7 before assigning the exit444D11.
     // A stock NavNULL prior follows the separate skip arm. FootEnterIdle
@@ -1022,7 +1042,7 @@ fn ready_manager_cancel_refunds_disposes_and_constructs_one_successor() {
     assert!(successor > parent);
     assert_eq!(
         sim.interner
-            .resolve(sim.substrate.entities.get(successor).unwrap().type_ref),
+            .resolve(sim.substrate.entities.get(successor).unwrap().type_ref()),
         "GAPOWR"
     );
     assert_constructor_words(&sim, successor, &mut expected);
@@ -1084,7 +1104,7 @@ fn prerequisite_revalidation_disposes_manager_and_promoted_build_steps_a_rate_la
     let successor = held_id(&sim, owner, ProductionCategory::Vehicle);
     assert_eq!(
         sim.interner
-            .resolve(sim.substrate.entities.get(successor).unwrap().type_ref),
+            .resolve(sim.substrate.entities.get(successor).unwrap().type_ref()),
         "MTNK"
     );
     assert_constructor_words(&sim, successor, &mut expected);
@@ -1176,7 +1196,7 @@ fn missing_barracks_retains_completed_infantry_and_queued_successor() {
     assert_eq!(factory.progress, super::PRODUCTION_STEPS);
     assert_eq!(factory.queue.len(), 1);
     let object = sim.substrate.entities.get(held).unwrap();
-    assert!(object.lifecycle.in_limbo && !object.lifecycle.cell_marked);
+    assert!(object.lifecycle.in_limbo() && !object.lifecycle.cell_marked);
     assert_eq!(sim.houses[&owner].economy.credits(), credits);
     assert_eq!(sim.substrate.next_stable_object_id, allocated);
     assert_eq!(
@@ -1341,7 +1361,14 @@ fn missing_aircraft_producer_retains_completed_aircraft_and_queued_successor() {
     assert!(factory.complete_object().is_some());
     assert_eq!(factory.progress, super::PRODUCTION_STEPS);
     assert_eq!(factory.queue.len(), 1);
-    assert!(sim.substrate.entities.get(held).unwrap().lifecycle.in_limbo);
+    assert!(
+        sim.substrate
+            .entities
+            .get(held)
+            .unwrap()
+            .lifecycle
+            .in_limbo()
+    );
     assert_eq!(sim.houses[&owner].economy.credits(), credits);
     assert_eq!(sim.substrate.next_stable_object_id, allocated);
     assert_eq!(
@@ -1589,7 +1616,7 @@ fn occupied_barracks_radio_refunds_discards_and_promotes_one_gi() {
     ));
     assert!(sim.pending_command_snapshot().is_empty());
     let first_entity = sim.substrate.entities.get(first).unwrap();
-    assert!(!first_entity.lifecycle.in_limbo && first_entity.in_logic_vector);
+    assert!(!first_entity.lifecycle.in_limbo() && first_entity.in_logic_vector);
     let first_contacts = first_entity.radio_contacts.clone();
     assert_eq!(first_contacts.slot(0), Some(producer));
     assert_eq!(first_entity.dock_entered_with, Some(producer));
@@ -1656,7 +1683,7 @@ fn occupied_barracks_radio_refunds_discards_and_promotes_one_gi() {
             .get(refused)
             .unwrap()
             .lifecycle
-            .in_limbo
+            .in_limbo()
     );
     let completed = sim.production.factories.view(owner, category).unwrap();
     assert!(completed.complete_object().is_some());
@@ -1703,7 +1730,7 @@ fn occupied_barracks_radio_refunds_discards_and_promotes_one_gi() {
         "exactly one FIFO successor constructs"
     );
     let successor_entity = sim.substrate.entities.get(successor).unwrap();
-    assert!(successor_entity.lifecycle.in_limbo && !successor_entity.lifecycle.cell_marked);
+    assert!(successor_entity.lifecycle.in_limbo() && !successor_entity.lifecycle.cell_marked);
     assert!(!successor_entity.in_logic_vector);
     let first_entity = sim.substrate.entities.get(first).unwrap();
     assert_eq!(first_entity.radio_contacts, first_contacts);

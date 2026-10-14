@@ -101,10 +101,10 @@ fn test_body_rotation_matches_native_frame_duration() {
 fn native_track_fixture(kind: LocomotorKind, budget: i32) -> (Simulation, TrackInvocation, i32) {
     let mut sim = Simulation::new();
     let mut entity = GameEntity::test_default(1, "MTNK", "Americans", 10, 10);
-    entity.category = EntityCategory::Unit;
+    entity.set_category_for_test(EntityCategory::Unit);
     entity.locomotor = Some(LocomotorState::for_test_kind(kind));
-    entity.lifecycle.object_alive = true;
-    entity.lifecycle.in_limbo = false;
+    entity.lifecycle.set_object_alive_for_test(true);
+    entity.lifecycle.set_in_limbo_for_test(false);
     entity.lifecycle.cell_marked = true;
     let head = DriveCoord::cell(10, 9, 0);
     let track = TrackProgress {

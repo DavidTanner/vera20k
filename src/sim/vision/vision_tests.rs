@@ -2,7 +2,7 @@
 
 use super::*;
 use crate::map::entities::EntityCategory;
-use crate::sim::components::Health;
+use crate::sim::combat::Health;
 use crate::sim::entity_store::EntityStore;
 use crate::sim::game_entity::GameEntity;
 use crate::sim::intern;
@@ -15,14 +15,14 @@ fn spawn_with_vision(store: &mut EntityStore, id: u64, owner: &str, rx: u16, ry:
         0,
         0,
         intern::test_intern(owner),
-        Health { current: 100 },
+        Health::new(100),
         intern::test_intern("E1"),
         EntityCategory::Infantry,
         0,
         range,
         false,
     );
-    entity.lifecycle.in_limbo = false;
+    entity.lifecycle.set_in_limbo_for_test(false);
     store.insert(entity);
 }
 
@@ -322,14 +322,14 @@ fn gsi_08_12_veteran_sight_multiplies_only_for_sight_ability_holders() {
             0,
             0,
             intern::test_intern("Americans"),
-            Health { current: 100 },
+            Health::new(100),
             intern::test_intern(type_id),
             EntityCategory::Infantry,
             100, // veteran
             5,   // vision_range
             false,
         );
-        entity.lifecycle.in_limbo = false;
+        entity.lifecycle.set_in_limbo_for_test(false);
         store.insert(entity);
         let config = VisionConfig {
             require_playfield_membership: false,
@@ -379,14 +379,14 @@ fn elevation_grants_no_sight_bonus_at_any_reachable_terrain_level() {
         8,
         0,
         intern::test_intern("Americans"),
-        Health { current: 100 },
+        Health::new(100),
         intern::test_intern("E1"),
         EntityCategory::Infantry,
         0,
         5,
         false,
     );
-    entity.lifecycle.in_limbo = false;
+    entity.lifecycle.set_in_limbo_for_test(false);
     store.insert(entity);
     let config = VisionConfig {
         require_playfield_membership: false,
@@ -422,14 +422,14 @@ fn test_elevation_sight_bonus_z0_gives_no_bonus() {
         0,
         0,
         intern::test_intern("Americans"),
-        Health { current: 100 },
+        Health::new(100),
         intern::test_intern("E1"),
         EntityCategory::Infantry,
         0,
         5,
         false,
     );
-    entity.lifecycle.in_limbo = false;
+    entity.lifecycle.set_in_limbo_for_test(false);
     store.insert(entity);
     let config = VisionConfig {
         require_playfield_membership: false,
@@ -461,14 +461,14 @@ fn test_elevation_sight_bonus_disabled_when_zero() {
         16,
         0,
         intern::test_intern("Americans"),
-        Health { current: 100 },
+        Health::new(100),
         intern::test_intern("E1"),
         EntityCategory::Infantry,
         0,
         5,
         false,
     );
-    entity.lifecycle.in_limbo = false;
+    entity.lifecycle.set_in_limbo_for_test(false);
     store.insert(entity);
     // leptons_per_sight_increase=0 → elevation bonus disabled.
     let config = VisionConfig {
@@ -770,6 +770,7 @@ fn test_in_place_preserves_revealed() {
         &alliances,
         &cfg,
         None,
+        None,
         &ti(),
         None,
     );
@@ -787,6 +788,7 @@ fn test_in_place_preserves_revealed() {
         Some(&grid),
         &alliances,
         &cfg,
+        None,
         None,
         &ti(),
         None,
@@ -812,6 +814,7 @@ fn test_dead_owner_keeps_revealed() {
         &alliances,
         &cfg,
         None,
+        None,
         &ti(),
         None,
     );
@@ -825,6 +828,7 @@ fn test_dead_owner_keeps_revealed() {
         Some(&grid),
         &alliances,
         &cfg,
+        None,
         None,
         &ti(),
         None,
@@ -855,6 +859,7 @@ fn test_in_place_matches_fresh() {
         Some(&grid),
         &alliances,
         &cfg,
+        None,
         None,
         &ti(),
         None,
@@ -905,6 +910,7 @@ fn test_gap_generator_sets_gap_covered_flag() {
         Some(&PathGrid::new(30, 30)),
         &Default::default(),
         &default_config(),
+        None,
         None,
         &ti(),
         None,
@@ -1518,16 +1524,15 @@ fn an_airborne_viewer_sees_past_a_cliff() {
 fn an_aircrafts_altitude_moves_its_revealed_disc() {
     use crate::rules::locomotor_type::LocomotorKind;
     use crate::sim::movement::locomotor::{LocomotorState, MovementLayer};
-    use crate::util::fixed_math::SimFixed;
 
     let mut store = EntityStore::new();
     let mut entity = GameEntity::test_default(1, "BEAG", "Americans", 30, 30);
-    entity.category = EntityCategory::Aircraft;
-    entity.lifecycle.in_limbo = false;
+    entity.set_category_for_test(EntityCategory::Aircraft);
+    entity.lifecycle.set_in_limbo_for_test(false);
     entity.vision_range = 1;
+    entity.position.exact_z_leptons = Some(1500);
     let mut loco = LocomotorState::for_test_kind(LocomotorKind::Fly);
     loco.layer = MovementLayer::Air;
-    loco.altitude = SimFixed::from_num(1500);
     entity.locomotor = Some(loco);
     store.insert(entity);
 
@@ -1541,6 +1546,66 @@ fn an_aircrafts_altitude_moves_its_revealed_disc() {
     let owner = intern::test_intern("Americans");
     assert!(fog.is_cell_visible(owner, 23, 23));
     assert!(!fog.is_cell_visible(owner, 30, 30));
+}
+
+/// A Jumpjet whose Location Z lags below its cell's floor sees from that Z:
+/// on flat ground, the stored level plus its negative GetHeight is the
+/// Location Z.
+#[test]
+fn a_jumpjet_below_its_floor_sees_from_its_location_z() {
+    use crate::map::resolved_terrain::{ResolvedTerrainGrid, test_flat_cell};
+    use crate::rules::locomotor_type::LocomotorKind;
+    use crate::sim::movement::locomotor::{LocomotorState, MovementLayer};
+
+    let (w, h) = (64u16, 64u16);
+    let terrain = ResolvedTerrainGrid::from_cells(
+        w,
+        h,
+        (0..h)
+            .flat_map(|y| {
+                (0..w).map(move |x| {
+                    let mut cell = test_flat_cell(x, y);
+                    cell.level = 4;
+                    cell
+                })
+            })
+            .collect(),
+    );
+    let mut store = EntityStore::new();
+    let mut entity = GameEntity::test_default(1, "JUMPJET", "Americans", 30, 30);
+    entity.lifecycle.set_in_limbo_for_test(false);
+    entity.vision_range = 1;
+    entity.position.z = 4;
+    entity.position.exact_z_leptons = Some(208);
+    let mut loco = LocomotorState::for_test_kind(LocomotorKind::Jumpjet);
+    loco.layer = MovementLayer::Air;
+    entity.locomotor = Some(loco);
+    store.insert(entity);
+
+    let mut fog = FogState::default();
+    recompute_owner_visibility_in_place(
+        &mut fog,
+        &store,
+        Some(&PathGrid::new(w, h)),
+        &Default::default(),
+        &default_config(),
+        None,
+        Some(&terrain),
+        &ti(),
+        None,
+    );
+    let owner = intern::test_intern("Americans");
+    let expected = super::collect_reveal_cells(30, 30, 1, 208, false, None, (w, h), None);
+    assert!(!expected.is_empty());
+    for ry in 0..h {
+        for rx in 0..w {
+            assert_eq!(
+                fog.is_cell_visible(owner, rx, ry),
+                expected.contains(&(rx, ry)),
+                "({rx}, {ry})"
+            );
+        }
+    }
 }
 
 /// F10: the view generation render dirty-gates on is runtime-only. A bincode
@@ -1631,6 +1696,7 @@ fn shroud_current_sight_matches_original_native_sequences() {
                         None,
                         &Default::default(),
                         &default_config(),
+                        None,
                         None,
                         &interner,
                         None,
@@ -1729,6 +1795,7 @@ fn shroud_current_sight_allied_gap_and_pending_survive_serialization() {
         &alliances,
         &default_config(),
         None,
+        None,
         &interner,
         None,
     );
@@ -1746,6 +1813,7 @@ fn shroud_current_sight_allied_gap_and_pending_survive_serialization() {
         None,
         &alliances,
         &default_config(),
+        None,
         None,
         &interner,
         None,
@@ -1833,6 +1901,7 @@ fn shroud_current_sight_direct_allies_do_not_reexport_immunity() {
         &alliances,
         &default_config(),
         None,
+        None,
         &interner,
         None,
     );
@@ -1893,6 +1962,7 @@ fn shroud_current_sight_unchanged_refresh_does_not_invent_a_return_event() {
             &Default::default(),
             &default_config(),
             None,
+            None,
             &interner,
             None,
         )
@@ -1910,6 +1980,7 @@ fn shroud_current_sight_unchanged_refresh_does_not_invent_a_return_event() {
         &mut fog,
         store.get(1).unwrap(),
         &default_config(),
+        None,
         None,
         false,
         &interner,
@@ -1941,6 +2012,7 @@ fn shroud_current_sight_unchanged_refresh_does_not_invent_a_return_event() {
         &mut fog,
         store.get(1).unwrap(),
         &default_config(),
+        None,
         None,
         false,
         &interner,

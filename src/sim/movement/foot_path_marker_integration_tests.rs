@@ -2,7 +2,6 @@
 //! Native marker arithmetic/ordering has its own oracle; this fixture checks
 //! that the modern Foot Find_Path core actually consumes those owned marks.
 use super::*;
-use crate::sim::components::MovementTarget;
 
 #[test]
 fn marked_probe_survives_modern_foot_search_and_mark_restoration() {
@@ -23,9 +22,6 @@ fn marked_probe_survives_modern_foot_search_and_mark_restoration() {
         let frame = sim.session.binary_frame;
         let actor = sim.substrate.entities.get_mut(id).unwrap();
         actor.body_facing.snap(0x4000, frame);
-        actor.movement_target = Some(MovementTarget {
-            ..Default::default()
-        });
         let goal = cell_centre((goal_cell.0 as i16, goal_cell.1 as i16));
         let request = FootPathRequest::track(
             &sim.substrate.entities,

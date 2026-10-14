@@ -14,11 +14,12 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::map::entities::EntityCategory;
+use crate::sim::cell_map::CellMap;
 use crate::sim::game_entity::GameEntity;
 use crate::sim::intern::InternedId;
 use crate::sim::movement::locomotor::{LocomotorState, MovementLayer};
 use crate::sim::movement::track_process::TrackFamily;
-use crate::util::fixed_math::{SIM_ZERO, SimFixed};
+use crate::util::fixed_math::SimFixed;
 
 /// UnitClass vehicle-occupation bit in both CellClass occupation planes.
 pub(crate) const VEHICLE_OCCUPATION_BIT: u8 = 0x20;
@@ -56,17 +57,21 @@ pub(crate) fn air_spatial_bucket_index(rx: u16, ry: u16, map_width: u16, map_hei
 /// Whether the object belongs to the independent airborne spatial index.
 /// Native producers are the Fly/Jumpjet/rocket air-entry and movement paths;
 /// underground objects are deliberately not inferred to be airborne merely
-/// because they are absent from both CellClass object lists.
-pub(crate) fn air_spatial_tracks_entity(entity: &GameEntity) -> bool {
+/// because they are absent from both CellClass object lists. An Aircraft's
+/// Fly counts while GetHeight is above zero.
+pub(crate) fn air_spatial_tracks_entity(
+    entity: &GameEntity,
+    terrain: Option<&crate::map::resolved_terrain::ResolvedTerrainGrid>,
+) -> bool {
     use crate::rules::locomotor_type::LocomotorKind;
 
     let Some(locomotor) = entity.locomotor.as_ref() else {
         return false;
     };
     locomotor.layer == MovementLayer::Air
-        || (entity.category == EntityCategory::Aircraft
+        || (entity.category() == EntityCategory::Aircraft
             && locomotor.kind == LocomotorKind::Fly
-            && locomotor.altitude > SIM_ZERO)
+            && crate::sim::movement::air_movement::current_fly_height(entity, terrain) > 0)
 }
 
 /// Exact bucket-copy order used by `FUN_00412B40` for the airborne phase of
@@ -258,7 +263,7 @@ impl RawCellKey {
 /// cache below.
 #[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(crate) struct RawCellOccupationGrid {
-    cells: BTreeMap<(u16, u16), RawCellOccupation>,
+    cells: CellMap<RawCellOccupation>,
     // The process-global fallback Cell is not Scenario save payload. Map
     // Resize reconstructs it: Cell47BC2D/30 owners=-1,47BD95/9B raw bytes=0.
     #[serde(skip)]
@@ -311,8 +316,7 @@ impl RawCellOccupationGrid {
             RawCellKey::Real(x, y) if put => {
                 if mask != 0 && matches!(layer, MovementLayer::Ground | MovementLayer::Bridge) {
                     self.cells
-                        .entry((x, y))
-                        .or_default()
+                        .get_or_insert_with((x, y), Default::default)
                         .write(layer, mask, owner, true);
                 }
             }
@@ -344,7 +348,7 @@ impl RawCellOccupationGrid {
 
     pub(crate) fn mark_ground(&mut self, rx: u16, ry: u16, mask: u8) {
         if mask != 0 {
-            self.cells.entry((rx, ry)).or_default().ground |= mask;
+            self.cells.get_or_insert_with((rx, ry), Default::default).ground |= mask;
         }
     }
 
@@ -388,7 +392,7 @@ impl RawCellOccupationGrid {
 
     pub(crate) fn mark_deck(&mut self, rx: u16, ry: u16, mask: u8) {
         if mask != 0 {
-            self.cells.entry((rx, ry)).or_default().deck |= mask;
+            self.cells.get_or_insert_with((rx, ry), Default::default).deck |= mask;
         }
     }
 
@@ -450,7 +454,7 @@ impl RawCellOccupationGrid {
     pub(crate) fn entries(
         &self,
     ) -> impl Iterator<Item = (u16, u16, u8, u8, Option<InternedId>, Option<InternedId>)> + '_ {
-        self.cells.iter().map(|(&(rx, ry), cell)| {
+        self.cells.iter().map(|((rx, ry), cell)| {
             (
                 rx,
                 ry,
@@ -470,7 +474,7 @@ impl RawCellOccupationGrid {
 /// guarded decrements that reach zero remove the sparse entry.
 #[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(crate) struct HiddenOccupationGrid {
-    cells: BTreeMap<(u16, u16), u32>,
+    cells: CellMap<u32>,
 }
 
 impl HiddenOccupationGrid {
@@ -561,7 +565,7 @@ impl HiddenOccupationGrid {
     }
 
     pub(crate) fn entries(&self) -> impl Iterator<Item = (u16, u16, u32)> + '_ {
-        self.cells.iter().map(|(&(rx, ry), &count)| (rx, ry, count))
+        self.cells.iter().map(|((rx, ry), &count)| (rx, ry, count))
     }
 }
 
@@ -577,7 +581,7 @@ impl HiddenOccupationGrid {
 /// or locomotor phase.
 #[derive(Debug, Default, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(crate) struct AirSlotGrid {
-    cells: BTreeMap<(u16, u16), u64>,
+    cells: CellMap<u64>,
 }
 
 impl AirSlotGrid {
@@ -602,7 +606,7 @@ impl AirSlotGrid {
     }
 
     pub(crate) fn entries(&self) -> impl Iterator<Item = (u16, u16, u64)> + '_ {
-        self.cells.iter().map(|(&(rx, ry), &owner)| (rx, ry, owner))
+        self.cells.iter().map(|((rx, ry), &owner)| (rx, ry, owner))
     }
 }
 
@@ -676,6 +680,7 @@ impl VehicleOccupationPlane {
             .fold(0, |bits, mark| bits | mark)
     }
 
+    #[cfg(test)]
     fn bits_ignoring(&self, entity_id: u64) -> u8 {
         self.owners
             .iter()
@@ -696,6 +701,7 @@ struct CellVehicleOccupation {
 }
 
 impl CellVehicleOccupation {
+    #[cfg(test)]
     fn plane(&self, layer: MovementLayer) -> Option<&VehicleOccupationPlane> {
         match layer {
             MovementLayer::Ground => Some(&self.ground),
@@ -785,7 +791,7 @@ impl OwnerOccupationFootprints {
 /// and rebuilt from serialized entity/Drive state.
 #[derive(Debug, Clone, Default)]
 pub struct CellOccupationGrid {
-    cells: BTreeMap<(u16, u16), CellVehicleOccupation>,
+    cells: CellMap<CellVehicleOccupation>,
     footprints_by_owner: BTreeMap<u64, OwnerOccupationFootprints>,
 }
 
@@ -831,7 +837,7 @@ impl CellOccupationGrid {
             self.clear_vehicle_plane(footprint, entity.stable_id());
         }
 
-        if entity.category != EntityCategory::Unit
+        if entity.category() != EntityCategory::Unit
             || !entity.lifecycle.cell_marked
             || entity.passenger_role.is_inside_transport()
         {
@@ -874,7 +880,7 @@ impl CellOccupationGrid {
         if !matches!(layer, MovementLayer::Ground | MovementLayer::Bridge) {
             return;
         }
-        let cell = self.cells.entry((rx, ry)).or_default();
+        let cell = self.cells.get_or_insert_with((rx, ry), Default::default);
         cell.plane_mut(layer)
             .expect("ground/deck layer has an occupation plane")
             .mark(entity_id);
@@ -993,19 +999,6 @@ impl CellOccupationGrid {
         entity_id: u64,
     ) -> bool {
         self.vehicle_bits_ignoring(rx, ry, layer, entity_id) & VEHICLE_OCCUPATION_BIT != 0
-    }
-
-    pub(crate) fn occupied_cells_ignoring(
-        &self,
-        layer: MovementLayer,
-        entity_id: u64,
-    ) -> impl Iterator<Item = (u16, u16)> + '_ {
-        self.cells.iter().filter_map(move |(&(rx, ry), cell)| {
-            let occupied = cell
-                .plane(layer)
-                .is_some_and(|plane| plane.bits_ignoring(entity_id) & VEHICLE_OCCUPATION_BIT != 0);
-            occupied.then_some((rx, ry))
-        })
     }
 }
 
@@ -1172,7 +1165,7 @@ impl CellOccupancy {
 /// See tools/spatial_oracle/jumpjet_entry_discovery.{py,json,meta.json}.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct OccupancyGrid {
-    cells: BTreeMap<(u16, u16), CellOccupancy>,
+    cells: CellMap<CellOccupancy>,
     /// Monotonic counter bumped on every cell-membership mutation. Lets the
     /// movement tick detect when a mover's pathfinding entity-block snapshot is
     /// stale and must be rebuilt before a same-tick repath. Transient scheduling
@@ -1197,7 +1190,7 @@ impl OccupancyGrid {
         &self,
         entities: &crate::sim::entity_store::EntityStore,
     ) -> Result<(), String> {
-        for (&cell, occupants) in &self.cells {
+        for (cell, occupants) in self.cells.iter() {
             let mut seen = BTreeSet::new();
             for occupant in &occupants.occupants {
                 if !matches!(
@@ -1240,8 +1233,8 @@ impl OccupancyGrid {
                 let entity = entities
                     .get(occupant.entity_id)
                     .expect("validated reference");
-                occupant.is_building = entity.category == EntityCategory::Structure;
-                occupant.sub_cell = if entity.category == EntityCategory::Infantry {
+                occupant.is_building = entity.category() == EntityCategory::Structure;
+                occupant.sub_cell = if entity.category() == EntityCategory::Infantry {
                     entity.sub_cell
                 } else {
                     None
@@ -1269,7 +1262,7 @@ impl OccupancyGrid {
             })
             .sum();
         list_count.hash(hasher);
-        for (&cell, occupants) in &self.cells {
+        for (cell, occupants) in self.cells.iter() {
             for layer in [MovementLayer::Ground, MovementLayer::Bridge] {
                 let count = occupants.iter_layer(layer).count();
                 if count == 0 {
@@ -1307,12 +1300,12 @@ impl OccupancyGrid {
                 continue;
             };
             let sid = entity.stable_id();
-            let sub = if entity.category == EntityCategory::Infantry {
+            let sub = if entity.category() == EntityCategory::Infantry {
                 entity.sub_cell
             } else {
                 None
             };
-            let insertion = CellListInsertion::from_category(entity.category);
+            let insertion = CellListInsertion::from_category(entity.category());
             for (rx, ry) in entity_occupancy_cells(entity) {
                 grid.add(rx, ry, sid, layer, sub, insertion);
             }
@@ -1326,7 +1319,7 @@ impl OccupancyGrid {
 /// (`0x0047E8A0`) walks. The lists are row-major rectangles except
 /// `3x3Refinery`'s, which omits `(2, 1)`.
 pub(crate) fn entity_occupancy_cells(entity: &GameEntity) -> Vec<(u16, u16)> {
-    if entity.category != EntityCategory::Structure {
+    if entity.category() != EntityCategory::Structure {
         return vec![(entity.position.rx, entity.position.ry)];
     }
     crate::rules::foundation::foundation_cell_offsets(&entity.foundation)
@@ -1344,7 +1337,7 @@ impl OccupancyGrid {
     /// Create an empty occupancy grid.
     pub fn new() -> Self {
         Self {
-            cells: BTreeMap::new(),
+            cells: CellMap::new(),
             generation: 0,
         }
     }
@@ -1374,7 +1367,7 @@ impl OccupancyGrid {
             sub_cell,
             is_building: insertion == CellListInsertion::AppendBuilding,
         };
-        let occ = self.cells.entry((rx, ry)).or_default();
+        let occ = self.cells.get_or_insert_with((rx, ry), Default::default);
         match insertion {
             CellListInsertion::PrependNonBuilding => {
                 let index = occ
@@ -1508,7 +1501,7 @@ impl OccupancyGrid {
         self.get(rx, ry)?.iter_layer(layer).find_map(|occupant| {
             entities
                 .get(occupant.entity_id)
-                .is_some_and(|entity| entity.category == category)
+                .is_some_and(|entity| entity.category() == category)
                 .then_some(occupant.entity_id)
         })
     }
@@ -1537,7 +1530,7 @@ impl OccupancyGrid {
     ) -> impl Iterator<Item = (u16, u16)> + '_ {
         self.cells
             .iter()
-            .filter_map(move |(&cell, occupants)| (!occupants.is_empty_on(layer)).then_some(cell))
+            .filter_map(move |(cell, occupants)| (!occupants.is_empty_on(layer)).then_some(cell))
     }
 
     /// Check if a specific entity is in a specific cell.
@@ -1994,13 +1987,13 @@ mod tests {
         let mut entities = crate::sim::entity_store::EntityStore::new();
         let mut ground_aircraft =
             crate::sim::game_entity::GameEntity::test_default(10, "ORCA", "Allies", 5, 5);
-        ground_aircraft.category = EntityCategory::Aircraft;
+        ground_aircraft.set_category_for_test(EntityCategory::Aircraft);
         let mut ground_building =
             crate::sim::game_entity::GameEntity::test_default(20, "GAPOWR", "Allies", 5, 5);
-        ground_building.category = EntityCategory::Structure;
+        ground_building.set_category_for_test(EntityCategory::Structure);
         let mut deck_building =
             crate::sim::game_entity::GameEntity::test_default(30, "GAPOWR", "Allies", 5, 5);
-        deck_building.category = EntityCategory::Structure;
+        deck_building.set_category_for_test(EntityCategory::Structure);
         entities.insert(ground_aircraft);
         entities.insert(ground_building);
         entities.insert(deck_building);
@@ -2172,7 +2165,7 @@ mod tests {
     fn saved_memberships_retain_lists_and_derive_only_lookup_metadata() {
         let mut entities = crate::sim::entity_store::EntityStore::new();
         let mut infantry = GameEntity::test_default(1, "JUMPJET", "Americans", 5, 5);
-        infantry.category = EntityCategory::Infantry;
+        infantry.set_category_for_test(EntityCategory::Infantry);
         infantry.sub_cell = Some(3);
         infantry.lifecycle.cell_marked = true;
         infantry.locomotor = Some(
@@ -2181,7 +2174,7 @@ mod tests {
             ),
         );
         infantry.locomotor.as_mut().unwrap().layer = MovementLayer::Air;
-        infantry.locomotor.as_mut().unwrap().altitude = SimFixed::from_num(400);
+        infantry.position.exact_z_leptons = Some(400);
         entities.insert(infantry);
         let building = GameEntity::test_default_of_category(
             2,
@@ -2351,16 +2344,16 @@ mod tests {
     fn rebuild_uses_category_insertion() {
         let mut entities = crate::sim::entity_store::EntityStore::new();
         let mut first = crate::sim::game_entity::GameEntity::test_default(1, "E1", "Allies", 5, 5);
-        first.category = EntityCategory::Infantry;
+        first.set_category_for_test(EntityCategory::Infantry);
         first.sub_cell = Some(2);
         first.lifecycle.cell_marked = true;
         let mut second =
             crate::sim::game_entity::GameEntity::test_default(2, "HTNK", "Allies", 5, 5);
-        second.category = EntityCategory::Unit;
+        second.set_category_for_test(EntityCategory::Unit);
         second.lifecycle.cell_marked = true;
         let mut structure =
             crate::sim::game_entity::GameEntity::test_default(100, "GAPOWR", "Allies", 5, 5);
-        structure.category = EntityCategory::Structure;
+        structure.set_category_for_test(EntityCategory::Structure);
         structure.lifecycle.cell_marked = true;
         entities.insert(first);
         entities.insert(second);
@@ -2380,7 +2373,7 @@ mod tests {
         let mut entities = crate::sim::entity_store::EntityStore::new();
         let mut structure =
             crate::sim::game_entity::GameEntity::test_default(100, "GAPOWR", "Allies", 5, 5);
-        structure.category = EntityCategory::Structure;
+        structure.set_category_for_test(EntityCategory::Structure);
         structure.foundation = "2x2".to_string();
         structure.lifecycle.cell_marked = true;
         entities.insert(structure);
@@ -2401,8 +2394,8 @@ mod tests {
         let mut entities = crate::sim::entity_store::EntityStore::new();
         let limbo = crate::sim::game_entity::GameEntity::test_default(1, "MTNK", "Allies", 5, 5);
 
-        assert!(limbo.lifecycle.object_alive);
-        assert!(limbo.lifecycle.in_limbo);
+        assert!(limbo.lifecycle.object_alive());
+        assert!(limbo.lifecycle.in_limbo());
         assert!(!limbo.lifecycle.cell_marked);
         entities.insert(limbo);
 
@@ -2414,7 +2407,7 @@ mod tests {
     fn gsi_04_05_unit(stable_id: u64, rx: u16, ry: u16) -> crate::sim::game_entity::GameEntity {
         let mut entity =
             crate::sim::game_entity::GameEntity::test_default(stable_id, "MTNK", "Allies", rx, ry);
-        entity.category = EntityCategory::Unit;
+        entity.set_category_for_test(EntityCategory::Unit);
         entity.lifecycle.cell_marked = true;
         entity.locomotor = Some(
             crate::sim::movement::locomotor::LocomotorState::for_test_kind(

@@ -10,7 +10,7 @@ use super::*;
 use crate::map::entities::EntityCategory;
 use crate::rules::ini_parser::IniFile;
 use crate::rules::overlay_types::OverlayTypeRegistry;
-use crate::sim::components::Health;
+use crate::sim::combat::Health;
 use crate::sim::crates::CrateSlot;
 use crate::sim::game_entity::GameEntity;
 use crate::sim::house_state::HouseState;
@@ -48,7 +48,7 @@ fn place_actor(
         0,
         0,
         owner,
-        Health { current: 100 },
+        Health::new(100),
         type_id,
         category,
         0,
@@ -425,8 +425,17 @@ fn veteran_crate_promotes_trainable_technos_within_the_radius() {
         crate::sim::world::FrameEffects::default()
     ));
 
-    let raw =
-        |id: u64| f32::from_bits(sim.substrate.entities.get(id).unwrap().veterancy_raw.bits());
+    let raw = |id: u64| {
+        f32::from_bits(
+            sim.substrate
+                .entities
+                .get(id)
+                .unwrap()
+                .veterancy
+                .raw()
+                .bits(),
+        )
+    };
     assert_eq!(raw(actor), 1.0, "the actor on the crate is a veteran");
     assert_eq!(raw(civilian), 0.0, "not Trainable=");
     assert_eq!(raw(distant), 0.0, "outside CrateRadius");
@@ -682,13 +691,58 @@ fn unit_crate_places_a_goodie_vehicle_and_returns_false() {
         })
         .expect("the free tank");
     assert_eq!((free.position.rx, free.position.ry), (21, 22));
-    assert!(free.lifecycle.cell_marked && !free.lifecycle.in_limbo);
+    assert!(free.lifecycle.cell_marked && !free.lifecycle.in_limbo());
     assert_eq!(free.owner(), owner);
     assert_eq!(overlay_at(&sim, (21, 22)), None);
     assert_eq!(
         sounds(&sim),
         vec![("CrateFreeUnit".to_string(), Some([owner, owner]))]
     );
+}
+
+/// `0x0048231E..0x00482366`: the picker stands on the crate, so the goodie's
+/// Unlimbo there is refused and Find_Nearby_Passable_Cell places it with no
+/// height gate and bridge cells allowed. Ground two levels above the crate
+/// cell therefore counts, and the first ring takes the goodie.
+#[test]
+fn unit_crate_under_its_picker_lands_the_goodie_on_the_first_ring_at_any_level() {
+    let (mut sim, rules, registry, owner, actor) = arena();
+    let at = (20u16, 22u16);
+    let terrain = sim.resolved_terrain.as_mut().unwrap();
+    for y in 0..32 {
+        for x in 0..32 {
+            if (x, y) != at {
+                terrain.cell_mut(x, y).unwrap().level = 2;
+            }
+        }
+    }
+    place_registered_crate(&mut sim, &registry, (20, 22), POWERUP_UNIT as u8);
+
+    assert!(!pickup_crate(
+        &mut sim,
+        &rules,
+        &registry,
+        (20, 22),
+        actor,
+        crate::sim::world::FrameEffects::default()
+    ));
+
+    let free = sim
+        .substrate
+        .entities
+        .values()
+        .find(|entity| {
+            entity.stable_id() != actor && sim.interner.resolve(entity.type_ref()) == "TNK"
+        })
+        .expect("the goodie was placed");
+    let cell = (free.position.rx, free.position.ry);
+    assert_eq!(
+        cell.0.abs_diff(at.0).max(cell.1.abs_diff(at.1)),
+        1,
+        "the first ring, two levels up: {cell:?}"
+    );
+    assert!(free.lifecycle.cell_marked && !free.lifecycle.in_limbo());
+    assert_eq!(free.owner(), owner);
 }
 
 /// `0x00481BB8..0x00481BFF`: with Bases on, a house with no tracked building,
@@ -738,7 +792,12 @@ fn heal_base_crate_restores_the_owners_buildings() {
         .spawn_object("YARD", "Russians", 8, 20, 0, &rules)
         .unwrap();
     for id in [own, theirs] {
-        sim.substrate.entities.get_mut(id).unwrap().health.current = 400;
+        sim.substrate
+            .entities
+            .get_mut(id)
+            .unwrap()
+            .health
+            .set_for_test(400);
     }
     place_registered_crate(&mut sim, &registry, (21, 22), POWERUP_HEAL_BASE as u8);
 
@@ -752,11 +811,11 @@ fn heal_base_crate_restores_the_owners_buildings() {
     ));
 
     assert_eq!(
-        sim.substrate.entities.get(own).unwrap().health.current,
+        sim.substrate.entities.get(own).unwrap().health.current(),
         1000
     );
     assert_eq!(
-        sim.substrate.entities.get(theirs).unwrap().health.current,
+        sim.substrate.entities.get(theirs).unwrap().health.current(),
         400
     );
     // `[CrateRules]` retains the upper-cased name at its data boundary.
@@ -803,7 +862,6 @@ fn a_moving_tank_picks_up_the_crate_on_its_path() {
             entity_id: actor,
             target_rx: 25,
             target_ry: 22,
-            queue: false,
         },
     );
     sim.advance_tick(&[order], Some(&rules), grid.as_deref(), Some(&registry), 22);
@@ -876,7 +934,6 @@ fn a_walking_soldier_picks_up_the_crate_on_his_path() {
             entity_id: soldier,
             target_rx: 15,
             target_ry: 10,
-            queue: false,
         },
     );
     sim.advance_tick(&[order], Some(&rules), grid.as_deref(), Some(&registry), 22);

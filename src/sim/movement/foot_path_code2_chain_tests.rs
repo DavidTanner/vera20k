@@ -61,7 +61,7 @@ fn moving(sim: &mut Simulation, rules: &RuleSet, cell: (u16, u16), facing: u16) 
 }
 
 fn jams(sim: &Simulation, cell: (u16, u16)) -> bool {
-    sim.astar_code2_chain_jams(cell, MovementLayer::Ground)
+    sim.astar_code2_chain_jams(cell, MovementLayer::Ground, None)
         .expect("the arena has map cells")
 }
 
@@ -293,7 +293,7 @@ fn the_native_hills_controls_price_as_the_live_chain() {
             .set_speed_fraction(speed);
         let urgency = control["urgency"].as_u64().unwrap() as u8;
         let multiplier = code2_multiplier(urgency, || {
-            sim.astar_code2_chain_jams((10, 10), MovementLayer::Ground)
+            sim.astar_code2_chain_jams((10, 10), MovementLayer::Ground, None)
         })
         .unwrap();
         assert_eq!(

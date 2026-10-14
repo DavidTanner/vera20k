@@ -310,7 +310,7 @@ impl Fixture {
             entity
                 .mission_leaf
                 .set_building_ready_latch(int(&prior["building"]["building"]["done"]) as u8);
-            entity.health.current = int(&prior["health"]);
+            entity.health.set_for_test(int(&prior["health"]));
             entity.estimated_health.reset(int(&prior["health"]));
             entity.sample_building_health_for_power();
         }
@@ -319,7 +319,7 @@ impl Fixture {
                 .entities
                 .get(building)
                 .unwrap()
-                .native_unique_id,
+                .native_unique_id(),
             int(&prior["id"])
         );
         let slot_pointer = prior["building"]["slots"][3].as_u64().unwrap();
@@ -346,7 +346,8 @@ impl Fixture {
                 .entities
                 .get(building)
                 .unwrap()
-                .building_anim_slots[3]
+                .building_art
+                .anim_slots()[3]
                 .is_some()
         );
         let unit = sim
@@ -490,7 +491,7 @@ impl Fixture {
             "{boundary}: retained operational state",
         );
         assert_eq!(
-            building.building_actually_placed,
+            building.building_art.actually_placed(),
             native["building"]["placed"] == 1,
             "{boundary}: first-opening state",
         );
@@ -582,7 +583,7 @@ impl Fixture {
         );
         if let Some(building) = self.sim.substrate.entities.get(self.building) {
             for (slots, key) in [
-                (&building.building_anim_slots[..], "slots"),
+                (&building.building_art.anim_slots()[..], "slots"),
                 (&building.damage_fire_anim_ids[..], "damage_fire_slots"),
             ] {
                 let expected = if key == "slots" {
@@ -686,7 +687,7 @@ impl Fixture {
             );
         }
         assert_eq!(
-            attacker.attack_target.as_ref().map(|target| target.target),
+            attacker.attack_target.target(),
             (target != 0).then_some(TargetKind::Entity(self.building)),
             "{boundary}: firer target expiry",
         );
@@ -754,7 +755,7 @@ impl Fixture {
     fn assert_state(&self, native: &Value, boundary: &str) {
         let entity = self.sim.substrate.entities.get(self.building).unwrap();
         assert_eq!(
-            entity.health.current,
+            entity.health.current(),
             int(&native["health"]),
             "{boundary}: actual health"
         );
@@ -764,12 +765,12 @@ impl Fixture {
             "{boundary}: sampled health"
         );
         assert_eq!(
-            entity.lifecycle.object_alive,
+            entity.lifecycle.object_alive(),
             native["alive"] == 1,
             "{boundary}: alive"
         );
         assert_eq!(
-            entity.lifecycle.in_limbo,
+            entity.lifecycle.in_limbo(),
             native["limbo"] == 1,
             "{boundary}: limbo"
         );
@@ -885,7 +886,7 @@ impl Fixture {
             .substrate
             .entities
             .values()
-            .filter(|e| e.category == EntityCategory::Infantry)
+            .filter(|e| e.category() == EntityCategory::Infantry)
             .collect();
         assert_eq!(
             crew.len(),
@@ -894,12 +895,12 @@ impl Fixture {
         );
         for (actual, native) in crew.iter().zip(native["crew"].as_array().unwrap()) {
             assert_eq!(
-                actual.native_unique_id,
+                actual.native_unique_id(),
                 int(&native["id"]),
                 "{boundary}: crew constructor order"
             );
             assert_eq!(
-                actual.health.current,
+                actual.health.current(),
                 int(&native["health"]),
                 "{boundary}: crew health"
             );
@@ -960,7 +961,7 @@ impl Fixture {
                     .anims
                     .iter()
                     .filter(|(_, a)| a.native_unique_id >= floor
-                        && a.native_unique_id < actual.native_unique_id
+                        && a.native_unique_id < actual.native_unique_id()
                         && a.in_logic_vector)
                     .all(|(id, _)| logic.iter().position(|live| live == id).unwrap() < crew_slot),
                 "{boundary}: death Anims admitted before crew"
@@ -1027,7 +1028,7 @@ impl Fixture {
             .substrate
             .entities
             .get(id)
-            .map(|e| e.native_unique_id)
+            .map(|e| e.native_unique_id())
             .or_else(|| self.sim.substrate.anims.get(id).map(|a| a.native_unique_id))
             .or_else(|| self.sim.projectiles.get(id).map(|p| p.native_unique_id))
             .or_else(|| {
@@ -1419,7 +1420,8 @@ fn assert_ready_fatal_routes(corpus: &Value) {
             .entities
             .get(fixture.building)
             .unwrap()
-            .building_anim_slots[3]
+            .building_art
+            .anim_slots()[3]
             .unwrap();
         fixture.assert_stock_pending_snapshot(route);
         let identities = fixture.identities();
@@ -1511,13 +1513,14 @@ fn original_direct_ap_receivers_join_debris_crew_uninit_power_and_deferred_destr
             &format!("direct sample/power {index}"),
         );
     }
-    let slots = fixture
+    let slots = *fixture
         .sim
         .substrate
         .entities
         .get(fixture.building)
         .unwrap()
-        .building_anim_slots;
+        .building_art
+        .anim_slots();
     assert!(slots[3].is_some(), "UnInit retains ordinary attached ART");
     fixture.sim.session.binary_frame = int(&route["after_frame_increment"]["frame"]) as u32;
     fixture.sim.process_pending_delete_with(

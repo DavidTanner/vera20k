@@ -41,18 +41,22 @@
 //! Mark's list choice is `occupancy::cell_list_layer_for_entity`. Readers of
 //! list membership follow the lists themselves: list walks
 //! (`Simulation::cell_object_list_location`) and the vehicle plane
-//! (`CellOccupationGrid::reconcile_entity`). The A* caches
-//! (`block_index::contribution`, `bump_crush::blocker_plane_source`) derive it
-//! from the object through the same choice and `cell_marked`.
+//! (`CellOccupationGrid::reconcile_entity`). The blocker plane
+//! (`bump_crush::blocker_plane_source`) derives it from the object through the
+//! same choice and `cell_marked`: for buildings, and for mobiles only in a
+//! world without an overlay grid. With one, mobiles reach the plane through
+//! the retained Foot+55C counters (`cell_neighbors`), which follow
+//! Unlimbo/PerCell/Limbo rather than the lists.
 //!
 //! RESIDUAL: a Jumpjet's hold and cruise leave its lists alone
 //! (`0x0054D0FF..0x0054D134`), so one that sinks below two levels there counts
-//! as listed in the A* caches before its next Mark lists it, and
+//! as listed by that derivation before its next Mark lists it, and
 //! `Simulation::debug_assert_lifecycle_consistent` reports it. Trigger: a
 //! Jumpjet below two levels while it holds or cruises; at a cruise height of
 //! 500 that needs ground three levels higher beneath it before it climbs.
-//! Effect: A* costs its cell as occupied before native does. Frequency:
-//! unmeasured. Risk: a different detour, no other state.
+//! Effect: in a world without an overlay grid, its cell counts toward the
+//! blocker plane before native lists it. Frequency: unmeasured. Risk: a
+//! different hierarchy-gate verdict there, no other state.
 
 use super::{ground_pose, locomotor::MovementLayer};
 use crate::map::entities::EntityCategory;
@@ -129,7 +133,7 @@ impl Simulation {
         self.substrate
             .entities
             .get(id)
-            .is_some_and(|entity| entity.category != EntityCategory::Structure)
+            .is_some_and(|entity| entity.category() != EntityCategory::Structure)
     }
 
     /// Techno Mark6F4A81..97 after an accepted Object Mark: read the live
@@ -170,7 +174,7 @@ impl Simulation {
         let Some(entity) = self.substrate.entities.get_mut(id) else {
             return false;
         };
-        if entity.lifecycle.in_limbo || !entity.lifecycle.cell_marked {
+        if entity.lifecycle.in_limbo() || !entity.lifecycle.cell_marked {
             return false;
         }
         entity.lifecycle.cell_marked = false;
@@ -228,7 +232,7 @@ impl Simulation {
         let Some(entity) = self.substrate.entities.get_mut(id) else {
             return false;
         };
-        if entity.lifecycle.in_limbo || entity.lifecycle.cell_marked {
+        if entity.lifecycle.in_limbo() || entity.lifecycle.cell_marked {
             return false;
         }
         entity.lifecycle.cell_marked = true;
@@ -260,7 +264,7 @@ impl Simulation {
             let entity = self.substrate.entities.get(id).expect("placed Foot");
             (
                 entity.sub_cell,
-                CellListInsertion::from_category(entity.category),
+                CellListInsertion::from_category(entity.category()),
             )
         };
         self.substrate
@@ -308,7 +312,7 @@ impl Simulation {
         let Some(entity) = self.substrate.entities.get(id) else {
             return false;
         };
-        if !entity.foot_occupation_enabled || entity.category == EntityCategory::Infantry {
+        if !entity.foot_occupation_enabled || entity.category() == EntityCategory::Infantry {
             return false;
         }
         let coord = ground_pose::position_world_coord(&entity.position);
@@ -325,7 +329,7 @@ impl Simulation {
         let Some(entity) = self.substrate.entities.get(id) else {
             return false;
         };
-        match entity.category {
+        match entity.category() {
             EntityCategory::Unit => {
                 self.track_raw_mark_at(id, coord, put);
             }

@@ -268,12 +268,12 @@ fn rally_entry(
         let standing = sim.entity_display_layer(id, Some(rules))
             == Some(crate::sim::world::display_layers::DisplayLayer::GROUND)
             && entity.is_object_alive()
-            && !entity.lifecycle.in_limbo;
+            && !entity.lifecycle.in_limbo();
         let candidate = standing
             || (house.difficulty == HouseDifficulty::Hard
                 && sim.production.factories.is_building(id));
         let ty = rules.object(sim.interner.resolve(entity.type_ref()));
-        (candidate, rally_value(entity.category, ty, rules, house))
+        (candidate, rally_value(entity.category(), ty, rules, house))
     } else {
         (false, 0)
     };
@@ -455,7 +455,7 @@ fn genetic_mutator_target(
     let is_infantry = |member: &CellObjectMember| match member {
         CellObjectMember::Entity(id) => entities
             .get(*id)
-            .is_some_and(|object| object.category == EntityCategory::Infantry),
+            .is_some_and(|object| object.category() == EntityCategory::Infantry),
         CellObjectMember::Terrain(_) => false,
     };
     let centres = (0..entities.infantry_registry_len())
@@ -513,12 +513,12 @@ fn psychic_dominator_target(
     let is_foot = |member: &CellObjectMember| match member {
         CellObjectMember::Entity(id) => entities
             .get(*id)
-            .is_some_and(|object| object.category != EntityCategory::Structure),
+            .is_some_and(|object| object.category() != EntityCategory::Structure),
         CellObjectMember::Terrain(_) => false,
     };
     let feet: Vec<&GameEntity> = entities
         .values()
-        .filter(|object| object.category != EntityCategory::Structure)
+        .filter(|object| object.category() != EntityCategory::Structure)
         .collect();
     densest_spread_cell(
         sim,
@@ -567,7 +567,7 @@ fn densest_spread_cell<'a>(
     let mut best = 0usize;
     let mut best_cell = NO_CELL;
     for centre in centres {
-        if centre.lifecycle.in_limbo {
+        if centre.lifecycle.in_limbo() {
             continue;
         }
         let layer = list(centre);

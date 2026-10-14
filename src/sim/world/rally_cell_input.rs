@@ -9,8 +9,7 @@ use crate::rules::ruleset::RuleSet;
 use crate::sim::cell_rect::PlayfieldBounds;
 use crate::sim::components::DriveCoord;
 use crate::sim::find_nearby_cell::{
-    NearbyAnchorGate, NearbyFootprint, NearbyQuery, PassabilityArgs, find_nearby_passable_cell,
-    map_owned_radius_cap,
+    NearbyFootprint, NearbyQuery, PassabilityArgs, find_nearby_passable_cell, map_owned_radius_cap,
 };
 use crate::sim::occupancy::RawCellOccupationGrid;
 use crate::sim::pathfinding::zone_map::ZoneGrid;
@@ -116,7 +115,6 @@ fn resolve_rally_cell_click(
                 bridge_aware_zone: bridge,
             },
             footprint: NearbyFootprint::SINGLE,
-            anchor_gate: NearbyAnchorGate::NativeHeightAware,
             allow_bridge_cells: true,
             check_height: false,
             check_occupancy: false,
@@ -146,9 +144,9 @@ mod tests {
     fn prepared_rally_cell_reaches_archive_and_stop_without_input_mutation() {
         use crate::map::entities::EntityCategory;
         use crate::rules::ini_parser::IniFile;
+        use crate::sim::combat::Health;
         use crate::sim::combat::TargetKind;
         use crate::sim::command::Command;
-        use crate::sim::components::Health;
         use crate::sim::game_entity::GameEntity;
         use crate::util::fixed_math::SimFixed;
         let corpus: Value = serde_json::from_str(crate::test_fixture::text(
@@ -177,14 +175,14 @@ mod tests {
                 0,
                 0,
                 owner,
-                Health { current: 1000 },
+                Health::new(1000),
                 type_ref,
                 EntityCategory::Structure,
                 0,
                 5,
                 false,
             );
-            actor.lifecycle.in_limbo = false;
+            actor.lifecycle.set_in_limbo_for_test(false);
             actor.position.sub_x = SimFixed::from_num(64);
             actor.position.sub_y = SimFixed::from_num(64);
             actor.set_archive_target(Some(TargetKind::Cell(6, 5)));

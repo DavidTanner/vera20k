@@ -342,7 +342,7 @@ fn retail_dustbowl_gapowr_blocked_then_valid_placement_oracle() {
     // This placement oracle starts after the yard's construction lifecycle.
     let provider = sim.substrate.entities.get_mut(provider_id).unwrap();
     provider.finish_building_construction_for_test();
-    provider.building_actually_placed = true;
+    provider.building_art.set_actually_placed_for_test(true);
     sim.append_house_base_building_for_test(provider_id);
     let gapowr_id = sim.interner.intern(POWER_PLANT);
     assert!(crate::sim::production::enqueue_by_type(
@@ -378,7 +378,7 @@ fn retail_dustbowl_gapowr_blocked_then_valid_placement_oracle() {
     assert_eq!(completed.entity_id, Some(held_id));
     assert_eq!(ready_buildings_for_owner(&sim, &rules, OWNER).len(), 1);
     let held = sim.substrate.entities.get(held_id).unwrap();
-    assert!(held.lifecycle.in_limbo && !held.lifecycle.cell_marked);
+    assert!(held.lifecycle.in_limbo() && !held.lifecycle.cell_marked);
 
     let blocked_cells = rect_cells(fixture.blocked, 2, 2);
     let overlay_before: BTreeMap<(u16, u16), (Option<u8>, u8)> = blocked_cells
@@ -496,19 +496,19 @@ fn retail_dustbowl_gapowr_blocked_then_valid_placement_oracle() {
         .entities
         .values()
         .find(|entity| {
-            entity.type_ref == gapowr_id
+            entity.type_ref() == gapowr_id
                 && entity.position.rx == fixture.valid.0
                 && entity.position.ry == fixture.valid.1
         })
         .expect("accepted command spawned stock GAPOWR");
-    assert_eq!(placed.category, EntityCategory::Structure);
+    assert_eq!(placed.category(), EntityCategory::Structure);
     assert_eq!(placed.foundation, "2x2");
-    assert_eq!(placed.health.current, 750);
+    assert_eq!(placed.health.current(), 750);
     assert_eq!(rules.object("GAPOWR").unwrap().strength, 750);
     assert!(placed.lifecycle.cell_marked);
     assert!(placed.in_logic_vector);
     assert!(placed.building_up());
-    let placed_id = placed.stable_id;
+    let placed_id = placed.stable_id();
     assert_eq!(
         placed_id, held_id,
         "placement reuses the completed identity"

@@ -33,9 +33,9 @@ fn output_arrival_fixture() -> (Simulation, RuleSet) {
     ] {
         let mut entity =
             GameEntity::test_default_of_category(id, name, "Americans", cell.0, cell.1, category);
-        entity.owner = sim.intern("Americans");
-        entity.type_ref = sim.intern(name);
-        entity.lifecycle.in_limbo = false;
+        entity.set_owner_for_test(sim.intern("Americans"));
+        entity.set_type_ref_for_test(sim.intern(name));
+        entity.lifecycle.set_in_limbo_for_test(false);
         entity.lifecycle.cell_marked = true;
         if category == EntityCategory::Infantry {
             entity.locomotor = Some(LocomotorState::for_test_kind(LocomotorKind::Walk));
@@ -197,8 +197,8 @@ fn a_parachute_landing_in_its_own_cell_runs_the_foot_body() {
         off_108: 200,
     });
     let mut entity = GameEntity::test_default(1, "E1", "Americans", 5, 5);
-    entity.owner = sim.intern("Americans");
-    entity.type_ref = sim.intern("E1");
+    entity.set_owner_for_test(sim.intern("Americans"));
+    entity.set_type_ref_for_test(sim.intern("E1"));
     entity.locomotor = Some(LocomotorState::for_test_kind(LocomotorKind::Walk));
     entity.position.exact_z_leptons = Some(2);
     entity.set_falling_down_for_test(true);
@@ -291,7 +291,10 @@ fn a_jumpjet_touchdown_without_a_target_runs_the_class_null_setter() {
         .unwrap();
     assert_eq!(runtime.phase(), STATE_GROUND);
     assert!(!runtime.moving());
-    assert!(entity.attack_target.is_none(), "no conditional range stop");
+    assert!(
+        entity.attack_target.target().is_none(),
+        "no conditional range stop"
+    );
     assert_eq!(entity.navigation.nav_com, None);
     assert_eq!(entity.navigation.nav_com_aux, None);
     assert!(entity.navigation.nav_queue.is_empty());

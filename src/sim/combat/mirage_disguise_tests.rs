@@ -171,10 +171,14 @@ fn damage_receiver_matches_original_packet_result_and_disguise_consequence() {
 
         let mut target = GameEntity::test_default(1, "MGTK", owner_type, 0, 0);
         let mut interner = test_interner();
-        target.health.current = int(&before["health"]);
-        target.lifecycle.object_alive = before["alive"] == 1;
-        target.lifecycle.in_limbo = before["limbo"] == 1;
-        target.veterancy_raw = NativeF32Bits::from_bits(word(&input["veterancy_bits"]));
+        target.health.set_for_test(int(&before["health"]));
+        target
+            .lifecycle
+            .set_object_alive_for_test(before["alive"] == 1);
+        target.lifecycle.set_in_limbo_for_test(before["limbo"] == 1);
+        target
+            .veterancy
+            .set_raw_for_test(NativeF32Bits::from_bits(word(&input["veterancy_bits"])));
         target.armor_multiplier = NativeF64Bits::from_bits(
             u64::from_str_radix(
                 input["armor_multiplier_bits"]
@@ -253,7 +257,7 @@ fn damage_receiver_matches_original_packet_result_and_disguise_consequence() {
             "{context}: native result"
         );
         assert_eq!(
-            target.health.current,
+            target.health.current(),
             int(&after["health"]),
             "{context}: committed HP"
         );

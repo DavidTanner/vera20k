@@ -14,12 +14,10 @@
 //! - Part of sim/ — depends on map/ (resolved terrain for walkability).
 //! - sim/ NEVER depends on render/, ui/, audio/, net/.
 
-use super::cell_entry::{
-    CanEnterCellContext, CanEnterLayerContext, evaluate_can_enter_cell, search_cell_cost_decision,
-};
+use super::cell_entry::{CanEnterCellContext, evaluate_can_enter_cell, search_cell_cost_decision};
+use super::stamped_table::StampedTable;
 use super::terrain_cost::TerrainCostGrid;
-use super::zone_hierarchy::ZoneLevelGraph;
-use super::zone_map::ZoneId;
+use super::zone_hierarchy::{MarkedZones, ZoneLevelGraph};
 use super::zone_search::PathSearchFailure;
 use crate::map::bridge_facts::BRIDGE_FLAG_ANCHOR_SELF;
 use crate::map::resolved_terrain::ResolvedTerrainGrid;
@@ -29,7 +27,7 @@ use crate::sim::movement::locomotor::MovementLayer;
 use crate::util::direction_tables::CELL_DELTAS;
 use std::cell::RefCell;
 use std::cmp::Reverse;
-use std::collections::{BTreeMap, BTreeSet, BinaryHeap};
+use std::collections::{BTreeSet, BinaryHeap};
 
 /// Accepted native path descriptor (`gamemd.exe 42AA90` reads the parent descriptor's
 /// height into each outgoing-height slot). The selected cell/list is stamped
@@ -49,54 +47,41 @@ impl PathDescriptor {
     };
 }
 
-/// Reusable scratch buffers for `astar_search`. Lives in a thread-local so
-/// repeated repaths share one set of full-map-sized Vecs instead of allocating
-/// six fresh `vec![…; total_cells]` arrays per call (was the dominant heap
-/// pressure source during repath storms — engineer micro, scatter cascades).
+/// One layer's closed list: a (cell, layer) is closed in the running search
+/// while it holds a descriptor. Closing writes the descriptor
+/// (close-on-generation), so a closed cell's parent and height are current.
+type ClosedLayer = StampedTable<PathDescriptor>;
+
+/// Reusable scratch for `astar_search`. Lives in a thread-local so repeated
+/// repaths share one set of full-map-sized buffers instead of allocating them
+/// per call (was the dominant heap pressure source during repath storms —
+/// engineer micro, scatter cascades).
 ///
-/// `reset(total_cells)` grows each buffer if the map is bigger than the
-/// previous call and refills with the sentinel value; the `BinaryHeap` is
-/// cleared but keeps capacity. Use through `with_workspace` only; the helper
-/// asserts non-reentrancy so a future recursive A* caller fails loudly
-/// instead of silently sharing buffers.
+/// A search touches only the cells it reaches, so `reset` clears nothing: the
+/// closed lists forget the previous search at once (see `StampedTable`). The
+/// buffers grow when a map is bigger than any before; the `BinaryHeap` is
+/// cleared but keeps capacity. Use through `with_pathfind_workspace` only; it
+/// asserts non-reentrancy so a future recursive A* caller fails loudly instead
+/// of silently sharing buffers.
 #[derive(Default)]
 struct PathfindWorkspace {
-    ground_g: Vec<i32>,
-    bridge_g: Vec<i32>,
-    ground_from: Vec<PathDescriptor>,
-    bridge_from: Vec<PathDescriptor>,
-    ground_closed: Vec<bool>,
-    bridge_closed: Vec<bool>,
+    ground: ClosedLayer,
+    bridge: ClosedLayer,
     open: BinaryHeap<Reverse<AStarNode>>,
 }
 
 impl PathfindWorkspace {
     fn reset(&mut self, total_cells: usize) {
-        fn refill<T: Copy>(buf: &mut Vec<T>, len: usize, fill: T) {
-            buf.clear();
-            buf.resize(len, fill);
-        }
-        refill(&mut self.ground_g, total_cells, i32::MAX);
-        refill(&mut self.bridge_g, total_cells, i32::MAX);
-        refill(
-            &mut self.ground_from,
-            total_cells,
-            PathDescriptor::UNVISITED,
-        );
-        refill(
-            &mut self.bridge_from,
-            total_cells,
-            PathDescriptor::UNVISITED,
-        );
-        refill(&mut self.ground_closed, total_cells, false);
-        refill(&mut self.bridge_closed, total_cells, false);
+        self.ground.begin(total_cells, PathDescriptor::UNVISITED);
+        self.bridge.begin(total_cells, PathDescriptor::UNVISITED);
         self.open.clear();
     }
 }
 
 thread_local! {
     /// Thread-local reusable A* scratch. Safe because:
-    ///   - pathfinding only runs on the sim thread,
+    ///   - each thread has its own (the batched path searches,
+    ///     `movement::path_batch`, run A* on worker threads),
     ///   - A* never recursively invokes A* (no reentrancy),
     ///   - the workspace holds zero hashed sim state — pure scratch.
     /// `try_borrow_mut` panics with a clear message if either invariant is
@@ -106,7 +91,7 @@ thread_local! {
 }
 
 /// Run `body` with exclusive mutable access to the thread-local A* workspace,
-/// pre-reset to hold `total_cells` entries.
+/// reset for a search over `total_cells` cells.
 fn with_pathfind_workspace<R>(
     total_cells: usize,
     body: impl FnOnce(&mut PathfindWorkspace) -> R,
@@ -164,133 +149,10 @@ pub(crate) fn code2_multiplier<E>(
     })
 }
 
-/// Code-5 (enemy unit) cost multiplier. Binary DAT_0081870c[5] = 20.0.
-const CODE5_MULT_ENEMY: i32 = 20;
-
-/// Code-6 (stationary friendly) cost multiplier. Binary DAT_0081870c[6] = 8.0.
-const CODE6_MULT_STATIONARY_ALLY: i32 = 8;
-
 /// Temporary A* marker cost multiplier for `CellClass+0x140 & 0x40000`.
 /// The original toggles this bit around one search; Rust models it as a
 /// search-scoped overlay instead of mutating persistent `PathGrid` cells.
 const SEARCH_MARKER_COST_MULTIPLIER: i32 = 4;
-
-/// Entry in the reduced fallback's soft-block map, for a search without a
-/// Foot receiver (#683). Carries the blocker's next cell (for that fallback's
-/// code-2 chain) and the code (2/5/6) that selects its cost multiplier.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct EntityBlockEntry {
-    /// For code-2 (moving friendly): the blocker's next cell in its path.
-    /// For codes 5/6: None (no chain walk — flat cost multiplier).
-    pub next_cell: Option<(u16, u16)>,
-    /// Can_Enter_Cell return code: 2 (moving friendly), 5 (enemy), 6 (stationary friendly).
-    pub cost_code: u8,
-    /// Whether the blocker is infantry.
-    ///
-    /// A* does not care, but the Drive selection gate does: infantry never
-    /// hold the cell's vehicle occupation bit -- `0x20` is written only by
-    /// `UnitClass__MarkCellOccupationBit20 @ 0x007441B0`, while
-    /// `InfantryClass__MarkCellOccupancy @ 0x005217C0` writes
-    /// `1 << GetSubCell` into the sub-cell bits of the same byte -- and a
-    /// vehicle entitled to crush them must not be refused a curve on their
-    /// account.
-    pub blocker_is_infantry: bool,
-}
-
-/// Entity soft blockers split by object-list layer.
-///
-/// gamemd.exe scans either `FirstObject` (ground) or `AltObject` (bridge)
-/// for soft blocker costs. Keeping those maps separate preserves stacked
-/// same-cell ground/bridge occupants instead of collapsing them by coordinate.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct LayeredEntityBlockMap {
-    /// `BTreeMap` (not `HashMap`) for deterministic iteration if any future
-    /// caller ever iterates these — sim convention since all pathing state
-    /// must be lockstep-reproducible.
-    ground: BTreeMap<(u16, u16), EntityBlockEntry>,
-    bridge: BTreeMap<(u16, u16), EntityBlockEntry>,
-    /// Every moving allied occupant, whether or not it raised a code. The
-    /// Drive selection lane asks these for the per-mover head-on exit of
-    /// `UnitClass::Can_Enter_Cell` (`0x0073F8D4..FA26`), which no per-owner
-    /// code can carry because it depends on the mover's own facing and
-    /// position.
-    moving_allies: BTreeMap<(MovementLayer, (u16, u16)), MovingAllyOccupant>,
-}
-
-/// A moving allied occupant as the head-on exit sees it: its body facing
-/// (`+0x388`) and its lepton coordinates at the time the owner snapshot was
-/// built. The facing is kept as state and sampled at the asking frame.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct MovingAllyOccupant {
-    pub facing: crate::sim::movement::FacingClass,
-    pub world: [i32; 3],
-}
-
-impl LayeredEntityBlockMap {
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    pub fn insert_moving_ally(
-        &mut self,
-        layer: MovementLayer,
-        cell: (u16, u16),
-        occupant: MovingAllyOccupant,
-    ) {
-        if matches!(layer, MovementLayer::Ground | MovementLayer::Bridge) {
-            self.moving_allies.insert((layer, cell), occupant);
-        }
-    }
-
-    pub fn moving_ally(
-        &self,
-        layer: MovementLayer,
-        cell: &(u16, u16),
-    ) -> Option<MovingAllyOccupant> {
-        self.moving_allies.get(&(layer, *cell)).copied()
-    }
-
-    pub fn insert(
-        &mut self,
-        layer: MovementLayer,
-        cell: (u16, u16),
-        entry: EntityBlockEntry,
-    ) -> Option<EntityBlockEntry> {
-        match layer {
-            MovementLayer::Bridge => self.bridge.insert(cell, entry),
-            MovementLayer::Ground => self.ground.insert(cell, entry),
-            MovementLayer::Air | MovementLayer::Underground => None,
-        }
-    }
-
-    pub(crate) fn remove(&mut self, layer: MovementLayer, cell: &(u16, u16)) {
-        match layer {
-            MovementLayer::Bridge => self.bridge.remove(cell),
-            MovementLayer::Ground => self.ground.remove(cell),
-            MovementLayer::Air | MovementLayer::Underground => None,
-        };
-    }
-
-    pub(crate) fn remove_moving_ally(&mut self, layer: MovementLayer, cell: &(u16, u16)) {
-        self.moving_allies.remove(&(layer, *cell));
-    }
-
-    pub fn get(&self, layer: MovementLayer, cell: &(u16, u16)) -> Option<&EntityBlockEntry> {
-        match layer {
-            MovementLayer::Bridge => self.bridge.get(cell),
-            MovementLayer::Ground => self.ground.get(cell),
-            MovementLayer::Air | MovementLayer::Underground => None,
-        }
-    }
-
-    pub fn contains_key(&self, layer: MovementLayer, cell: &(u16, u16)) -> bool {
-        self.get(layer, cell).is_some()
-    }
-
-    pub fn contains_any(&self, cell: &(u16, u16)) -> bool {
-        self.ground.contains_key(cell) || self.bridge.contains_key(cell)
-    }
-}
 
 /// Search-scoped destination-cell cost overlay for the gamemd.exe temporary
 /// `CellClass+0x140 & 0x40000` A* marker.
@@ -456,7 +318,7 @@ impl BlockerNeighborCounts {
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct HierarchyGate<'a> {
     pub level0_zones: &'a ZoneLevelGraph,
-    pub marked_level0: &'a BTreeSet<ZoneId>,
+    pub marked_level0: &'a MarkedZones,
     pub blocker_neighbor_counts: &'a BlockerNeighborCounts,
 }
 
@@ -602,7 +464,6 @@ pub(crate) struct BridgeTraversalInput<'a> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct BridgeTraversalResult {
     pub allowed: bool,
-    pub path_height: i16,
     pub force_bridge_list: bool,
 }
 
@@ -633,17 +494,13 @@ pub(crate) fn check_bridge_traversal(
     grid: &PathGrid,
     input: BridgeTraversalInput<'_>,
 ) -> BridgeTraversalResult {
-    let mut path_height = input.path_height;
     if input.direction == -1 {
-        if path_height == -1 && input.candidate.has_structural_bridge() {
-            path_height = input.candidate.signed_level() + 4;
-        }
         return BridgeTraversalResult {
             allowed: true,
-            path_height,
             force_bridge_list: false,
         };
     }
+    let mut path_height = input.path_height;
 
     let Some((parent, _parent_coord)) = resolve_parent_for_bridge_traversal(
         grid,
@@ -656,7 +513,6 @@ pub(crate) fn check_bridge_traversal(
         // ring, where the predecessor cell resolves off-map.
         return BridgeTraversalResult {
             allowed: true,
-            path_height,
             force_bridge_list: false,
         };
     };
@@ -666,7 +522,6 @@ pub(crate) fn check_bridge_traversal(
         if !input.candidate.has_bridgehead_transition() {
             return BridgeTraversalResult {
                 allowed: false,
-                path_height,
                 force_bridge_list: false,
             };
         }
@@ -720,29 +575,7 @@ pub(crate) fn check_bridge_traversal(
 
     BridgeTraversalResult {
         allowed,
-        path_height,
         force_bridge_list,
-    }
-}
-
-pub(crate) fn can_enter_layer_context(
-    terrain_layer: MovementLayer,
-    object_list_layer: MovementLayer,
-    candidate: &PathCell,
-    path_height: i16,
-) -> CanEnterLayerContext {
-    let occupancy_bits_layer = if path_height != -1
-        && candidate.has_structural_bridge()
-        && path_height == candidate.signed_level() + 4
-    {
-        MovementLayer::Bridge
-    } else {
-        MovementLayer::Ground
-    };
-    CanEnterLayerContext {
-        terrain_layer,
-        object_list_layer,
-        occupancy_bits_layer,
     }
 }
 
@@ -791,15 +624,6 @@ pub struct AStarOptions<'a> {
     /// Full live Foot +1AC owner. When supplied, its class is the sole terrain
     /// and object admission verdict; the reduced grid/wall adapters are unused.
     pub foot_entry: Option<&'a dyn SearchFootEntry>,
-    /// Hard-blocked cells on ground layer (stationary/enemy units). Goal exempt.
-    pub entity_blocks: Option<&'a BTreeSet<(u16, u16)>>,
-    /// Hard-blocked cells on bridge layer. Goal exempt.
-    pub bridge_blocks: Option<&'a BTreeSet<(u16, u16)>>,
-    /// The reduced fallback's soft-block map (codes 2/5/6, each code-2
-    /// blocker's next cell from `block_index::moving_next_cell`). A search
-    /// with a `foot_entry` reads none of it: the class answers the code and
-    /// the receiver walks the code-2 chain over live objects.
-    pub entity_block_map: Option<&'a LayeredEntityBlockMap>,
     /// Search-scoped temporary marker overlay equivalent to
     /// `CellClass+0x140 & 0x40000`. Destination hits multiply normal compass
     /// edge cost, but do not change walkability or persistent pathgrid state.
@@ -808,11 +632,9 @@ pub struct AStarOptions<'a> {
     /// after wrapper/zone admission. A* and both finishing passes consume
     /// the transaction before it is discarded ahead of Foot Mark1.
     pub marker_overlay: Option<&'a SearchMarkerOverlay>,
-    /// Reduced-admission searches only (movers without a Foot +1AC search
-    /// entry, e.g. the cursor's reachability query): crusher units bypass all
-    /// entity soft-block costs (codes 1-6); buildings (code 7, in the
-    /// entity_blocks set) still block. Searches through the live +1AC price
-    /// codes natively and ignore this.
+    /// Reduced-admission searches only (no Foot +1AC search entry): selects
+    /// the crusher arm of the reduced terrain entry. Searches through the live
+    /// +1AC answer it natively and ignore this.
     pub mover_is_crusher: bool,
     /// Code-2 urgency escalation (0 = look-ahead chain walk, 1 = traffic penalty,
     /// 2 = route around). Matches gamemd.exe PathfinderClass+0x3C.
@@ -913,8 +735,8 @@ pub struct MoverSearchFacts<'a> {
 /// Walks backward from goal using `decode_from` to follow the parent chain
 /// across ground/bridge transitions.
 fn reconstruct_path_dual(
-    ground_from: &[PathDescriptor],
-    bridge_from: &[PathDescriptor],
+    ground: &ClosedLayer,
+    bridge: &ClosedLayer,
     start_idx: usize,
     start_on_bridge: bool,
     goal_idx: usize,
@@ -934,10 +756,11 @@ fn reconstruct_path_dual(
             MovementLayer::Ground
         };
         let descriptor = if current_bridge {
-            bridge_from[current_idx]
+            bridge.get(current_idx)
         } else {
-            ground_from[current_idx]
-        };
+            ground.get(current_idx)
+        }
+        .expect("path reconstruction reached a cell this search never closed");
         path.push(LayeredPathStep {
             rx: x,
             ry: y,
@@ -1012,26 +835,15 @@ pub fn astar_search(
     let h = grid.height() as usize;
     let total_cells = w * h;
 
-    // Persistent A* scratch buffers reused across calls. Destructured into
-    // local mutable references so the rest of the function reads/writes
-    // `ground_g[..]`, `open.push(..)`, etc. unchanged.
+    // Persistent A* scratch reused across calls; see `PathfindWorkspace`.
+    // A node's g travels in the open set: the closed lists hold only the
+    // stamp and the parent descriptor.
     with_pathfind_workspace(total_cells, |ws| {
-        // Split-borrow the workspace fields. The g_cost and came_from buffers
-        // get re-borrowed inline in the body's `(&mut bridge_g, &mut bridge_from)`
-        // tuple, which needs the bindings to be `mut`-declared.
         let PathfindWorkspace {
-            ref mut ground_g,
-            ref mut bridge_g,
-            ref mut ground_from,
-            ref mut bridge_from,
-            ref mut ground_closed,
-            ref mut bridge_closed,
+            ref mut ground,
+            ref mut bridge,
             ref mut open,
         } = *ws;
-        let mut ground_g = &mut *ground_g;
-        let mut bridge_g = &mut *bridge_g;
-        let mut ground_from = &mut *ground_from;
-        let mut bridge_from = &mut *bridge_from;
 
         let start_idx = start.1 as usize * w + start.0 as usize;
         let start_on_bridge = is_at_bridge_level(start_height, start_cell);
@@ -1043,13 +855,9 @@ pub fn astar_search(
             height: compute_node_height(start_height, None, start_cell),
         };
         if start_on_bridge {
-            bridge_from[start_idx] = start_descriptor;
-            bridge_g[start_idx] = 0;
-            bridge_closed[start_idx] = true;
+            bridge.set(start_idx, start_descriptor);
         } else {
-            ground_from[start_idx] = start_descriptor;
-            ground_g[start_idx] = 0;
-            ground_closed[start_idx] = true;
+            ground.set(start_idx, start_descriptor);
         }
 
         open.push(Reverse(AStarNode {
@@ -1086,8 +894,8 @@ pub fn astar_search(
             if (cx, cy) == goal && current.height == goal_height {
                 // Use the node's push-time layer flag (same value came_from was keyed on).
                 return Ok(reconstruct_path_dual(
-                    ground_from,
-                    bridge_from,
+                    ground,
+                    bridge,
                     start_idx,
                     start_on_bridge,
                     c_idx,
@@ -1130,11 +938,6 @@ pub fn astar_search(
 
                 // Closed-list selection: uses CURRENT node's height vs neighbor ground_level
                 let mut neighbor_use_bridge = is_at_bridge_level(current.height, neighbor_cell);
-                let mut layer_context = CanEnterLayerContext::single(if neighbor_use_bridge {
-                    MovementLayer::Bridge
-                } else {
-                    MovementLayer::Ground
-                });
 
                 // Compute what height the NEW node carries forward (separate computation)
                 let neighbor_height =
@@ -1166,27 +969,7 @@ pub fn astar_search(
                         if bridge_traversal.force_bridge_list {
                             neighbor_use_bridge = true;
                         }
-                        layer_context = can_enter_layer_context(
-                            if neighbor_use_bridge {
-                                MovementLayer::Bridge
-                            } else {
-                                MovementLayer::Ground
-                            },
-                            if bridge_traversal.force_bridge_list {
-                                MovementLayer::Bridge
-                            } else {
-                                layer_context.object_list_layer
-                            },
-                            neighbor_cell,
-                            bridge_traversal.path_height,
-                        );
                     } else {
-                        let layer = if neighbor_use_bridge {
-                            MovementLayer::Bridge
-                        } else {
-                            MovementLayer::Ground
-                        };
-                        layer_context = CanEnterLayerContext::single(layer);
                         let diff = neighbor_height - current.height;
                         let lower_slope = if diff < 0 {
                             neighbor_cell.slope_type
@@ -1209,10 +992,10 @@ pub fn astar_search(
                 // nuance, not true A* reopen. Do not reinsert selected-layer closed
                 // cells without a dedicated parity fixture for the blocked-goal path.
                 if neighbor_use_bridge {
-                    if bridge_closed[n_idx] {
+                    if bridge.contains(n_idx) {
                         continue;
                     }
-                } else if ground_closed[n_idx] {
+                } else if ground.contains(n_idx) {
                     continue;
                 }
 
@@ -1302,8 +1085,8 @@ pub fn astar_search(
                         // Use the current node's push-time layer flag (same
                         // value came_from was keyed on when pushed).
                         return Ok(reconstruct_path_dual(
-                            ground_from,
-                            bridge_from,
+                            ground,
+                            bridge,
                             start_idx,
                             start_on_bridge,
                             c_idx,
@@ -1312,25 +1095,6 @@ pub fn astar_search(
                         ));
                     }
                     continue;
-                }
-
-                // Entity blocks (layer-separated). Goal exempt.
-                if options.foot_entry.is_none() && (nx, ny) != goal {
-                    let blocks_for_layer = |layer| match layer {
-                        MovementLayer::Bridge => options.bridge_blocks,
-                        MovementLayer::Ground => options.entity_blocks,
-                        MovementLayer::Air | MovementLayer::Underground => None,
-                    };
-                    let blocked_by_selected_layers = [
-                        blocks_for_layer(layer_context.object_list_layer),
-                        blocks_for_layer(layer_context.occupancy_bits_layer),
-                    ]
-                    .into_iter()
-                    .flatten()
-                    .any(|blocks| blocks.contains(&(nx, ny)));
-                    if blocked_by_selected_layers {
-                        continue;
-                    }
                 }
 
                 // The land-type × SpeedType row, read as a **passability
@@ -1421,33 +1185,19 @@ pub fn astar_search(
                 // cost as much as four flat ones.
 
                 // The class's code-2 multiplier; the live receiver walks the
-                // chain on the list the class was asked about. The reduced
-                // fallback's entity soft-block cost (codes 2/5/6) exempts the
-                // goal and a crusher.
-                if let Some(entry) = options.foot_entry {
-                    if search_cost.effective_cost_class == Some(2) {
-                        step_cost *= code2_multiplier(options.urgency, || {
-                            entry.code2_chain_jams((nx, ny), layer_context.object_list_layer)
-                        })
-                        .map_err(PathSearchFailure::CellEntryUnavailable)?;
-                    }
-                } else if (nx, ny) != goal
-                    && !options.mover_is_crusher
-                    && let Some(map) = options.entity_block_map
-                    && let Some(entry) = map.get(layer_context.object_list_layer, &(nx, ny))
+                // chain on the list the class was asked about.
+                if let Some(entry) = options.foot_entry
+                    && search_cost.effective_cost_class == Some(2)
                 {
-                    let mult = match entry.cost_code {
-                        2 => compute_code2_multiplier(
-                            options.urgency,
-                            (nx, ny),
-                            layer_context.object_list_layer,
-                            map,
-                        ),
-                        5 => CODE5_MULT_ENEMY,
-                        6 => CODE6_MULT_STATIONARY_ALLY,
-                        _ => 1,
+                    let list = if neighbor_use_bridge {
+                        MovementLayer::Bridge
+                    } else {
+                        MovementLayer::Ground
                     };
-                    step_cost *= mult;
+                    step_cost *= code2_multiplier(options.urgency, || {
+                        entry.code2_chain_jams((nx, ny), list)
+                    })
+                    .map_err(PathSearchFailure::CellEntryUnavailable)?;
                 }
 
                 step_cost = apply_search_marker_cost(step_cost, options.marker_overlay, (nx, ny));
@@ -1460,21 +1210,18 @@ pub fn astar_search(
                 // cell, so g is write-once and there is no relaxation: the
                 // route that discovers a cell first owns it. The closed test
                 // for this (cell, layer) already ran above.
-                let (g_array, from_array) = if neighbor_use_bridge {
-                    (&mut bridge_g, &mut bridge_from)
+                let layer = if neighbor_use_bridge {
+                    &mut *bridge
                 } else {
-                    (&mut ground_g, &mut ground_from)
+                    &mut *ground
                 };
-                g_array[n_idx] = tentative_g;
-                from_array[n_idx] = PathDescriptor {
-                    parent: encode_from(c_idx, on_bridge),
-                    height: neighbor_height,
-                };
-                if neighbor_use_bridge {
-                    bridge_closed[n_idx] = true;
-                } else {
-                    ground_closed[n_idx] = true;
-                }
+                layer.set(
+                    n_idx,
+                    PathDescriptor {
+                        parent: encode_from(c_idx, on_bridge),
+                        height: neighbor_height,
+                    },
+                );
                 let h = euclidean_heuristic(nx, ny, goal.0, goal.1);
                 open.push(Reverse(AStarNode {
                     f_cost: tentative_g + h,
@@ -1497,19 +1244,20 @@ pub fn astar_search(
                 && search_cell_allocated(options.resolved_terrain, (nx, ny))
             {
                 let n_idx = ny as usize * w + nx as usize;
-                if !ground_closed[n_idx] {
+                if !ground.contains(n_idx) {
                     let neighbor_cell = grid.cell(nx, ny).unwrap_or(&DEFAULT_BLOCKED_CELL);
                     let neighbor_height = neighbor_cell.signed_level();
                     let tube_steps = i32::try_from(path_len).unwrap_or(1).max(1);
                     let tentative_g = current.g_cost + STEP_COST * tube_steps + TUBE_DIR_TIEBREAK;
 
                     // Same close-on-generation rule as the compass edges.
-                    ground_g[n_idx] = tentative_g;
-                    ground_from[n_idx] = PathDescriptor {
-                        parent: encode_from(c_idx, on_bridge),
-                        height: neighbor_height,
-                    };
-                    ground_closed[n_idx] = true;
+                    ground.set(
+                        n_idx,
+                        PathDescriptor {
+                            parent: encode_from(c_idx, on_bridge),
+                            height: neighbor_height,
+                        },
+                    );
                     let h = euclidean_heuristic(nx, ny, goal.0, goal.1);
                     open.push(Reverse(AStarNode {
                         f_cost: tentative_g + h,
@@ -2047,13 +1795,8 @@ impl PathGrid {
         x: u16,
         y: u16,
         max_radius: u16,
-        entity_blocks: Option<&BTreeSet<(u16, u16)>>,
-        allow: Option<(u16, u16)>,
     ) -> Option<(u16, u16)> {
-        let check = |cx: u16, cy: u16| -> bool {
-            self.is_any_layer_walkable(cx, cy)
-                && (allow == Some((cx, cy)) || entity_blocks.is_none_or(|b| !b.contains(&(cx, cy))))
-        };
+        let check = |cx: u16, cy: u16| self.is_any_layer_walkable(cx, cy);
         if check(x, y) {
             return Some((x, y));
         }
@@ -2401,34 +2144,6 @@ fn euclidean_heuristic(ax: u16, ay: u16, bx: u16, by: u16) -> i32 {
     (sum_sq * 1_000_000).isqrt() as i32
 }
 
-/// The reduced fallback's code-2 multiplier, for a search without a Foot
-/// receiver (#683): [`code2_multiplier`] over a chain that follows the owner
-/// block map's cached next cells rather than the live objects the native
-/// chain reads. An entry without a next cell clears, where the native chain
-/// jams on a non-Foot; a self-loop jams (#972).
-fn compute_code2_multiplier(
-    urgency: u8,
-    start_cell: (u16, u16),
-    layer: MovementLayer,
-    map: &LayeredEntityBlockMap,
-) -> i32 {
-    let chain_jams = || {
-        let mut cur = start_cell;
-        for _ in 0..CODE2_CHAIN_MAX_HOPS {
-            let Some(next) = map.get(layer, &cur).and_then(|entry| entry.next_cell) else {
-                return Ok::<_, std::convert::Infallible>(false);
-            };
-            if next == cur {
-                return Ok(true);
-            }
-            cur = next;
-        }
-        Ok(true)
-    };
-    let Ok(multiplier) = code2_multiplier(urgency, chain_jams);
-    multiplier
-}
-
 fn apply_search_marker_cost(
     step_cost: i32,
     marker_overlay: Option<&SearchMarkerOverlay>,
@@ -2458,24 +2173,19 @@ pub fn find_path(grid: &PathGrid, start: (u16, u16), goal: (u16, u16)) -> Option
     Some(steps.into_iter().map(|s| (s.rx, s.ry)).collect())
 }
 
-/// A* pathfinding with optional land-row passability and entity blocking.
+/// A* pathfinding with optional land-row passability.
 ///
 /// When `costs` is `Some`, a cell whose land row is zero is closed; every
 /// non-zero row expands at the same step cost, which is what the native search
 /// does (see the provenance in `astar_search`).
-/// When `entity_blocks` is `Some`, cells in the set are treated as blocked
-/// UNLESS they are the goal cell.
 #[cfg(test)]
 pub fn find_path_with_costs(
     grid: &PathGrid,
     start: (u16, u16),
     goal: (u16, u16),
     costs: Option<&TerrainCostGrid>,
-    entity_blocks: Option<&BTreeSet<(u16, u16)>>,
     movement_zone: Option<MovementZone>,
     resolved_terrain: Option<&ResolvedTerrainGrid>,
-    entity_block_map: Option<&LayeredEntityBlockMap>,
-    urgency: u8,
     mover_is_crusher: bool,
     is_infantry: bool,
 ) -> Option<Vec<(u16, u16)>> {
@@ -2484,14 +2194,12 @@ pub fn find_path_with_costs(
         start,
         goal,
         costs,
-        entity_blocks,
         None,
         movement_zone,
         resolved_terrain,
-        entity_block_map,
         None,
         MoverSearchFacts {
-            urgency,
+            urgency: 0,
             mover_is_crusher,
             is_infantry,
             foot_entry: None,
@@ -2506,11 +2214,9 @@ pub(crate) fn find_path_with_costs_marker(
     start: (u16, u16),
     goal: (u16, u16),
     costs: Option<&TerrainCostGrid>,
-    entity_blocks: Option<&BTreeSet<(u16, u16)>>,
     hierarchy_gate: Option<HierarchyGate<'_>>,
     movement_zone: Option<MovementZone>,
     resolved_terrain: Option<&ResolvedTerrainGrid>,
-    entity_block_map: Option<&LayeredEntityBlockMap>,
     marker_overlay: Option<&SearchMarkerOverlay>,
     facts: MoverSearchFacts<'_>,
 ) -> Result<Vec<LayeredPathStep>, PathSearchFailure> {
@@ -2521,9 +2227,7 @@ pub(crate) fn find_path_with_costs_marker(
         goal,
         &AStarOptions {
             terrain_costs: costs,
-            entity_blocks,
             hierarchy_gate,
-            entity_block_map,
             marker_overlay,
             urgency: facts.urgency,
             mover_is_crusher: facts.mover_is_crusher,
@@ -2588,15 +2292,11 @@ pub fn truncate_layered_path(
 #[cfg(test)]
 pub fn find_layered_path(
     grid: &PathGrid,
-    ground_blocks: Option<&BTreeSet<(u16, u16)>>,
-    bridge_blocks: Option<&BTreeSet<(u16, u16)>>,
     start: (u16, u16),
     start_layer: MovementLayer,
     goal: (u16, u16),
     terrain_costs: Option<&TerrainCostGrid>,
     resolved_terrain: Option<&ResolvedTerrainGrid>,
-    entity_block_map: Option<&LayeredEntityBlockMap>,
-    urgency: u8,
     mover_is_crusher: bool,
     is_infantry: bool,
 ) -> Option<Vec<LayeredPathStep>> {
@@ -2606,8 +2306,6 @@ pub fn find_layered_path(
     // passes the mover's zone to `find_layered_path_marker`.
     find_layered_path_marker(
         grid,
-        ground_blocks,
-        bridge_blocks,
         start,
         start_layer,
         goal,
@@ -2615,10 +2313,9 @@ pub fn find_layered_path(
         None,
         None,
         resolved_terrain,
-        entity_block_map,
         None,
         MoverSearchFacts {
-            urgency,
+            urgency: 0,
             mover_is_crusher,
             is_infantry,
             foot_entry: None,
@@ -2629,8 +2326,6 @@ pub fn find_layered_path(
 
 pub(crate) fn find_layered_path_marker(
     grid: &PathGrid,
-    ground_blocks: Option<&BTreeSet<(u16, u16)>>,
-    bridge_blocks: Option<&BTreeSet<(u16, u16)>>,
     start: (u16, u16),
     start_layer: MovementLayer,
     goal: (u16, u16),
@@ -2638,7 +2333,6 @@ pub(crate) fn find_layered_path_marker(
     hierarchy_gate: Option<HierarchyGate<'_>>,
     movement_zone: Option<MovementZone>,
     resolved_terrain: Option<&ResolvedTerrainGrid>,
-    entity_block_map: Option<&LayeredEntityBlockMap>,
     marker_overlay: Option<&SearchMarkerOverlay>,
     facts: MoverSearchFacts<'_>,
 ) -> Result<Vec<LayeredPathStep>, PathSearchFailure> {
@@ -2659,10 +2353,7 @@ pub(crate) fn find_layered_path_marker(
             // `evaluate_shared_cell_leaf` return on land passability alone.
             movement_zone,
             resolved_terrain,
-            entity_blocks: ground_blocks,
-            bridge_blocks,
             hierarchy_gate,
-            entity_block_map,
             marker_overlay,
             urgency: facts.urgency,
             mover_is_crusher: facts.mover_is_crusher,

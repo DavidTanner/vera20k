@@ -102,7 +102,7 @@ fn spawn_type(sim: &mut Simulation, type_id: &str) -> u64 {
         0,
         0,
         owner_id,
-        crate::sim::components::Health { current: 100 },
+        crate::sim::combat::Health::new(100),
         type_id_interned,
         EntityCategory::Unit,
         0,
@@ -537,7 +537,7 @@ fn techno_playfield_action_40_exact_recompute_and_mobile_reveal_callback() {
     use crate::map::playfield::PlayfieldBounds;
     use crate::rules::ini_parser::IniFile;
     use crate::rules::ruleset::RuleSet;
-    use crate::sim::components::Health;
+    use crate::sim::combat::Health;
     use crate::sim::house_state::HouseState;
 
     let header = MapHeader {
@@ -611,15 +611,15 @@ fn techno_playfield_action_40_exact_recompute_and_mobile_reveal_callback() {
         0,
         0,
         owner,
-        Health { current: 100 },
+        Health::new(100),
         mobile_type,
         EntityCategory::Unit,
         100,
         1,
         true,
     );
-    mobile.lifecycle.object_alive = true;
-    mobile.lifecycle.in_limbo = false;
+    mobile.lifecycle.set_object_alive_for_test(true);
+    mobile.lifecycle.set_in_limbo_for_test(false);
     let mut building = GameEntity::new_at_frame_zero_for_test(
         2,
         building_cell.0,
@@ -627,15 +627,15 @@ fn techno_playfield_action_40_exact_recompute_and_mobile_reveal_callback() {
         0,
         0,
         owner,
-        Health { current: 100 },
+        Health::new(100),
         building_type,
         EntityCategory::Structure,
         0,
         1,
         false,
     );
-    building.lifecycle.object_alive = true;
-    building.lifecycle.in_limbo = false;
+    building.lifecycle.set_object_alive_for_test(true);
+    building.lifecycle.set_in_limbo_for_test(false);
     sim.substrate.entities.insert(mobile);
     sim.substrate.entities.insert(building);
     sim.resolved_terrain = Some(flat_trigger_playfield_terrain(100, 100));

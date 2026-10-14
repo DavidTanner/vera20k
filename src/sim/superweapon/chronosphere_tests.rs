@@ -250,7 +250,7 @@ fn dead(sim: &Simulation, id: u64) -> bool {
     sim.substrate
         .entities
         .get(id)
-        .is_none_or(|entity| entity.health.current == 0 || entity.dying)
+        .is_none_or(|entity| entity.health.current() == 0 || entity.dying)
 }
 
 /// The keys the chain reads, through the production reader on the retail
@@ -426,7 +426,6 @@ fn retail_chrono_warp_carries_a_driving_chrono_miner() {
             entity_id: miner,
             target_rx: rx,
             target_ry: ry,
-            queue: false,
         };
         assert!(sim.apply_command_with_overlays(
             "Americans",
@@ -508,7 +507,6 @@ fn retail_chrono_warp_forces_a_sailing_ships_track_to_its_landing() {
         entity_id: ship,
         target_rx: 30,
         target_ry: 20,
-        queue: false,
     };
     assert!(sim.apply_command_with_overlays(
         "Americans",
@@ -563,7 +561,10 @@ fn retail_chrono_warp_forces_a_sailing_ships_track_to_its_landing() {
         if ended {
             assert_eq!(track(&sim), Some((-1, at_landing, None)), "frame {frame}");
             let entity = sim.substrate.entities.get(ship).unwrap();
-            assert!(entity.movement_target.is_none(), "frame {frame}");
+            assert!(
+                crate::sim::movement::motion_query::is_moving(&entity) != Some(true),
+                "frame {frame}"
+            );
             assert_eq!(cell(&sim, ship), landing, "frame {frame}");
         }
     }
@@ -674,7 +675,10 @@ fn retail_destination_while_warping_in_is_refused_by_the_drive() {
     );
     let entity = sim.substrate.entities.get(miner).unwrap();
     assert!(entity.chrono_warp().is_none() && !entity.is_warping_in());
-    assert!(entity.navigation.nav_com.is_none() && entity.movement_target.is_none());
+    assert!(
+        entity.navigation.nav_com.is_none()
+            && crate::sim::movement::motion_query::is_moving(&entity) != Some(true)
+    );
 }
 
 /// A Foot standing on the destination is killed when the warp tests the

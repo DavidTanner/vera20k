@@ -47,25 +47,25 @@ pub(crate) fn mission_capture(
     let Some(entity) = sim.substrate.entities.get(id) else {
         return 1;
     };
-    let target = match entity.attack_target.as_ref().map(|attack| &attack.target) {
-        Some(TargetKind::Entity(target)) => Some(*target),
+    let target = match entity.attack_target.target() {
+        Some(TargetKind::Entity(target)) => Some(target),
         _ => None,
     };
     let building_target = target.filter(|&target| {
         sim.substrate
             .entities
             .get(target)
-            .is_some_and(|object| object.category == EntityCategory::Structure)
+            .is_some_and(|object| object.category() == EntityCategory::Structure)
     });
     if let Some(building) = building_target
         && entity.navigation.nav_com.is_none()
-        && entity.category == EntityCategory::Infantry
+        && entity.category() == EntityCategory::Infantry
         && sim
             .object_type(entity.type_ref(), rules)
             .is_some_and(|object| {
                 object.c4
                     || veterancy::has_weapon_ability(
-                        veterancy::rank_from_u16(entity.veterancy()),
+                        entity.veterancy.rank_kind(),
                         object,
                         Ability::C4,
                     )
@@ -116,9 +116,9 @@ pub(crate) fn mission_capture(
     }
 
     let hunts = sim.substrate.entities.get(id).is_some_and(|entity| {
-        entity.attack_target.is_none()
+        entity.attack_target.target().is_none()
             && !sim.owner_is_human(entity.owner())
-            && !(entity.category == EntityCategory::Infantry
+            && !(entity.category() == EntityCategory::Infantry
                 && sim
                     .object_type(entity.type_ref(), rules)
                     .is_some_and(|object| object.occupier))

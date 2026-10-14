@@ -104,14 +104,14 @@ mod tests {
             0,
             0,
             owner_id,
-            crate::sim::components::Health { current: 100 },
+            crate::sim::combat::Health::new(100),
             type_ref,
             EntityCategory::Structure,
             0,
             5,
             false,
         );
-        e.lifecycle.in_limbo = false;
+        e.lifecycle.set_in_limbo_for_test(false);
         e.lifecycle.cell_marked = true;
         sim.substrate.entities.insert(e);
     }

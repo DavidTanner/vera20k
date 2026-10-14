@@ -22,8 +22,6 @@ pub(super) enum RotationResult {
 /// `FacingClass::Set` at the body's constructor rate (duration
 /// `abs(delta) / rate` native frames; a non-positive rate is instant). Infantry
 /// are excluded by the caller.
-///
-/// Takes individual fields to avoid borrow conflicts with `entity.movement_target`.
 pub(super) fn handle_vehicle_rotation(
     body_facing: &mut super::facing_class::FacingClass,
     desired: Option<u16>,

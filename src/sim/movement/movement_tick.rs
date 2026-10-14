@@ -2,8 +2,8 @@
 //!
 //! Prepares and resumes one production object visit: rotation, speed inputs
 //! and fresh head selection.
-//! Retained Drive/Ship tracks, including tracks without a MovementTarget,
-//! execute through track_host. The batch entry points are test adapters.
+//! Retained Drive/Ship tracks execute through track_host. The batch entry
+//! points are test adapters.
 //!
 //! Pass preparation is separate from ordinary mover advancement: entry work
 //! executes once and returns owned scheduling/cache state. Point callbacks need
@@ -16,11 +16,12 @@
 use std::collections::BTreeMap;
 
 use crate::map::entities::EntityCategory;
+#[cfg(test)]
 use crate::map::houses::HouseAllianceMap;
 use crate::map::resolved_terrain::ResolvedTerrainGrid;
 use crate::rules::locomotor_type::{LocomotorKind, MovementZone, SpeedType};
 use crate::sim::cell_rect::PlayfieldBounds;
-use crate::sim::entity_store::EntityStore;
+use crate::sim::entity_store::{EntityStore, TouchReader};
 use crate::sim::infantry;
 #[cfg(test)]
 use crate::sim::lifecycle_request::LifecycleRequest;
@@ -31,8 +32,8 @@ use crate::sim::pathfinding::terrain_speed::TerrainSpeedConfig;
 #[cfg(test)]
 use crate::sim::pathfinding::zone_map::ZoneGrid;
 use crate::sim::rng::SimRng;
+use crate::sim::touch_log::Touched;
 
-use super::block_index::{LentOwnerBlockSet, OwnerBlockIndex};
 use super::bump_crush;
 use super::locomotor::MovementLayer;
 use super::movement_path::supports_layered_bridge_pathing;
@@ -51,7 +52,7 @@ pub(super) fn snapshot_mover(
 ) -> Option<MoverSnapshot> {
     let e = entities.get(entity_id)?;
     Some(MoverSnapshot {
-        category: e.category,
+        category: e.category(),
         speed_type: e.locomotor.as_ref().map(|l| l.speed_type),
         movement_zone: e
             .locomotor
@@ -201,11 +202,17 @@ impl FootPathRequest {
         })
     }
 
-    /// The Simulation wrapper calls this only between its real Mark0/Mark1.
-    /// The context's blocker plane is brought current after the actor left
-    /// its cell; this reuses the single existing search. `foot_entry` answers
-    /// every class question and walks every code-2 chain, so the search reads
-    /// no owner block set.
+    /// The mover facts this request's search reads, as snapshotted.
+    pub(super) fn snapshot(&self) -> &MoverSnapshot {
+        &self.visit.snap
+    }
+
+    /// Find_Path's core search (`Simulation::foot_core_search`) calls this
+    /// between its Mark0/Mark1, or before Mark0 for a batched path search
+    /// whose `foot_entry` emulates the lift (`foot_path::MoverLift`). The
+    /// context's blocker plane is current; this reuses the single existing
+    /// search. `foot_entry` answers every class question and walks every
+    /// code-2 chain.
     pub(super) fn search(
         &self,
         goal: crate::sim::components::DriveCoord,
@@ -236,19 +243,15 @@ impl FootPathRequest {
             ctx.blocker_neighbor_counts.is_some() == ctx.path_grid.is_some(),
             "path build on a pass that skipped the blocker plane; see pass_may_build_paths"
         );
-        super::movement_path::find_move_path_with_marker_detailed(
+        super::movement_path::find_move_path(
             ctx,
             layered,
             start,
             layer,
             goal,
             snap.speed_type.and_then(|speed| terrain_costs.get(&speed)),
-            None,
-            None,
-            None,
             snap.movement_zone,
             Some(snap.movement_zone),
-            None,
             None,
             //The admitted search prepares markers and applies native42AECA
             //urgency downgrade through the live Foot provider.
@@ -265,7 +268,7 @@ impl FootPathRequest {
     /// Foot+5E0 direction queue, and 4D4003 records the current Cell as its
     /// reference. Foot timer/latch/retry state has its own lifetime.
     ///
-    /// Every Foot reads only that queue; the order adapter keeps no cells.
+    /// Every Foot reads only that queue.
     pub(super) fn install_route(
         &self,
         actor: &mut crate::sim::game_entity::GameEntity,
@@ -286,7 +289,6 @@ impl FootPathRequest {
 #[derive(Default)]
 struct MovementPassEffects {
     stats: MovementTickStats,
-    finished_entities: Vec<u64>,
     scatters: super::scatter::ScatterRequests,
     native_track: Option<super::track_process::TrackInvocation>,
     walk_per_cell: Option<(u64, crate::sim::components::DriveCoord)>,
@@ -302,7 +304,7 @@ struct MovementPassEffects {
 fn native_track_route(
     entity: &crate::sim::game_entity::GameEntity,
 ) -> Option<super::track_process::TrackFamily> {
-    if entity.category != EntityCategory::Unit {
+    if entity.category() != EntityCategory::Unit {
         return None;
     }
     match entity.locomotor.as_ref()?.kind {
@@ -353,7 +355,6 @@ fn advance_ordinary_mover(
     } = grids;
     let MovementPassEffects {
         stats,
-        finished_entities,
         native_track,
         walk_per_cell,
         walk_boundary,
@@ -368,8 +369,8 @@ fn advance_ordinary_mover(
             .is_some_and(|entity| super::track_head::active_track_family(entity).is_some());
         if continuation {
             // Drive4B055A..0576 dispatches an active descriptor directly to
-            // Process_Track. A MovementTarget or exhausted route cannot route
-            // it back through fresh selection/rotation and strand its cursor.
+            // Process_Track. An exhausted route cannot route it back through
+            // fresh selection/rotation and strand its cursor.
             let entity = entities.get(entity_id).expect("live retained track");
             *native_track = Some(super::track_process::TrackInvocation {
                 entity_id,
@@ -442,30 +443,23 @@ fn advance_ordinary_mover(
         }
     };
     if !resumed_path_request
-        && let Some(entity) = entities.get_mut(entity_id)
-        && entity
-            .locomotor
-            .as_ref()
-            .is_some_and(|l| l.step_head().is_none() && l.walk_destination().is_none())
-    {
-        //Walk75AEC3..75AF10: no head and no destination is the idle tail
-        //(75BCE3); the empty route adapter retires with it.
-        super::walk_step::finish_idle(entity);
-        finished_entities.push(entity_id);
-        return;
-    }
-    if !resumed_path_request
         && let Some(destination) = entities.get(entity_id).and_then(no_queue_path_request)
     {
         let entity = entities.get(entity_id).expect("same mover request");
         //Walk75AF3C..55 observes a frame-anchored exact-zero remainder. No
-        //search, debt, occupancy preparation or second mover visit on this wait.
+        //search, debt, occupancy preparation or second mover visit on this
+        //wait: 75AF57..75AF66 calls the owner's vt+0x548 and returns.
         if !entity
             .navigation
             .path_runtime
             .movement_timer
             .expired(native_frame as i32)
         {
+            if let Some(entity) =
+                entities.get_mut_if(entity_id, super::walk_admission::walk_doing_to_clear)
+            {
+                super::walk_admission::clear_walk_doing(entity);
+            }
             return;
         }
         debug_assert!(
@@ -486,66 +480,58 @@ fn advance_ordinary_mover(
         prone_crawls,
         walk_retry_allowed,
     } = visit;
-    // The mover is lifted out of the store for each scope below; the Walk head
-    // preparation between them needs the whole store.
-    {
-        let Some(mut turn) = entities.take_turn(entity_id) else {
-            return;
-        };
-        let entity = turn.entity();
-        if entity
-            .locomotor
-            .as_ref()
-            .is_some_and(|l| l.step_head().is_none())
-        {
-            if let Some(tube_id) = tube_movement::pending_path_tube_id(
-                &entity.navigation.path_replay,
-                &entity.position,
-                entity.movement_layer_or_ground(),
-                resolved_terrain,
-            ) {
-                let terrain = resolved_terrain.expect("tube admission resolved terrain");
-                if tube_movement::begin_path_tube_step(
-                    &mut entity.foot_occupation_enabled,
-                    &mut entity.navigation.path_replay,
-                    entity_id,
-                    entity.category,
-                    &mut entity.position,
-                    &mut entity.locomotor,
-                    &mut entity.low_bridge_tube_state,
-                    &mut entity.lifecycle.cell_marked,
-                    tube_id,
-                    terrain,
-                    occupancy,
-                    cell_occupation,
-                    raw_cell_occupation,
-                )
-                .is_ok()
-                {
-                    return;
-                }
-            }
-            //75B690 requires the whole live Foot owner. Suspending here
-            //releases this entity's mutable borrow before any admission
-            //query. Canonical Clear goes straight to75C240, never through
-            //the grid/cliff/occupancy adapters below.
-            debug_assert!(walk_admission_request.is_none());
-            *walk_admission_request = Some(WalkAdmissionRequest {
-                entity_id,
-                visit: OrdinaryMoverVisit {
-                    snap,
-                    walk_position_before_step,
-                    prone_crawls,
-                    walk_retry_allowed,
-                },
-            });
-            return;
-        }
-    } // Release the admission borrow before live head/priority queries.
-    let Some(mut turn) = entities.take_turn(entity_id) else {
+    let Some(entity) = entities.get_mut(entity_id) else {
         return;
     };
-    let entity = turn.entity();
+    if entity
+        .locomotor
+        .as_ref()
+        .is_some_and(|l| l.step_head().is_none())
+    {
+        if let Some(tube_id) = tube_movement::pending_path_tube_id(
+            &entity.navigation.path_replay,
+            &entity.position,
+            entity.movement_layer_or_ground(),
+            resolved_terrain,
+        ) {
+            let terrain = resolved_terrain.expect("tube admission resolved terrain");
+            let category = entity.category();
+            if tube_movement::begin_path_tube_step(
+                &mut entity.foot_occupation_enabled,
+                &mut entity.navigation.path_replay,
+                entity_id,
+                category,
+                &mut entity.position,
+                &mut entity.locomotor,
+                &mut entity.low_bridge_tube_state,
+                &mut entity.lifecycle.cell_marked,
+                tube_id,
+                terrain,
+                occupancy,
+                cell_occupation,
+                raw_cell_occupation,
+            )
+            .is_ok()
+            {
+                return;
+            }
+        }
+        //75B690 requires the whole live Foot owner. Suspending here
+        //releases this entity's mutable borrow before any admission
+        //query. Canonical Clear goes straight to75C240, never through
+        //the grid/cliff/occupancy adapters below.
+        debug_assert!(walk_admission_request.is_none());
+        *walk_admission_request = Some(WalkAdmissionRequest {
+            entity_id,
+            visit: OrdinaryMoverVisit {
+                snap,
+                walk_position_before_step,
+                prone_crawls,
+                walk_retry_allowed,
+            },
+        });
+        return;
+    }
 
     // Steering / rotation: rotate in place, then move. ROT=0 means an
     // instant turn.
@@ -605,10 +591,6 @@ fn advance_ordinary_mover(
 #[derive(Default)]
 pub(crate) struct MovementPassCache {
     blocker: BlockerPlaneCache,
-    /// Each owner's block sets for an order's reduced route search, kept
-    /// current from the entity store's touch log instead of rebuilt from
-    /// every entity per order.
-    block_index: OwnerBlockIndex,
 }
 
 #[derive(Default)]
@@ -650,20 +632,6 @@ impl MovementPassCache {
             .plane
     }
 
-    /// How often the block index had to read every entity: once at the start,
-    /// and again only when something hands out the whole store mutably.
-    #[cfg(test)]
-    pub(crate) fn block_index_world_rebuilds(&self) -> usize {
-        self.block_index.world_rebuilds
-    }
-
-    /// How often an owner's sets were built from every placement instead of
-    /// brought current.
-    #[cfg(test)]
-    pub(crate) fn block_index_view_builds(&self) -> usize {
-        self.block_index.view_builds
-    }
-
     /// How often the blocker plane was rebuilt from the whole map and every
     /// entity.
     #[cfg(test)]
@@ -683,61 +651,7 @@ impl MovementPassCache {
         interner: &crate::sim::intern::StringInterner,
         rules: Option<&crate::rules::ruleset::RuleSet>,
     ) -> &crate::sim::pathfinding::BlockerNeighborCounts {
-        let touched = self.block_index.take_forwarded(entities);
-        Self::blocker_plane_in(
-            &mut self.blocker,
-            touched,
-            entities,
-            grid,
-            resolved_terrain,
-            overlay_grid,
-            interner,
-            rules,
-        )
-    }
-
-    /// Owner sets for an order's reduced route search, which no Foot receiver
-    /// prices (`Simulation::issue_ground_move`); [`Self::give_back`] returns
-    /// them.
-    pub(crate) fn lend_block_set(
-        &mut self,
-        owner: crate::sim::intern::InternedId,
-        entities: &mut EntityStore,
-        resolved_terrain: Option<&ResolvedTerrainGrid>,
-        alliances: &HouseAllianceMap,
-        interner: &crate::sim::intern::StringInterner,
-        rules: Option<&crate::rules::ruleset::RuleSet>,
-    ) -> LentOwnerBlockSet {
-        self.block_index.lend_current(
-            owner,
-            entities,
-            resolved_terrain,
-            alliances,
-            interner,
-            rules,
-        )
-    }
-
-    pub(crate) fn give_back(
-        &mut self,
-        owner: crate::sim::intern::InternedId,
-        lent: LentOwnerBlockSet,
-    ) {
-        self.block_index.give_back(owner, lent);
-    }
-
-    /// On the blocker field alone, so a pass can hold the plane while it
-    /// updates the block index beside it.
-    fn blocker_plane_in<'a>(
-        blocker: &'a mut BlockerPlaneCache,
-        touched: super::block_index::TouchedBacklog,
-        entities: &EntityStore,
-        grid: &PathGrid,
-        resolved_terrain: Option<&ResolvedTerrainGrid>,
-        overlay_grid: Option<&crate::sim::overlay_grid::OverlayGrid>,
-        interner: &crate::sim::intern::StringInterner,
-        rules: Option<&crate::rules::ruleset::RuleSet>,
-    ) -> &'a crate::sim::pathfinding::BlockerNeighborCounts {
+        let blocker = &mut self.blocker;
         let key = BlockerPlaneKey {
             terrain_epoch: resolved_terrain.map(ResolvedTerrainGrid::mutation_epoch),
             overlay_epoch: overlay_grid.map(|grid| grid.blocker_plane_epoch()),
@@ -746,9 +660,13 @@ impl MovementPassCache {
             rules: rules.map(|rules| std::ptr::from_ref(rules) as usize),
         };
         let retained_foot = overlay_grid.is_some();
+        let touched = match entities.take_touched(TouchReader::BlockerPlane) {
+            Touched::All => None,
+            Touched::Ids(ids) => Some(ids),
+        };
         match blocker.entry.as_mut().filter(|entry| {
             entry.key == key
-                && !touched.everything
+                && touched.is_some()
                 && overlay_grid.is_none_or(|grid| {
                     grid.foot_neighbor_changes_since(entry.foot_revision)
                         .is_some()
@@ -764,7 +682,7 @@ impl MovementPassCache {
                     }
                     entry.foot_revision = grid.foot_neighbor_revision();
                 }
-                for id in touched.ids {
+                for id in touched.into_iter().flatten() {
                     let now = entities.get(id).and_then(|entity| {
                         bump_crush::blocker_plane_source(
                             entity,
@@ -889,30 +807,23 @@ fn prepare_movement_visit(
     // Walk75AEC0 is the Process of every live Foot (FootClass::AI
     // 0x004DA806..0x004DA877) and branches on its own head (+0x28) and
     // destination (+0x1C): either one runs its step, neither the idle tail
-    // 75BCE3. An order adapter does not decide it, so a caller that drops
-    // the adapter beside a null setter (owner change, parasite release,
-    // Temporal freeze) still finishes the paid head.
+    // 75BCE3 (Walk75AEC3..75AF10).
     let walk_route = entity.locomotor.as_ref().is_some_and(|loco| {
         loco.kind == LocomotorKind::Walk
             && (loco.step_head().is_some() || loco.walk_destination().is_some())
     });
-    if entity.is_active() && entity.movement_target.is_none() && !walk_route {
+    if entity.is_active() && !walk_route {
         super::walk_step::finish_idle(entity);
     }
     // A Drive or Ship got here through the outer Process gates
     // (`track_turn`: Drive 0x4B08D1..0x4B0A69 / Ship 0x69FF98..0x6A0131),
     // which admit Process_Movement (0x4B0A79 / 0x6A0142) for a moving class
-    // or a live path word whatever adapter it has: a Chrono Warp's
-    // Force_Track leaves +34 in the Unit's own cell with none.
+    // or a live path word.
     let track_route = entity
         .locomotor
         .as_ref()
         .is_some_and(|loco| super::track_process::TrackFamily::from_kind(loco.kind).is_some());
-    if entity.movement_target.is_none()
-        && !walk_route
-        && !track_route
-        && super::track_head::active_track_family(entity).is_none()
-    {
+    if !walk_route && !track_route {
         return false;
     }
     let layer = entity.movement_layer_or_ground();
@@ -1084,25 +995,6 @@ impl PendingMovementPass {
         self.effects.walk_per_cell.take()
     }
 
-    /// PerCell may retire this Foot or install another order. Finalization
-    /// must use the surviving live path, never the pre-callback finished list.
-    pub(crate) fn retain_walk_completion(&mut self, id: u64, entities: &EntityStore) {
-        let complete = entities.get(id).is_some_and(|e| {
-            e.lifecycle.object_alive
-                && !e.lifecycle.in_limbo
-                && !e.is_falling_down()
-                && e.locomotor.as_ref().is_some_and(|loco| {
-                    loco.walk_destination().is_none() && loco.step_head().is_none()
-                })
-                && e.movement_target.is_some()
-        });
-        self.effects
-            .finished_entities
-            .retain(|candidate| *candidate != id);
-        if complete {
-            self.effects.finished_entities.push(id);
-        }
-    }
     pub(crate) fn take_native_track(&mut self) -> Option<super::track_process::TrackInvocation> {
         self.effects.native_track.take()
     }
@@ -1169,33 +1061,8 @@ pub(crate) fn begin_movement(
     PendingMovementPass { effects }
 }
 
-pub(crate) fn finish_movement_pass(
-    pending: PendingMovementPass,
-    entities: &mut EntityStore,
-) -> MovementTickStats {
-    let PendingMovementPass { effects } = pending;
-    let MovementPassEffects {
-        stats,
-        finished_entities,
-        ..
-    } = effects;
-
-    finalize_finished_entities(entities, &finished_entities);
-    stats
-}
-
-// ---------------------------------------------------------------------------
-// Post-loop helpers — extracted from tick_movement_with_grids
-// ---------------------------------------------------------------------------
-
-/// Retire the scheduling adapter of each Walk whose Process found neither a
-/// head nor a destination. Walk's arrival (75BE42) already ran in its Process.
-fn finalize_finished_entities(entities: &mut EntityStore, finished: &[u64]) {
-    for &entity_id in finished {
-        if let Some(entity) = entities.get_mut(entity_id) {
-            entity.movement_target = None;
-        }
-    }
+pub(crate) fn finish_movement_pass(pending: PendingMovementPass) -> MovementTickStats {
+    pending.effects.stats
 }
 
 #[cfg(test)]
@@ -1430,7 +1297,8 @@ Foundation=2x2
                     let mut entity =
                         GameEntity::test_default(id, kind, "Americans", cell.0, cell.1);
                     if building {
-                        entity.category = crate::map::entities::EntityCategory::Structure;
+                        entity
+                            .set_category_for_test(crate::map::entities::EntityCategory::Structure);
                     }
                     entity.lifecycle.cell_marked = true;
                     entities.insert(entity);

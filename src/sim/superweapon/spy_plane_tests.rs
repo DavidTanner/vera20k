@@ -8,7 +8,7 @@ use crate::map::playfield::PlayfieldBounds;
 use crate::rules::ini_parser::{IniFile, IniSection};
 use crate::rules::ruleset::RuleSet;
 use crate::rules::sound_ini::SoundRegistry;
-use crate::sim::combat::{AttackTarget, TargetKind};
+use crate::sim::combat::TargetKind;
 use crate::sim::components::NavTargetRef;
 use crate::sim::intern::InternedId;
 use crate::sim::mission::state::MissionTestFixture;
@@ -372,7 +372,7 @@ fn send_spy_planes_matches_native() {
         );
         assert_eq!(plane.mission.queued(), MissionId::NONE);
         assert_eq!(
-            plane.attack_target.as_ref().map(|attack| attack.target),
+            plane.attack_target.target(),
             Some(TargetKind::Cell(TARGET.0, TARGET.1))
         );
         assert_eq!(plane.navigation.nav_com, None);
@@ -461,8 +461,9 @@ fn mission_plane(sim: &mut Simulation, rules: &RuleSet, row: &Value) -> u64 {
     }
     assert!(placed, "no spot {distance} leptons out");
     let plane = sim.substrate.entities.get_mut(id).unwrap();
-    plane.attack_target =
-        flag(row, "target").then(|| AttackTarget::for_cell(PLANE_TARGET.0, PLANE_TARGET.1));
+    plane.attack_target.set_for_test(
+        flag(row, "target").then(|| TargetKind::Cell(PLANE_TARGET.0, PLANE_TARGET.1)),
+    );
     if !flag(row, "nav_com") {
         plane.navigation.nav_com = None;
     }
@@ -532,6 +533,7 @@ fn spyplane_missions_match_native() {
                 plane,
                 &config,
                 None,
+                sim.resolved_terrain.as_ref(),
                 false,
                 &sim.interner,
                 4,
@@ -622,7 +624,7 @@ fn retail_spy_plane_photographs_the_target_and_leaves() {
         MissionId::from_known(MissionType::SpyplaneApproach)
     );
     assert_eq!(
-        entity.attack_target.as_ref().map(|attack| attack.target),
+        entity.attack_target.target(),
         Some(TargetKind::Cell(TARGET.0, TARGET.1))
     );
     assert_eq!(entity.position.rx + entity.position.ry, 36);
@@ -739,7 +741,7 @@ fn retail_computer_sends_its_spy_plane_past_the_enemy_base() {
     let entity = sim.substrate.entities.get(plane).unwrap();
     assert_eq!(entity.owner(), russians);
     assert_eq!(
-        entity.attack_target.as_ref().map(|attack| attack.target),
+        entity.attack_target.target(),
         Some(TargetKind::Cell(TARGET.0 + 2, TARGET.1 + 2))
     );
 }

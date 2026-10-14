@@ -514,7 +514,7 @@ impl ProjectileCollisionWorld<'_> {
         // with a building target's foundation term.
         let building = self
             .rules
-            .filter(|_| target.category == EntityCategory::Structure)
+            .filter(|_| target.category() == EntityCategory::Structure)
             .and_then(|rules| rules.object(self.interner.resolve(target.type_ref())))
             .map(|kind| {
                 let (width, height) =
@@ -736,7 +736,11 @@ mod tests {
                     EntityCategory::Unit,
                 );
                 let owner = sim.interner.intern("Russians");
-                sim.substrate.entities.get_mut(2).unwrap().owner = owner;
+                sim.substrate
+                    .entities
+                    .get_mut(2)
+                    .unwrap()
+                    .set_owner_for_test(owner);
             }
             if selected != "none" {
                 sim.substrate.occupancy.add(
@@ -922,7 +926,7 @@ mod tests {
                 };
                 let type_ref = sim.interner.intern(name);
                 let entity = sim.substrate.entities.get_mut(2).unwrap();
-                entity.type_ref = type_ref;
+                entity.set_type_ref_for_test(type_ref);
                 if category == EntityCategory::Structure {
                     // Construction stamps the type's ART `Foundation=`.
                     entity.foundation = dimensions.clone();
@@ -1034,7 +1038,7 @@ mod tests {
             .unwrap();
             // Construction stamps the type's foundation on each building.
             for entity in sim.substrate.entities.values_mut() {
-                if entity.category == EntityCategory::Structure {
+                if entity.category() == EntityCategory::Structure {
                     entity.foundation = foundation.clone();
                 }
             }
@@ -1440,7 +1444,7 @@ mod tests {
     #[test]
     fn projectile_arm_producer_uses_aircraft_identity_in_runtime_fireat() {
         use crate::rules::ini_parser::IniFile;
-        use crate::sim::combat::AttackTarget;
+        use crate::sim::combat::TargetKind;
         use crate::sim::runtime::SimRuntime;
         for arm in [-1, i32::MIN, i32::MAX, 9_999_999, 10] {
             for aircraft in [false, true] {
@@ -1469,18 +1473,16 @@ mod tests {
                 let type_ref = sim.interner.intern(if aircraft { "AIR" } else { "VICTIM" });
                 let owner = sim.interner.intern("Russians");
                 let victim = sim.substrate.entities.get_mut(target).unwrap();
-                victim.type_ref = type_ref;
-                victim.owner = owner;
+                victim.set_type_ref_for_test(type_ref);
+                victim.set_owner_for_test(owner);
                 if aircraft {
                     // Aircraft object-list membership requires its real Fly
                     // host; a category-only fixture has no valid receiver.
-                    let mut locomotor =
+                    victim.locomotor = Some(
                         crate::sim::movement::locomotor::LocomotorState::for_test_kind(
                             crate::rules::locomotor_type::LocomotorKind::Fly,
-                        );
-                    locomotor.altitude = SimFixed::from_num(100);
-
-                    victim.locomotor = Some(locomotor);
+                        ),
+                    );
                 }
                 assert!(matches!(sim.reveal(source), RevealOutcome::Revealed { .. }));
                 assert!(matches!(sim.reveal(target), RevealOutcome::Revealed { .. }));
@@ -1494,7 +1496,9 @@ mod tests {
                 }
                 let firer = sim.substrate.entities.get_mut(source).unwrap();
                 firer.body_facing.snap(0x4000, 0);
-                firer.attack_target = Some(AttackTarget::new(target));
+                firer
+                    .attack_target
+                    .set_for_test(Some(TargetKind::Entity(target)));
                 sim.session.binary_frame = 100;
                 let mut runtime = SimRuntime::from_simulation(sim);
                 runtime.resources.rules = RuleSet::from_ini(&ini).unwrap();
@@ -1519,7 +1523,7 @@ mod tests {
     #[test]
     fn runtime_fireat_fractional_velocity_survives_live_gravity_and_snapshot() {
         use crate::rules::ini_parser::IniFile;
-        use crate::sim::combat::AttackTarget;
+        use crate::sim::combat::TargetKind;
         use crate::sim::runtime::SimRuntime;
         use crate::sim::snapshot::GameSnapshot;
         let native: Vec<Value> = serde_json::from_str(crate::test_fixture::text(
@@ -1570,8 +1574,8 @@ mod tests {
             let target_type = sim.interner.intern("VICTIM");
             let enemy = sim.interner.intern("Russians");
             let victim = sim.substrate.entities.get_mut(target).unwrap();
-            victim.type_ref = target_type;
-            victim.owner = enemy;
+            victim.set_type_ref_for_test(target_type);
+            victim.set_owner_for_test(enemy);
             assert!(matches!(sim.reveal(source), RevealOutcome::Revealed { .. }));
             assert!(matches!(sim.reveal(target), RevealOutcome::Revealed { .. }));
             // Reveal commits the coarse map coordinate; install the supplied
@@ -1592,7 +1596,9 @@ mod tests {
             assert!(sim.substrate.entities.get(target).unwrap().in_playfield);
             let firer = sim.substrate.entities.get_mut(source).unwrap();
             firer.body_facing.snap(0x4000, 0);
-            firer.attack_target = Some(AttackTarget::new(target));
+            firer
+                .attack_target
+                .set_for_test(Some(TargetKind::Entity(target)));
             let mut runtime = SimRuntime::from_simulation(sim);
             runtime.resources.rules = make_rules();
             let inputs = &native["inputs"];
@@ -1657,7 +1663,8 @@ mod tests {
                 .entities
                 .get_mut(source)
                 .unwrap()
-                .attack_target = None;
+                .attack_target
+                .set_for_test(None);
             let snapshot = GameSnapshot::save(&runtime.simulation, 0, 0, "native motion", 0);
             let mut restored = GameSnapshot::load(&snapshot).unwrap().sim;
             let mut serialized_expected = runtime.simulation.projectiles.get(id).unwrap().clone();
@@ -1988,7 +1995,11 @@ mod tests {
                     EntityCategory::Structure,
                 );
                 let owner = sim.interner.intern("Russians");
-                sim.substrate.entities.get_mut(2).unwrap().owner = owner;
+                sim.substrate
+                    .entities
+                    .get_mut(2)
+                    .unwrap()
+                    .set_owner_for_test(owner);
                 sim.substrate.occupancy.add(
                     2,
                     2,

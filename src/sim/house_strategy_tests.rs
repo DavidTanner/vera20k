@@ -14,7 +14,7 @@ use super::*;
 use std::collections::BTreeSet;
 
 use crate::rules::ini_parser::IniFile;
-use crate::sim::components::Health;
+use crate::sim::combat::Health;
 use crate::sim::game_entity::GameEntity;
 use crate::sim::rng::SimRng;
 use crate::sim::timer::CdTimer;
@@ -92,14 +92,14 @@ fn spawn(
         0,
         0,
         owner,
-        Health { current: health },
+        Health::new(health),
         type_ref,
         category,
         0,
         5,
         false,
     );
-    entity.lifecycle.in_limbo = false;
+    entity.lifecycle.set_in_limbo_for_test(false);
     entity.lifecycle.cell_marked = true;
     sim.substrate.entities.insert(entity);
     sim.substrate.next_stable_object_id = id + 1;
@@ -120,7 +120,7 @@ fn spawn_building(
         .get_mut(id)
         .unwrap()
         .lifecycle
-        .in_limbo = limbo;
+        .set_in_limbo_for_test(limbo);
     sim.append_house_base_building_for_test(id);
     id
 }
@@ -455,7 +455,9 @@ fn all_to_hunt_matches_native() {
             );
             let entity = sim.substrate.entities.get_mut(id).unwrap();
             entity.lifecycle.cell_marked = flag(&techno["down"]);
-            entity.lifecycle.in_limbo = flag(&techno["limbo"]);
+            entity
+                .lifecycle
+                .set_in_limbo_for_test(flag(&techno["limbo"]));
             if flag(&techno["permanent"]) {
                 entity.mind_control =
                     crate::sim::capture_manager::MindControlLink::permanent_for_test();
@@ -500,7 +502,7 @@ fn all_to_hunt_matches_native() {
         let damaged: Vec<(i32, i32)> = slots
             .iter()
             .filter_map(|&(slot, id, health)| {
-                let now = sim.substrate.entities.get(id).unwrap().health.current;
+                let now = sim.substrate.entities.get(id).unwrap().health.current();
                 (now != health).then_some((slot, health - now))
             })
             .collect();

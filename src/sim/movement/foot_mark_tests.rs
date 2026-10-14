@@ -8,8 +8,8 @@ use crate::util::fixed_math::SimFixed;
 /// An unmarked, grounded object out of Limbo at cell (4, 4).
 fn actor(id: u64, category: EntityCategory, kind: LocomotorKind) -> GameEntity {
     let mut entity = GameEntity::test_default(id, "ACTOR", "Americans", 4, 4);
-    entity.category = category;
-    entity.lifecycle.in_limbo = false;
+    entity.set_category_for_test(category);
+    entity.lifecycle.set_in_limbo_for_test(false);
     entity.lifecycle.cell_marked = false;
     entity.foot_occupation_enabled = true;
     entity.locomotor = Some(LocomotorState::for_test_kind(kind));
@@ -35,8 +35,8 @@ fn tethered_infantry() -> Simulation {
         4,
         EntityCategory::Structure,
     );
-    building.type_ref = sim.intern("GAPILE");
-    building.lifecycle.in_limbo = false;
+    building.set_type_ref_for_test(sim.intern("GAPILE"));
+    building.lifecycle.set_in_limbo_for_test(false);
     building.lifecycle.cell_marked = true;
     sim.substrate.entities.insert(building);
     sim.substrate.occupancy.add(
@@ -127,7 +127,7 @@ fn foot_mark_refresh_is_immediate_and_does_not_reenter_techno_mark() {
     for (limbo, marked) in [(false, false), (false, true), (true, false), (true, true)] {
         let mut sim = tethered_infantry();
         let actor = sim.substrate.entities.get_mut(1).unwrap();
-        actor.lifecycle.in_limbo = limbo;
+        actor.lifecycle.set_in_limbo_for_test(limbo);
         actor.lifecycle.cell_marked = marked;
         let before = serde_json::to_value(sim.substrate.entities.get(1).unwrap()).unwrap();
         let rng_before = sim.rng_state();
@@ -167,12 +167,12 @@ fn a_refused_mark_and_a_null_first_contact_do_not_emit_radio13() {
         .get_mut(1)
         .unwrap()
         .lifecycle
-        .in_limbo = true;
+        .set_in_limbo_for_test(true);
     assert!(!sim.foot_mark_put(1, None, None, crate::sim::world::FrameEffects::default()));
     assert!(radio::take_transmit_log().is_empty());
 
     let actor = sim.substrate.entities.get_mut(1).unwrap();
-    actor.lifecycle.in_limbo = false;
+    actor.lifecycle.set_in_limbo_for_test(false);
     actor.radio_contacts.set_capacity(2);
     assert_eq!(actor.radio_contacts.remove(2), Some(0));
     actor.radio_contacts.set_slot(1, 2);
@@ -210,7 +210,6 @@ fn cruising_jumpjet() -> Simulation {
             deviation: 40,
             no_wobbles: false,
         });
-    locomotor.altitude = SimFixed::from_num(500);
     entity.position.exact_z_leptons = Some(500);
     sim
 }
@@ -307,7 +306,7 @@ fn a_limbo_object_is_refused() {
         .get_mut(1)
         .unwrap()
         .lifecycle
-        .in_limbo = true;
+        .set_in_limbo_for_test(true);
     assert!(!sim.foot_mark_put(1, None, None, crate::sim::world::FrameEffects::default()));
     assert!(!sim.substrate.entities.get(1).unwrap().lifecycle.cell_marked);
     assert!(!sim.substrate.occupancy.contains_entity(4, 4, 1));

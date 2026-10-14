@@ -44,7 +44,7 @@ impl Simulation {
         let Some(entity) = self.substrate.entities.get(id) else {
             return false;
         };
-        if entity.category != EntityCategory::Aircraft {
+        if entity.category() != EntityCategory::Aircraft {
             return false;
         }
         let Some(object) = rules.object(self.interner.resolve(entity.type_ref())) else {
@@ -88,7 +88,7 @@ impl Simulation {
             return false;
         };
         let target = crate::sim::combat::target_present(
-            entity.attack_target.as_ref(),
+            entity.attack_target.target(),
             &self.substrate.entities,
         );
         if target && entity.mission.current() != MissionId::from_known(MissionType::SpyplaneOverfly)

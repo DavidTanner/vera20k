@@ -71,7 +71,7 @@ fn joined_fixture(rules: &RuleSet, row: &Value) -> (Simulation, u64) {
     {
         let entity = sim.substrate.entities.get_mut(yard).unwrap();
         entity.finish_building_construction_for_test();
-        entity.building_actually_placed = true;
+        entity.building_art.set_actually_placed_for_test(true);
         entity.building_last_operational = true;
     }
     // The original corpus supplies these already admitted actors, then starts
@@ -88,7 +88,12 @@ fn joined_fixture(rules: &RuleSet, row: &Value) -> (Simulation, u64) {
         row["rng_before"]["scenario"]
     );
     if let Some(health) = input["health"].as_i64() {
-        sim.substrate.entities.get_mut(id).unwrap().health.current = health as i32;
+        sim.substrate
+            .entities
+            .get_mut(id)
+            .unwrap()
+            .health
+            .set_for_test(health as i32);
     }
     let control = rules.buildup_control(name);
     let entry = match route {
@@ -162,7 +167,7 @@ fn assert_joined_frame(sim: &Simulation, id: u64, frame: &Value, context: &str) 
         "{context}: queued body"
     );
     assert_eq!(
-        u64::from(entity.building_actually_placed),
+        u64::from(entity.building_art.actually_placed()),
         frame["placed"].as_u64().unwrap(),
         "{context}: placement"
     );
@@ -285,7 +290,8 @@ fn assert_joined_frame(sim: &Simulation, id: u64, frame: &Value, context: &str) 
         .collect();
     assert_eq!(json!(logic), frame["logic"], "{context}: live order");
     let slots: Vec<_> = entity
-        .building_anim_slots
+        .building_art
+        .anim_slots()
         .iter()
         .map(|slot| slot.map_or(0, native_pointer))
         .collect();
@@ -573,7 +579,9 @@ fn place_selects_the_original_house_order_and_primary_factory() {
             let entity = sim.substrate.entities.get_mut(id).unwrap();
             // These controls supply flags and House insertion order. They
             // compare FindFactory, not the separate Limbo/sale producers.
-            entity.lifecycle.in_limbo = row["limbo"][index] == 1;
+            entity
+                .lifecycle
+                .set_in_limbo_for_test(row["limbo"][index] == 1);
             match row["selling"][index].as_u64().unwrap() {
                 1 => {
                     queue_entity_mission_deferred(

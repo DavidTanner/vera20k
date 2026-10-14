@@ -65,7 +65,7 @@ pub(crate) fn dispatch_foot_mission(
         if entity.dying || !entity.is_object_alive() || !super::mission_handlers_run(sim, id) {
             return bridge_changed;
         }
-        let category = entity.category;
+        let category = entity.category();
         if !matches!(category, EntityCategory::Unit | EntityCategory::Infantry) {
             return bridge_changed;
         }
@@ -98,7 +98,7 @@ pub(crate) fn dispatch_foot_mission(
             entry_adapter,
             timer_due: entity.mission.dispatch_timer().due(now),
             moving_or_queued: moving || entity.mission.queued() != MissionId::NONE,
-            has_attack_target: entity.attack_target.is_some(),
+            has_attack_target: entity.attack_target.target().is_some(),
             // The destination slot alone, NOT the wider "is this object in
             // motion" test above: the idle-mode selector branches on exactly
             // that one field.
@@ -440,7 +440,7 @@ pub(crate) fn dispatch_foot_mission(
                         ctx.effects,
                     );
                     let actor = sim.substrate.entities.get(id).expect("deployed shim actor");
-                    let actual_target = actor.attack_target.as_ref().map(|attack| attack.target);
+                    let actual_target = actor.attack_target.target();
                     let error = crate::sim::combat::fire_error_world::FireSubject {
                         world: sim,
                         rules,
@@ -773,7 +773,7 @@ pub(crate) fn dispatch_foot_mission(
         && let Some(entity) = sim.substrate.entities.get_mut(id)
     {
         // A missing handle is expiry cleanup, not Assign_Target(NULL).
-        entity.attack_target = None;
+        entity.attack_target.set(None);
     }
     if let Some(queued_mission) = evaluation.queue {
         let _ = sim.mission_queue_exact(
@@ -1003,9 +1003,9 @@ impl Simulation {
         }
         let selection = foot_enter_idle_mode_selection(
             rules,
-            entity.category,
+            entity.category(),
             entity.mission.current().known(),
-            entity.attack_target.is_some(),
+            entity.attack_target.target().is_some(),
             entity.navigation.nav_com.is_some(),
             entity.mission.effective().known(),
         );
@@ -1040,7 +1040,12 @@ pub(crate) fn enter_idle_mode(
     registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     effects: FrameEffects<'_>,
 ) {
-    match sim.substrate.entities.get(id).map(|entity| entity.category) {
+    match sim
+        .substrate
+        .entities
+        .get(id)
+        .map(|entity| entity.category())
+    {
         Some(EntityCategory::Unit) => {
             sim.unit_enter_idle_mode(id, Some(rules), false, effects);
         }
@@ -1092,7 +1097,12 @@ pub(crate) fn techno_unlimbo_idle_mode(
     registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     effects: FrameEffects<'_>,
 ) {
-    match sim.substrate.entities.get(id).map(|entity| entity.category) {
+    match sim
+        .substrate
+        .entities
+        .get(id)
+        .map(|entity| entity.category())
+    {
         Some(EntityCategory::Aircraft) => {
             crate::sim::aircraft::enter_idle_mode_for(sim, id, rules, registry, effects);
         }
@@ -1289,7 +1299,7 @@ fn evaluate_foot_hunt(
             .substrate
             .entities
             .get(id)
-            .is_some_and(|entity| entity.category == EntityCategory::Infantry);
+            .is_some_and(|entity| entity.category() == EntityCategory::Infantry);
         if acquired && infantry {
             hunt_infantry_arm(sim, id, rules, ctx);
         } else if acquired {
@@ -1352,11 +1362,11 @@ fn hunt_infantry_arm(sim: &mut Simulation, id: u64, rules: &RuleSet, ctx: super:
     };
     let c4 = object.c4
         || crate::sim::combat::veterancy::has_weapon_ability(
-            crate::sim::combat::veterancy::rank_from_u16(entity.veterancy()),
+            entity.veterancy.rank_kind(),
             object,
             crate::rules::object_type::Ability::C4,
         );
-    let Some(target) = entity.attack_target.as_ref().map(|attack| attack.target) else {
+    let Some(target) = entity.attack_target.target() else {
         return;
     };
     let building_target = match target {
@@ -1364,7 +1374,7 @@ fn hunt_infantry_arm(sim: &mut Simulation, id: u64, rules: &RuleSet, ctx: super:
             .substrate
             .entities
             .get(target)
-            .is_some_and(|target| target.category == EntityCategory::Structure),
+            .is_some_and(|target| target.category() == EntityCategory::Structure),
         crate::sim::combat::TargetKind::Cell(..) => false,
     };
     let mission = if object.engineer && !c4 {
@@ -1434,19 +1444,18 @@ fn c4_sabotage_building(sim: &Simulation, id: u64, rules: &RuleSet) -> Option<u6
     let object = sim.object_type(entity.type_ref(), rules)?;
     if !(object.c4
         || crate::sim::combat::veterancy::has_weapon_ability(
-            crate::sim::combat::veterancy::rank_from_u16(entity.veterancy()),
+            entity.veterancy.rank_kind(),
             object,
             crate::rules::object_type::Ability::C4,
         ))
     {
         return None;
     }
-    let crate::sim::combat::TargetKind::Entity(building) = entity.attack_target.as_ref()?.target
-    else {
+    let crate::sim::combat::TargetKind::Entity(building) = entity.attack_target.target()? else {
         return None;
     };
     let target = sim.substrate.entities.get(building)?;
-    if target.category != EntityCategory::Structure || target.dying || !target.is_alive() {
+    if target.category() != EntityCategory::Structure || target.dying || !target.is_alive() {
         return None;
     }
     sim.object_type(target.type_ref(), rules)
@@ -1495,12 +1504,11 @@ fn computer_capture_building(sim: &Simulation, id: u64, rules: &RuleSet) -> Opti
     if sim.owner_is_human(entity.owner()) {
         return None;
     }
-    let crate::sim::combat::TargetKind::Entity(building) = entity.attack_target.as_ref()?.target
-    else {
+    let crate::sim::combat::TargetKind::Entity(building) = entity.attack_target.target()? else {
         return None;
     };
     let target = sim.substrate.entities.get(building)?;
-    if target.category != EntityCategory::Structure || target.dying || !target.is_alive() {
+    if target.category() != EntityCategory::Structure || target.dying || !target.is_alive() {
         return None;
     }
     let object = sim.object_type(entity.type_ref(), rules)?;
@@ -1596,7 +1604,7 @@ fn evaluate_foot_rescue(
             &EntityReadyInputProvider,
         );
         let _ = sim.mission_commence_exact(id, sim.session.binary_frame);
-    } else if state == 0 && actor.attack_target.is_none() {
+    } else if state == 0 && actor.attack_target.target().is_none() {
         if actor.archive_target().is_none() {
             let post = foot_physical_cell_target(sim, id);
             sim.substrate
@@ -1658,7 +1666,7 @@ fn evaluate_foot_rescue(
             .substrate
             .entities
             .get(id)
-            .is_some_and(|actor| actor.attack_target.is_some())
+            .is_some_and(|actor| actor.attack_target.target().is_some())
         {
             return MissionHandlerEvaluation::cadence(1);
         }
@@ -1762,7 +1770,7 @@ pub(super) fn evaluate_foot_area_guard(
     if let Some(crate::sim::combat::TargetKind::Entity(post)) = archive
         && sim.substrate.entities.get(post).is_some_and(|entity| {
             matches!(
-                entity.category,
+                entity.category(),
                 EntityCategory::Unit | EntityCategory::Infantry | EntityCategory::Aircraft
             )
         })
@@ -1802,7 +1810,7 @@ pub(super) fn evaluate_foot_area_guard(
         .substrate
         .entities
         .get(id)
-        .is_some_and(|entity| entity.attack_target.is_none());
+        .is_some_and(|entity| entity.attack_target.target().is_none());
     // `0x004D6ED1..0x004D6F32`: with a Target the body approaches it instead
     // of scanning; without a post it does neither (`0x004D6E66`).
     if !needs_target && archive.is_some() {
@@ -1845,7 +1853,7 @@ pub(super) fn evaluate_foot_area_guard(
         .substrate
         .entities
         .get(id)
-        .is_some_and(|entity| entity.attack_target.is_none())
+        .is_some_and(|entity| entity.attack_target.target().is_none())
     {
         let _ = sim.infantry_idle_action(id, rules, ctx.effects);
     }
@@ -1856,7 +1864,7 @@ pub(super) fn evaluate_foot_area_guard(
         .substrate
         .entities
         .get(id)
-        .is_some_and(|entity| entity.category == EntityCategory::Aircraft)
+        .is_some_and(|entity| entity.category() == EntityCategory::Aircraft)
     {
         base.wrapping_add(base)
     } else {
@@ -2021,7 +2029,7 @@ pub(super) fn evaluate_foot_guard_cadence(
         .substrate
         .entities
         .get(id)
-        .is_some_and(|entity| entity.attack_target.is_none())
+        .is_some_and(|entity| entity.attack_target.target().is_none())
     {
         let _ = sim.infantry_idle_action(id, rules, effects);
     }
@@ -2107,7 +2115,7 @@ fn harvester_guard_override_requeues_harvest(sim: &Simulation, id: u64, rules: &
             .blockers(crate::sim::movement::locomotor::MovementLayer::Ground)
             .any(|sid| {
                 sim.substrate.entities.get(sid).is_some_and(|building| {
-                    building.category == EntityCategory::Structure
+                    building.category() == EntityCategory::Structure
                         && !building.dying
                         && building.owner() == entity.owner()
                         && sim
@@ -2260,14 +2268,11 @@ fn foot_dispatch_in_cadence_band(sim: &Simulation, rules: &RuleSet, id: u64) -> 
     if !foot_type_takes_cadence_band(sim, rules, attacker, CLOSE_PRIMARY_RANGE_LEPTONS) {
         return false;
     };
-    let Some(crate::sim::combat::AttackTarget {
-        target: crate::sim::combat::TargetKind::Entity(target_id),
-        ..
-    }) = attacker.attack_target.as_ref()
+    let Some(crate::sim::combat::TargetKind::Entity(target_id)) = attacker.attack_target.target()
     else {
         return false;
     };
-    let Some(target) = sim.substrate.entities.get(*target_id) else {
+    let Some(target) = sim.substrate.entities.get(target_id) else {
         return false;
     };
     native_distance_is_in_cadence_band(&attacker.position, &target.position)
@@ -2322,7 +2327,7 @@ fn foot_type_takes_cadence_band(
     let Some(object) = rules.object(sim.interner.resolve(attacker.type_ref())) else {
         return false;
     };
-    if attacker.category == EntityCategory::Infantry && object.close_range {
+    if attacker.category() == EntityCategory::Infantry && object.close_range {
         return true;
     }
     let Some(primary) = object.primary().and_then(|name| rules.weapon(name)) else {
@@ -2362,7 +2367,7 @@ fn infantry_deployed_attack_reacquire(
         .substrate
         .entities
         .get(id)
-        .and_then(|actor| actor.attack_target.as_ref().map(|attack| attack.target));
+        .and_then(|actor| actor.attack_target.target());
     if target.is_some_and(|target| {
         super::target_scan::can_fire_at(sim, rules, id, target, weapon_index, ctx.overlay_registry)
     }) {
@@ -2420,16 +2425,13 @@ fn attack_target_is_stale(sim: &Simulation, id: u64) -> bool {
     let Some(attacker) = sim.substrate.entities.get(id) else {
         return false;
     };
-    let Some(crate::sim::combat::AttackTarget {
-        target: crate::sim::combat::TargetKind::Entity(target_id),
-        ..
-    }) = attacker.attack_target.as_ref()
+    let Some(crate::sim::combat::TargetKind::Entity(target_id)) = attacker.attack_target.target()
     else {
         return false;
     };
     !sim.substrate
         .entities
-        .get(*target_id)
+        .get(target_id)
         .is_some_and(|target| !target.dying && target.is_alive())
 }
 
@@ -2469,14 +2471,14 @@ mod harvester_guard_override_tests {
             0,
             0,
             owner,
-            crate::sim::components::Health { current: 900 },
+            crate::sim::combat::Health::new(900),
             type_ref,
             EntityCategory::Structure,
             0,
             5,
             false,
         );
-        ge.lifecycle.in_limbo = false;
+        ge.lifecycle.set_in_limbo_for_test(false);
         sim.substrate.entities.insert(ge);
         // The class constructor's `Add_Tracking`, which a direct insert skips.
         sim.update_house_tracking(
@@ -2512,7 +2514,7 @@ mod harvester_guard_override_tests {
             0,
             0,
             owner,
-            crate::sim::components::Health { current: 400 },
+            crate::sim::combat::Health::new(400),
             type_ref,
             EntityCategory::Unit,
             0,
@@ -2806,7 +2808,7 @@ mod move_arrival_tests {
             0,
             0,
             owner,
-            crate::sim::components::Health { current: 300 },
+            crate::sim::combat::Health::new(300),
             type_ref,
             EntityCategory::Unit,
             0,
@@ -2840,18 +2842,12 @@ mod move_arrival_tests {
             .known()
     }
 
-    /// The order is not an input: a tank whose Drive is still and whose
-    /// NavCom is null arrives even while VERA still holds its order.
+    /// A tank whose Drive is still and whose NavCom is null arrives.
     #[test]
-    fn an_order_alone_does_not_keep_a_unit_on_move() {
+    fn a_still_unit_without_a_navcom_leaves_move() {
         let rules = rules();
         let mut sim = Simulation::new();
         spawn_on_move(&mut sim, "MTNK", LocomotorKind::Drive);
-        sim.substrate
-            .entities
-            .get_mut(UNIT_ID)
-            .expect("unit")
-            .movement_target = Some(crate::sim::components::MovementTarget::default());
 
         assert_eq!(dispatch(&mut sim, &rules), Some(MissionType::Guard));
     }

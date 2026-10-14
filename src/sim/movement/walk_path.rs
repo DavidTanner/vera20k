@@ -273,20 +273,7 @@ impl Simulation {
         actor
             .foot_speed
             .set_speed_fraction(crate::util::fixed_math::SIM_ZERO);
-        self.walk_stop_moving(id, Some(rules), frame_effects)?;
-        let actor = self
-            .substrate
-            .entities
-            .get_mut(id)
-            .ok_or("failed Walk actor retired during Stop callback")?;
-        if actor
-            .locomotor
-            .as_ref()
-            .is_some_and(|l| l.walk_destination().is_none() && l.step_head().is_none())
-        {
-            actor.movement_target = None;
-        }
-        Ok(())
+        self.walk_stop_moving(id, Some(rules), frame_effects)
     }
 
     ///75B085..75B2BA, reached only with a preexisting zero retry count.
@@ -325,8 +312,7 @@ impl Simulation {
             .substrate
             .entities
             .get(id)
-            .and_then(|e| e.attack_target.as_ref())
-            .map(|a| a.target);
+            .and_then(|e| e.attack_target.target());
         if let Some(target) = target {
             let target = match target {
                 crate::sim::combat::TargetKind::Entity(id) => {
@@ -349,7 +335,7 @@ impl Simulation {
                 .get(id)
                 .ok_or("retired exhausted Walk actor")?;
             if actor.in_playfield
-                && actor.attack_target.is_some()
+                && actor.attack_target.target().is_some()
                 && !self.foot_can_reach_navigation_cell(id, coordinate, rules)?
             {
                 self.assign_target_represented(id, None, Some(rules), None, frame_effects)

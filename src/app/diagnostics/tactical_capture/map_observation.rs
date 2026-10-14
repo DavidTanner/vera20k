@@ -1601,7 +1601,7 @@ fn disguise_inputs(
         .as_ref()
         .context("disguise simulation absent")?;
     let sim = &runtime.simulation;
-    let draw = if entity.category == crate::map::entities::EntityCategory::Unit {
+    let draw = if entity.category() == crate::map::entities::EntityCategory::Unit {
         let local = crate::app::input::commands::preferred_local_owner_name(state);
         let local_id = local.as_deref().and_then(|name| sim.interner.get(name));
         let mut observer = instances::observer_draw_context(
@@ -1672,7 +1672,7 @@ fn retask_observation(entity: &crate::sim::game_entity::GameEntity) -> Value {
 
 fn prism_observation(entity: &crate::sim::game_entity::GameEntity, frame: i32) -> Value {
     use crate::sim::game_entity::DelayedFire;
-    if entity.category != crate::map::entities::EntityCategory::Structure {
+    if entity.category() != crate::map::entities::EntityCategory::Structure {
         return Value::Null;
     }
     let pending = entity
@@ -2988,7 +2988,7 @@ impl TacticalCaptureSession {
                             "landing_latched": runtime.landing_latched(),
                             "params": runtime.params(), "flight": runtime.flight()})
                     });
-                let foot = if entity.category != crate::map::entities::EntityCategory::Structure {
+                let foot = if entity.category() != crate::map::entities::EntityCategory::Structure {
                     let (navigation_leptons, navigation_unavailable) =
                         match sim.foot_navigation_coordinate(id) {
                             Ok(coord) => (Some([coord.x, coord.y, coord.z]), None),
@@ -3079,10 +3079,11 @@ impl TacticalCaptureSession {
                         "current_weapon_138": entity.current_weapon_number(),
                         "current_turret_124": entity.current_turret_index()})
                 });
-                let building = if entity.category == crate::map::entities::EntityCategory::Structure
+                let building = if entity.category()
+                    == crate::map::entities::EntityCategory::Structure
                 {
                     let slots: Vec<_> = entity
-                        .building_anim_slots
+                        .building_art.anim_slots()
                         .iter()
                         .enumerate()
                         .filter_map(|(slot, anim_id)| {
@@ -3106,7 +3107,7 @@ impl TacticalCaptureSession {
                     "queued_body_state": entity.queued_building_body_state(),
                     "construction_control": entity.building_construction_control(),
                     "stage": entity.native_stage(), "ready_latch": entity.building_ready_latch(),
-                    "actually_placed": entity.building_actually_placed,
+                    "actually_placed": entity.building_art.actually_placed(),
                     "last_operational": entity.building_last_operational,
                     "animation_slots": slots,
                     "voxel_gun": {
@@ -3150,15 +3151,15 @@ impl TacticalCaptureSession {
                 };
                 let mut observation = json!({
                     "stable_id": id, "owner": owner,
-                    "type_id": type_name, "category": entity.category,
+                    "type_id": type_name, "category": entity.category(),
                     "cell": [entity.position.rx, entity.position.ry],
                     "physical_leptons": [coord.x, coord.y, coord.z], "on_bridge": entity.on_bridge,
-                    "health": entity.health.current, "active": entity.is_active(),
-                    "veterancy_raw_bits": entity.veterancy_raw.bits(),
-                    "veterancy_rank_cache": entity.veterancy_rank_cache,
-                    "elite_flash_frames": entity.elite_flash_frames,
+                    "health": entity.health.current(), "active": entity.is_active(),
+                    "veterancy_raw_bits": entity.veterancy.raw().bits(),
+                    "veterancy_rank_cache": entity.veterancy.rank_cache(),
+                    "elite_flash_frames": entity.flashing.frames(),
                     "object_alive": entity.is_object_alive(),
-                    "in_limbo": entity.lifecycle.in_limbo, "dying": entity.dying,
+                    "in_limbo": entity.lifecycle.in_limbo(), "dying": entity.dying,
                     // Techno +0x1C8, the offline latch (`sim::powered_unit`).
                     "deactivated": entity.deactivated,
                     // Mark and Logic membership are independent retained facts.
@@ -3169,7 +3170,7 @@ impl TacticalCaptureSession {
                         "effective": entity.mission.effective().raw(), "handler_state": entity.mission.handler_state(),
                         "start_frame": entity.mission.mission_start_frame(), "ai_counter": entity.mission.ai_counter(),
                         "dispatch_timer": {"start_frame": timer.start_frame(), "delay": timer.delay()}},
-                    "target": entity.attack_target.as_ref().map(|target| target.target),
+                    "target": entity.attack_target.target(),
                     "archive": entity.archive_target(), "nav": entity.navigation.nav_com, "foot": foot,
                     "retask": retask_observation(entity),
                     "jumpjet": jumpjet,
@@ -3194,7 +3195,7 @@ impl TacticalCaptureSession {
                     observation["fire"] = fire_observation(entity, sim.session.binary_frame as i32);
                 }
                 if profile.observe_action_line_inputs == Some(true) {
-                    let inputs = if entity.category
+                    let inputs = if entity.category()
                         == crate::map::entities::EntityCategory::Structure
                     {
                         Value::Null
@@ -3222,7 +3223,7 @@ impl TacticalCaptureSession {
                                 &sim.houses, entity, Some(object)).bits(),
                             "current_speed": crate::sim::movement::owner_current_speed(
                                 entity, Some(object), rules.general.veteran_speed, &sim.houses),
-                            "veterancy": entity.veterancy(),
+                            "veterancy": entity.veterancy.rank(),
                             "current_weapon": crate::sim::combat::combat_weapon::current_weapon(
                                 entity, object, sim.entities(), rules, &sim.interner)
                                 .map(|weapon| weapon.id.as_str()),
@@ -5330,6 +5331,43 @@ mod tests {
         assert!(serde_json::from_value::<MapCaptureProfile>(value).is_err());
     }
 
+    /// Every profile kept under `tools/` loads through the production reader,
+    /// so a change to a command's wire shape has to migrate them. Each one
+    /// names its schema in its first key.
+    #[test]
+    fn stored_profiles_load() {
+        fn walk(dir: &Path, profiles: &mut Vec<std::path::PathBuf>) {
+            for entry in std::fs::read_dir(dir).unwrap() {
+                let path = entry.unwrap().path();
+                if path.is_dir() {
+                    walk(&path, profiles);
+                } else if path
+                    .extension()
+                    .is_some_and(|extension| extension == "json")
+                {
+                    let mut head = [0; 128];
+                    let read =
+                        std::io::Read::read(&mut std::fs::File::open(&path).unwrap(), &mut head)
+                            .unwrap();
+                    let tag = b"\"schema_version\": \"vera20k.map-observation-profile.";
+                    if head[..read].windows(tag.len()).any(|window| window == tag) {
+                        profiles.push(path);
+                    }
+                }
+            }
+        }
+        let mut profiles = Vec::new();
+        // The reader refuses linked ancestors; a checkout may sit behind one.
+        let tools = std::fs::canonicalize(Path::new(env!("CARGO_MANIFEST_DIR")).join("tools"));
+        walk(&tools.unwrap(), &mut profiles);
+        assert!(!profiles.is_empty());
+        for path in profiles {
+            if let Err(error) = MapCaptureProfile::load(&path) {
+                panic!("{}: {error:#}", path.display());
+            }
+        }
+    }
+
     #[test]
     fn jumpjet_discovery_profile_preserves_verified_production_prefix_without_guessed_actor() {
         let profile: MapCaptureProfile = serde_json::from_str(crate::test_fixture::text(
@@ -5509,7 +5547,7 @@ mod tests {
     fn iron_curtain_example_curtains_a_tank_under_fire() {
         use crate::map::entities::EntityCategory;
         use crate::rules::{ini_parser::IniFile, ruleset::RuleSet};
-        use crate::sim::{components::Health, game_entity::GameEntity, world::Simulation};
+        use crate::sim::{combat::Health, game_entity::GameEntity, world::Simulation};
 
         let profile: MapCaptureProfile = serde_json::from_str(crate::test_fixture::text(
             "tools/map_observation.iron-curtain.example.json",
@@ -5538,14 +5576,14 @@ mod tests {
                 0,
                 0,
                 owner,
-                Health { current: 400 },
+                Health::new(400),
                 type_ref,
                 EntityCategory::Unit,
                 0,
                 4,
                 true,
             );
-            entity.lifecycle.in_limbo = false;
+            entity.lifecycle.set_in_limbo_for_test(false);
             sim.entities_mut().insert(entity);
         }
         let [attack, launch] = profile.commands() else {

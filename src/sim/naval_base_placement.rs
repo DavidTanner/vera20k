@@ -10,8 +10,7 @@ use crate::rules::locomotor_type::{MovementZone, SpeedType};
 use crate::rules::object_type::ObjectType;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::find_nearby_cell::{
-    NearbyAnchorGate, NearbyFootprint, NearbyQuery, PassabilityArgs, find_nearby_passable_cell,
-    map_owned_radius_cap,
+    NearbyFootprint, NearbyQuery, PassabilityArgs, find_nearby_passable_cell, map_owned_radius_cap,
 };
 use crate::sim::house_state::HouseState;
 use crate::sim::pathfinding::PathGrid;
@@ -110,7 +109,6 @@ fn naval_query<'a>(
             bridge_aware_zone: false,
         },
         footprint: NearbyFootprint::new(footprint_width, footprint_height),
-        anchor_gate: NearbyAnchorGate::NativeHeightAware,
         allow_bridge_cells: true,
         check_height: false,
         check_occupancy: false,
@@ -147,10 +145,10 @@ fn first_yard_distance_accepts(
     let Some(yard) = sim.substrate.entities.get(yard_id) else {
         return false;
     };
-    if yard.category != EntityCategory::Structure
+    if yard.category() != EntityCategory::Structure
         || !yard.build_const_eligible
-        || !yard.lifecycle.object_alive
-        || yard.lifecycle.in_limbo
+        || !yard.lifecycle.object_alive()
+        || yard.lifecycle.in_limbo()
         || !yard.lifecycle.cell_marked
     {
         return false;
@@ -192,7 +190,7 @@ mod tests {
     use crate::rules::ini_parser::IniFile;
     use crate::rules::terrain_rules::{LandType, SpeedCostProfile, TerrainClass};
     use crate::sim::cell_rect::PlayfieldBounds;
-    use crate::sim::components::Health;
+    use crate::sim::combat::Health;
     use crate::sim::game_entity::GameEntity;
 
     fn water_cell(rx: u16, ry: u16) -> ResolvedTerrainCell {
@@ -458,7 +456,6 @@ mod tests {
         assert_eq!(query.passability.movement_zone, MovementZone::Normal);
         assert!(!query.passability.bridge_aware_zone);
         assert_eq!(query.footprint, NearbyFootprint::new(1, 1));
-        assert_eq!(query.anchor_gate, NearbyAnchorGate::NativeHeightAware);
         assert!(query.allow_bridge_cells);
         assert!(!query.check_height);
         assert!(!query.check_occupancy);
@@ -572,7 +569,7 @@ mod tests {
             0,
             0,
             owner,
-            Health { current: 1000 },
+            Health::new(1000),
             type_ref,
             EntityCategory::Structure,
             0,
@@ -581,7 +578,7 @@ mod tests {
         );
         yard.foundation = foundation.to_string();
         yard.build_const_eligible = true;
-        yard.lifecycle.in_limbo = false;
+        yard.lifecycle.set_in_limbo_for_test(false);
         yard.lifecycle.cell_marked = true;
         sim.substrate.entities.insert(yard);
     }

@@ -10,7 +10,6 @@ use crate::sim::command::Command;
 use crate::sim::snapshot::GameSnapshot;
 use crate::sim::stage::StageClass;
 use crate::sim::timer::CdTimer;
-use crate::util::fixed_math::SimFixed;
 use serde_json::{Value, json};
 use std::sync::OnceLock;
 
@@ -92,7 +91,6 @@ fn native_fixture(input: &Value, before: &Value) -> (Simulation, RuleSet, u64) {
     let height = input["height"].as_i64().unwrap_or(0) as i32;
     entity.position.exact_z_leptons = Some(height);
     let locomotor = entity.locomotor.as_mut().expect("production Jumpjet");
-    locomotor.altitude = SimFixed::from_num(height);
     if height > 0 {
         locomotor.layer = crate::sim::movement::locomotor::MovementLayer::Air;
     }
@@ -196,6 +194,36 @@ fn updater_flags_stage_and_signed_boundaries_match_native_lifecycle() {
     }
 }
 
+/// UpdateSimpleDeployState asks GetHeight (`0x00739ADE`, `0x00739B22`),
+/// which reads no layer: the airborne rows give their native result on the
+/// Ground layer too.
+#[test]
+fn updater_reads_the_height_on_any_layer() {
+    let rows = corpus()["lifecycle"].as_array().unwrap();
+    let mut airborne = 0;
+    for (index, row) in rows.iter().enumerate() {
+        if row["input"]["height"].as_i64().unwrap_or(0) <= 0 {
+            continue;
+        }
+        airborne += 1;
+        let (mut sim, rules, id) = native_fixture(&row["input"], &row["before"]);
+        let entity = sim.substrate.entities.get_mut(id).unwrap();
+        entity.locomotor.as_mut().unwrap().layer =
+            crate::sim::movement::locomotor::MovementLayer::Ground;
+        let deploying = row["input"]["entry"].as_u64().unwrap_or(0x739ac0) != 0x739cd0;
+        sim.update_unit_simple_deploy(
+            id,
+            deploying,
+            &rules,
+            crate::sim::world::FrameEffects::default(),
+        )
+        .unwrap();
+        let context = format!("lifecycle[{index}] {} on the Ground layer", row["input"]);
+        assert_native_state(&sim, id, &row["after"], &context);
+    }
+    assert_eq!(airborne, 2);
+}
+
 #[test]
 fn mission_then_shared_stage_matches_original_frame_timelines() {
     let data = corpus();
@@ -288,22 +316,20 @@ fn synchronized_deploy_obeys_native_event9_actor_guards() {
     ] {
         let (mut sim, rules, id) = fixture(&json!({}));
         match case {
-            "not_alive" => {
-                sim.substrate
-                    .entities
-                    .get_mut(id)
-                    .unwrap()
-                    .lifecycle
-                    .object_alive = false
-            }
-            "limbo" => {
-                sim.substrate
-                    .entities
-                    .get_mut(id)
-                    .unwrap()
-                    .lifecycle
-                    .in_limbo = true
-            }
+            "not_alive" => sim
+                .substrate
+                .entities
+                .get_mut(id)
+                .unwrap()
+                .lifecycle
+                .set_object_alive_for_test(false),
+            "limbo" => sim
+                .substrate
+                .entities
+                .get_mut(id)
+                .unwrap()
+                .lifecycle
+                .set_in_limbo_for_test(true),
             "tethered" => {
                 let partner = sim
                     .spawn_object("SCHP", "Russians", 12, 10, 64, &rules)
@@ -325,8 +351,8 @@ fn synchronized_deploy_obeys_native_event9_actor_guards() {
             }
             "zero_health_crashing" => {
                 let entity = sim.substrate.entities.get_mut(id).unwrap();
-                entity.health.current = 0;
-                entity.crashing = true;
+                entity.health.set_for_test(0);
+                entity.crash.set_crashing_for_test(true);
             }
             "dying" => sim.substrate.entities.get_mut(id).unwrap().dying = true,
             _ => unreachable!(),
@@ -435,8 +461,9 @@ fn advance_until(
 }
 
 fn altitude(sim: &Simulation, id: u64) -> i32 {
-    crate::sim::movement::ground_pose::object_altitude_leptons(
+    crate::sim::movement::air_movement::current_fly_height(
         sim.substrate.entities.get(id).unwrap(),
+        sim.resolved_terrain.as_ref(),
     )
 }
 
@@ -448,7 +475,6 @@ fn begin_landing_cycle() -> (Simulation, RuleSet, u64) {
             entity_id: id,
             target_rx: 12,
             target_ry: 12,
-            queue: false,
         },
         Some(&rules)
     ));

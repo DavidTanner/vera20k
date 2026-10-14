@@ -69,11 +69,11 @@ fn scene(rules: &RuleSet) -> (Simulation, [u64; 2], u64, u64) {
     let squids = std::array::from_fn(|index| {
         let id = sim.allocate_stable_id();
         let mut actor = GameEntity::test_default(id, "SQD", "Local", 10, 10 + index as u16);
-        actor.owner = owner;
-        actor.type_ref = sim.interner.get("SQD").unwrap();
-        actor.category = EntityCategory::Unit;
-        actor.lifecycle.in_limbo = false;
-        actor.lifecycle.object_alive = true;
+        actor.set_owner_for_test(owner);
+        actor.set_type_ref_for_test(sim.interner.get("SQD").unwrap());
+        actor.set_category_for_test(EntityCategory::Unit);
+        actor.lifecycle.set_in_limbo_for_test(false);
+        actor.lifecycle.set_object_alive_for_test(true);
         actor.locomotor = Some(LocomotorState::from_object_type(
             rules.object("SQD").unwrap(),
             0,

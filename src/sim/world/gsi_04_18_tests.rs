@@ -4,7 +4,8 @@ use super::*;
 use crate::map::entities::EntityCategory;
 use crate::rules::ini_parser::IniFile;
 use crate::rules::ruleset::RuleSet;
-use crate::sim::components::{BuildingUp, Health};
+use crate::sim::combat::Health;
+use crate::sim::components::BuildingUp;
 use crate::sim::game_entity::GameEntity;
 use crate::sim::house_state::HouseState;
 use crate::sim::mission::state::MissionTestFixture;
@@ -55,14 +56,14 @@ fn insert_structure(
         0,
         0,
         owner,
-        Health { current: 100 },
+        Health::new(100),
         type_ref,
         EntityCategory::Structure,
         0,
         5,
         false,
     );
-    entity.lifecycle.in_limbo = false;
+    entity.lifecycle.set_in_limbo_for_test(false);
     entity.lifecycle.cell_marked = false;
     sim.substrate.next_stable_object_id = sim.substrate.next_stable_object_id.max(stable_id + 1);
     sim.substrate.entities.insert(entity);
@@ -80,14 +81,14 @@ fn insert_sight_unit(sim: &mut Simulation, stable_id: u64, owner: InternedId, rx
         0,
         0,
         owner,
-        Health { current: 100 },
+        Health::new(100),
         type_ref,
         EntityCategory::Unit,
         0,
         3,
         false,
     );
-    entity.lifecycle.in_limbo = false;
+    entity.lifecycle.set_in_limbo_for_test(false);
     entity.lifecycle.cell_marked = false;
     sim.substrate.next_stable_object_id = sim.substrate.next_stable_object_id.max(stable_id + 1);
     sim.substrate.entities.insert(entity);
@@ -307,7 +308,7 @@ fn shroud_current_sight_world_collector_and_native_frame_restore() {
         .get_mut(2)
         .unwrap()
         .lifecycle
-        .in_limbo = true;
+        .set_in_limbo_for_test(true);
     sim.advance_tick(&[], None, None, None, 67);
     assert!(
         sim.fog.is_cell_revealed(owner, 12, 12),
@@ -361,7 +362,7 @@ fn shroud_current_sight_new_generator_identity_consumes_pending() {
         .get_mut(2)
         .unwrap()
         .lifecycle
-        .in_limbo = true;
+        .set_in_limbo_for_test(true);
     sim.refresh_fog(&vision::VisionConfig::default(), Some(&rules));
     sim.reconcile_active_vision_structures(&rules);
     assert!(
@@ -562,7 +563,6 @@ fn shroud_current_sight_live_foot_timer_keeps_viewer_histories_and_snapshot() {
         entity.in_playfield = true;
         let mut loco = LocomotorState::for_test_kind(LocomotorKind::Jumpjet);
         loco.layer = MovementLayer::Air;
-        loco.altitude = crate::util::fixed_math::SimFixed::from_num(208);
         // Keep the admitted high-flight height through the actual Process below.
 
         let runtime = loco.jumpjet_runtime_mut().expect("jumpjet runtime");
@@ -577,6 +577,7 @@ fn shroud_current_sight_live_foot_timer_keeps_viewer_histories_and_snapshot() {
             .with_flight_for_test(flight);
         entity.locomotor = Some(loco);
     }
+    sim.set_object_height_unmarked(2, 208);
     sim.refresh_fog(&vision::VisionConfig::default(), Some(&rules));
     insert_structure(&mut sim, 1, gapper, "GAGAP", 12);
     sim.visit_building_operational(1, &rules, None, crate::sim::world::FrameEffects::default());
@@ -586,7 +587,7 @@ fn shroud_current_sight_live_foot_timer_keeps_viewer_histories_and_snapshot() {
         .get_mut(2)
         .unwrap()
         .lifecycle
-        .in_limbo = true;
+        .set_in_limbo_for_test(true);
     sim.refresh_fog(&vision::VisionConfig::default(), Some(&rules));
     insert_structure(&mut sim, 3, gapper, "GAGAP", 12);
     sim.visit_building_operational(3, &rules, None, crate::sim::world::FrameEffects::default());
@@ -596,7 +597,7 @@ fn shroud_current_sight_live_foot_timer_keeps_viewer_histories_and_snapshot() {
         .get_mut(2)
         .unwrap()
         .lifecycle
-        .in_limbo = false;
+        .set_in_limbo_for_test(false);
     sim.refresh_fog(&vision::VisionConfig::default(), Some(&rules));
     {
         let clocks = &mut sim
@@ -699,9 +700,9 @@ fn shroud_current_sight_live_refresh_gates_preserve_or_reload_native_timer() {
     insert_sight_unit(&mut sim, 2, owner, 13, 13);
     let mut loco = LocomotorState::for_test_kind(LocomotorKind::Fly);
     loco.layer = MovementLayer::Air;
-    loco.altitude = SimFixed::from_num(207);
     loco.fly_runtime_mut().unwrap().current_speed = SimFixed::from_num(1);
     sim.substrate.entities.get_mut(2).unwrap().locomotor = Some(loco);
+    sim.set_object_height_unmarked(2, 207);
     sim.session.binary_frame = 119;
     sim.refresh_high_flying_sight_before_process(2, None);
     assert_eq!(
@@ -723,9 +724,9 @@ fn shroud_current_sight_live_refresh_gates_preserve_or_reload_native_timer() {
             .locomotor
             .as_mut()
             .unwrap();
-        loco.altitude = SimFixed::from_num(208);
         loco.fly_runtime_mut().unwrap().current_speed = SimFixed::from_num(0);
     }
+    sim.set_object_height_unmarked(2, 208);
     sim.refresh_high_flying_sight_before_process(2, None);
     assert_eq!(
         sim.substrate
@@ -765,7 +766,7 @@ fn shroud_current_sight_live_refresh_gates_preserve_or_reload_native_timer() {
         .get_mut(2)
         .unwrap()
         .lifecycle
-        .in_limbo = true;
+        .set_in_limbo_for_test(true);
     sim.session.binary_frame = 134;
     sim.refresh_high_flying_sight_before_process(2, None);
     assert_eq!(
@@ -780,7 +781,7 @@ fn shroud_current_sight_live_refresh_gates_preserve_or_reload_native_timer() {
     );
     {
         let entity = sim.substrate.entities.get_mut(2).unwrap();
-        entity.lifecycle.in_limbo = false;
+        entity.lifecycle.set_in_limbo_for_test(false);
         entity.in_playfield = true;
         entity.vision_range = 0;
     }
@@ -825,7 +826,7 @@ fn shroud_current_sight_spy_sat_event_preserves_registration_order_and_restore()
             .get_mut(source)
             .unwrap()
             .lifecycle
-            .in_limbo = true;
+            .set_in_limbo_for_test(true);
         sim.refresh_fog(&vision::VisionConfig::default(), Some(&rules));
         insert_structure(&mut sim, 3, gapper, "GAGAP", 12);
         sim.visit_building_operational(3, &rules, None, crate::sim::world::FrameEffects::default());
@@ -835,7 +836,7 @@ fn shroud_current_sight_spy_sat_event_preserves_registration_order_and_restore()
             .get_mut(source)
             .unwrap()
             .lifecycle
-            .in_limbo = false;
+            .set_in_limbo_for_test(false);
         sim.refresh_fog(&vision::VisionConfig::default(), Some(&rules));
         // Actual House transition invokes the map bracket before577A changes.
         // This uplink's own sight is outside the observed cell.
@@ -899,7 +900,7 @@ fn shroud_current_sight_spy_sat_event_preserves_registration_order_and_restore()
             .get_mut(4)
             .unwrap()
             .lifecycle
-            .in_limbo = true;
+            .set_in_limbo_for_test(true);
         restored.reconcile_active_vision_structures(&rules);
         assert!(!restored.houses[&owner].spy_sat_active);
         assert!(!restored.fog.whole_map_revealed_for_owner(owner));

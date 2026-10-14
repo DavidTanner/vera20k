@@ -30,7 +30,7 @@ use crate::sim::world::Simulation;
 use super::concrete_effects::UnavailableConcreteMissionEffects;
 use super::concrete_effects::{
     AuthorityUnavailable, ConcreteMissionEffects, ConcreteSetterRequest,
-    RepresentedConcreteMissionEffects, represented_assign_destination_mode_one,
+    RepresentedConcreteMissionEffects, represented_assign_destination,
     represented_assign_target_admitted,
 };
 use super::readiness::{
@@ -64,14 +64,14 @@ pub(crate) fn restore_entity_after_target_expiry(
 
     let saved_target = entity.suspended_attack_target;
     let saved_destination = entity.navigation.suspended_nav_com;
-    let category = entity.category;
+    let category = entity.category();
     let restored = verb::restore_base(&mut entity.mission);
     debug_assert!(restored);
     represented_assign_target_admitted(entity, saved_target, saved_target_commits);
     if category != EntityCategory::Structure {
-        represented_assign_destination_mode_one(entity, saved_destination);
+        represented_assign_destination(entity, saved_destination);
         if saved_destination.is_some() {
-            entity.navigation.pending_arrival_clear = true;
+            entity.navigation.pending_destination_setter = true;
         }
     }
     true
@@ -177,7 +177,7 @@ impl UnitReadyWorld for LiveUnitWorld<'_> {
             // contact rather than erroring the whole predicate.
             return Ok(Some(UnitReadyContact::Other));
         };
-        if contact.category != EntityCategory::Structure {
+        if contact.category() != EntityCategory::Structure {
             return Ok(Some(UnitReadyContact::Other));
         }
         Ok(Some(UnitReadyContact::Building {
@@ -200,7 +200,7 @@ impl UnitReadyWorld for LiveUnitWorld<'_> {
             let Some(entity) = self.sim.substrate.entities.get(occupant.entity_id) else {
                 continue;
             };
-            if entity.category != EntityCategory::Structure {
+            if entity.category() != EntityCategory::Structure {
                 continue;
             }
             // Anchor: the Building's footprint-NW cell as a lepton point whose
@@ -304,9 +304,9 @@ fn evaluate_ready(
         } else {
             None
         });
-        let attack_target_present = entity.attack_target.is_some();
+        let attack_target_present = entity.attack_target.target().is_some();
 
-        match entity.category {
+        match entity.category() {
             EntityCategory::Unit => {
                 let leaf = entity
                     .mission_leaf
@@ -336,8 +336,8 @@ fn evaluate_ready(
                         // the ground height at its cell, minus the bridge deck
                         // when on a bridge — so ground and bridge both read 0,
                         // airborne reads positive, only below-ground reads
-                        // negative. `LocomotorState::altitude` is exactly that
-                        // quantity, so the producer is a one-liner.
+                        // negative. GetHeight's port, `current_fly_height`, is
+                        // exactly that quantity, so the producer is a one-liner.
                         //
                         // It is not wired up because turning it on stalls
                         // vehicles. Supplying it makes this branch's
@@ -351,27 +351,25 @@ fn evaluate_ready(
                         // Root cause is upstream of here: the dominant deferral
                         // reads `effective=Move, current=NONE, queued=Move,
                         // bypass_latch=0, moving=true` — a unit already moving
-                        // with no commenced mission at all. Our command path
-                        // sets `movement_target` directly AND queues the
-                        // mission, so movement precedes commencement and the
-                        // gate then refuses to commence because the unit is
-                        // moving. Native runs it the other way: the order
-                        // queues, the unit is not yet moving, the gate
-                        // commences, and the mission handler starts the move.
+                        // with no commenced mission at all. The order's class
+                        // destination setter starts the locomotor in the same
+                        // MEGAMISSION call that queues the mission, natively
+                        // too (`0x004C747C`), so movement precedes
+                        // commencement there as well; what lets native
+                        // commence such a unit is not established.
                         // `set_movement_bypass_after_verified_queue` — native's
                         // escape hatch for exactly this — is called only by the
                         // refinery and jumpjet completion paths here, never by
                         // the general queue an ordinary Move uses.
                         //
-                        // So this stays `None` until the command path stops
-                        // starting movement ahead of commencement. Until then
-                        // `ready_to_commence_answer` maps the resulting error
-                        // to ready and the Unit moving-defer branch is inert — which is
-                        // why none of the Drive/Ship readiness mapping can
-                        // affect vehicle behaviour yet.
+                        // So this stays `None` until that is established. Until
+                        // then `ready_to_commence_answer` maps the resulting
+                        // error to ready and the Unit moving-defer branch is
+                        // inert — which is why none of the Drive/Ship readiness
+                        // mapping can affect vehicle behaviour yet.
                         // MCV Event9 stops before queuing Unload, so this route
-                        // can supply native GetHeight without the existing Move
-                        // adapter's start-before-Commence dependency cycle.
+                        // can supply native GetHeight without a Move's
+                        // start-before-Commence cycle.
                         signed_height: (mission.queued()
                             == MissionId::from_known(super::MissionType::Unload)
                             && crate::sim::mcv_deploy::is_mcv(sim, entity, rules))
@@ -699,8 +697,9 @@ impl Simulation {
     }
 
     /// Dispatch the same concrete destination owner used by Override/Restore,
-    /// without changing a mission or its Target. AreaGuard and Rescue require
-    /// its synchronous Move_To/path/timer effects before their cadence tail.
+    /// without changing a mission or its Target: vt+0x480(requested, 1).
+    /// AreaGuard and Rescue require its synchronous Move_To/path/timer effects
+    /// before their cadence tail.
     pub(crate) fn assign_destination_represented(
         &mut self,
         receiver: u64,
@@ -709,17 +708,48 @@ impl Simulation {
         overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
         frame_effects: FrameEffects<'_>,
     ) -> Result<(), MissionAuthorityError> {
+        self.assign_destination_through(
+            RepresentedConcreteMissionEffects::new(rules, overlay_registry, frame_effects),
+            receiver,
+            requested,
+        )
+    }
+
+    /// [`Self::assign_destination_represented`] with vt+0x480's mode 0, which
+    /// keeps NavQueue: Enter_Idle_Mode (`0x004D8395`), Foot Approach
+    /// (`0x004D5A6A`) and Mission_Enter (`0x004D939A`) pass it when they take
+    /// NavQueue[0].
+    pub(crate) fn assign_destination_keeping_queue(
+        &mut self,
+        receiver: u64,
+        requested: Option<NavTargetRef>,
+        rules: Option<&RuleSet>,
+        overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
+    ) -> Result<(), MissionAuthorityError> {
+        self.assign_destination_through(
+            RepresentedConcreteMissionEffects::new(rules, overlay_registry, frame_effects)
+                .keeping_queue(),
+            receiver,
+            requested,
+        )
+    }
+
+    fn assign_destination_through(
+        &mut self,
+        mut effects: RepresentedConcreteMissionEffects<'_>,
+        receiver: u64,
+        requested: Option<NavTargetRef>,
+    ) -> Result<(), MissionAuthorityError> {
         if !self.substrate.entities.contains(receiver) {
             return Err(MissionAuthorityError::MissingReceiver(receiver));
         }
-        let mut effects =
-            RepresentedConcreteMissionEffects::new(rules, overlay_registry, frame_effects);
         let prepared = effects.preflight(
             self,
             receiver,
             ConcreteSetterRequest::Destination { requested },
         )?;
-        effects.apply_destination_mode_one(self, &prepared, requested);
+        effects.apply_destination(self, &prepared, requested);
         Ok(())
     }
 
@@ -926,7 +956,7 @@ impl Simulation {
         if !aircraft_allows(entity, packet.mission) {
             return Ok(false);
         }
-        let request = match entity.category {
+        let request = match entity.category() {
             EntityCategory::Structure => ConcreteSetterRequest::Target {
                 requested: packet.combat_target,
             },
@@ -945,11 +975,10 @@ impl Simulation {
                 .entities
                 .get_mut(receiver)
                 .expect("preflight cannot remove receiver");
-            if entity.category != EntityCategory::Structure {
+            if entity.category() != EntityCategory::Structure {
                 entity.navigation.suspended_nav_com = entity.navigation.nav_com;
             }
-            entity.suspended_attack_target =
-                entity.attack_target.as_ref().map(|target| target.target);
+            entity.suspended_attack_target = entity.attack_target.target();
             verb::override_base(&mut entity.mission, packet.mission);
         }
         effects.apply_target(self, &prepared, packet.combat_target);
@@ -957,10 +986,10 @@ impl Simulation {
             self.substrate
                 .entities
                 .get(receiver)
-                .map(|entity| entity.category),
+                .map(|entity| entity.category()),
             Some(EntityCategory::Structure)
         ) {
-            effects.apply_destination_mode_one(self, &prepared, packet.destination);
+            effects.apply_destination(self, &prepared, packet.destination);
         }
         Ok(true)
     }
@@ -980,7 +1009,7 @@ impl Simulation {
         }
         let saved_target = entity.suspended_attack_target;
         let saved_destination = entity.navigation.suspended_nav_com;
-        let category = entity.category;
+        let category = entity.category();
         let request = match category {
             EntityCategory::Structure => ConcreteSetterRequest::Target {
                 requested: saved_target,
@@ -1005,7 +1034,7 @@ impl Simulation {
         debug_assert!(restored);
         effects.apply_target(self, &prepared, saved_target);
         if category != EntityCategory::Structure {
-            let setter_ran = effects.apply_destination_mode_one(self, &prepared, saved_destination);
+            let setter_ran = effects.apply_destination(self, &prepared, saved_destination);
             if saved_destination.is_some()
                 && !setter_ran
                 && let Some(entity) = self.substrate.entities.get_mut(receiver)
@@ -1019,7 +1048,7 @@ impl Simulation {
                 // restored object holds its order and never moves toward it,
                 // which is exactly the state a blocked-step Override leaves it
                 // in.
-                entity.navigation.pending_arrival_clear = true;
+                entity.navigation.pending_destination_setter = true;
             }
         }
         Ok(true)
@@ -1036,7 +1065,7 @@ mod tests {
     use super::super::leaf::MissionLeafState;
     use super::super::state::MissionTestFixture;
     use super::*;
-    use crate::sim::combat::AttackTarget;
+    use crate::sim::combat::TargetKind;
     use crate::sim::game_entity::GameEntity;
 
     const GUARD: MissionId = MissionId::from_raw(5);
@@ -1110,7 +1139,7 @@ mod tests {
 
     fn entity(category: EntityCategory, current: MissionId) -> GameEntity {
         let mut entity = GameEntity::test_default(1, "MTNK", "Americans", 5, 5);
-        entity.category = category;
+        entity.set_category_for_test(category);
         entity.mission_leaf = MissionLeafState::for_entity_category(category);
         entity.mission.apply_test_fixture(MissionTestFixture {
             current,
@@ -1371,7 +1400,7 @@ mod tests {
     fn native_e1_override_callers_keep_target_action_and_destination_refusal_order() {
         use crate::rules::ini_parser::IniFile;
         use crate::rules::native_processing::{RulesLayerKind, RulesLayerStack};
-        use crate::sim::components::{Health, MovementTarget};
+        use crate::sim::combat::Health;
         use crate::sim::house_state::HouseState;
         use crate::sim::movement::locomotor::LocomotorState;
         use crate::sim::rng::SimRng;
@@ -1455,14 +1484,14 @@ mod tests {
                     0,
                     0,
                     owner,
-                    Health { current: 100 },
+                    Health::new(100),
                     sim.interner.intern("E1"),
                     EntityCategory::Infantry,
                     0,
                     0,
                     false,
                 );
-                actor.lifecycle.in_limbo = false;
+                actor.lifecycle.set_in_limbo_for_test(false);
                 actor.mission.apply_test_fixture(MissionTestFixture {
                     current: MOVE,
                     suspended: MissionId::NONE,
@@ -1484,11 +1513,12 @@ mod tests {
                 actor.passively_acquired_target = before["passive"].as_u64().unwrap() != 0;
                 let prior_target =
                     (before["target"] == "new_target").then_some(TargetKind::Entity(2));
-                actor.attack_target = prior_target.map(|_| AttackTarget::new(2));
+                actor
+                    .attack_target
+                    .set_for_test(prior_target.map(|_| TargetKind::Entity(2)));
                 actor.navigation.nav_com = Some(NavTargetRef::cell(12, 10));
                 actor.navigation.path_replay.directions =
                     vec![before["path_field"].as_u64().unwrap() as u8, 2, 3];
-                actor.movement_target = Some(MovementTarget::default());
                 actor.locomotor = Some(LocomotorState::for_test_kind(
                     crate::rules::locomotor_type::LocomotorKind::Walk,
                 ));
@@ -1515,7 +1545,7 @@ mod tests {
                         0,
                         0,
                         owner,
-                        Health { current: 100 },
+                        Health::new(100),
                         sim.interner.intern("MTNK"),
                         EntityCategory::Unit,
                         0,
@@ -1565,7 +1595,7 @@ mod tests {
                     "{name}",
                 );
                 assert_eq!(
-                    actor.attack_target.as_ref().map(|target| target.target),
+                    actor.attack_target.target(),
                     (after["target"] == "new_target").then_some(TargetKind::Entity(2)),
                     "{name}",
                 );
@@ -1598,11 +1628,6 @@ mod tests {
                     destination["nav"].as_bool().unwrap(),
                     "{name}",
                 );
-                assert_eq!(
-                    actor.movement_target.is_some(),
-                    destination["nav"].as_bool().unwrap() && after["path_field"] != -1,
-                    "only a retained path head can keep its derived movement adapter: {name}",
-                );
                 let expected_head = (after["path_field"] != -1)
                     .then(|| after["path_field"].as_u64().unwrap() as u8);
                 assert_eq!(
@@ -1627,7 +1652,9 @@ mod tests {
     #[test]
     fn override_target_unavailable_is_fieldwise_noop() {
         let mut building = entity(EntityCategory::Structure, GUARD);
-        building.attack_target = Some(AttackTarget::new(7));
+        building
+            .attack_target
+            .set_for_test(Some(TargetKind::Entity(7)));
         let before = building.clone();
         let mut sim = sim_with(building);
 
@@ -1646,10 +1673,7 @@ mod tests {
         ));
         let after = sim.substrate.entities.get(1).unwrap();
         assert_eq!(after.mission, before.mission);
-        assert_eq!(
-            after.attack_target.as_ref().map(|target| target.target),
-            before.attack_target.as_ref().map(|target| target.target)
-        );
+        assert_eq!(after.attack_target.target(), before.attack_target.target());
         assert_eq!(
             after.suspended_attack_target,
             before.suspended_attack_target
@@ -1688,12 +1712,12 @@ mod tests {
     #[test]
     fn foot_override_provider_order_includes_same_identity_target_dispatch() {
         let mut unit = entity(EntityCategory::Unit, GUARD);
-        let active_target = AttackTarget::new(7);
+        let active_target = TargetKind::Entity(7);
         unit.rearm_timer = crate::sim::timer::CdTimer::started(0, 17);
         unit.weapon_burst.complete_shot(4);
-        unit.attack_target = Some(active_target);
+        unit.attack_target.set_for_test(Some(active_target));
         unit.navigation.nav_com = Some(NavTargetRef::cell(1, 2));
-        unit.navigation.pending_arrival_clear = true;
+        unit.navigation.pending_destination_setter = true;
         let mut sim = sim_with(unit);
         let mut effects = RecordingConcreteMissionEffects::available();
 
@@ -1742,7 +1766,7 @@ mod tests {
             .get(1)
             .unwrap()
             .attack_target
-            .as_ref()
+            .target()
             .unwrap();
         assert_eq!(
             sim.substrate.entities.get(1).unwrap().rearm_timer,
@@ -1752,14 +1776,14 @@ mod tests {
             sim.substrate.entities.get(1).unwrap().weapon_burst.index(),
             1
         );
-        assert_eq!(installed.target, TargetKind::Entity(7));
+        assert_eq!(installed, TargetKind::Entity(7));
         assert!(
             !sim.substrate
                 .entities
                 .get(1)
                 .unwrap()
                 .navigation
-                .pending_arrival_clear
+                .pending_destination_setter
         );
     }
 
@@ -1772,7 +1796,9 @@ mod tests {
             EntityCategory::Aircraft,
         ] {
             let mut receiver = entity(category, GUARD);
-            receiver.attack_target = Some(AttackTarget::new(7));
+            receiver
+                .attack_target
+                .set_for_test(Some(TargetKind::Entity(7)));
             receiver.navigation.nav_com = Some(NavTargetRef::cell(1, 2));
             let mut sim = sim_with(receiver);
             let mut effects = RecordingConcreteMissionEffects::available();
@@ -1833,7 +1859,7 @@ mod tests {
     fn guarded_override_base_still_archives_and_runs_concrete_setters() {
         let deliberate = MissionId::from_raw(28);
         let mut unit = entity(EntityCategory::Unit, deliberate);
-        unit.attack_target = Some(AttackTarget::new(7));
+        unit.attack_target.set_for_test(Some(TargetKind::Entity(7)));
         unit.navigation.nav_com = Some(NavTargetRef::cell(1, 2));
         let before_mission = unit.mission;
         let mut sim = sim_with(unit);
@@ -1857,10 +1883,7 @@ mod tests {
             after.navigation.suspended_nav_com,
             Some(NavTargetRef::cell(1, 2))
         );
-        assert_eq!(
-            after.attack_target.as_ref().map(|target| target.target),
-            Some(TargetKind::Entity(8))
-        );
+        assert_eq!(after.attack_target.target(), Some(TargetKind::Entity(8)));
         assert_eq!(after.navigation.nav_com, Some(NavTargetRef::cell(8, 9)));
         assert!(matches!(
             effects.events.as_slice(),
@@ -1880,7 +1903,9 @@ mod tests {
     fn blocked_aircraft_override_has_empty_trace_and_byte_identical_state() {
         let mut aircraft = entity(EntityCategory::Aircraft, MissionId::from_raw(4));
         aircraft.mission_leaf = MissionLeafState::aircraft_raw_for_test(9, 1, false);
-        aircraft.attack_target = Some(AttackTarget::new(7));
+        aircraft
+            .attack_target
+            .set_for_test(Some(TargetKind::Entity(7)));
         aircraft.navigation.nav_com = Some(NavTargetRef::cell(1, 2));
         let before = bincode::serialize(&aircraft).expect("serialize blocked Aircraft");
         let mut sim = sim_with(aircraft);

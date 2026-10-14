@@ -257,19 +257,20 @@ pub(crate) fn position_world_coord(position: &Position) -> DriveCoord {
 
 /// ObjectClass GetCoords Z (virtual +0x48, Object+0xA4) of any object: the
 /// one answer to "how high is this object". An exact coordinate a native
-/// writer retained is already total world Z. Otherwise VERA still keeps the
-/// object's height in parts: the live sloped ground at its XY (Map578080
-/// through `ground_height_leptons`), the OnBridge deck, and its one active
-/// altitude source ([`object_altitude_leptons`]). Without terrain the stored
-/// signed level stands in for the ground. InRange's low-flying snap is its
-/// caller's rule, not part of this read.
+/// writer retained is already total world Z. An object without one stands on
+/// its ground ([`object_ground_z_leptons`]): every Reveal commits an exact Z
+/// (`unlimbo_z`) except a tube owner's, whose tube movement inserts one at its
+/// first step, so only objects never revealed, and headless fixtures, read
+/// this ground. InRange's low-flying snap is its caller's rule, not part of
+/// this read.
 pub(crate) fn object_world_z_leptons(
     entity: &crate::sim::game_entity::GameEntity,
     terrain: Option<&ResolvedTerrainGrid>,
 ) -> i32 {
-    entity.position.exact_z_leptons.unwrap_or_else(|| {
-        object_ground_z_leptons(entity, terrain).wrapping_add(object_altitude_leptons(entity))
-    })
+    entity
+        .position
+        .exact_z_leptons
+        .unwrap_or_else(|| object_ground_z_leptons(entity, terrain))
 }
 
 /// The ground an object without an exact coordinate stands on: the live
@@ -291,27 +292,6 @@ pub(crate) fn object_ground_z_leptons(
             })
         })
         .unwrap_or_else(|| i32::from(entity.position.z as i8) * GROUND_LEVEL_HEIGHT_LEPTONS)
-}
-
-/// Height above the ground of an object without an exact coordinate: the
-/// altitude of an Air-layer locomotor or of an active Hover (which floats on
-/// the Ground layer). Any other Ground-layer locomotor never lifts, which
-/// keeps a landed or docked aircraft on the floor whatever its stale
-/// altitude. A falling object and a launched missile always have an exact
-/// coordinate (the missile from its Unlimbo, `spawn_manager::launch_coordinate`,
-/// which its flight moves), so a Rocket locomotor's piggyback altitude is
-/// never read here.
-pub(crate) fn object_altitude_leptons(entity: &crate::sim::game_entity::GameEntity) -> i32 {
-    entity
-        .locomotor
-        .as_ref()
-        .filter(|locomotor| {
-            use crate::rules::locomotor_type::LocomotorKind;
-            (locomotor.layer == crate::sim::movement::locomotor::MovementLayer::Air
-                && locomotor.kind != LocomotorKind::Rocket)
-                || locomotor.active_kind() == LocomotorKind::Hover
-        })
-        .map_or(0, |locomotor| locomotor.altitude.to_num::<i32>())
 }
 
 /// Building render-coordinate459EF0 and GetYSort449410's type adjustment.
@@ -349,7 +329,7 @@ fn foundation_center_xy(location: [i32; 2], foundation: &str) -> [i32; 2] {
 /// from the foundation its type stamped on it at construction.
 pub(crate) fn object_center_xy(entity: &crate::sim::game_entity::GameEntity) -> [i32; 2] {
     let location = position_world_xy(&entity.position);
-    if entity.category == crate::map::entities::EntityCategory::Structure {
+    if entity.category() == crate::map::entities::EntityCategory::Structure {
         foundation_center_xy(location, &entity.foundation)
     } else {
         location
@@ -435,7 +415,9 @@ impl Simulation {
                 .substrate
                 .entities
                 .get(target)
-                .filter(|entity| entity.category == crate::map::entities::EntityCategory::Structure)
+                .filter(|entity| {
+                    entity.category() == crate::map::entities::EntityCategory::Structure
+                })
                 .map(|building| {
                     let (width, height) =
                         crate::rules::foundation::foundation_dimensions(&building.foundation);
@@ -618,8 +600,7 @@ impl Simulation {
     /// `+0x74` around its SetHeight, so it always takes this arm.
     ///
     /// It samples terrain only, as GetHeight ([`current_fly_height`]) does, so
-    /// `SetHeight(GetHeight() + n)` round-trips without a map too. It also
-    /// mirrors the requested height ([`mirror_height`]).
+    /// `SetHeight(GetHeight() + n)` round-trips without a map too.
     ///
     /// [`current_fly_height`]: super::air_movement::current_fly_height
     pub(crate) fn set_object_height_unmarked(&mut self, id: u64, height: i32) {
@@ -633,14 +614,5 @@ impl Simulation {
             self.resolved_terrain.as_ref(),
             None,
         );
-        mirror_height(entity, height);
-    }
-}
-
-/// Keep `LocomotorState.altitude` equal to the object's GetHeight, for the
-/// readers that still take it as the object's height (#692).
-pub(crate) fn mirror_height(entity: &mut crate::sim::game_entity::GameEntity, height: i32) {
-    if let Some(locomotor) = entity.locomotor.as_mut() {
-        locomotor.altitude = crate::util::fixed_math::SimFixed::saturating_from_num(height);
     }
 }

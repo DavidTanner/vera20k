@@ -36,8 +36,8 @@ fn fixture(selector: i32) -> Simulation {
     let y = head.y + i32::from(dy);
     let mut entity =
         GameEntity::test_default(1, "MTNK", "Americans", (x / 256) as u16, (y / 256) as u16);
-    entity.owner = sim.intern("Americans");
-    entity.type_ref = sim.intern("MTNK");
+    entity.set_owner_for_test(sim.intern("Americans"));
+    entity.set_type_ref_for_test(sim.intern("MTNK"));
     entity.position.sub_x = SimFixed::from_num(x % 256);
     entity.position.sub_y = SimFixed::from_num(y % 256);
     entity.position.exact_z_leptons = Some(0);
@@ -182,10 +182,15 @@ fn every_bunker_selector_restores_before_first_point_midcurve_and_paid_sentinel(
                 );
             }
             let entity = sim.substrate.entities.get(1).unwrap();
-            // Only the track end's same-Process continuation requests a route.
+            // Only the track end's same-Process continuation requests a route:
+            // mid-track the Foot+5E0 queue stays empty.
             assert!(
                 crate::sim::movement::track_head::committed_track_head(entity).is_none()
-                    || entity.movement_target.is_none()
+                    || entity
+                        .navigation
+                        .path_replay
+                        .remaining_directions()
+                        .is_empty()
             );
             assert!(stats.moved_steps <= 1, "Speed=1 cannot pay two points");
             if frame == 0 {
@@ -253,5 +258,4 @@ fn forced_object_turn_queries_live_speed_and_advances_shp_once() {
     );
     assert!(outcome.moved_steps > 1);
     assert_eq!(entity.body_frame_counter, before_body + 1);
-    assert!(entity.movement_target.is_none());
 }

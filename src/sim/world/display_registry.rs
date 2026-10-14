@@ -29,7 +29,7 @@ pub(crate) fn entity_layer(
     rules: Option<(&RuleSet, &crate::sim::intern::StringInterner)>,
 ) -> DisplayLayer {
     let kind = entity.locomotor.as_ref().map(|l| l.active_kind());
-    if entity.category != EntityCategory::Structure {
+    if entity.category() != EntityCategory::Structure {
         // Rocket In_Which_Layer (`0x00663460`) answers the Air layer.
         if kind == Some(LocomotorKind::Rocket) {
             return DisplayLayer::AIR;
@@ -91,7 +91,7 @@ fn entity_sort_key(
     object: Option<&crate::rules::object_type::ObjectType>,
 ) -> i32 {
     let raw = position_world_coord(&entity.position);
-    let (coord, adjust) = if entity.category == EntityCategory::Structure {
+    let (coord, adjust) = if entity.category() == EntityCategory::Structure {
         building_render_order_parts(
             raw,
             object.is_some_and(|object| object.turret_anim_is_voxel),
@@ -126,7 +126,7 @@ impl GroundSortKeys for GroundSortView<'_> {
         if let Some(entity) = self.entities.get(id) {
             // Only BuildingClass GetYSort reads type terms. Every sort pass
             // and Ground insert evaluates this; the handle hop never allocates.
-            let object = (entity.category == EntityCategory::Structure)
+            let object = (entity.category() == EntityCategory::Structure)
                 .then(|| {
                     self.rules.and_then(|rules| {
                         self.type_handles
@@ -247,6 +247,13 @@ impl Simulation {
         })
     }
 
+    /// Resubmit `id`'s display from its current state, as a native
+    /// resubmission site does.
+    #[cfg(test)]
+    pub(crate) fn resubmit_entity_display_for_test(&mut self, id: u64) {
+        self.submit_entity_display(id, None, None);
+    }
+
     /// Jumpjet54AECB/54AED1 captures the live query before Process.54B16F
     /// checks alive, then54B17F compares the new answer with that capture,
     /// not Object+94. Fly has different explicit resubmission sites and must
@@ -260,7 +267,7 @@ impl Simulation {
         let Some(entity) = self.substrate.entities.get(id) else {
             return;
         };
-        if entity.lifecycle.object_alive
+        if entity.lifecycle.object_alive()
             && entity_layer(
                 entity,
                 self.resolved_terrain.as_ref(),
@@ -324,7 +331,7 @@ mod tests {
                 13,
                 0,
                 owner,
-                crate::sim::components::Health { current: 100 },
+                crate::sim::combat::Health::new(100),
                 sim.interner.intern(name),
                 EntityCategory::Structure,
                 0,
@@ -433,30 +440,11 @@ mod tests {
                 }),
                 "{name}: cell list"
             );
-            if kind == "fly" {
-                // Both consumers dispatch Fly4CFCF0. A stale compatibility
-                // cache must not put an airborne object on the ground list
-                // (or remove a landed one), independently of display retention.
-                for cached_height in [-1000, 1000] {
-                    entity.locomotor.as_mut().unwrap().altitude = SimFixed::from_num(cached_height);
-                    assert_eq!(
-                        crate::sim::occupancy::cell_list_layer_for_entity(entity, Some(&terrain))
-                            .is_some(),
-                        row["layer"] == 2,
-                        "{name}, cached height {cached_height}",
-                    );
-                    assert_eq!(
-                        entity_layer(entity, Some(&terrain), Some((&rules, &sim.interner))),
-                        DisplayLayer::from_index(row["layer"].as_u64().unwrap() as u8).unwrap(),
-                        "{name}, cached height {cached_height}",
-                    );
-                }
-            }
         }
     }
 
     /// Kept Ground keys through the production entry points. Units move by
-    /// `get_mut` and in their own turn, the anims attached to them follow,
+    /// `get_mut`, the anims attached to them follow,
     /// anims move by themselves, members leave and rejoin, and scans switch
     /// between rules and none and follow a type handle rebuild. Before each
     /// scan the display is copied through its saved form, which keeps
@@ -467,7 +455,8 @@ mod tests {
         use super::super::display_layers::DisplayLayers;
         use crate::rules::art_data::ArtRegistry;
         use crate::sim::anim_class::AnimWorldCoord;
-        use crate::sim::components::{AnimClassSpawnDescriptor, Health};
+        use crate::sim::combat::Health;
+        use crate::sim::components::AnimClassSpawnDescriptor;
 
         let mut rules = RuleSet::from_ini(&IniFile::from_str(
             "[BuildingTypes]\n0=GATE\n[GATE]\nStrength=100\nGate=yes\n\
@@ -498,7 +487,7 @@ mod tests {
                 0,
                 0,
                 house,
-                Health { current: 100 },
+                Health::new(100),
                 type_ref,
                 category,
                 0,
@@ -568,8 +557,7 @@ mod tests {
                 }
                 1 => {
                     let unit = units[next(4) as usize];
-                    let mut turn = sim.substrate.entities.take_turn(unit).unwrap();
-                    let entity = turn.entity();
+                    let entity = sim.substrate.entities.get_mut(unit).unwrap();
                     entity.position.rx = (entity.position.rx as i32 - delta.signum()) as u16;
                     entity.position.sub_y = SimFixed::from_num((128 - delta).rem_euclid(256));
                 }

@@ -52,7 +52,11 @@ fn boarded_ifv(rules: &RuleSet, passenger_type: &str) -> (Simulation, u64, u64) 
         PassengerRole::Inside { transport_id, .. } if transport_id == ifv)
     );
     let tank = sim.spawn_object("MTNK", OWNER, 17, 16, 64, rules).unwrap();
-    sim.entities_mut().get_mut(tank).unwrap().health.current = 100;
+    sim.entities_mut()
+        .get_mut(tank)
+        .unwrap()
+        .health
+        .set_for_test(100);
     (sim, ifv, tank)
 }
 
@@ -87,6 +91,7 @@ fn repair_click(sim: &Simulation, rules: &RuleSet, ifv: u64, tank: u64) -> Comma
         owner,
         OrderModifier::Normal,
         OrderMode::Move,
+        false,
     );
     assert!(dispatch.consumed && !dispatch.select_fallback);
     assert_eq!(dispatch.receivers, [ifv].into_iter().collect());
@@ -101,6 +106,41 @@ fn repair_click(sim: &Simulation, rules: &RuleSet, ifv: u64, tank: u64) -> Comma
         "input must not mutate gameplay/RNG"
     );
     dispatch.commands.into_iter().next().unwrap()
+}
+
+/// Under the attack-move chord, ClickedMission promotes the repair click's
+/// Attack too (`0x006FFC09..0x006FFC1E`) and keeps the friend as the event
+/// target, which `Assign_Target_Command` stores as MegaTarget.
+#[test]
+fn retail_repair_click_under_the_attack_move_chord_keeps_the_friend_as_target() {
+    let Some(retail) = crate::rules::retail_ini_fixture::retail_battle_rules() else {
+        return;
+    };
+    let rules = &retail.rules;
+    let (sim, ifv, tank) = repair_ifv(rules);
+    let owner = sim.entities().get(ifv).unwrap().owner();
+    let dispatch = unit_repair_branch_orders(
+        &sim,
+        rules,
+        &[ifv],
+        &[ifv],
+        &HoverTargetKindWithId {
+            kind: HoverTargetKind::FriendlyUnit,
+            stable_id: tank,
+        },
+        owner,
+        OrderModifier::Normal,
+        OrderMode::AttackMove,
+        false,
+    );
+    assert_eq!(
+        dispatch.commands,
+        [Command::AttackMove {
+            entity_id: ifv,
+            target: Some(TargetKind::Entity(tank)),
+            destination: None,
+        }]
+    );
 }
 
 #[test]
@@ -165,7 +205,7 @@ fn retail_berserk_engineer_ifv_keeps_cursor_but_refuses_click() {
     let owner = sim.entities().get(ifv).unwrap().owner();
     assert_eq!(
         berserk_selection_click(&sim, rules, &[ifv], Some(&hover), (0, 0), owner),
-        BerserkSelectionClick::Dispatch
+        LeftRelease::Dispatch
     );
     // Over itself the healer arm answers Select (`0x0073FE3B`), since the
     // berserk base answer (0) skips the self action.
@@ -175,19 +215,14 @@ fn retail_berserk_engineer_ifv_keeps_cursor_but_refuses_click() {
     };
     assert_eq!(
         berserk_selection_click(&sim, rules, &[ifv], Some(&over_itself), (0, 0), owner),
-        BerserkSelectionClick::Select
+        LeftRelease::Select
     );
     assert_eq!(sim.state_hash(), prior);
     // The refusal belongs to ClickedAction, not Event::Execute. An event
     // already published before the actor became berserk is still received.
     assert!(sim.apply_command(OWNER, &already_sent, Some(rules)));
     assert_eq!(
-        sim.entities()
-            .get(ifv)
-            .unwrap()
-            .attack_target
-            .as_ref()
-            .map(|attack| attack.target),
+        sim.entities().get(ifv).unwrap().attack_target.target(),
         Some(TargetKind::Entity(tank))
     );
 }
@@ -204,23 +239,18 @@ fn retail_engineer_ifv_plain_repair_click_reaches_attack_mission_and_heals() {
     let command = repair_click(&sim, rules, ifv, tank);
     assert!(sim.apply_command(OWNER, &command, Some(rules)));
     assert_eq!(
-        sim.entities()
-            .get(ifv)
-            .unwrap()
-            .attack_target
-            .as_ref()
-            .map(|attack| attack.target),
+        sim.entities().get(ifv).unwrap().attack_target.target(),
         Some(TargetKind::Entity(tank))
     );
     let grid = sim.path_grid_snapshot().unwrap();
-    let before = sim.entities().get(tank).unwrap().health.current;
+    let before = sim.entities().get(tank).unwrap().health.current();
     for _ in 0..120 {
         sim.advance_tick(&[], Some(rules), Some(&grid), None, 67);
-        if sim.entities().get(tank).unwrap().health.current > before {
+        if sim.entities().get(tank).unwrap().health.current() > before {
             break;
         }
     }
-    let after = sim.entities().get(tank).unwrap().health.current;
+    let after = sim.entities().get(tank).unwrap().health.current();
     assert!(
         after > before && after <= rules.object("MTNK").unwrap().strength,
         "the ordinary selected repair weapon must raise target health"
@@ -235,14 +265,18 @@ fn retail_far_repair_click_drives_into_range_and_heals_without_ctrl() {
     let rules = &retail.rules;
     let (mut sim, ifv, _) = repair_ifv(rules);
     let far = sim.spawn_object("MTNK", OWNER, 25, 16, 64, rules).unwrap();
-    sim.entities_mut().get_mut(far).unwrap().health.current = 100;
+    sim.entities_mut()
+        .get_mut(far)
+        .unwrap()
+        .health
+        .set_for_test(100);
     let start = sim.entities().get(ifv).unwrap().position;
     let command = repair_click(&sim, rules, ifv, far);
     assert!(sim.apply_command(OWNER, &command, Some(rules)));
     let grid = sim.path_grid_snapshot().unwrap();
     for _ in 0..900 {
         sim.advance_tick(&[], Some(rules), Some(&grid), None, 67);
-        if sim.entities().get(far).unwrap().health.current > 100 {
+        if sim.entities().get(far).unwrap().health.current() > 100 {
             break;
         }
     }
@@ -253,7 +287,7 @@ fn retail_far_repair_click_drives_into_range_and_heals_without_ctrl() {
         "the ordered repair must approach a distant ally"
     );
     assert!(
-        sim.entities().get(far).unwrap().health.current > 100,
+        sim.entities().get(far).unwrap().health.current() > 100,
         "a normal repair click must reach its damaged target and fire"
     );
 }
@@ -279,7 +313,7 @@ fn retail_repair_click_preserves_native_modifier_and_target_controls() {
         (OrderModifier::ForceFire, "ctrl_friend"),
         (OrderModifier::ForceMove, "alt_friend"),
         (OrderModifier::GuardArea, "ctrl_alt_friend"),
-        (OrderModifier::Queue, "shift_friend"),
+        (OrderModifier::Shift, "shift_friend"),
     ] {
         let native = packet["repair_rows"]
             .as_array()
@@ -296,6 +330,7 @@ fn retail_repair_click_preserves_native_modifier_and_target_controls() {
             owner,
             modifier,
             OrderMode::Move,
+            false,
         );
         let native_orders: Vec<_> = native["trace"]
             .as_array()
@@ -322,8 +357,11 @@ fn retail_repair_click_preserves_native_modifier_and_target_controls() {
     );
     let wrong_owner = sim.interner.get("Russians").unwrap();
     assert_eq!(sim.unit_repair_action(ifv, tank, wrong_owner, rules), None);
-    sim.entities_mut().get_mut(tank).unwrap().health.current =
-        rules.object("MTNK").unwrap().strength;
+    sim.entities_mut()
+        .get_mut(tank)
+        .unwrap()
+        .health
+        .set_for_test(rules.object("MTNK").unwrap().strength);
     assert!(
         unit_repair_branch_orders(
             &sim,
@@ -333,16 +371,25 @@ fn retail_repair_click_preserves_native_modifier_and_target_controls() {
             &hover,
             owner,
             OrderModifier::Normal,
-            OrderMode::Move
+            OrderMode::Move,
+            false
         )
         .commands
         .is_empty()
     );
-    sim.entities_mut().get_mut(tank).unwrap().health.current = 100;
+    sim.entities_mut()
+        .get_mut(tank)
+        .unwrap()
+        .health
+        .set_for_test(100);
     let enemy = sim
         .spawn_object("MTNK", "Russians", 23, 16, 64, rules)
         .unwrap();
-    sim.entities_mut().get_mut(enemy).unwrap().health.current = 100;
+    sim.entities_mut()
+        .get_mut(enemy)
+        .unwrap()
+        .health
+        .set_for_test(100);
     assert_eq!(
         sim.unit_repair_action(ifv, enemy, owner, rules),
         Some(UnitRepairAction::Move)
@@ -360,6 +407,7 @@ fn retail_repair_click_preserves_native_modifier_and_target_controls() {
         owner,
         OrderModifier::Normal,
         OrderMode::Move,
+        false,
     );
     assert_eq!(move_dispatch.commands.len(), 1);
     assert!(
@@ -408,16 +456,14 @@ fn issued_repair_attack_is_not_readmitted_when_health_or_cargo_changes() {
     let rules = &retail.rules;
     let (mut sim, ifv, tank) = repair_ifv(rules);
     let command = repair_click(&sim, rules, ifv, tank);
-    sim.entities_mut().get_mut(tank).unwrap().health.current =
-        rules.object("MTNK").unwrap().strength;
+    sim.entities_mut()
+        .get_mut(tank)
+        .unwrap()
+        .health
+        .set_for_test(rules.object("MTNK").unwrap().strength);
     assert!(sim.apply_command(OWNER, &command, Some(rules)));
     assert_eq!(
-        sim.entities()
-            .get(ifv)
-            .unwrap()
-            .attack_target
-            .as_ref()
-            .map(|a| a.target),
+        sim.entities().get(ifv).unwrap().attack_target.target(),
         Some(TargetKind::Entity(tank)),
         "the event still commits its original target"
     );
@@ -448,12 +494,7 @@ fn issued_repair_attack_is_not_readmitted_when_health_or_cargo_changes() {
     assert_eq!(sim.entities().get(ifv).unwrap().current_weapon_number(), 0);
     assert!(sim.apply_command(OWNER, &command, Some(rules)));
     assert_eq!(
-        sim.entities()
-            .get(ifv)
-            .unwrap()
-            .attack_target
-            .as_ref()
-            .map(|a| a.target),
+        sim.entities().get(ifv).unwrap().attack_target.target(),
         Some(TargetKind::Entity(tank)),
         "cargo changes do not replace the issued event"
     );
@@ -501,7 +542,11 @@ fn unit_repair_vehicle_class_matches_fire_error_including_undeploy_building() {
         let target = sim
             .spawn_object(kind, OWNER, cell.0, cell.1, 64, &rules)
             .unwrap();
-        sim.entities_mut().get_mut(target).unwrap().health.current = 50;
+        sim.entities_mut()
+            .get_mut(target)
+            .unwrap()
+            .health
+            .set_for_test(50);
         targets.push(target);
     }
     assert_eq!(

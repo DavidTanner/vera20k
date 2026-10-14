@@ -21,9 +21,9 @@ use crate::rules::particle_system_type::ParticleSystemTypeId;
 use crate::rules::particle_type::ParticleTypeId;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::bridge_state::{BridgeDamageEvent, BridgeRuntimeState};
-use crate::sim::combat::AttackTarget;
+use crate::sim::combat::TargetKind;
 use crate::sim::command::{Command, CommandEnvelope};
-use crate::sim::components::{DriveCoord, MovementTarget};
+use crate::sim::components::DriveCoord;
 use crate::sim::game_entity::GameEntity;
 use crate::sim::mission::{MissionId, MissionType};
 use crate::sim::movement::FacingClass;
@@ -95,11 +95,11 @@ fn combatant_selection_ingress_precedes_destroy_and_is_not_replayed_at_tail() {
     // exact-zero input without claiming a full native fatal-hit execution.
     let (mut sim, owner) = game_speed_command_sim();
     let mut infantry = GameEntity::test_default(1, "E1", "Local", 30, 40);
-    infantry.owner = owner;
-    infantry.type_ref = sim.interner.intern("E1");
-    infantry.category = EntityCategory::Infantry;
-    infantry.lifecycle.object_alive = true;
-    infantry.lifecycle.in_limbo = false;
+    infantry.set_owner_for_test(owner);
+    infantry.set_type_ref_for_test(sim.interner.intern("E1"));
+    infantry.set_category_for_test(EntityCategory::Infantry);
+    infantry.lifecycle.set_object_alive_for_test(true);
+    infantry.lifecycle.set_in_limbo_for_test(false);
     infantry.selected = false;
     sim.substrate.entities.insert(infantry);
     let commands = [CommandEnvelope::new(
@@ -118,7 +118,12 @@ fn combatant_selection_ingress_precedes_destroy_and_is_not_replayed_at_tail() {
         crate::sim::world::FrameEffects::default(),
     );
     let selected_before_logic = sim.entities().get(1).unwrap().selected;
-    sim.substrate.entities.get_mut(1).unwrap().health.current = 0;
+    sim.substrate
+        .entities
+        .get_mut(1)
+        .unwrap()
+        .health
+        .set_for_test(0);
     sim.object_destroy_callback(1, UninitContext::default());
     assert!(!sim.entities().get(1).unwrap().selected);
     let (tail_count, spawned) = sim.apply_due_commands(
@@ -136,7 +141,7 @@ fn combatant_selection_ingress_precedes_destroy_and_is_not_replayed_at_tail() {
     assert!(selected_before_logic, "local Select commits before Logic");
     assert_eq!((ingress_count, tail_count, spawned), (1, 0, false));
     assert!(sim.entities().get(1).unwrap().is_object_alive());
-    assert!(!sim.entities().get(1).unwrap().lifecycle.in_limbo);
+    assert!(!sim.entities().get(1).unwrap().lifecycle.in_limbo());
     // A distinct later real P remains admitted, as the executed native
     // infantry_health_zero_alive_true control pins. Do not add a health gate.
     assert!(sim.try_select_object(1, None));
@@ -739,7 +744,7 @@ fn advance_tick_finishes_dying_infantry_from_rules_catalog() {
         .get_mut(id)
         .expect("spawned infantry")
         .health
-        .current = 0;
+        .set_for_test(0);
     sim.begin_infantry_death_sequence(
         id,
         super::infantry_terminal::InfantryDeathSequence::Die1,
@@ -1057,7 +1062,7 @@ fn gsi_13_10_art_model_rules() -> RuleSet {
 }
 
 fn assert_gsi_13_10_shp_unit(entity: &GameEntity) {
-    assert_eq!(entity.category, EntityCategory::Unit);
+    assert_eq!(entity.category(), EntityCategory::Unit);
     assert!(
         !entity.is_voxel,
         "SHP Unit must retain its SHP drawing representation"
@@ -1067,7 +1072,7 @@ fn assert_gsi_13_10_shp_unit(entity: &GameEntity) {
 }
 
 fn assert_gsi_13_10_vxl_unit(entity: &GameEntity) {
-    assert_eq!(entity.category, EntityCategory::Unit);
+    assert_eq!(entity.category(), EntityCategory::Unit);
     assert!(entity.is_voxel);
     assert!(entity.animation.is_none());
     assert!(
@@ -1089,8 +1094,8 @@ fn a_flying_aircraft_starts_its_move_sound_on_its_speed() {
     let run = |speed: SimFixed| {
         let mut sim = Simulation::with_seed(0x1020_3040);
         let mut entity = GameEntity::test_default(1, "TESTPLANE", "Americans", 4, 4);
-        entity.type_ref = sim.interner.intern("TESTPLANE");
-        entity.category = EntityCategory::Aircraft;
+        entity.set_type_ref_for_test(sim.interner.intern("TESTPLANE"));
+        entity.set_category_for_test(EntityCategory::Aircraft);
         let mut locomotor = LocomotorState::for_test_kind(LocomotorKind::Fly);
         locomotor
             .fly_runtime_mut()
@@ -1122,8 +1127,8 @@ fn idle_squid_body_counter_starts_move_sound() {
     let object = rules.object("SQD").expect("retail SQD");
     let mut sim = Simulation::with_seed(0x1020_3040);
     let mut entity = GameEntity::test_default(1, "SQD", "Americans", 4, 4);
-    entity.type_ref = sim.interner.intern("SQD");
-    entity.lifecycle.in_limbo = false;
+    entity.set_type_ref_for_test(sim.interner.intern("SQD"));
+    entity.lifecycle.set_in_limbo_for_test(false);
     entity.locomotor = Some(LocomotorState::for_test_kind(LocomotorKind::Ship));
     sim.substrate.entities.insert(entity);
     let before = sim.substrate.entities.get(1).unwrap().body_frame_counter;
@@ -1136,6 +1141,7 @@ fn idle_squid_body_counter_starts_move_sound() {
         },
         object.hover_attack,
         object.deploy_to_land,
+        None,
         4,
     );
     assert_eq!(sim.substrate.entities.get(1).unwrap().body_frame_counter, 1);
@@ -1178,7 +1184,7 @@ fn move_sound_test_rules(configured: bool) -> RuleSet {
 fn move_sound_test_sim() -> Simulation {
     let mut sim = Simulation::with_seed(0x1020_3040);
     let mut entity = GameEntity::test_default(1, "TESTUNIT", "Americans", 4, 4);
-    entity.type_ref = sim.interner.intern("TESTUNIT");
+    entity.set_type_ref_for_test(sim.interner.intern("TESTUNIT"));
     entity.locomotor = Some(LocomotorState::for_test_kind(LocomotorKind::Drive));
     sim.substrate.entities.insert(entity);
     sim
@@ -1420,9 +1426,11 @@ fn gsi_04_07_wall_sell_ordered_cleanup_detach_navigation_and_zero_refund_rng() {
 
     for (id, target) in [(10, (4, 4)), (20, (4, 3))] {
         let mut listener = GameEntity::test_default(id, "E1", "Receiver", 2, 2);
-        listener.owner = receiver;
-        listener.type_ref = sim.interner.intern("E1");
-        listener.attack_target = Some(AttackTarget::for_cell(target.0, target.1));
+        listener.set_owner_for_test(receiver);
+        listener.set_type_ref_for_test(sim.interner.intern("E1"));
+        listener
+            .attack_target
+            .set_for_test(Some(TargetKind::Cell(target.0, target.1)));
         sim.substrate.entities.insert(listener);
     }
     let hash_before_sale = sim.state_hash();
@@ -1475,6 +1483,7 @@ fn gsi_04_07_wall_sell_ordered_cleanup_detach_navigation_and_zero_refund_rng() {
             .get(10)
             .unwrap()
             .attack_target
+            .target()
             .is_none()
     );
     assert!(
@@ -1483,6 +1492,7 @@ fn gsi_04_07_wall_sell_ordered_cleanup_detach_navigation_and_zero_refund_rng() {
             .get(20)
             .unwrap()
             .attack_target
+            .target()
             .is_none(),
         "cleanup removal expires the represented Cell target"
     );
@@ -1975,17 +1985,17 @@ fn gsi_04_07_damage_fatal_transport_lifecycle_brackets_nested_death_weapon() {
         let mut cargo = crate::sim::passenger::PassengerCargo::new(2, 1);
         assert!(cargo.board(11, 1));
         let mut carrier = GameEntity::test_default(10, "BOOMER", "Soviet", 8, 5);
-        carrier.owner = enemy;
-        carrier.type_ref = sim.interner.intern("BOOMER");
-        carrier.health.current = carrier_hp;
+        carrier.set_owner_for_test(enemy);
+        carrier.set_type_ref_for_test(sim.interner.intern("BOOMER"));
+        carrier.health.set_for_test(carrier_hp);
         carrier.passenger_role = crate::sim::passenger::PassengerRole::Transport { cargo };
         sim.substrate.entities.insert(carrier);
         let _ = sim.reveal(10);
 
         let mut passenger = GameEntity::test_default(11, "PASSENGER", "Soviet", 8, 5);
-        passenger.owner = enemy;
-        passenger.type_ref = sim.interner.intern("PASSENGER");
-        passenger.category = EntityCategory::Infantry;
+        passenger.set_owner_for_test(enemy);
+        passenger.set_type_ref_for_test(sim.interner.intern("PASSENGER"));
+        passenger.set_category_for_test(EntityCategory::Infantry);
         passenger.mission_leaf = crate::sim::mission::leaf::MissionLeafState::for_entity_category(
             EntityCategory::Infantry,
         );
@@ -2004,10 +2014,10 @@ fn gsi_04_07_damage_fatal_transport_lifecycle_brackets_nested_death_weapon() {
             5,
             EntityCategory::Structure,
         );
-        listener.owner = owner;
-        listener.type_ref = sim.interner.intern("LISTENER");
+        listener.set_owner_for_test(owner);
+        listener.set_type_ref_for_test(sim.interner.intern("LISTENER"));
         listener.is_voxel = false;
-        listener.health.current = 300;
+        listener.health.set_for_test(300);
         sim.substrate.entities.insert(listener);
         let _ = sim.reveal(30);
 
@@ -2019,20 +2029,22 @@ fn gsi_04_07_damage_fatal_transport_lifecycle_brackets_nested_death_weapon() {
             5,
             EntityCategory::Structure,
         );
-        nested_fatal.owner = owner;
-        nested_fatal.type_ref = sim.interner.intern("LISTENER");
+        nested_fatal.set_owner_for_test(owner);
+        nested_fatal.set_type_ref_for_test(sim.interner.intern("LISTENER"));
         nested_fatal.is_voxel = false;
-        nested_fatal.health.current = 107;
+        nested_fatal.health.set_for_test(107);
         sim.substrate.entities.insert(nested_fatal);
         let _ = sim.reveal(31);
 
         let mut attacker = GameEntity::test_default(20, "SHOOTER", "Americans", 6, 5);
-        attacker.owner = owner;
-        attacker.type_ref = sim.interner.intern("SHOOTER");
+        attacker.set_owner_for_test(owner);
+        attacker.set_type_ref_for_test(sim.interner.intern("SHOOTER"));
         sim.substrate.entities.insert(attacker);
         let _ = sim.reveal(20);
         let attacker = sim.substrate.entities.get_mut(20).unwrap();
-        attacker.attack_target = Some(AttackTarget::new(10));
+        attacker
+            .attack_target
+            .set_for_test(Some(TargetKind::Entity(10)));
         attacker.radio_contacts.insert(10);
         attacker
             .mission
@@ -2086,13 +2098,14 @@ fn gsi_04_07_damage_fatal_transport_lifecycle_brackets_nested_death_weapon() {
     );
     for id in [11, 31, 10] {
         let entity = fatal.substrate.entities.get(id).unwrap();
-        assert_eq!(entity.health.current, 0);
-        assert!(!entity.lifecycle.object_alive);
+        assert_eq!(entity.health.current(), 0);
+        assert!(!entity.lifecycle.object_alive());
         assert!(!entity.in_logic_vector);
     }
     let listener = fatal.substrate.entities.get(30).unwrap();
     assert_eq!(
-        listener.health.current, 193,
+        listener.health.current(),
+        193,
         "wood Verses scales 214 to 107"
     );
     let nested_fatal = fatal.substrate.entities.get(31).unwrap();
@@ -2116,7 +2129,7 @@ fn gsi_04_07_damage_fatal_transport_lifecycle_brackets_nested_death_weapon() {
     assert!(!fatal.substrate.occupancy.contains_entity(8, 5, 10));
     let attacker = fatal.substrate.entities.get(20).unwrap();
     assert!(!attacker.radio_contacts.contains(10));
-    assert!(attacker.attack_target.is_none());
+    assert!(attacker.attack_target.target().is_none());
     assert!(
         result
             .consequences
@@ -2160,7 +2173,7 @@ fn gsi_04_07_damage_fatal_transport_lifecycle_brackets_nested_death_weapon() {
     assert!(boundary.substrate.occupancy.contains_entity(8, 5, 10));
     for id in [30, 31] {
         let listener = boundary.substrate.entities.get(id).unwrap();
-        assert_eq!(listener.health.current, if id == 30 { 300 } else { 107 });
+        assert_eq!(listener.health.current(), if id == 30 { 300 } else { 107 });
     }
     assert!(
         boundary_result
@@ -2352,8 +2365,8 @@ fn gsi_04_11_missile_outer_anim_precedes_per_cell_ore_reduction() {
         5,
         EntityCategory::Aircraft,
     );
-    missile.owner = sim.interner.intern("Americans");
-    missile.type_ref = sim.interner.intern("DMISL");
+    missile.set_owner_for_test(sim.interner.intern("Americans"));
+    missile.set_type_ref_for_test(sim.interner.intern("DMISL"));
     let mut locomotor = LocomotorState::for_test_kind(LocomotorKind::Rocket);
     locomotor
         .rocket_runtime_mut()
@@ -2405,8 +2418,8 @@ fn uninit_removes_all_structure_foundation_cells() {
     );
     // Entity ids must come from the Simulation's own interner — test_default interns
     // into the thread-local test interner, which sim code never resolves against.
-    structure.owner = sim.interner.intern("Americans");
-    structure.type_ref = sim.interner.intern("GAPOWR");
+    structure.set_owner_for_test(sim.interner.intern("Americans"));
+    structure.set_type_ref_for_test(sim.interner.intern("GAPOWR"));
     structure.foundation = "2x2".to_string();
     sim.substrate.entities.insert(structure);
     sim.reveal(10);
@@ -2482,9 +2495,9 @@ fn insert_test_entity_for_owner(
 ) {
     let owner_name = sim.interner.resolve(owner).to_string();
     let mut entity = GameEntity::test_default(stable_id, type_id, &owner_name, 10, 10);
-    entity.owner = owner;
-    entity.type_ref = sim.interner.intern(type_id);
-    entity.category = category;
+    entity.set_owner_for_test(owner);
+    entity.set_type_ref_for_test(sim.interner.intern(type_id));
+    entity.set_category_for_test(category);
     sim.substrate.entities.insert(entity);
     // As its construction would: Add_Tracking.
     sim.update_house_tracking(
@@ -2511,8 +2524,8 @@ fn gsi_05_16_change_owner_moves_live_category_counts_once_and_noops() {
 
     assert_eq!(counts(&sim, old_owner), (0, 0));
     assert_eq!(counts(&sim, new_owner), (1, 1));
-    assert_eq!(sim.substrate.entities.get(1).unwrap().owner, new_owner);
-    assert_eq!(sim.substrate.entities.get(2).unwrap().owner, new_owner);
+    assert_eq!(sim.substrate.entities.get(1).unwrap().owner(), new_owner);
+    assert_eq!(sim.substrate.entities.get(2).unwrap().owner(), new_owner);
 
     sim.change_owner(1, new_owner);
     sim.change_owner(999, old_owner);
@@ -2544,11 +2557,11 @@ fn despawn_entity_clears_live_radio_contacts() {
     let mut despawned = GameEntity::test_default(1, "HTNK", "Americans", 10, 10);
     let mut survivor = GameEntity::test_default(2, "MTNK", "Americans", 11, 10);
 
-    despawned.owner = owner;
-    despawned.type_ref = htnk;
+    despawned.set_owner_for_test(owner);
+    despawned.set_type_ref_for_test(htnk);
     despawned.mark_live_contact_with(2);
-    survivor.owner = owner;
-    survivor.type_ref = mtnk;
+    survivor.set_owner_for_test(owner);
+    survivor.set_type_ref_for_test(mtnk);
     survivor.mark_live_contact_with(1);
     sim.substrate.entities.insert(despawned);
     sim.substrate.entities.insert(survivor);
@@ -2648,20 +2661,23 @@ fn gsi_04_15_active_tube_leaf_preempts_unit_and_infantry_mission_host() {
             0,
             0,
             owner,
-            crate::sim::components::Health { current: 100 },
+            crate::sim::combat::Health::new(100),
             type_ref,
             category,
             0,
             5,
             true,
         );
-        entity.lifecycle.in_limbo = false;
+        entity.lifecycle.set_in_limbo_for_test(false);
         entity.lifecycle.cell_marked = false;
         if category == EntityCategory::Unit {
-            entity.mega_mission =
-                crate::sim::mission::mega_mission::MegaMission::attack_move(Some((2, 0)));
+            entity.mega_mission = crate::sim::mission::mega_mission::MegaMission::attack_move(
+                Some(crate::sim::combat::TargetKind::Cell(2, 0)),
+            );
         } else {
-            entity.attack_target = Some(AttackTarget::for_cell(0, 0));
+            entity
+                .attack_target
+                .set_for_test(Some(TargetKind::Cell(0, 0)));
             entity.passively_acquired_target = true;
         }
         entity.locomotor = Some(LocomotorState::for_test_kind(match category {
@@ -2703,14 +2719,14 @@ fn gsi_04_15_active_tube_leaf_preempts_unit_and_infantry_mission_host() {
             0,
             0,
             original_building_owner,
-            crate::sim::components::Health { current: 100 },
+            crate::sim::combat::Health::new(100),
             sim.interner.intern("TESTBUILD"),
             EntityCategory::Structure,
             0,
             5,
             true,
         );
-        building.lifecycle.in_limbo = false;
+        building.lifecycle.set_in_limbo_for_test(false);
         sim.substrate.entities.insert(building);
         sim.add_entity_occupancy(2);
         sim.fog = crate::sim::vision::FogState::new(3, 1);
@@ -2755,19 +2771,22 @@ fn gsi_04_15_active_tube_leaf_preempts_unit_and_infantry_mission_host() {
             assert!(
                 sim.substrate
                     .occupancy
-                    .contains_entity(1, 0, entity.stable_id),
+                    .contains_entity(1, 0, entity.stable_id()),
                 "{category:?} final Tube leaf runs exactly once and restores occupancy"
             );
             if category == EntityCategory::Unit {
-                assert!(entity.attack_target.is_none());
+                assert!(entity.attack_target.target().is_none());
                 assert!(!entity.passively_acquired_target);
-                assert!(entity.movement_target.is_none());
-                assert_eq!(entity.mega_mission.destination(), Some((2, 0)));
+                assert!(crate::sim::movement::motion_query::is_moving(&entity) != Some(true));
+                assert_eq!(
+                    entity.mega_mission.destination(),
+                    Some(crate::sim::combat::TargetKind::Cell(2, 0))
+                );
                 assert!(entity.mega_mission.is_attack_move());
             } else {
                 assert!(entity.passively_acquired_target);
                 assert!(matches!(
-                    entity.attack_target.as_ref().map(|target| target.target),
+                    entity.attack_target.target(),
                     Some(crate::sim::combat::TargetKind::Cell(0, 0))
                 ));
                 assert_eq!(
@@ -2776,11 +2795,14 @@ fn gsi_04_15_active_tube_leaf_preempts_unit_and_infantry_mission_host() {
                     "Tube final retains the authoritative building destination"
                 );
                 assert!(
-                    entity.movement_target.is_none(),
+                    crate::sim::movement::motion_query::is_moving(&entity) != Some(true),
                     "Tube final does not walk into the adjacent building"
                 );
                 assert_eq!(
-                    sim.substrate.entities.get(2).map(|building| building.owner),
+                    sim.substrate
+                        .entities
+                        .get(2)
+                        .map(|building| building.owner()),
                     Some(original_building_owner),
                     "Tube final does not run a building-entry receiver beside the destination"
                 );
@@ -2804,8 +2826,7 @@ fn gsi_04_15_active_tube_leaf_preempts_unit_and_infantry_mission_host() {
                 sim.substrate
                     .entities
                     .get(1)
-                    .and_then(|entity| entity.attack_target.as_ref())
-                    .map(|target| target.target),
+                    .and_then(|entity| entity.attack_target.target()),
                 Some(crate::sim::combat::TargetKind::Entity(2))
             ));
         }
@@ -3271,12 +3292,12 @@ fn sonic_constructor_dead_pointer_link_lives_until_deferred_delete_at_239() {
     let firer_type = sim.interner.intern("DLPH");
     let target_type = sim.interner.intern("TARGET");
     let mut firer = GameEntity::test_default(firer_id, "DLPH", "Americans", 0, 0);
-    firer.owner = owner;
-    firer.type_ref = firer_type;
+    firer.set_owner_for_test(owner);
+    firer.set_type_ref_for_test(firer_type);
     firer.position.sub_x = SimFixed::from_num(0);
     firer.position.sub_y = SimFixed::from_num(0);
     let mut target = GameEntity::test_default(target_id, "TARGET", "Russians", 0, 0);
-    target.type_ref = target_type;
+    target.set_type_ref_for_test(target_type);
     target.position.sub_x = SimFixed::from_num(239);
     target.position.sub_y = SimFixed::from_num(0);
     sim.substrate.entities.insert(firer);
@@ -3309,8 +3330,8 @@ fn a_sonic_wave_aims_at_a_buildings_foundation_centre() {
     let firer_id = sim.allocate_stable_id();
     let target_id = sim.allocate_stable_id();
     let mut firer = GameEntity::test_default(firer_id, "DLPH", "Americans", 2, 2);
-    firer.owner = sim.interner.intern("Americans");
-    firer.type_ref = sim.interner.intern("DLPH");
+    firer.set_owner_for_test(sim.interner.intern("Americans"));
+    firer.set_type_ref_for_test(sim.interner.intern("DLPH"));
     let mut target = GameEntity::test_default_of_category(
         target_id,
         "TARGET",
@@ -3319,7 +3340,7 @@ fn a_sonic_wave_aims_at_a_buildings_foundation_centre() {
         10,
         EntityCategory::Structure,
     );
-    target.type_ref = sim.interner.intern("TARGET");
+    target.set_type_ref_for_test(sim.interner.intern("TARGET"));
     target.foundation = "3x3".to_string();
     sim.substrate.entities.insert(firer);
     sim.substrate.entities.insert(target);
@@ -3356,12 +3377,12 @@ fn sonic_constructor_at_240_registers_then_runs_at_same_pass_tail() {
     let firer_type = sim.interner.intern("DLPH");
     let target_type = sim.interner.intern("TARGET");
     let mut firer = GameEntity::test_default(firer_id, "DLPH", "Americans", 0, 0);
-    firer.owner = owner;
-    firer.type_ref = firer_type;
+    firer.set_owner_for_test(owner);
+    firer.set_type_ref_for_test(firer_type);
     firer.position.sub_x = SimFixed::from_num(0);
     firer.position.sub_y = SimFixed::from_num(0);
     let mut target = GameEntity::test_default(target_id, "TARGET", "Russians", 0, 0);
-    target.type_ref = target_type;
+    target.set_type_ref_for_test(target_type);
     target.position.sub_x = SimFixed::from_num(240);
     target.position.sub_y = SimFixed::from_num(0);
     sim.substrate.entities.insert(firer);
@@ -3407,11 +3428,13 @@ fn sonic_cell_target_uses_persistent_dummy_gettargetcoords_on_create_and_refresh
     let owner = sim.interner.intern("Americans");
     let firer_type = sim.interner.intern("DLPH");
     let mut firer = GameEntity::test_default(firer_id, "DLPH", "Americans", 0, 0);
-    firer.owner = owner;
-    firer.type_ref = firer_type;
+    firer.set_owner_for_test(owner);
+    firer.set_type_ref_for_test(firer_type);
     firer.position.sub_x = SimFixed::from_num(0);
     firer.position.sub_y = SimFixed::from_num(0);
-    firer.attack_target = Some(AttackTarget::for_cell(u16::MAX, 7));
+    firer
+        .attack_target
+        .set_for_test(Some(TargetKind::Cell(u16::MAX, 7)));
     sim.substrate.entities.insert(firer);
 
     let mut event = sonic_fire_event(&mut sim, firer_id, u64::MAX);
@@ -3534,7 +3557,7 @@ fn guard_infantry_acquire_return_fire_and_finish_a_duel() {
             if let Some(target) = sim.substrate.entities.get(id)
                 && !target.dying
             {
-                health_history[index].push(target.health.current);
+                health_history[index].push(target.health.current());
                 alive.push(index);
             }
         }
@@ -3564,7 +3587,7 @@ fn guard_infantry_acquire_return_fire_and_finish_a_duel() {
             .get(survivor)
             .unwrap()
             .health
-            .current,
+            .current(),
         25,
         "the survivor received four bullets"
     );
@@ -3600,7 +3623,7 @@ fn guard_infantry_acquire_return_fire_and_finish_a_duel() {
         .get(survivor)
         .expect("the winning guard survives");
     assert_eq!(survivor.mission.current(), guard);
-    assert!(survivor.attack_target.is_none());
+    assert!(survivor.attack_target.target().is_none());
 }
 
 #[test]
@@ -3673,7 +3696,7 @@ fn sonic_fire_registers_immediately_but_later_techno_fires_before_wave_tail_ai()
             .get(later_target_id)
             .expect("later target survives")
             .health
-            .current,
+            .current(),
         93,
         "the later pre-existing Techno completed its FireAt effects",
     );
@@ -3683,7 +3706,7 @@ fn sonic_fire_registers_immediately_but_later_techno_fires_before_wave_tail_ai()
             .get(wave_receiver_id)
             .expect("Wave receiver survives")
             .health
-            .current,
+            .current(),
         90,
         "the appended Wave still damages its first recorded cell this frame",
     );
@@ -3880,7 +3903,7 @@ fn sonic_cell_fire_wave_damage_selects_level_two_bridge_plane() {
             .get(receiver_id)
             .expect("bridge receiver survives")
             .health
-            .current,
+            .current(),
         90,
         "Wave Z 674 meets the level-2 equality threshold 624 and walks AltObject",
     );
@@ -4147,7 +4170,8 @@ fn defeated_house_is_flagged_has_lost_and_its_stragglers_die() {
         .get(1)
         .expect("dead objects wait for the drain");
     assert_eq!(
-        straggler.health.current, 0,
+        straggler.health.current(),
+        0,
         "Blowup_All killed the straggler"
     );
     assert!(straggler.killed_by.is_none(), "no house is credited");
@@ -4231,8 +4255,8 @@ fn gsi_05_16_a_captured_insignificant_garrison_does_not_keep_its_house_alive() {
         10,
         EntityCategory::Structure,
     );
-    garrison.owner = civilian;
-    garrison.type_ref = sim.interner.intern("CAGAS01");
+    garrison.set_owner_for_test(civilian);
+    garrison.set_type_ref_for_test(sim.interner.intern("CAGAS01"));
     garrison.tracking_facts = crate::sim::house_tracking::TrackingFacts::insignificant_for_test();
     sim.substrate.entities.insert(garrison);
     sim.update_house_tracking(1, crate::sim::house_tracking::HouseTracking::add_tracking);
@@ -4245,7 +4269,7 @@ fn gsi_05_16_a_captured_insignificant_garrison_does_not_keep_its_house_alive() {
     assert_eq!(sim.houses[&player].tracking.buildings(), 0);
     assert!(sim.houses[&player].is_defeated);
     assert!(sim.houses[&enemy].has_won);
-    assert_eq!(sim.entities().get(1).unwrap().health.current, 0);
+    assert_eq!(sim.entities().get(1).unwrap().health.current(), 0);
 }
 
 /// Insert a `MultiplayPassive=true` house — the stock `Neutral` (Civilian) and
@@ -4517,7 +4541,7 @@ fn test_spawn_sets_position_and_facing() {
         assert_eq!(e.position.rx, 30);
         assert_eq!(e.position.ry, 40);
         assert_eq!(e.body_facing.destination(), 0x4000);
-        assert_eq!(sim.interner.resolve(e.type_ref), "HTNK");
+        assert_eq!(sim.interner.resolve(e.type_ref()), "HTNK");
         // The diamond-centre screen projection of this spawn is asserted on
         // the render side (`render::locomotor_visual` boundary tests, F14).
     }
@@ -4880,7 +4904,7 @@ fn test_destroyed_bridge_arms_fall_when_ground_exists() {
         MovementLayer::Bridge,
         "DropAsBomb preserves locomotor state"
     );
-    assert!(e.movement_target.is_none());
+    assert!(crate::sim::movement::motion_query::is_moving(&e) != Some(true));
 }
 
 /// Structural47DD70 relayers its deck member and starts DropAsBomb while
@@ -4937,7 +4961,8 @@ fn test_destroyed_bridge_arms_fall_over_water_below() {
         .get(1)
         .expect("deck unit remains until landing");
     assert_eq!(
-        e.health.current, 300,
+        e.health.current(),
+        300,
         "DropIn never harms — authored full health uses MTNK Strength300"
     );
     assert_eq!(e.position.z, 4, "Location remains at deck height");
@@ -4949,7 +4974,7 @@ fn test_destroyed_bridge_arms_fall_over_water_below() {
         MovementLayer::Bridge,
         "DropAsBomb preserves locomotor state"
     );
-    assert!(e.movement_target.is_none());
+    assert!(crate::sim::movement::motion_query::is_moving(&e) != Some(true));
 }
 
 /// Same fall admission over an overlay-blocked ground cell.
@@ -5005,7 +5030,7 @@ fn test_destroyed_bridge_arms_fall_over_overlay_blocked() {
         .entities
         .get(1)
         .expect("deck unit remains until landing");
-    assert_eq!(e.health.current, 300, "DropIn never harms");
+    assert_eq!(e.health.current(), 300, "DropIn never harms");
     assert_eq!(e.position.z, 4);
     assert!(e.was_dropped_as_bomb() && e.is_falling_down());
     assert!(!e.on_bridge);
@@ -5064,7 +5089,7 @@ fn test_destroyed_bridge_arms_fall_over_terrain_object_blocked() {
         .entities
         .get(1)
         .expect("deck unit remains until landing");
-    assert_eq!(e.health.current, 300, "DropIn never harms");
+    assert_eq!(e.health.current(), 300, "DropIn never harms");
     assert_eq!(e.position.z, 4);
     assert!(e.was_dropped_as_bomb() && e.is_falling_down());
     assert!(!e.on_bridge);
@@ -5137,7 +5162,7 @@ fn test_destroyed_bridge_fallout_matches_rebuilt_ground_walkability() {
     );
     // This concrete overlay driver has not invoked structural47DD70.
     let e = sim.substrate.entities.get(1).expect("deck unit survives");
-    assert_eq!(e.health.current, 300, "DropIn never harms");
+    assert_eq!(e.health.current(), 300, "DropIn never harms");
     assert!(!e.on_bridge);
 }
 
@@ -5221,10 +5246,10 @@ fn test_bridge_collapse_kills_ground_unit_under_destroyed_cell() {
         .entities
         .get(id)
         .expect("ground unit retained until pending deletion drains");
-    assert_eq!(e.health.current, 0, "kill_ground_occupants_at zeroed HP");
+    assert_eq!(e.health.current(), 0, "kill_ground_occupants_at zeroed HP");
     assert!(e.dying, "direct receiver completed death before returning");
-    assert!(e.attack_target.is_none());
-    assert!(e.movement_target.is_none());
+    assert!(e.attack_target.target().is_none());
+    assert!(crate::sim::movement::motion_query::is_moving(&e) != Some(true));
 }
 
 fn concrete_damage_fixture_coord(row: &serde_json::Value) -> (u16, u16) {
@@ -5482,9 +5507,9 @@ fn test_structural_bridge_collapse_preserves_dynamic_navigation_and_snapshot() {
         // Move_To before any frame-final projection rebuild; its Process
         // searches the live grid.
         let unit = sim.substrate.entities.get_mut(2).unwrap();
-        unit.movement_target = None;
-        unit.mega_mission =
-            crate::sim::mission::mega_mission::MegaMission::attack_move(Some((6, 3)));
+        unit.mega_mission = crate::sim::mission::mega_mission::MegaMission::attack_move(Some(
+            crate::sim::combat::TargetKind::Cell(6, 3),
+        ));
         assert!(sim.foot_continue_mega_mission(
             2,
             Some(&rules),
@@ -5797,7 +5822,6 @@ fn test_real_ship_locomotor_move_command_crosses_water_cells() {
             entity_id: ship_id,
             target_rx: 3,
             target_ry: 1,
-            queue: false,
         },
     );
 
@@ -5811,7 +5835,7 @@ fn test_real_ship_locomotor_move_command_crosses_water_cells() {
             .substrate
             .entities
             .get(ship_id)
-            .is_some_and(|ship| ship.movement_target.is_none())
+            .is_some_and(|ship| crate::sim::movement::motion_query::is_moving(&ship) != Some(true))
         {
             break;
         }
@@ -5828,7 +5852,7 @@ fn test_real_ship_locomotor_move_command_crosses_water_cells() {
         "real Ship locomotor should complete a simple move command over water"
     );
     assert!(
-        ship.movement_target.is_none(),
+        crate::sim::movement::motion_query::is_moving(&ship) != Some(true),
         "real Ship locomotor should finish its move command"
     );
 }
@@ -5864,7 +5888,6 @@ fn test_real_ship_locomotor_crosses_water_surface_cells_with_non_water_land_type
             entity_id: ship_id,
             target_rx: 3,
             target_ry: 1,
-            queue: false,
         },
     );
 
@@ -5875,7 +5898,7 @@ fn test_real_ship_locomotor_crosses_water_surface_cells_with_non_water_land_type
             .substrate
             .entities
             .get(ship_id)
-            .is_some_and(|ship| ship.movement_target.is_none())
+            .is_some_and(|ship| crate::sim::movement::motion_query::is_moving(&ship) != Some(true))
         {
             break;
         }
@@ -5892,7 +5915,7 @@ fn test_real_ship_locomotor_crosses_water_surface_cells_with_non_water_land_type
         "real Ship locomotor should treat water-surface cells as navigable even when land_type is not the pure water column"
     );
     assert!(
-        ship.movement_target.is_none(),
+        crate::sim::movement::motion_query::is_moving(&ship) != Some(true),
         "real Ship locomotor should finish its move command on water-surface cells"
     );
 }
@@ -5940,7 +5963,6 @@ fn test_real_ship_move_command_can_path_under_bridge_when_too_big() {
             entity_id: ship_id,
             target_rx: 4,
             target_ry: 1,
-            queue: false,
         },
     );
 
@@ -6041,7 +6063,6 @@ fn a_ship_order_routes_around_an_island_through_the_live_search() {
             entity_id: ship_id,
             target_rx: 7,
             target_ry: 3,
-            queue: false,
         },
     );
     // The order dispatches at this frame's EventClass tail; the Ship accepts
@@ -6086,7 +6107,7 @@ fn a_ship_order_routes_around_an_island_through_the_live_search() {
             ship.locomotor.as_ref().map(|loco| loco.layer),
             Some(MovementLayer::Ground)
         );
-        if ship.movement_target.is_none() {
+        if crate::sim::movement::motion_query::is_moving(&ship) != Some(true) {
             break;
         }
     }
@@ -6131,7 +6152,7 @@ fn test_stable_ids_are_assigned() {
         .substrate
         .entities
         .values()
-        .map(|e| e.stable_id)
+        .map(|e| e.stable_id())
         .collect();
     ids.sort_unstable();
     assert_eq!(ids, vec![1, 2]);
@@ -6445,7 +6466,7 @@ fn test_deploy_mcv_replaces_vehicle_with_conyard() {
         sim.substrate
             .entities
             .values()
-            .any(|e| e.type_ref == gacnst_id && e.position.rx == 19 && e.position.ry == 21),
+            .any(|e| e.type_ref() == gacnst_id && e.position.rx == 19 && e.position.ry == 21),
         "Construction yard should spawn at gamemd's deploy foundation origin"
     );
 }
@@ -6504,12 +6525,11 @@ fn phase14_drive_move_command_preserves_fractions_until_scheduled_visit() {
                 entity_id,
                 target_rx: 17,
                 target_ry: 13,
-                queue: false,
             },
             Some(&rules),
         ));
 
-        let movement_speed = {
+        {
             let entity = sim
                 .substrate
                 .entities
@@ -6523,12 +6543,7 @@ fn phase14_drive_move_command_preserves_fractions_until_scheduled_visit() {
                 .expect("drive state");
             assert_eq!(drive.target_speed_fraction(), SimFixed::lit("0.4"));
             assert_eq!(entity.foot_speed.applied_fraction(), SimFixed::lit("0.25"));
-            let movement = entity
-                .movement_target
-                .as_ref()
-                .expect("Move command installs movement target");
-            movement.speed
-        };
+        }
 
         let _ = sim.advance_tick(&[], Some(&rules), Some(&grid), None, 100);
 
@@ -6550,7 +6565,9 @@ fn phase14_drive_move_command_preserves_fractions_until_scheduled_visit() {
         };
         assert_eq!(drive.target_speed_fraction(), SIM_ONE);
         assert_eq!(entity.foot_speed.applied_fraction(), expected_current);
-        let raw_stage = (movement_speed / SimFixed::from_num(15)).to_num::<i32>();
+        let raw_stage = crate::util::fixed_math::ra2_speed_to_leptons_per_frame(
+            rules.object("DRIVE").unwrap().speed,
+        );
         let expected_owner = (SimFixed::from_num(raw_stage) * expected_current).to_num::<i32>();
         assert_eq!(
             sim.current_speed_for_test(entity_id, &rules),
@@ -6593,103 +6610,26 @@ fn test_execute_tick_delay_blocks_early_execution() {
             entity_id: 1,
             target_rx: 8,
             target_ry: 2,
-
-            queue: false,
         },
     );
 
     let _ = sim.advance_tick(std::slice::from_ref(&delayed), None, Some(&grid), None, 33);
-    assert!(
-        sim.substrate
-            .entities
-            .get(1)
-            .and_then(|e| e.movement_target.as_ref())
-            .is_none()
+    assert_eq!(
+        sim.substrate.entities.get(1).unwrap().navigation.nav_com,
+        None
     );
 
     let _ = sim.advance_tick(std::slice::from_ref(&delayed), None, Some(&grid), None, 33);
-    assert!(
-        sim.substrate
-            .entities
-            .get(1)
-            .and_then(|e| e.movement_target.as_ref())
-            .is_none()
+    assert_eq!(
+        sim.substrate.entities.get(1).unwrap().navigation.nav_com,
+        None
     );
 
     let _ = sim.advance_tick(&[delayed], None, Some(&grid), None, 33);
-    assert!(
-        sim.substrate
-            .entities
-            .get(1)
-            .and_then(|e| e.movement_target.as_ref())
-            .is_some()
-    );
-}
-
-#[test]
-fn test_move_queue_command_appends_waypoint() {
-    let mut sim: Simulation = Simulation::new();
-    sim.spawn_from_map(
-        &[MapEntity {
-            owner: "Americans".to_string(),
-            type_id: "MTNK".to_string(),
-            health: 256,
-            cell_x: 2,
-            cell_y: 2,
-            facing: 64,
-            category: EntityCategory::Unit,
-            sub_cell: 0,
-            veterancy: Some(0),
-            high: false,
-            mission: None,
-            recruitable_a: true,
-            recruitable_b: true,
-            structure_upgrades: [None, None, None],
-            structure_ai_sellable: false,
-            structure_ai_repairable: false,
-            trigger_tag: None,
-        }],
-        None,
-    );
-    let grid = PathGrid::new(32, 32);
-    let commands = vec![
-        cmd_envelope(
-            &sim,
-            "Americans",
-            1,
-            Command::Move {
-                entity_id: 1,
-                target_rx: 8,
-                target_ry: 2,
-                queue: false,
-            },
-        ),
-        cmd_envelope(
-            &sim,
-            "Americans",
-            1,
-            Command::Move {
-                entity_id: 1,
-                target_rx: 12,
-                target_ry: 2,
-                queue: true,
-            },
-        ),
-    ];
-    let _ = sim.advance_tick(&commands, None, Some(&grid), None, 33);
-
-    let ge = sim
-        .substrate
-        .entities
-        .get(1)
-        .expect("entity 1 should exist in EntityStore");
-    // This rules-less MTNK has no locomotor, so the queued order takes the
-    // command path's append arm: its search admits the order but keeps no
-    // cells and leaves the first order's goal (movement_commands RESIDUAL).
-    // The queued waypoint itself is no longer observable here.
-    assert!(
-        ge.movement_target.is_some(),
-        "movement target should be set"
+    // Rules-less, the dispatcher writes NavCom alone.
+    assert_eq!(
+        sim.substrate.entities.get(1).unwrap().navigation.nav_com,
+        Some(crate::sim::components::NavTargetRef::cell(8, 2))
     );
 }
 
@@ -6722,29 +6662,30 @@ fn test_stop_command_clears_move_and_attack_intent() {
     if let Some(e) = sim.substrate.entities.get_mut(1) {
         // A Drive tank moving to a NavCom: the Unit setter (0x00741970)
         // writes nothing without one (0x00741A80).
-        e.locomotor = Some(
-            crate::sim::movement::locomotor::LocomotorState::for_test_kind(
-                crate::rules::locomotor_type::LocomotorKind::Drive,
-            ),
+        let mut locomotor = crate::sim::movement::locomotor::LocomotorState::for_test_kind(
+            crate::rules::locomotor_type::LocomotorKind::Drive,
         );
+        assert!(locomotor.install_drive_state_for_test(
+            Some(
+                crate::sim::movement::DriveLocomotionRuntime::default().with_destination_for_test(
+                    Some(crate::sim::components::DriveCoord::cell(9, 4, 0))
+                )
+            )
+        ));
+        e.locomotor = Some(locomotor);
         e.navigation.nav_com = Some(crate::sim::components::NavTargetRef::cell(9, 4));
-        e.movement_target = Some(MovementTarget {
-            speed: SimFixed::from_num(1024),
-            ..Default::default()
-        });
-        e.attack_target = Some(AttackTarget::new(1));
+        e.attack_target.set_for_test(Some(TargetKind::Entity(1)));
+        assert_eq!(crate::sim::movement::motion_query::is_moving(e), Some(true));
     }
 
-    let cmd = cmd_envelope(&sim, "Americans", 1, Command::Stop { entity_id: 1 });
-    let _ = sim.advance_tick(&[cmd], None, None, None, 33);
-    assert!(
-        sim.substrate
-            .entities
-            .get(1)
-            .unwrap()
-            .movement_target
-            .is_none(),
-        "movement target should be cleared by Stop"
+    // The command alone, without a rules-less Process after it.
+    assert!(sim.apply_command("Americans", &Command::Stop { entity_id: 1 }, None));
+    let e = sim.substrate.entities.get(1).unwrap();
+    assert_eq!(e.navigation.nav_com, None, "Stop clears NavCom");
+    assert_eq!(
+        crate::sim::movement::motion_query::is_moving(e),
+        Some(false),
+        "Stop leaves the Drive still"
     );
     assert!(
         sim.substrate
@@ -6752,8 +6693,9 @@ fn test_stop_command_clears_move_and_attack_intent() {
             .get(1)
             .unwrap()
             .attack_target
+            .target()
             .is_none(),
-        "AttackTarget should be cleared by Stop command"
+        "the Stop command clears the target"
     );
 }
 
@@ -6807,30 +6749,13 @@ fn gsi_04_05_stop_preserves_committed_drive_until_reserved_head_finishes() {
     sim.resolved_terrain = Some(gsi_04_10_clear_terrain(16, 16));
     assert!(sim.rebuild_dynamic_navigation(&rules));
     let grid = (*sim.path_grid_snapshot().unwrap()).clone();
-    let issued = {
-        let (entities, cell_occupation) = (
-            &mut sim.substrate.entities,
-            &mut sim.substrate.cell_occupation,
-        );
-        crate::sim::movement::issue_move_command_with_layered(
-            entities,
-            &grid,
-            1,
-            (8, 4),
-            SimFixed::from_num(128),
-            false,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            Some(cell_occupation),
-            crate::sim::movement::DestinationTiming::new(0, 60),
-        )
-    };
-    assert!(issued);
+    assert!(sim.set_unit_destination(
+        1,
+        crate::sim::components::NavTargetRef::cell(8, 4),
+        &rules,
+        true,
+        crate::sim::world::FrameEffects::default(),
+    ));
     // An accepted order only installs NavCom/route. The first production
     // Process owns selection, the retained head, and its occupation claim.
     sim.process_ground_locomotor_for_test(1, Some(&rules), Some(&grid), None)
@@ -6867,7 +6792,7 @@ fn gsi_04_05_stop_preserves_committed_drive_until_reserved_head_finishes() {
     assert!(sim.apply_command("Americans", &Command::Stop { entity_id: 1 }, None,));
     let stopped = sim.substrate.entities.get(1).unwrap();
     assert_eq!(stopped.navigation.nav_com, None);
-    assert!(stopped.movement_target.is_some());
+    assert!(crate::sim::movement::motion_query::is_moving(&stopped) == Some(true));
     // The route is cut at the committed head: Stop retires every Foot+5E0
     // word beyond it and the head stays the committed track head.
     assert!(
@@ -6951,13 +6876,8 @@ fn gsi_04_05_stop_preserves_committed_drive_until_reserved_head_finishes() {
     );
 
     for _ in 0..192 {
-        if sim
-            .substrate
-            .entities
-            .get(1)
-            .unwrap()
-            .movement_target
-            .is_none()
+        if crate::sim::movement::motion_query::is_moving(sim.substrate.entities.get(1).unwrap())
+            != Some(true)
         {
             break;
         }
@@ -6969,7 +6889,7 @@ fn gsi_04_05_stop_preserves_committed_drive_until_reserved_head_finishes() {
         (entity.position.rx, entity.position.ry),
         (committed_head.rx, committed_head.ry)
     );
-    assert!(entity.movement_target.is_none());
+    assert!(crate::sim::movement::motion_query::is_moving(&entity) != Some(true));
     let drive = entity
         .locomotor
         .as_ref()
@@ -7016,7 +6936,7 @@ fn gsi_04_05_stop_preserves_committed_drive_until_reserved_head_finishes() {
         (committed_head.rx, committed_head.ry),
         "Stop must remain parked at the committed head after the old route is gone"
     );
-    assert!(parked.movement_target.is_none());
+    assert!(crate::sim::movement::motion_query::is_moving(&parked) != Some(true));
     let drive = parked
         .locomotor
         .as_ref()
@@ -7080,30 +7000,13 @@ fn gsi_13_06_stop_preserves_committed_ship_segment_and_speed_state() {
     sim.resolved_terrain = Some(water_terrain(16, 16));
     assert!(sim.rebuild_dynamic_navigation(&rules));
     let grid = (*sim.path_grid_snapshot().unwrap()).clone();
-    let issued = {
-        let (entities, cell_occupation) = (
-            &mut sim.substrate.entities,
-            &mut sim.substrate.cell_occupation,
-        );
-        crate::sim::movement::issue_move_command_with_layered(
-            entities,
-            &grid,
-            1,
-            (8, 4),
-            SimFixed::from_num(120),
-            false,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            Some(cell_occupation),
-            crate::sim::movement::DestinationTiming::new(0, 60),
-        )
-    };
-    assert!(issued);
+    assert!(sim.set_unit_destination(
+        1,
+        crate::sim::components::NavTargetRef::cell(8, 4),
+        &rules,
+        true,
+        crate::sim::world::FrameEffects::default(),
+    ));
     sim.process_ground_locomotor_for_test(1, Some(&rules), Some(&grid), None)
         .expect("Ship Process must commit the first segment before Stop");
     let (committed_head, committed_track) = {
@@ -7136,7 +7039,7 @@ fn gsi_13_06_stop_preserves_committed_ship_segment_and_speed_state() {
 
     let stopped = sim.substrate.entities.get(1).unwrap();
     assert!(
-        stopped.movement_target.is_some(),
+        crate::sim::movement::motion_query::is_moving(&stopped) == Some(true),
         "committed Ship segment survives Stop"
     );
     // Stop retires every Foot+5E0 word beyond the committed head; the head
@@ -7218,8 +7121,6 @@ fn test_move_command_rejects_non_owned_entity() {
             entity_id: 1,
             target_rx: 8,
             target_ry: 2,
-
-            queue: false,
         },
     );
 
@@ -7228,7 +7129,8 @@ fn test_move_command_rejects_non_owned_entity() {
         sim.substrate
             .entities
             .get(1)
-            .is_some_and(|e| e.movement_target.is_none())
+            .is_some_and(|e| e.navigation.nav_com.is_none()),
+        "another house's Move is refused"
     );
 }
 
@@ -7248,17 +7150,16 @@ fn test_move_command_chrono_miner_uses_ground_path() {
             entity_id: entity,
             target_rx: 8,
             target_ry: 2,
-            queue: false,
         },
     );
 
     let _ = sim.advance_tick(&[cmd], Some(&rules), Some(&grid), None, 33);
-    assert!(
+    assert_eq!(
         sim.substrate
             .entities
             .get(entity)
-            .and_then(|e| e.movement_target.as_ref())
-            .is_some(),
+            .and_then(crate::sim::movement::motion_query::is_moving),
+        Some(true),
         "Chrono Miner should path like a ground unit on normal move orders"
     );
     assert!(
@@ -7290,7 +7191,6 @@ fn test_move_command_non_harvester_teleporter_drives() {
             entity_id: entity,
             target_rx: 8,
             target_ry: 2,
-            queue: false,
         },
     );
 
@@ -7346,7 +7246,6 @@ fn a_paralyzed_or_warping_in_teleport_infantryman_refuses_a_move_order() {
         entity_id: id,
         target_rx: rx,
         target_ry: 2,
-        queue: false,
     };
     let spawn = |sim: &mut Simulation| {
         // Infantry718B70/51BF90 require allocated cells, a passable Foot row
@@ -7388,8 +7287,12 @@ fn a_paralyzed_or_warping_in_teleport_infantryman_refuses_a_move_order() {
     let mut sim: Simulation = Simulation::new();
     let id = spawn(&mut sim);
     let frame = sim.session.binary_frame as i32;
-    sim.substrate.entities.get_mut(id).unwrap().paralysis_timer =
-        crate::sim::timer::CdTimer::started(frame, 100);
+    sim.substrate
+        .entities
+        .get_mut(id)
+        .unwrap()
+        .parasite
+        .set_paralysis_for_test(crate::sim::timer::CdTimer::started(frame, 100));
     tick(&mut sim, &[order(id, 8)]);
     tick(&mut sim, &[]);
     let entity = sim.substrate.entities.get(id).unwrap();
@@ -7410,7 +7313,7 @@ fn the_infantry_setter_moves_a_teleport_infantryman() {
         .spawn_object("CLEG", "Americans", 2, 2, 64, &rules)
         .expect("spawn legionnaire");
     assert_eq!(
-        sim.set_infantry_destination(
+        sim.assign_infantry_destination(
             id,
             crate::sim::components::NavTargetRef::cell(8, 2),
             &rules,
@@ -7441,19 +7344,18 @@ fn test_attack_move_command_chrono_miner_uses_ground_path() {
         1,
         Command::AttackMove {
             entity_id: entity,
-            target_rx: 8,
-            target_ry: 2,
-            queue: false,
+            target: None,
+            destination: Some(crate::sim::combat::TargetKind::Cell(8, 2)),
         },
     );
 
     let _ = sim.advance_tick(&[cmd], Some(&rules), Some(&grid), None, 33);
-    assert!(
+    assert_eq!(
         sim.substrate
             .entities
             .get(entity)
-            .and_then(|e| e.movement_target.as_ref())
-            .is_some(),
+            .and_then(crate::sim::movement::motion_query::is_moving),
+        Some(true),
         "Chrono Miner should path on attack-move instead of teleporting"
     );
     // No `Primary=` refuses the attack-move (`0x00711E90`), so
@@ -7542,14 +7444,15 @@ fn test_attack_command_rejects_friendly_target() {
             .get(1)
             .unwrap()
             .attack_target
+            .target()
             .is_none(),
         "Attack on same-owner target should not issue"
     );
 }
 
-#[test]
-fn test_attack_move_auto_acquires_enemy() {
-    let rules = driving_combat_test_rules();
+/// An American MTNK (1) at (20, 20) and a Russian E1 (2) two cells east of
+/// it, in the playfield.
+fn attack_move_fight(rules: &RuleSet) -> Simulation {
     let mut sim: Simulation = Simulation::new();
     // The Unit setter's Move_To needs map cells, and the threat scan's ring
     // walk skips cells outside the Map Size diamond: the fight is inside it.
@@ -7596,13 +7499,20 @@ fn test_attack_move_auto_acquires_enemy() {
                 trigger_tag: None,
             },
         ],
-        Some(&rules),
+        Some(rules),
     );
-    assert!(sim.rebuild_dynamic_navigation(&rules));
+    assert!(sim.rebuild_dynamic_navigation(rules));
     // This spawn leaves IsInPlayfield (`+0x3D5`) clear; the scan reads it.
     for id in [1, 2] {
         sim.substrate.entities.get_mut(id).unwrap().in_playfield = true;
     }
+    sim
+}
+
+#[test]
+fn test_attack_move_auto_acquires_enemy() {
+    let rules = driving_combat_test_rules();
+    let mut sim = attack_move_fight(&rules);
     let grid = PathGrid::new(64, 64);
     let cmd = cmd_envelope(
         &sim,
@@ -7610,9 +7520,8 @@ fn test_attack_move_auto_acquires_enemy() {
         1,
         Command::AttackMove {
             entity_id: 1,
-            target_rx: 30,
-            target_ry: 20,
-            queue: false,
+            target: None,
+            destination: Some(crate::sim::combat::TargetKind::Cell(30, 20)),
         },
     );
 
@@ -7627,30 +7536,28 @@ fn test_attack_move_auto_acquires_enemy() {
             .get(1)
             .unwrap()
             .attack_target
+            .target()
             .is_none()
     );
     for _ in 0..60 {
         let attacker = sim.substrate.entities.get(1).unwrap();
-        if attacker.attack_target.is_some() {
+        if attacker.attack_target.target().is_some() {
             break;
         }
         let scan_due = attacker.passive_scan_timer.due(sim.session.binary_frame);
         let _ = sim.advance_tick(&[], Some(&rules), Some(&grid), None, 100);
         let attacker = sim.substrate.entities.get(1).unwrap();
         assert!(
-            scan_due || attacker.attack_target.is_none(),
+            scan_due || attacker.attack_target.target().is_none(),
             "the attack-move scans only on its targeting timer"
         );
     }
     let attacker = sim.substrate.entities.get(1).unwrap();
     let attack = attacker
         .attack_target
-        .as_ref()
+        .target()
         .expect("attack-move should acquire target");
-    assert!(matches!(
-        attack.target,
-        crate::sim::combat::TargetKind::Entity(2)
-    ));
+    assert!(matches!(attack, crate::sim::combat::TargetKind::Entity(2)));
     assert!(attacker.mega_mission.is_attack_move());
     // Arrival_Target_Handler queues Attack with commence_now = 1 (`0x004DF418`).
     assert!(
@@ -7662,61 +7569,9 @@ fn test_attack_move_auto_acquires_enemy() {
 #[test]
 fn test_attack_move_lethal_hit_expires_the_target_at_the_kill() {
     let rules = driving_combat_test_rules();
-    let mut sim: Simulation = Simulation::new();
-    // The Unit setter's Move_To needs map cells, and the threat scan's ring
-    // walk skips cells outside the Map Size diamond: the fight is inside it.
-    install_rectangular_test_map(&mut sim, 32, 32);
-    sim.install_resolved_terrain_for_new_map(gsi_04_10_clear_terrain(64, 64));
-    sim.spawn_from_map(
-        &[
-            MapEntity {
-                owner: "Americans".to_string(),
-                type_id: "MTNK".to_string(),
-                health: 256,
-                cell_x: 20,
-                cell_y: 20,
-                facing: 64,
-                category: EntityCategory::Unit,
-                sub_cell: 0,
-                veterancy: Some(0),
-                high: false,
-                mission: None,
-                recruitable_a: true,
-                recruitable_b: true,
-                structure_upgrades: [None, None, None],
-                structure_ai_sellable: false,
-                structure_ai_repairable: false,
-                trigger_tag: None,
-            },
-            MapEntity {
-                owner: "Russians".to_string(),
-                type_id: "E1".to_string(),
-                health: 256,
-                cell_x: 22,
-                cell_y: 20,
-                facing: 64,
-                category: EntityCategory::Infantry,
-                sub_cell: 0,
-                veterancy: Some(0),
-                high: false,
-                mission: None,
-                recruitable_a: true,
-                recruitable_b: true,
-                structure_upgrades: [None, None, None],
-                structure_ai_sellable: false,
-                structure_ai_repairable: false,
-                trigger_tag: None,
-            },
-        ],
-        Some(&rules),
-    );
-    assert!(sim.rebuild_dynamic_navigation(&rules));
-    // This spawn leaves IsInPlayfield (`+0x3D5`) clear; the scan reads it.
-    for id in [1, 2] {
-        sim.substrate.entities.get_mut(id).unwrap().in_playfield = true;
-    }
+    let mut sim = attack_move_fight(&rules);
     if let Some(e) = sim.substrate.entities.get_mut(2) {
-        e.health.current = 50;
+        e.health.set_for_test(50);
     }
     let grid = PathGrid::new(64, 64);
     let cmd = cmd_envelope(
@@ -7725,9 +7580,8 @@ fn test_attack_move_lethal_hit_expires_the_target_at_the_kill() {
         1,
         Command::AttackMove {
             entity_id: 1,
-            target_rx: 30,
-            target_ry: 20,
-            queue: false,
+            target: None,
+            destination: Some(crate::sim::combat::TargetKind::Cell(30, 20)),
         },
     );
 
@@ -7736,7 +7590,7 @@ fn test_attack_move_lethal_hit_expires_the_target_at_the_kill() {
     // that preceded it. It acquires once its targeting timer runs out, and
     // its first hit kills.
     for _ in 0..200 {
-        if sim.substrate.entities.get(2).unwrap().health.current == 0 {
+        if sim.substrate.entities.get(2).unwrap().health.current() == 0 {
             break;
         }
         let _ = sim.advance_tick(&[], Some(&rules), Some(&grid), None, 100);
@@ -7746,18 +7600,18 @@ fn test_attack_move_lethal_hit_expires_the_target_at_the_kill() {
         .entities
         .get(2)
         .expect("animated victim remains stored through its death sequence");
-    assert_eq!(victim.health.current, 0);
+    assert_eq!(victim.health.current(), 0);
     assert!(victim.dying);
-    assert!(victim.lifecycle.object_alive);
+    assert!(victim.lifecycle.object_alive());
 
     let attacker = sim.substrate.entities.get(1).expect("attacker exists");
     assert!(
-        attacker.attack_target.is_none(),
+        attacker.attack_target.target().is_none(),
         "ObjectClass::ReceiveDamage's exact-zero Destroy (0x005F57AF) expires the target at the kill"
     );
     assert_eq!(
         attacker.mega_mission.destination(),
-        Some((30, 20)),
+        Some(crate::sim::combat::TargetKind::Cell(30, 20)),
         "the attack-move order outlives its target"
     );
     assert!(attacker.mega_mission.is_attack_move());
@@ -7778,6 +7632,150 @@ fn test_attack_move_lethal_hit_expires_the_target_at_the_kill() {
         }
     }
     assert!(resumed, "the attack-move resumes towards its destination");
+}
+
+/// An attack-move click on an enemy sends it as the event target, which
+/// `Assign_Target_Command` stores as MegaTarget and answers Attack
+/// (`0x004DF12A..0x004DF186`). The event hands it to the class target setter
+/// (`0x004C7467`) and its NULL destination to the destination setter
+/// (`0x004C747C`).
+#[test]
+fn an_attack_move_click_on_an_enemy_attacks_it_as_the_mega_target() {
+    let rules = driving_combat_test_rules();
+    let mut sim = attack_move_fight(&rules);
+    assert!(sim.apply_command(
+        "Americans",
+        &Command::AttackMove {
+            entity_id: 1,
+            target: Some(crate::sim::combat::TargetKind::Entity(2)),
+            destination: None,
+        },
+        Some(&rules),
+    ));
+    let attacker = sim.substrate.entities.get(1).unwrap();
+    assert!(attacker.mega_mission.is_attack_move());
+    assert!(attacker.mega_mission.targets(2));
+    assert_eq!(attacker.mega_mission.destination(), None);
+    assert_eq!(
+        attacker.mission.queued(),
+        MissionId::from_known(MissionType::Attack)
+    );
+    assert_eq!(
+        attacker.attack_target.target(),
+        Some(crate::sim::combat::TargetKind::Entity(2))
+    );
+    assert_eq!(attacker.navigation.nav_com, None);
+
+    // A destination deleted before the event runs still answers Move, with a
+    // NULL MegaDestination; the MegaTarget keeps its value
+    // (`0x004DF0F7..0x004DF146`).
+    assert!(sim.apply_command(
+        "Americans",
+        &Command::AttackMove {
+            entity_id: 1,
+            target: None,
+            destination: Some(crate::sim::combat::TargetKind::Entity(99)),
+        },
+        Some(&rules),
+    ));
+    let attacker = sim.substrate.entities.get(1).unwrap();
+    assert_eq!(
+        attacker.mission.queued(),
+        MissionId::from_known(MissionType::Move)
+    );
+    assert_eq!(attacker.mega_mission.destination(), None);
+    assert!(attacker.mega_mission.targets(2));
+}
+
+/// An attack-move click over an object sends it as the event destination,
+/// which `Assign_Target_Command` stores as MegaDestination and answers Move
+/// (`0x004DF12A..0x004DF186`); the class destination setter takes it as the
+/// NavCom (`0x004C747C`). When the object expires, Foot PointerExpired drops
+/// both (`0x004D9A0F..0x004D9ABD`, `0x004D9B35..0x004D9B3D`) and the order
+/// stays an attack-move. A dead destination rejects the whole event
+/// (`0x004C7263..0x004C7299`).
+#[test]
+fn an_attack_move_click_over_an_object_keeps_it_the_mega_destination() {
+    let rules = driving_combat_test_rules();
+    let mut sim = attack_move_fight(&rules);
+    let mcv = sim
+        .spawn_object("AMCV", "Americans", 18, 20, 0, &rules)
+        .unwrap();
+    let attack_move_onto = |sim: &mut Simulation, id| {
+        sim.apply_command(
+            "Americans",
+            &Command::AttackMove {
+                entity_id: 1,
+                target: None,
+                destination: Some(crate::sim::combat::TargetKind::Entity(id)),
+            },
+            Some(&rules),
+        )
+    };
+
+    assert!(attack_move_onto(&mut sim, mcv));
+    let attacker = sim.substrate.entities.get(1).unwrap();
+    assert!(attacker.mega_mission.is_attack_move());
+    assert_eq!(
+        attacker.mega_mission.destination(),
+        Some(crate::sim::combat::TargetKind::Entity(mcv))
+    );
+    assert_eq!(
+        attacker.mission.queued(),
+        MissionId::from_known(MissionType::Move)
+    );
+    assert_eq!(
+        attacker.navigation.nav_com,
+        Some(crate::sim::components::NavTargetRef::Entity { id: mcv })
+    );
+
+    sim.detach_all_pointer_expired(
+        mcv,
+        &rules,
+        None,
+        crate::sim::world::FrameEffects::default(),
+    );
+    let attacker = sim.substrate.entities.get(1).unwrap();
+    assert_eq!(attacker.mega_mission.destination(), None);
+    assert_eq!(attacker.navigation.nav_com, None);
+    assert!(attacker.mega_mission.is_attack_move());
+
+    sim.substrate
+        .entities
+        .get_mut(mcv)
+        .unwrap()
+        .health
+        .set_for_test(0);
+    assert!(!attack_move_onto(&mut sim, mcv));
+    assert_eq!(
+        sim.substrate
+            .entities
+            .get(1)
+            .unwrap()
+            .mega_mission
+            .destination(),
+        None,
+        "the refused event stores nothing"
+    );
+
+    // A target deleted before the event runs still answers Attack, with a
+    // NULL MegaTarget (`0x004DF0F7..0x004DF164`).
+    assert!(sim.apply_command(
+        "Americans",
+        &Command::AttackMove {
+            entity_id: 1,
+            target: Some(crate::sim::combat::TargetKind::Entity(99)),
+            destination: None,
+        },
+        Some(&rules),
+    ));
+    let attacker = sim.substrate.entities.get(1).unwrap();
+    assert_eq!(
+        attacker.mission.queued(),
+        MissionId::from_known(MissionType::Attack)
+    );
+    assert!(attacker.mega_mission.is_attack_move());
+    assert!(attacker.attack_target.target().is_none());
 }
 
 /// An infantryman's attack-move through `advance_tick`: the scan on its
@@ -7830,7 +7828,12 @@ fn test_infantry_attack_move_kills_on_the_way_and_walks_on() {
         sim.substrate.entities.get_mut(id).unwrap().in_playfield = true;
     }
     // One M60 burst (25) kills.
-    sim.substrate.entities.get_mut(2).unwrap().health.current = 20;
+    sim.substrate
+        .entities
+        .get_mut(2)
+        .unwrap()
+        .health
+        .set_for_test(20);
     let grid = PathGrid::new(64, 64);
     let cmd = cmd_envelope(
         &sim,
@@ -7838,9 +7841,8 @@ fn test_infantry_attack_move_kills_on_the_way_and_walks_on() {
         1,
         Command::AttackMove {
             entity_id: 1,
-            target_rx: 30,
-            target_ry: 20,
-            queue: false,
+            target: None,
+            destination: Some(crate::sim::combat::TargetKind::Cell(30, 20)),
         },
     );
     let _ = sim.advance_tick(&[cmd], Some(&rules), Some(&grid), None, 100);
@@ -7851,13 +7853,13 @@ fn test_infantry_attack_move_kills_on_the_way_and_walks_on() {
     for _ in 0..600 {
         let _ = sim.advance_tick(&[], Some(&rules), Some(&grid), None, 100);
         let attacker = sim.substrate.entities.get(1).expect("attacker lives");
-        acquired |= attacker.attack_target.as_ref().map(|attack| attack.target)
-            == Some(crate::sim::combat::TargetKind::Entity(2));
+        acquired |=
+            attacker.attack_target.target() == Some(crate::sim::combat::TargetKind::Entity(2));
         let victim_dead = sim
             .substrate
             .entities
             .get(2)
-            .is_none_or(|victim| victim.health.current == 0);
+            .is_none_or(|victim| victim.health.current() == 0);
         if victim_dead
             && (attacker.position.rx, attacker.position.ry) == (30, 20)
             && attacker.navigation.nav_com.is_none()
@@ -7930,10 +7932,15 @@ fn test_lethal_hit_restore_refuses_the_dying_archived_target() {
         ],
         None,
     );
-    sim.substrate.entities.get_mut(2).unwrap().health.current = 50;
+    sim.substrate
+        .entities
+        .get_mut(2)
+        .unwrap()
+        .health
+        .set_for_test(50);
     {
         let tank = sim.substrate.entities.get_mut(1).unwrap();
-        tank.attack_target = Some(AttackTarget::new(2));
+        tank.attack_target.set_for_test(Some(TargetKind::Entity(2)));
         tank.suspended_attack_target = Some(crate::sim::combat::TargetKind::Entity(2));
         tank.mission
             .apply_test_fixture(crate::sim::mission::state::MissionTestFixture {
@@ -7954,7 +7961,7 @@ fn test_lethal_hit_restore_refuses_the_dying_archived_target() {
             .substrate
             .entities
             .get(2)
-            .is_some_and(|victim| victim.health.current == 0)
+            .is_some_and(|victim| victim.health.current() == 0)
         {
             break;
         }
@@ -7965,11 +7972,11 @@ fn test_lethal_hit_restore_refuses_the_dying_archived_target() {
         .entities
         .get(2)
         .expect("the corpse stays stored for its die sequence");
-    assert_eq!(victim.health.current, 0);
-    assert!(victim.lifecycle.object_alive);
+    assert_eq!(victim.health.current(), 0);
+    assert!(victim.lifecycle.object_alive());
     let tank = sim.substrate.entities.get(1).expect("the killer survives");
     assert!(
-        tank.attack_target.is_none(),
+        tank.attack_target.target().is_none(),
         "Assign_Target refuses the dying archived target the Restore names"
     );
     assert_eq!(tank.mission.current().known(), Some(MissionType::Guard));
@@ -8029,7 +8036,7 @@ fn test_lethal_hit_stuns_the_dying_infantry() {
     );
     {
         let gi = sim.substrate.entities.get_mut(1).unwrap();
-        gi.attack_target = Some(AttackTarget::new(2));
+        gi.attack_target.set_for_test(Some(TargetKind::Entity(2)));
         gi.navigation.nav_com = Some(crate::sim::components::NavTargetRef::Cell { rx: 9, ry: 2 });
     }
     let warhead = sim.interner.intern("AP");
@@ -8057,10 +8064,10 @@ fn test_lethal_hit_stuns_the_dying_infantry() {
         .entities
         .get(1)
         .expect("the corpse stays stored for its die sequence");
-    assert_eq!(gi.health.current, 0);
-    assert!(gi.lifecycle.object_alive);
+    assert_eq!(gi.health.current(), 0);
+    assert!(gi.lifecycle.object_alive());
     assert!(
-        gi.attack_target.is_none(),
+        gi.attack_target.target().is_none(),
         "TechnoClass::Stun Assign_Target(NULL)"
     );
     assert!(
@@ -8111,8 +8118,7 @@ fn test_area_guard_keeps_its_post_when_displaced_inside_the_native_leash() {
     if let Some(e) = sim.substrate.entities.get_mut(1) {
         e.position.rx = 5;
         e.position.ry = 2;
-        e.movement_target = None;
-        e.attack_target = None;
+        e.attack_target.set_for_test(None);
         e.navigation.nav_com = None;
     }
     sim.add_entity_occupancy(1);
@@ -8148,7 +8154,7 @@ fn test_fog_revealed_persists_after_unit_moves_away() {
         0,
         0,
         americans_id,
-        crate::sim::components::Health { current: 100 },
+        crate::sim::combat::Health::new(100),
         e1_id,
         EntityCategory::Infantry,
         0,
@@ -8159,7 +8165,7 @@ fn test_fog_revealed_persists_after_unit_moves_away() {
         1,
         false,
     );
-    ge.lifecycle.in_limbo = false;
+    ge.lifecycle.set_in_limbo_for_test(false);
     sim.substrate.entities.insert(ge);
 
     let grid = PathGrid::new(8, 8);
@@ -8207,8 +8213,8 @@ fn test_undeploy_conyard_spawns_mcv() {
         .substrate
         .entities
         .values()
-        .find(|e| sim.interner.resolve(e.type_ref) == "GACNST")
-        .map(|e| e.stable_id)
+        .find(|e| sim.interner.resolve(e.type_ref()) == "GACNST")
+        .map(|e| e.stable_id())
         .expect("ConYard should exist after deploy");
 
     // Clear building_up so we can undeploy (can't undeploy during construction).
@@ -8261,7 +8267,7 @@ fn test_undeploy_conyard_spawns_mcv() {
         .substrate
         .entities
         .values()
-        .filter(|e| e.type_ref == amcv_id)
+        .filter(|e| e.type_ref() == amcv_id)
         .map(|e| (e.position.rx, e.position.ry, e.selected))
         .collect();
     assert_eq!(mcvs.len(), 1, "Exactly one MCV should exist after undeploy");
@@ -8432,15 +8438,11 @@ fn test_layered_astar_can_traverse_bridge_after_unrelated_rebuild() {
         PathGrid::from_resolved_terrain_with_bridges(sim.resolved_terrain.as_ref().unwrap());
     let path_initial = crate::sim::pathfinding::find_layered_path(
         &grid_initial,
-        None,
-        None,
         (0, 0),
         MovementLayer::Ground,
         (4, 0),
         None,
         None,
-        None,
-        0,
         false,
         false,
     );
@@ -8455,15 +8457,11 @@ fn test_layered_astar_can_traverse_bridge_after_unrelated_rebuild() {
         PathGrid::from_resolved_terrain_with_bridges(sim.resolved_terrain.as_ref().unwrap());
     let path_after_rebuild = crate::sim::pathfinding::find_layered_path(
         &grid_after_rebuild,
-        None,
-        None,
         (0, 0),
         MovementLayer::Ground,
         (4, 0),
         None,
         None,
-        None,
-        0,
         false,
         false,
     );
@@ -8487,8 +8485,8 @@ fn insert_revealed_structure(sim: &mut Simulation, id: u64, rx: u16, ry: u16) {
         ry,
         EntityCategory::Structure,
     );
-    s.owner = sim.interner.intern("Americans");
-    s.type_ref = sim.interner.intern("GAPOWR");
+    s.set_owner_for_test(sim.interner.intern("Americans"));
+    s.set_type_ref_for_test(sim.interner.intern("GAPOWR"));
     s.foundation = "2x2".to_string();
     sim.substrate.entities.insert(s);
     sim.reveal(id);
@@ -8566,9 +8564,9 @@ fn mutual_same_tick_death_both_dying_then_flushed() {
 fn animated_death_uninit_waits_for_ordinary_tail_drain() {
     let mut sim = Simulation::new();
     let mut inf = GameEntity::test_default(5, "E1", "Americans", 3, 3);
-    inf.owner = sim.interner.intern("Americans");
-    inf.type_ref = sim.interner.intern("E1");
-    inf.category = EntityCategory::Infantry;
+    inf.set_owner_for_test(sim.interner.intern("Americans"));
+    inf.set_type_ref_for_test(sim.interner.intern("E1"));
+    inf.set_category_for_test(EntityCategory::Infantry);
     inf.mission_leaf =
         crate::sim::mission::leaf::MissionLeafState::for_entity_category(EntityCategory::Infantry);
     sim.substrate.entities.insert(inf);
@@ -8590,7 +8588,7 @@ fn animated_death_uninit_waits_for_ordinary_tail_drain() {
 /// merely because it is still stored.
 #[test]
 fn sale_death_is_ignored_before_ordinary_tail_drain() {
-    use crate::sim::components::Health;
+    use crate::sim::combat::Health;
 
     let ini_str: &str = "\
 [VehicleTypes]\n\n\
@@ -8635,7 +8633,7 @@ fn sale_death_is_ignored_before_ordinary_tail_drain() {
             EntityCategory::Structure,
         );
         bld.foundation = "2x2".to_string();
-        bld.health = Health { current: 750 };
+        bld.health = Health::new(750);
         sim.substrate.entities.insert(bld);
         sim.reveal(id);
     }
@@ -8693,7 +8691,7 @@ fn sale_death_is_ignored_before_ordinary_tail_drain() {
 /// repair took its step in the building's own visit, before its death, and none after.
 #[test]
 fn combat_death_after_its_repair_visit_is_freed_at_end_of_tick() {
-    use crate::sim::components::Health;
+    use crate::sim::combat::Health;
     use crate::sim::house_state::HouseState;
 
     let ini_str: &str = "\
@@ -8718,12 +8716,12 @@ fn combat_death_after_its_repair_visit_is_freed_at_end_of_tick() {
     // `+0x388`. Face it east at the building so the death/drain ordering under
     // test happens on the first tick instead of after a turn-to-fire.
     atk.body_facing.snap(0x4000, 0);
-    atk.health = Health { current: 300 };
+    atk.health = Health::new(300);
     // Damaged, auto-repairing enemy building MTNK destroys this tick at Phase 5.
     let mut bld =
         GameEntity::test_default_of_category(2, "TARGB", "Russia", 7, 5, EntityCategory::Structure);
     bld.foundation = "1x1".to_string();
-    bld.health = Health { current: 50 };
+    bld.health = Health::new(50);
     bld.repairing = true;
     sim.interner = crate::sim::intern::test_interner();
     let russia = sim.interner.intern("Russia");
@@ -8734,7 +8732,12 @@ fn combat_death_after_its_repair_visit_is_freed_at_end_of_tick() {
     sim.reveal(1);
     sim.reveal(2);
     sim.add_entity_occupancy(2);
-    sim.substrate.entities.get_mut(1).unwrap().attack_target = Some(AttackTarget::new(2));
+    sim.substrate
+        .entities
+        .get_mut(1)
+        .unwrap()
+        .attack_target
+        .set_for_test(Some(TargetKind::Entity(2)));
 
     sim.advance_tick(&[], Some(&rules), Some(&grid), None, 100);
 
@@ -8856,7 +8859,6 @@ fn crusher_does_not_freeze_in_front_of_infantry() {
                 entity_id: tank,
                 target_rx: 16,
                 target_ry: 10,
-                queue: false,
             },
         );
         let _ = sim.advance_tick(&[cmd], Some(&rules), Some(&grid), None, 100);
@@ -8881,7 +8883,10 @@ fn crusher_does_not_freeze_in_front_of_infantry() {
                 break;
             };
             let cell = (e.position.rx, e.position.ry);
-            series.push((e.movement_target.is_some(), cell));
+            series.push((
+                crate::sim::movement::motion_query::is_moving(&e) == Some(true),
+                cell,
+            ));
             if cell == (10, 10) && entered_blocker_cell.is_none() {
                 entered_blocker_cell = Some(tick);
             }
@@ -8979,7 +8984,6 @@ fn turning_mover_with_an_occupied_endpoint_still_makes_progress() {
             entity_id: mover,
             target_rx: 10,
             target_ry: 4,
-            queue: false,
         },
     );
     let _ = sim.advance_tick(&[cmd], Some(&rules), Some(&grid), None, 100);
@@ -8992,7 +8996,10 @@ fn turning_mover_with_an_occupied_endpoint_still_makes_progress() {
             break;
         };
         let cell = (e.position.rx, e.position.ry);
-        series.push((e.movement_target.is_some(), cell));
+        series.push((
+            crate::sim::movement::motion_query::is_moving(&e) == Some(true),
+            cell,
+        ));
         if cell == (10, 4) && arrived_at.is_none() {
             arrived_at = Some(tick);
         }
@@ -9103,7 +9110,6 @@ fn parked_friendly_on_the_route_is_scattered_out_of_the_way() {
             entity_id: mover,
             target_rx: DESTINATION.0,
             target_ry: DESTINATION.1,
-            queue: false,
         },
     );
     let _ = sim.advance_tick(&[cmd], Some(&rules), Some(&grid), None, 100);
@@ -9143,7 +9149,10 @@ fn parked_friendly_on_the_route_is_scattered_out_of_the_way() {
             break;
         };
         let cell = (m.position.rx, m.position.ry);
-        series.push((m.movement_target.is_some(), cell));
+        series.push((
+            crate::sim::movement::motion_query::is_moving(&m) == Some(true),
+            cell,
+        ));
         if cell == DESTINATION && arrived_at.is_none() {
             arrived_at = Some(tick);
         }
@@ -9202,23 +9211,16 @@ fn unit_route_beside_building(
         e.radio_contacts.insert(building_id);
     }
     let grid = PathGrid::clone(&sim.path_grid_snapshot().expect("navigation built"));
-    let info = sim.resolve_move_info(tank, Some(&rules)).unwrap();
     sim.mission_assign_exact(tank, MissionId::from_known(MissionType::Move), 0)
         .unwrap();
-    assert!(sim.issue_ground_move(
-        super::ground_move::GroundMove {
-            entity_id: tank,
-            target: goal,
-            speed: info.speed,
-            queue: false,
-            speed_type: Some(info.speed_type),
-            owner_blocks: true,
-            object_destination: None,
-        },
+    sim.assign_destination_represented(
+        tank,
+        Some(crate::sim::components::NavTargetRef::cell(goal.0, goal.1)),
         Some(&rules),
         None,
         crate::sim::world::FrameEffects::default(),
-    ));
+    )
+    .unwrap();
     assert_eq!(
         sim.substrate
             .entities
@@ -9244,7 +9246,9 @@ fn unit_route_beside_building(
 /// Foot+5E0 words it wrote (consumed ones included), or empty when the
 /// object has no order or no installed words.
 fn found_route(e: &GameEntity, start: (u16, u16)) -> Vec<(u16, u16)> {
-    if e.movement_target.is_none() || e.navigation.path_replay.directions.is_empty() {
+    if crate::sim::movement::motion_query::is_moving(&e) != Some(true)
+        || e.navigation.path_replay.directions.is_empty()
+    {
         return Vec::new();
     }
     e.navigation.path_replay.installed_cells(start)
@@ -9351,12 +9355,12 @@ fn stacking_motion_state(sim: &Simulation, id: u64) -> String {
     let Some(e) = sim.substrate.entities.get(id) else {
         return "<gone>".to_string();
     };
-    let adapter = match e.movement_target.as_ref() {
-        None => format!(
-            "id={id} at ({},{}) sub=({},{}) movement_target=None",
+    let motion = match crate::sim::movement::motion_query::is_moving(e) {
+        Some(false) | None => format!(
+            "id={id} at ({},{}) sub=({},{}) stopped",
             e.position.rx, e.position.ry, e.position.sub_x, e.position.sub_y
         ),
-        Some(_) => format!(
+        Some(true) => format!(
             "id={id} at ({},{}) sub=({},{}) route_ahead={:?} words_left={} goal={:?}",
             e.position.rx,
             e.position.ry,
@@ -9368,7 +9372,7 @@ fn stacking_motion_state(sim: &Simulation, id: u64) -> String {
         ),
     };
     format!(
-        "{adapter} nav={:?} drive={:?} foot={:?} mission={:?} marked={} occupation={}",
+        "{motion} nav={:?} drive={:?} foot={:?} mission={:?} marked={} occupation={}",
         e.navigation.nav_com,
         e.locomotor
             .as_ref()
@@ -9680,7 +9684,6 @@ fn repro_second_vehicle_ordered_onto_an_occupied_cell() {
             entity_id: mover,
             target_rx: 12,
             target_ry: 8,
-            queue: false,
         },
     );
     let _ = sim.advance_tick(&[cmd], Some(&rules), Some(&grid), None, 100);
@@ -9726,53 +9729,13 @@ fn repro_second_vehicle_ordered_onto_an_occupied_cell() {
     );
 }
 
-/// A Drive request made inside the movement pass prices its code-2 edges
-/// through the live receiver's chain, so no owner's block sets are built.
-#[test]
-fn drive_path_requests_inside_a_pass_build_no_owner_block_set() {
-    let Some((mut sim, rules, grid)) = stacking_world(24) else {
-        return;
-    };
-    sim.spawn_object("MTNK", "Americans", 12, 8, 64, &rules)
-        .expect("blocker spawns");
-    let mover = sim
-        .spawn_object("MTNK", "Americans", 6, 8, 64, &rules)
-        .expect("mover spawns");
-    let cmd = cmd_envelope(
-        &sim,
-        "Americans",
-        1,
-        Command::Move {
-            entity_id: mover,
-            target_rx: 12,
-            target_ry: 8,
-            queue: false,
-        },
-    );
-    let _ = sim.advance_tick(&[cmd], Some(&rules), Some(&grid), None, 100);
-    let mut moved_steps = 0;
-    for _ in 0..60 {
-        let tick = sim.advance_tick(&[], Some(&rules), Some(&grid), None, 100);
-        moved_steps += tick.movement.moved_steps;
-        assert_eq!(
-            sim.movement_pass_cache.block_index_view_builds(),
-            0,
-            "a request inside a pass built an owner's block sets"
-        );
-    }
-    assert!(
-        moved_steps > 0,
-        "the fixture must exercise a searched route"
-    );
-}
-
 /// Idle objects are handed out mutably only for their own turn, plus an
 /// infantry's frame-end animation clock: the per-frame walks read first and
 /// borrow only what they change. The tanks carry turrets, whose idle return
 /// the facing pass sets every frame. Every hand-out lands in the entity store's
 /// touch logs, whose per-object budget (`TouchLog::note`) a 20k-object world
-/// overran when each walk borrowed every entity, so the block index and the
-/// kept Ground keys rebuilt from every object each tick.
+/// overran when each walk borrowed every entity, so the blocker plane and
+/// the kept Ground keys rebuilt from every object each tick.
 #[test]
 fn idle_objects_are_handed_out_only_for_their_own_turn() {
     use crate::sim::entity_store::TouchReader;
@@ -9814,9 +9777,16 @@ fn idle_objects_are_handed_out_only_for_their_own_turn() {
     for _ in 0..3 {
         let _ = sim.advance_tick(&[], Some(&rules), Some(&grid), None, 100);
     }
-    let _ = sim.substrate.entities.take_touched(TouchReader::BlockIndex);
+    let _ = sim
+        .substrate
+        .entities
+        .take_touched(TouchReader::BlockerPlane);
     let _ = sim.advance_tick(&[], Some(&rules), Some(&grid), None, 100);
-    let Touched::Ids(ids) = sim.substrate.entities.take_touched(TouchReader::BlockIndex) else {
+    let Touched::Ids(ids) = sim
+        .substrate
+        .entities
+        .take_touched(TouchReader::BlockerPlane)
+    else {
         panic!("an idle tick overflowed the touch log");
     };
     // A log drops a repeat of its last id, so this counts the runs of
@@ -9878,7 +9848,6 @@ fn repro_group_move_of_eight_vehicles_to_one_cell() {
                     entity_id: id,
                     target_rx: target.0,
                     target_ry: target.1,
-                    queue: false,
                 },
             )
         })
@@ -10051,7 +10020,6 @@ fn repro_group_move_short_range_traces_every_tick() {
                     entity_id: id,
                     target_rx: target.0,
                     target_ry: target.1,
-                    queue: false,
                 },
             )
         })
@@ -10191,7 +10159,6 @@ fn repro_two_moving_vehicles_pass_through_each_other() {
                 entity_id: west,
                 target_rx: 16,
                 target_ry: 10,
-                queue: false,
             },
         ),
         cmd_envelope(
@@ -10202,7 +10169,6 @@ fn repro_two_moving_vehicles_pass_through_each_other() {
                 entity_id: east,
                 target_rx: 4,
                 target_ry: 10,
-                queue: false,
             },
         ),
     ];
@@ -10237,7 +10203,7 @@ fn repro_two_moving_vehicles_pass_through_each_other() {
         sim.substrate
             .entities
             .get(id)
-            .filter(|e| e.movement_target.is_some())
+            .filter(|e| crate::sim::movement::motion_query::is_moving(&e) == Some(true))
             .map(|e| e.navigation.path_replay.route_cells())
             .unwrap_or_default()
     };
@@ -10447,7 +10413,6 @@ fn repro_two_moving_vehicles_reservation_trace() {
                 entity_id: west,
                 target_rx: 16,
                 target_ry: 10,
-                queue: false,
             },
         ),
         cmd_envelope(
@@ -10458,7 +10423,6 @@ fn repro_two_moving_vehicles_reservation_trace() {
                 entity_id: east,
                 target_rx: 4,
                 target_ry: 10,
-                queue: false,
             },
         ),
     ];
@@ -10587,7 +10551,6 @@ fn head_on_pair_resolves_without_deadlock() {
                 entity_id: west,
                 target_rx: 16,
                 target_ry: 10,
-                queue: false,
             },
         ),
         cmd_envelope(
@@ -10598,7 +10561,6 @@ fn head_on_pair_resolves_without_deadlock() {
                 entity_id: east,
                 target_rx: 4,
                 target_ry: 10,
-                queue: false,
             },
         ),
     ];
@@ -10675,7 +10637,6 @@ fn column_of_vehicles_all_arrive_without_stacking() {
                     entity_id: id,
                     target_rx: gx,
                     target_ry: gy,
-                    queue: false,
                 },
             )
         })
@@ -10750,7 +10711,6 @@ fn diag_column_reservation_trace() {
                     entity_id: id,
                     target_rx: gx,
                     target_ry: gy,
-                    queue: false,
                 },
             )
         })
@@ -10831,7 +10791,6 @@ fn group_move_never_draws_two_hulls_on_one_spot() {
                     entity_id: id,
                     target_rx: 16,
                     target_ry: 16,
-                    queue: false,
                 },
             )
         })
@@ -10923,7 +10882,6 @@ fn diag_short_range_group_reservation_trace() {
                     entity_id: id,
                     target_rx: 16,
                     target_ry: 16,
-                    queue: false,
                 },
             )
         })
@@ -11459,7 +11417,6 @@ fn group_spread(sim: &Simulation, rules: &RuleSet, ids: &[u64]) -> Vec<(u16, u16
                     entity_id: id,
                     target_rx: 20,
                     target_ry: 20,
-                    queue: false,
                 },
             )
         })

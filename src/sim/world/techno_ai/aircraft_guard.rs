@@ -73,7 +73,7 @@ impl Simulation {
             team: self.team_script_vm.team_for_member(id).is_some(),
             nav_com: entity.navigation.nav_com.is_some(),
             weapon: object.is_some_and(|object| {
-                crate::sim::combat::combat_weapon::primary_for_tier(object, entity.veterancy())
+                crate::sim::combat::combat_weapon::primary_for_tier(object, entity.veterancy.rank())
                     .is_some()
             }),
             armed: object
@@ -117,7 +117,7 @@ impl Simulation {
                 continue;
             };
             let unit = self.substrate.entities.get(unit_id).expect("listed unit");
-            if unit.lifecycle.in_limbo {
+            if unit.lifecycle.in_limbo() {
                 continue;
             }
             let owner = unit.owner();
@@ -265,14 +265,14 @@ impl GuardHost for WorldGuard<'_> {
             .substrate
             .entities
             .get(contact)
-            .filter(|building| building.category == EntityCategory::Structure)
+            .filter(|building| building.category() == EntityCategory::Structure)
             .and_then(|building| self.sim.object_type(building.type_ref(), self.rules))
             .is_some_and(|object| object.unit_reload)
     }
 
     fn target(&mut self) -> bool {
         crate::sim::combat::target_present(
-            self.entity().attack_target.as_ref(),
+            self.entity().attack_target.target(),
             &self.sim.substrate.entities,
         )
     }

@@ -66,7 +66,7 @@ impl Simulation {
         let target = target?;
         let entity = self.substrate.entities.get(id)?;
         let object = rules.object(self.interner.resolve(entity.type_ref()))?;
-        if combat_weapon::aircraft_strafes(rules, object, entity.veterancy()) {
+        if combat_weapon::aircraft_strafes(rules, object, entity.veterancy.rank()) {
             return Some(target);
         }
         let range = combat_weapon::weapon_range(
@@ -88,7 +88,7 @@ impl Simulation {
                 .get(id)
                 .filter(|e| {
                     matches!(
-                        e.category,
+                        e.category(),
                         EntityCategory::Unit | EntityCategory::Infantry | EntityCategory::Aircraft
                     )
                 })
@@ -223,7 +223,7 @@ impl Simulation {
                     .substrate
                     .entities
                     .get(id)
-                    .filter(|e| e.category == EntityCategory::Unit)
+                    .filter(|e| e.category() == EntityCategory::Unit)
                     .map(|e| e.stable_id()),
                 _ => None,
             }
@@ -257,10 +257,10 @@ impl Simulation {
         for other in self.substrate.entities.values() {
             if carried == Some(other.stable_id())
                 || own == Some(other.stable_id())
-                || !other.lifecycle.object_alive
-                || other.lifecycle.in_limbo
+                || !other.lifecycle.object_alive()
+                || other.lifecycle.in_limbo()
                 || !matches!(
-                    other.category,
+                    other.category(),
                     EntityCategory::Unit | EntityCategory::Infantry | EntityCategory::Aircraft
                 )
             {

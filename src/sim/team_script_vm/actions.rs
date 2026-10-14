@@ -149,8 +149,8 @@ fn nav_target(nav: NavTargetRef) -> TeamTarget {
 fn tarcom_names(entity: &GameEntity, target: TeamTarget) -> bool {
     entity
         .attack_target
-        .as_ref()
-        .is_some_and(|attack| attack.target == target.target_kind())
+        .target()
+        .is_some_and(|attack| attack == target.target_kind())
 }
 
 /// The cell holding a member's Location (`vt+0x1BC`), as a team target.
@@ -399,7 +399,7 @@ impl Simulation {
                         .unwrap_or_default();
                     for member in members {
                         if let Some(entity) = self.substrate.entities.get_mut(member) {
-                            entity.elite_flash_frames = action.argument;
+                            entity.flashing.start(action.argument);
                         }
                     }
                     if let Some(team) = self.team_script_vm.teams.get_mut(&team_id) {
@@ -599,7 +599,7 @@ impl Simulation {
             let Some(entity) = self.substrate.entities.get(member) else {
                 continue;
             };
-            if !entity.lifecycle.object_alive {
+            if !entity.lifecycle.object_alive() {
                 continue;
             }
             self.team_member_join_up(team_id, member, rules, registry, frame_effects);
@@ -610,7 +610,7 @@ impl Simulation {
                 entity,
                 self.team_member_initiated(team_id, member),
                 self.object_placement_scope_active(),
-            ) || entity.attack_target.is_some()
+            ) || entity.attack_target.target().is_some()
             {
                 continue;
             }
@@ -630,7 +630,7 @@ impl Simulation {
             let Some(entity) = self.substrate.entities.get(member) else {
                 continue;
             };
-            if entity.attack_target.is_some() || entity.navigation.nav_com.is_some() {
+            if entity.attack_target.target().is_some() || entity.navigation.nav_com.is_some() {
                 continue;
             }
             let current = entity.mission.effective().raw();
@@ -706,7 +706,7 @@ impl Simulation {
         let members: Vec<u64> = team.members().collect();
         let transport = members.iter().copied().find(|&member| {
             self.substrate.entities.get(member).is_some_and(|entity| {
-                entity.category == transport_class
+                entity.category() == transport_class
                     && self
                         .object_type(entity.type_ref(), rules)
                         .is_some_and(|object| {
@@ -897,7 +897,7 @@ impl Simulation {
                 .object_type(entity.type_ref(), rules)
                 .map_or(0, |object| object.passengers);
             let transport =
-                passengers != 0 && transport_class.is_none_or(|class| entity.category == class);
+                passengers != 0 && transport_class.is_none_or(|class| entity.category() == class);
             if transport && passengers < 0 {
                 continue;
             }
@@ -975,12 +975,12 @@ impl Simulation {
             let Some(object) = self.object_type(entity.type_ref(), rules) else {
                 continue;
             };
-            let unit = entity.category == EntityCategory::Unit;
+            let unit = entity.category() == EntityCategory::Unit;
             let building = unit
                 .then(|| crate::sim::mcv_deploy::deploys_into(self, entity, rules))
                 .flatten();
             let deployer = (unit && object.is_simple_deployer)
-                || (entity.category == EntityCategory::Infantry && object.deployer);
+                || (entity.category() == EntityCategory::Infantry && object.deployer);
             let unloading =
                 entity.mission.effective() == MissionId::from_known(MissionType::Unload);
             let cell = (entity.position.rx as i16, entity.position.ry as i16);
@@ -1299,7 +1299,7 @@ impl Simulation {
         footprint: (i32, i32),
     ) -> Option<(u16, u16)> {
         use crate::sim::find_nearby_cell::{
-            NearbyAnchorGate, NearbyFootprint, NearbyQuery, NearbySearchOptions, PassabilityArgs,
+            NearbyFootprint, NearbyQuery, NearbySearchOptions, PassabilityArgs,
             find_nearby_passable_cell_with_options, map_owned_radius_cap,
         };
         let terrain = self.resolved_terrain.as_ref()?;
@@ -1321,7 +1321,6 @@ impl Simulation {
                     bridge_aware_zone: false,
                 },
                 footprint: NearbyFootprint::new(footprint.0, footprint.1),
-                anchor_gate: NearbyAnchorGate::NativeHeightAware,
                 allow_bridge_cells: true,
                 check_height: false,
                 check_occupancy: false,
@@ -1551,7 +1550,7 @@ impl Simulation {
                 stray = stray.wrapping_mul(2);
             }
             found = true;
-            let aircraft = entity.category == EntityCategory::Aircraft;
+            let aircraft = entity.category() == EntityCategory::Aircraft;
             let distance = self.team_member_distance(entity, Some(focus));
             let mut near = distance <= stray;
             if near
@@ -1575,7 +1574,7 @@ impl Simulation {
                             > rules.general.close_enough
                             || crate::sim::movement::motion_query::is_moving(entity) == Some(true)
                     });
-                    if !still_moving && entity.attack_target.is_none() {
+                    if !still_moving && entity.attack_target.target().is_none() {
                         self.team_member_set_destination(
                             member,
                             None,
@@ -1593,7 +1592,7 @@ impl Simulation {
                     }
                 }
             } else {
-                if aggressive && entity.attack_target.is_some() {
+                if aggressive && entity.attack_target.target().is_some() {
                     continue;
                 }
                 if entity.mission.effective() != MissionId::from_known(MissionType::Move) {
@@ -1873,7 +1872,7 @@ impl Simulation {
             .entities
             .iter_sorted()
             .filter(|(_, building)| {
-                building.category == EntityCategory::Structure
+                building.category() == EntityCategory::Structure
                     && building.base_plan_type_index == index
             })
             .map(|(id, building)| TargetBuilding {
@@ -1966,7 +1965,7 @@ impl Simulation {
             && has_members
             && leader
                 .and_then(|leader| self.substrate.entities.get(leader))
-                .is_some_and(|entity| entity.category != EntityCategory::Aircraft)
+                .is_some_and(|entity| entity.category() != EntityCategory::Aircraft)
             && let Some(BlockingObject::Entity(object)) =
                 self.find_blocking_object((x as u16, y as u16))
             && let Some(team) = self.team_script_vm.teams.get_mut(&team_id)
@@ -2014,7 +2013,7 @@ impl Simulation {
                 self.team_member_initiated(team_id, member),
                 self.object_placement_scope_active(),
             ) {
-                busy |= droppod && entity.lifecycle.in_limbo;
+                busy |= droppod && entity.lifecycle.in_limbo();
                 continue;
             }
             let infiltrates = || {
@@ -2022,7 +2021,7 @@ impl Simulation {
                     .is_some_and(|object| object.infiltrate)
             };
             let mission = entity.mission.effective().raw();
-            if action == 15 && entity.category == EntityCategory::Infantry && infiltrates() {
+            if action == 15 && entity.category() == EntityCategory::Infantry && infiltrates() {
                 self.team_member_queue_mission(member, MissionType::Capture, rules);
                 self.team_member_assign_target(member, target, rules, registry, frame_effects);
             } else if ![
@@ -2048,19 +2047,19 @@ impl Simulation {
             let Some(entity) = self.substrate.entities.get(member) else {
                 continue;
             };
-            if entity.attack_target.is_none() {
+            if entity.attack_target.target().is_none() {
                 self.team_member_assign_target(member, target, rules, registry, frame_effects);
             }
             let Some(entity) = self.substrate.entities.get(member) else {
                 continue;
             };
-            let spent_aircraft = entity.category == EntityCategory::Aircraft
+            let spent_aircraft = entity.category() == EntityCategory::Aircraft
                 && self
                     .object_type(entity.type_ref(), rules)
                     .is_some_and(|object| {
                         crate::sim::combat::combat_weapon::primary_for_tier(
                             object,
-                            entity.veterancy(),
+                            entity.veterancy.rank(),
                         )
                         .is_some()
                             && member_ammo(entity, object) <= 0

@@ -1,14 +1,14 @@
 use super::*;
 use crate::map::entities::EntityCategory;
 use crate::rules::ini_parser::IniFile;
-use crate::sim::components::{DriveCoord, MovementTarget, NavTargetRef};
+use crate::sim::components::{DriveCoord, NavTargetRef};
 use crate::sim::game_entity::GameEntity;
 use crate::sim::house_state::HouseState;
 use crate::sim::movement::locomotor::LocomotorState;
 
 fn infantry() -> GameEntity {
     let mut e = GameEntity::test_default(1, "E1", "Allies", 5, 5);
-    e.category = EntityCategory::Infantry;
+    e.set_category_for_test(EntityCategory::Infantry);
     e.mission_leaf =
         crate::sim::mission::leaf::MissionLeafState::for_entity_category(EntityCategory::Infantry);
     e
@@ -78,8 +78,10 @@ fn player_scatter_event_gates_and_rng_prefix_match_native_gi() {
             man.mission_leaf
                 .set_infantry_doing_verified(actor["doing"].as_i64().unwrap() as i32)
                 .unwrap();
-            man.lifecycle.object_alive = actor["alive"].as_u64().unwrap() != 0;
-            man.lifecycle.in_limbo = actor["limbo"].as_u64().unwrap() != 0;
+            man.lifecycle
+                .set_object_alive_for_test(actor["alive"].as_u64().unwrap() != 0);
+            man.lifecycle
+                .set_in_limbo_for_test(actor["limbo"].as_u64().unwrap() != 0);
             man.dock_entered_with = (actor["tether"].as_u64().unwrap() != 0).then_some(9);
             let mut loco = LocomotorState::for_test_kind(LocomotorKind::Walk);
             loco.set_walk_destination(
@@ -163,7 +165,7 @@ fn armed_teleport_destination_requires_the_current_cell_inputs() {
         .construct_object_limbo_at_height("CLEG", "Americans", 10, 10, 0, 0, &rules)
         .unwrap();
     let actor = sim.substrate.entities.get_mut(id).unwrap();
-    actor.lifecycle.in_limbo = false;
+    actor.lifecycle.set_in_limbo_for_test(false);
     set_mission(actor, MissionType::Guard);
     assert!(
         actor.infantry.is_some(),
@@ -220,7 +222,8 @@ fn forced_gates_and_draw_match_original_hut_caller() {
             .set_infantry_doing_verified(input["doing"].as_i64().unwrap() as i32)
             .unwrap();
         if flag("attack") {
-            man.attack_target = Some(crate::sim::combat::AttackTarget::new(9));
+            man.attack_target
+                .set_for_test(Some(crate::sim::combat::TargetKind::Entity(9)));
         }
         let mut loco = LocomotorState::for_test_kind(LocomotorKind::Walk);
         loco.set_walk_destination(flag("moving").then(|| DriveCoord::cell(6, 5, 0)));
@@ -250,7 +253,7 @@ fn forced_gates_and_draw_match_original_hut_caller() {
 /// arguments, through the production fact reads: Walk
 /// (tools/infantry_scatter_oracle.py) and Jumpjet
 /// (tools/spatial_oracle/jumpjet_scatter_gates.py) Is_Moving. Neither gate
-/// draws RNG or writes the man; a path-execution adapter changes nothing.
+/// draws RNG or writes the man.
 #[test]
 fn forced_no_kidding_gates_match_native_walk_and_jumpjet_rows() {
     let walk: serde_json::Value = serde_json::from_str(crate::test_fixture::text(
@@ -288,7 +291,8 @@ fn forced_no_kidding_gates_match_native_walk_and_jumpjet_rows() {
                 },
             );
             if flag("has_target") {
-                man.attack_target = Some(crate::sim::combat::AttackTarget::new(9));
+                man.attack_target
+                    .set_for_test(Some(crate::sim::combat::TargetKind::Entity(9)));
             }
             let mut loco = LocomotorState::for_test_kind(kind);
             if let Some(state) = loco.jumpjet_runtime_mut() {
@@ -300,33 +304,29 @@ fn forced_no_kidding_gates_match_native_walk_and_jumpjet_rows() {
                 loco.set_walk_destination(flag("moving").then(|| DriveCoord::cell(6, 5, 0)));
             }
             man.locomotor = Some(loco);
-            for adapter in [false, true] {
-                let mut man = man.clone();
-                man.movement_target = adapter.then(MovementTarget::default);
-                let before = serde_json::to_value(&man).unwrap();
-                let mut sim = sim_with(man);
-                let rng = sim.scenario_rng.state();
-                let flags = ScatterFlags::new(flag("first_bool"), flag("second_bool"));
-                let admitted = sim
-                    .infantry_scatter_admitted(
-                        1,
-                        flags,
-                        &rules,
-                        crate::sim::world::FrameEffects::default(),
-                    )
-                    .unwrap();
-                assert_eq!(admitted, flag("gate_admitted"), "{row} adapter={adapter}");
-                assert_eq!(sim.scenario_rng.state(), rng, "{row}");
-                assert_eq!(
-                    serde_json::to_value(sim.substrate.entities.get(1).unwrap()).unwrap(),
-                    before,
-                    "{row}"
-                );
-                checked += 1;
-            }
+            let before = serde_json::to_value(&man).unwrap();
+            let mut sim = sim_with(man);
+            let rng = sim.scenario_rng.state();
+            let flags = ScatterFlags::new(flag("first_bool"), flag("second_bool"));
+            let admitted = sim
+                .infantry_scatter_admitted(
+                    1,
+                    flags,
+                    &rules,
+                    crate::sim::world::FrameEffects::default(),
+                )
+                .unwrap();
+            assert_eq!(admitted, flag("gate_admitted"), "{row}");
+            assert_eq!(sim.scenario_rng.state(), rng, "{row}");
+            assert_eq!(
+                serde_json::to_value(sim.substrate.entities.get(1).unwrap()).unwrap(),
+                before,
+                "{row}"
+            );
+            checked += 1;
         }
     }
-    assert_eq!(checked, 256);
+    assert_eq!(checked, 128);
 }
 
 /// The gates of ReceiveDamage's two Scatter calls against their original
@@ -372,13 +372,17 @@ fn damage_gates_match_original_execution() {
             .unwrap();
         // Presentation cannot admit or refuse simulation work.
         victim.animation = Some(Animation::new(SequenceKind::Die1));
-        victim.set_veterancy_rank(input["rank"].as_u64().unwrap_or(0) as u16 * 100);
+        victim
+            .veterancy
+            .set_rank_for_test(input["rank"].as_u64().unwrap_or(0) as u16 * 100);
         let mut loco = LocomotorState::for_test_kind(LocomotorKind::Walk);
         loco.set_walk_destination(flag("moving", false).then(|| DriveCoord::cell(6, 5, 0)));
         victim.locomotor = Some(loco);
         set_mission(&mut victim, MissionType::Guard);
         if flag("target", false) {
-            victim.attack_target = Some(crate::sim::combat::AttackTarget::new(9));
+            victim
+                .attack_target
+                .set_for_test(Some(crate::sim::combat::TargetKind::Entity(9)));
         }
         if flag("nav", false) {
             victim.navigation.nav_com = Some(NavTargetRef::cell(9, 9));

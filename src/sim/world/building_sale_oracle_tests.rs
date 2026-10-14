@@ -215,7 +215,7 @@ fn compare_infantry(s: &SlaveScene, id: u64, expected: &Value, context: &str) {
         "{context}: owner"
     );
     assert_eq!(
-        u64::from(entity.lifecycle.in_limbo),
+        u64::from(entity.lifecycle.in_limbo()),
         expected["limbo"].as_u64().unwrap(),
         "{context}: limbo"
     );
@@ -589,16 +589,14 @@ fn the_computers_low_credit_sale_matches_the_original_admission() {
             0,
             0,
             owner,
-            crate::sim::components::Health {
-                current: int("health"),
-            },
+            crate::sim::combat::Health::new(int("health")),
             kind,
             crate::map::entities::EntityCategory::Structure,
             0,
             5,
             false,
         );
-        building.lifecycle.in_limbo = false;
+        building.lifecycle.set_in_limbo_for_test(false);
         building.in_playfield = true;
         building.was_attacked_by_enemy = input["attacked"] == true;
         building.ai_sellable = input["ai_sellable"] == true;

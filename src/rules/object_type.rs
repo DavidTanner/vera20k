@@ -2153,6 +2153,9 @@ impl ObjectType {
     ///
     /// Every native read passes the slot's current value as the default, so
     /// slots the taken branch does not write keep their constructor `NULL`.
+    /// A value read goes through `WeaponTypeClass::FindOrAllocate @
+    /// 0x00772FA0` (`0x0071293B`, `0x007129D5`), which answers null for
+    /// `none` and `<none>`: stock `[CMIN]` `Primary=none` is unarmed.
     ///
     /// VERA-internal: `WeaponCount` is clamped to `WEAPON_SLOT_COUNT`. Native
     /// would write past the array; no stock section authors more than 17
@@ -2167,18 +2170,22 @@ impl ObjectType {
             // `Weapon%d`/`EliteWeapon%d`: ReadString into 0x80 bytes (0x0071292B).
             for slot in 0..authored.min(WEAPON_SLOT_COUNT) {
                 base[slot] = section
-                    .read_name(&format!("Weapon{}", slot + 1), 0x80)
+                    .read_type_name(&format!("Weapon{}", slot + 1), 0x80)
                     .map(str::to_owned);
                 elite[slot] = section
-                    .read_name(&format!("EliteWeapon{}", slot + 1), 0x80)
+                    .read_type_name(&format!("EliteWeapon{}", slot + 1), 0x80)
                     .map(str::to_owned);
             }
         } else if !section.read_bool("ClearAllWeapons", false) {
-            base[WEAPON_SLOT_PRIMARY] = section.read_name("Primary", 0x80).map(str::to_owned);
-            base[WEAPON_SLOT_SECONDARY] = section.read_name("Secondary", 0x80).map(str::to_owned);
-            elite[WEAPON_SLOT_PRIMARY] = section.read_name("ElitePrimary", 0x80).map(str::to_owned);
-            elite[WEAPON_SLOT_SECONDARY] =
-                section.read_name("EliteSecondary", 0x80).map(str::to_owned);
+            base[WEAPON_SLOT_PRIMARY] = section.read_type_name("Primary", 0x80).map(str::to_owned);
+            base[WEAPON_SLOT_SECONDARY] =
+                section.read_type_name("Secondary", 0x80).map(str::to_owned);
+            elite[WEAPON_SLOT_PRIMARY] = section
+                .read_type_name("ElitePrimary", 0x80)
+                .map(str::to_owned);
+            elite[WEAPON_SLOT_SECONDARY] = section
+                .read_type_name("EliteSecondary", 0x80)
+                .map(str::to_owned);
         }
 
         (base, elite)
@@ -4380,6 +4387,30 @@ mod tests {
             ObjectCategory::Vehicle,
         );
         assert_eq!(obj.passengers, -3);
+    }
+
+    /// `WeaponTypeClass::FindOrAllocate @ 0x00772FA0` answers null for `none`
+    /// and `<none>`, on both weapon branches.
+    #[test]
+    fn a_none_weapon_name_leaves_its_slot_empty() {
+        let ini = IniFile::from_str(
+            "[CMIN]\nPrimary=none\nSecondary=<none>\nElitePrimary=NONE\n\
+             [GUNNER]\nTurretCount=1\nWeaponCount=2\nWeapon1=none\nWeapon2=GUN\n",
+        );
+        let miner = ObjectType::from_ini_section(
+            "CMIN",
+            ini.section("CMIN").unwrap(),
+            ObjectCategory::Vehicle,
+        );
+        assert!(miner.weapon_list.iter().all(Option::is_none));
+        assert!(miner.elite_weapon_list.iter().all(Option::is_none));
+        let gunner = ObjectType::from_ini_section(
+            "GUNNER",
+            ini.section("GUNNER").unwrap(),
+            ObjectCategory::Vehicle,
+        );
+        assert_eq!(gunner.weapon_list[0], None);
+        assert_eq!(gunner.weapon_list[1].as_deref(), Some("GUN"));
     }
 
     #[test]

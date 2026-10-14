@@ -77,7 +77,7 @@ use crate::rules::overlay_types::OverlayTypeRegistry;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::cell_kernel::native_xyz_distance;
 use crate::sim::combat::TargetKind;
-use crate::sim::combat::veterancy::{has_weapon_ability, rank_from_u16};
+use crate::sim::combat::veterancy::has_weapon_ability;
 use crate::sim::components::{DriveCoord, NavTargetRef};
 use crate::sim::game_entity::GameEntity;
 use crate::sim::movement::locomotor::MovementLayer;
@@ -201,7 +201,7 @@ impl Simulation {
         //death-frame counter +6D8, neither represented; see the residual) and
         //vt+380, FootClass::IsParalyzed 0x4DE770 (the Foot+6A0 timer a
         //parasite arms), return with the out byte clear.
-        if actor.is_paralyzed(self.session.binary_frame) {
+        if actor.parasite.is_paralyzed(self.session.binary_frame) {
             return Ok(false);
         }
         let head = if head.is_some() {
@@ -240,7 +240,7 @@ impl Simulation {
         };
         if !self.substrate.entities.get(object).is_some_and(|nav| {
             matches!(
-                nav.category,
+                nav.category(),
                 EntityCategory::Unit | EntityCategory::Infantry
             )
         }) {
@@ -284,6 +284,14 @@ impl Simulation {
             return Ok(false);
         }
         let destination = track_destination(actor).ok_or("no-queue arm without destination")?;
+        // A batched request waits for the next frame's batch as if the timer
+        // still ran (`path_batch`, a proposed deviation). So does a
+        // recursion's (the retries at 0x4B397F, 0x4B4480 and the 0x4B4541
+        // tail, the second stage's re-entries at 0x4B41B3 and 0x4B420B),
+        // unless it is the Foot's first request in a frame the batch answered.
+        if self.defer_path_search(id, super::path_batch::WaitingRequest::NoQueue) {
+            return Ok(false);
+        }
         let request = self.track_path_request(call, destination, 0)?;
         match self.run_track_path_request(
             &request,
@@ -548,13 +556,15 @@ impl Simulation {
         }
         //4B36BC..4B36EF / 4B39D1..4B3A0E: urgency 2 once the latched
         //blockage timer expired, else 1; Find_Path(cell(destination), 0, u).
-        let urgency = if runtime.path_blocked && runtime.blocked_timer.expired(frame as i32) {
-            2
-        } else {
-            1
-        };
-        let destination =
-            track_destination(actor).ok_or("Drive/Ship code-2 ladder without destination")?;
+        let urgency = runtime.code2_urgency(frame);
+        let destination = super::path_batch::code2_ladder_destination(actor)
+            .ok_or("Drive/Ship code-2 ladder without destination")?;
+        // A batched re-path waits for the next frame's batch as if the timer
+        // still ran (`path_batch`, a proposed deviation).
+        if self.defer_path_search(id, super::path_batch::WaitingRequest::Code2Ladder) {
+            self.track_first_rejected_tail(id);
+            return Ok(false);
+        }
         let request = self.track_path_request(call, destination, urgency)?;
         let found = self.foot_find_path(&request, rules, call.registry, call.frame_effects)?;
         //4B3A13..4B3A2A: a vanished Foot sets the out byte.
@@ -709,7 +719,7 @@ impl Simulation {
                 .entities
                 .get(id)
                 .map_or((false, false), |actor| {
-                    (actor.lifecycle.in_limbo, actor.lifecycle.object_alive)
+                    (actor.lifecycle.in_limbo(), actor.lifecycle.object_alive())
                 });
             if !in_limbo {
                 if !alive {
@@ -889,14 +899,14 @@ impl Simulation {
             .entities
             .get_mut(id)
             .ok_or("retired Drive/Ship finalize owner")?;
-        if picked && !actor.lifecycle.in_limbo {
+        if picked && !actor.lifecycle.in_limbo() {
             //4B46FC..4B4705: Apply_Track_Occupation_Mode(head, 1).
             self.track_apply_occupation(id, call.family, true);
             return Ok(false);
         }
         //4B4716..4B473C: a false answer or a limbo owner: a live owner drops
         //the head again.
-        if actor.lifecycle.object_alive {
+        if actor.lifecycle.object_alive() {
             clear_track_head(actor);
         }
         self.track_finalize_stop(id)
@@ -1028,7 +1038,7 @@ impl Simulation {
                 self.substrate
                     .entities
                     .get(id)
-                    .is_some_and(|entity| entity.category == EntityCategory::Unit)
+                    .is_some_and(|entity| entity.category() == EntityCategory::Unit)
             })
     }
 
@@ -1059,9 +1069,7 @@ impl Simulation {
             .unwrap_or(DriveCoord { x: 0, y: 0, z: 0 })
     }
 
-    /// Foot+5E0 = -1 on the live path word. The scheduling adapter's route is
-    /// a cache of the same words, so it empties with them; otherwise the next
-    /// visit would read the Foot as a Rust route adapter.
+    /// Foot+5E0 = -1 on the live path word.
     fn clear_path_head(&mut self, id: u64) {
         if let Some(actor) = self.substrate.entities.get_mut(id) {
             actor.clear_live_path_head();
@@ -1231,7 +1239,7 @@ impl Simulation {
         };
         //Type+D28, or HasWeaponAbility(0x11) by rank (0x70D0D0).
         let crusher = object.crusher
-            || has_weapon_ability(rank_from_u16(actor.veterancy()), object, Ability::Crusher);
+            || has_weapon_ability(actor.veterancy.rank_kind(), object, Ability::Crusher);
         let cells = crate::map::resolved_terrain::NativeCellQuery::canonical(terrain);
         let native = cells.lookup(cell);
         let deck = cells.flags(native) & 0x100 != 0 && {
@@ -1347,7 +1355,7 @@ impl Simulation {
                 self.substrate
                     .entities
                     .get(entry.entity_id)
-                    .is_some_and(|entity| entity.category == EntityCategory::Aircraft)
+                    .is_some_and(|entity| entity.category() == EntityCategory::Aircraft)
             })
         {
             return Some(BlockingObject::Entity(aircraft.entity_id));

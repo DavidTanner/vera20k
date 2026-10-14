@@ -6,8 +6,7 @@ use crate::map::entities::EntityCategory;
 use crate::rules::ini_parser::IniFile;
 use crate::rules::native_processing::{RulesLayerKind, RulesLayerStack};
 use crate::rules::ruleset::RuleSet;
-use crate::sim::combat::{AttackTarget, TargetKind};
-use crate::sim::components::Health;
+use crate::sim::combat::{Health, TargetKind};
 use crate::sim::game_entity::GameEntity;
 use crate::sim::house_state::HouseState;
 use crate::sim::mission::{MissionId, MissionType};
@@ -152,16 +151,14 @@ fn compare_original_infantry_target_rows(consumer: TargetConsumer) {
             0,
             0,
             house,
-            Health {
-                current: input["health"].as_i64().unwrap() as i32,
-            },
+            Health::new(input["health"].as_i64().unwrap() as i32),
             sim.interner.intern("E1"),
             EntityCategory::Infantry,
             0,
             0,
             false,
         );
-        actor.lifecycle.in_limbo = false;
+        actor.lifecycle.set_in_limbo_for_test(false);
         let doing = before["doing"].as_i64().unwrap() as i32;
         actor
             .mission_leaf
@@ -173,11 +170,14 @@ fn compare_original_infantry_target_rows(consumer: TargetConsumer) {
         actor.infantry.as_mut().unwrap().is_prone = before["prone"].as_u64().unwrap() != 0;
         actor.set_falling_down_for_test(input["falling"].as_u64().unwrap() != 0);
         actor.passively_acquired_target = before["passive"].as_u64().unwrap() != 0;
-        actor.attack_target =
-            target(before["target"].as_str().unwrap()).map(|target| match target {
-                TargetKind::Entity(id) => AttackTarget::new(id),
-                _ => unreachable!(),
-            });
+        actor
+            .attack_target
+            .set_for_test(
+                target(before["target"].as_str().unwrap()).map(|target| match target {
+                    TargetKind::Entity(id) => TargetKind::Entity(id),
+                    _ => unreachable!(),
+                }),
+            );
         actor.navigation.path_replay.directions =
             vec![before["path_field"].as_i64().unwrap() as u8, 2, 3];
         // Original51B1F0 observes the single signed +F8 and retained stage
@@ -202,7 +202,7 @@ fn compare_original_infantry_target_rows(consumer: TargetConsumer) {
                 0,
                 0,
                 house,
-                Health { current: 100 },
+                Health::new(100),
                 sim.interner.intern("MTNK"),
                 EntityCategory::Unit,
                 0,
@@ -213,7 +213,7 @@ fn compare_original_infantry_target_rows(consumer: TargetConsumer) {
                 // The event admits only out-of-limbo object tokens. This
                 // additional caller premise does not change the represented
                 // class setter's alive-target results.
-                recipient.lifecycle.in_limbo = false;
+                recipient.lifecycle.set_in_limbo_for_test(false);
             }
             sim.substrate.entities.insert(recipient);
         }
@@ -291,9 +291,7 @@ fn compare_original_infantry_target_rows(consumer: TargetConsumer) {
                         0,
                         0,
                         house,
-                        Health {
-                            current: object.strength,
-                        },
+                        Health::new(object.strength),
                         sim.interner.intern("BFRT"),
                         EntityCategory::Unit,
                         0,
@@ -347,7 +345,7 @@ fn compare_original_infantry_target_rows(consumer: TargetConsumer) {
             "{name}",
         );
         assert_eq!(
-            actor.attack_target.as_ref().map(|attack| attack.target),
+            actor.attack_target.target(),
             target(after["target"].as_str().unwrap()),
             "{name}",
         );

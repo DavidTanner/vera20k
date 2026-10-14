@@ -81,8 +81,7 @@ fn award_kill_experience(
         return;
     };
     if let Some(recipient) = entities.get_mut(recipient_id) {
-        super::veterancy::award_kill(
-            recipient,
+        recipient.veterancy.award_kill(
             recipient_cost,
             points,
             true,
@@ -151,7 +150,7 @@ fn record_the_kill(
         .get(&victim_owner)
         .map(crate::sim::house_state::HouseState::cost_factors);
     let victim_type = rules.object(interner.resolve(victim.type_ref()));
-    let insignificant_building = victim.category == EntityCategory::Structure
+    let insignificant_building = victim.category() == EntityCategory::Structure
         && victim_type.is_some_and(|object| object.insignificant);
     let victim_cost = victim_type.map_or(0, |object| rules.cost_of(object, victim_house.as_ref()));
     // `0x00702E64` asks the killer's house `HouseClass::IsAlly @ 0x004F9A90`,
@@ -167,11 +166,8 @@ fn record_the_kill(
             interner.resolve(victim_owner),
         )
     });
-    let points = super::veterancy::kill_award_points(
-        victim_cost,
-        super::veterancy::rank_of(victim.veterancy_raw),
-        allied,
-    );
+    let points =
+        super::veterancy::kill_award_points(victim_cost, victim.veterancy.rank_kind(), allied);
     if let Some(killer_id) = killer_id {
         award_kill_experience(
             entities,
@@ -244,9 +240,9 @@ fn record_kill_credit(
 ) {
     victim.killed_by = killer_owner;
     if callback == KillCallback::Terminal
-        || victim.health.current == 0
+        || victim.health.current() == 0
         || killer_owner.is_some()
-        || victim.crashing
+        || victim.crash.is_crashing()
     {
         victim.destruction_recorded = true;
     }
@@ -258,12 +254,12 @@ fn record_kill_credit(
     }
     if !insignificant_building {
         if let Some(house) = houses.get_mut(&victim.owner()) {
-            house.stats.record_loss(victim.category);
+            house.stats.record_loss(victim.category());
         }
         if let Some(killer) = killer_owner
             && let Some(house) = houses.get_mut(&killer)
         {
-            house.stats.record_kill(victim.category);
+            house.stats.record_kill(victim.category());
         }
     }
 }

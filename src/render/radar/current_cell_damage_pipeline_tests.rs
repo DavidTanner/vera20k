@@ -13,8 +13,8 @@ use crate::rules::ini_parser::IniFile;
 use crate::rules::ruleset::RuleSet;
 use crate::rules::terrain_rules::TerrainClass;
 use crate::sim::bridge_state::{BridgeDamageEvent, BridgeRuntimeState};
+use crate::sim::combat::Health;
 use crate::sim::command::Command;
-use crate::sim::components::Health;
 use crate::sim::game_entity::GameEntity;
 use crate::sim::runtime::SimRuntime;
 use crate::sim::world::Simulation;
@@ -243,7 +243,7 @@ fn spawn(
         z,
         facing,
         owner,
-        Health { current: health },
+        Health::new(health),
         type_ref,
         category,
         0,
@@ -323,7 +323,7 @@ fn gsi_04_01_production_tick_keeps_pavement_damage_through_ordinary_overlay_repa
             .substrate
             .entities
             .get(attacker)
-            .and_then(|entity| entity.attack_target.clone()),
+            .and_then(|entity| entity.attack_target.target()),
         runtime
             .simulation
             .fog

@@ -438,7 +438,7 @@ fn state9_delay_matches_the_original_division() {
 #[test]
 fn an_empty_fighter_lets_go_heads_for_its_edge_and_idles() {
     use crate::map::entities::EntityCategory;
-    use crate::sim::combat::AttackTarget;
+    use crate::sim::combat::TargetKind;
     use crate::sim::components::NavTargetRef;
     use crate::sim::game_entity::GameEntity;
     use crate::sim::mission::leaf::MissionLeafState;
@@ -478,7 +478,7 @@ fn an_empty_fighter_lets_go_heads_for_its_edge_and_idles() {
             );
             // Construction stamps the type's `Foundation=2x2`.
             pad.foundation = "2x2".to_string();
-            pad.lifecycle.in_limbo = false;
+            pad.lifecycle.set_in_limbo_for_test(false);
             sim.substrate.entities.insert(pad);
         }
         // After `test_default` interned the names.
@@ -495,7 +495,7 @@ fn an_empty_fighter_lets_go_heads_for_its_edge_and_idles() {
             sim.append_house_base_building_for_test(2);
             sim.update_house_tracking(2, crate::sim::house_tracking::HouseTracking::add_tracking);
         }
-        plane.category = EntityCategory::Aircraft;
+        plane.set_category_for_test(EntityCategory::Aircraft);
         // The RadioClass constructor's one contact slot (`0x0065A764`).
         plane.radio_contacts.set_capacity(1);
         plane.mission_leaf = MissionLeafState::aircraft_raw_for_test(1, 1, false);
@@ -513,15 +513,16 @@ fn an_empty_fighter_lets_go_heads_for_its_edge_and_idles() {
             });
         plane.aircraft_ammo = Some(AircraftAmmo::new(1));
         plane.aircraft_ammo.as_mut().unwrap().current = 0;
-        plane.attack_target = Some(AttackTarget::for_cell(45, 40));
+        plane
+            .attack_target
+            .set_for_test(Some(TargetKind::Cell(45, 40)));
         plane.locomotor = Some(LocomotorState::from_object_type(
             rules.object(plane_type).unwrap(),
             0,
         ));
         // In flight, on the map: a grounded plane takes Enter_Idle_Mode's
         // landed arm, and an unmarked one is not in the air (vt+0x54).
-        plane.locomotor.as_mut().unwrap().altitude =
-            crate::util::fixed_math::SimFixed::from_num(1500);
+        plane.position.exact_z_leptons = Some(1500);
         plane.lifecycle.cell_marked = true;
         sim.substrate.entities.insert(plane);
         sim.set_logic_order_for_test(vec![1]);
@@ -543,7 +544,10 @@ fn an_empty_fighter_lets_go_heads_for_its_edge_and_idles() {
 
     let (sim, edge) = exit("ORCA", true, false);
     let plane = sim.substrate.entities.get(1).unwrap();
-    assert!(plane.attack_target.is_none(), "a human house lets go");
+    assert!(
+        plane.attack_target.target().is_none(),
+        "a human house lets go"
+    );
     assert_eq!(
         plane.navigation.nav_com,
         Some(NavTargetRef::cell(edge.0, edge.1))
@@ -558,7 +562,7 @@ fn an_empty_fighter_lets_go_heads_for_its_edge_and_idles() {
     let (sim, _) = exit("ORCA", false, false);
     let plane = sim.substrate.entities.get(1).unwrap();
     assert!(
-        plane.attack_target.is_some(),
+        plane.attack_target.target().is_some(),
         "a computer house keeps its target"
     );
     assert_eq!(

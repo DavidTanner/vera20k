@@ -1,6 +1,5 @@
 use super::*;
 use crate::rules::ini_parser::IniFile;
-use crate::util::fixed_math::SimFixed;
 use serde_json::Value;
 
 #[test]
@@ -71,11 +70,13 @@ fn rocketeer(input: &Value) -> (Simulation, RuleSet, u64) {
         .expect("rocketeer");
     let height = input["height"].as_i64().unwrap_or(500) as i32;
     let entity = sim.substrate.entities.get_mut(id).unwrap();
-    entity.lifecycle.in_limbo = false;
+    entity.lifecycle.set_in_limbo_for_test(false);
     // jumpjet_infantry_actions.Actions supplies OWNER+74=1; Do_Action's
     // Object5F6B90 height predicate requires this independently of XYZ.
     entity.lifecycle.cell_marked = true;
-    entity.health.current = input["health"].as_i64().unwrap_or(125) as _;
+    entity
+        .health
+        .set_for_test(input["health"].as_i64().unwrap_or(125) as _);
     entity.on_bridge = input["on_bridge"].as_bool().unwrap_or(false);
     entity.position.exact_z_leptons = Some(height);
     entity
@@ -105,7 +106,6 @@ fn rocketeer(input: &Value) -> (Simulation, RuleSet, u64) {
         1,
     ));
     let locomotor = entity.locomotor.as_mut().expect("Jumpjet locomotor");
-    locomotor.altitude = SimFixed::from_num(height);
     let runtime = locomotor.jumpjet_runtime_mut().expect("Jumpjet runtime");
     *runtime = runtime
         .clone()
@@ -211,7 +211,7 @@ fn jumpjet_infantry_actions_match_the_native_bodies() {
                         sim.substrate
                             .entities
                             .get(id)
-                            .is_none_or(|entity| !entity.lifecycle.object_alive),
+                            .is_none_or(|entity| !entity.lifecycle.object_alive()),
                         "{name}: removed"
                     );
                     compared += 1;
@@ -342,8 +342,8 @@ fn walk_consumer(input: &Value) -> (Simulation, RuleSet, u64) {
         .construct_object_limbo_at_height("E1", "Americans", 10, 10, 0, 0, &rules)
         .expect("infantryman");
     let entity = sim.substrate.entities.get_mut(id).unwrap();
-    entity.lifecycle.in_limbo = false;
-    entity.health.current = 100;
+    entity.lifecycle.set_in_limbo_for_test(false);
+    entity.health.set_for_test(100);
     entity.infantry.as_mut().unwrap().is_prone = input["prone"] == true;
     entity
         .mission_leaf
@@ -491,9 +491,9 @@ fn retail_teleport_default_action_matches_the_native_sequencer() {
             .construct_object_limbo_at_height("CLEG", "Americans", 10, 10, 0, 0, &rules)
             .unwrap();
         let actor = sim.substrate.entities.get_mut(id).unwrap();
-        actor.lifecycle.in_limbo = false;
+        actor.lifecycle.set_in_limbo_for_test(false);
         actor.lifecycle.cell_marked = true;
-        actor.health.current = 125;
+        actor.health.set_for_test(125);
         actor.position.exact_z_leptons = Some(0);
         actor.infantry.as_mut().unwrap().is_prone = input["prone"].as_bool().unwrap();
         assert_eq!(

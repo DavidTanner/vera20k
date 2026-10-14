@@ -461,18 +461,15 @@ pub(crate) fn apply_aoe_damage_with_terrain_and_scenario<O: Into<AoEDamageOrigin
             // spread cell loop. Damage dispatch happens only after collection,
             // so walls still mutate during the later cell walk before any
             // receiver runs.
-            let (terrain_width, terrain_height) = layer_context
-                .terrain
-                .as_deref()
-                .map(|terrain| (terrain.width(), terrain.height()))
-                .expect("checked terrain Apply_area_damage context");
             for entity_id in airborne_ids_in_spatial_order(
                 entities,
                 impact_rx,
                 impact_ry,
                 cell_spread::whole_cells(cell_spread),
-                terrain_width,
-                terrain_height,
+                layer_context
+                    .terrain
+                    .as_deref()
+                    .expect("checked terrain Apply_area_damage context"),
             ) {
                 let terrain = layer_context
                     .terrain
@@ -622,7 +619,7 @@ pub(crate) fn apply_aoe_damage_with_terrain_and_scenario<O: Into<AoEDamageOrigin
     }
 
     for entity in entities.values() {
-        if entity.lifecycle.in_limbo
+        if entity.lifecycle.in_limbo()
             || crate::sim::occupancy::cell_list_layer_for_entity(
                 entity,
                 layer_context.terrain.as_deref(),
@@ -634,7 +631,7 @@ pub(crate) fn apply_aoe_damage_with_terrain_and_scenario<O: Into<AoEDamageOrigin
         // Dying corpses (uninit'd this tick, awaiting the end-of-tick drain)
         // are off the live object list — exclude them. A sold/captured corpse
         // keeps health>0, so gate on `dying`, not just health.
-        if entity.health.current == 0 || entity.dying {
+        if entity.health.current() == 0 || entity.dying {
             continue;
         }
 
@@ -741,7 +738,7 @@ pub(crate) fn expire_cell_target_references(
             continue;
         };
         if !matches!(
-            entity.attack_target.as_ref().map(|target| target.target),
+            entity.attack_target.target(),
             Some(super::TargetKind::Cell(tx, ty)) if (tx, ty) == (rx, ry)
         ) {
             continue;
@@ -802,14 +799,13 @@ fn airborne_ids_in_spatial_order(
     impact_rx: u16,
     impact_ry: u16,
     radius_cells: i32,
-    map_width: u16,
-    map_height: u16,
+    terrain: &ResolvedTerrainGrid,
 ) -> Vec<u64> {
+    let (map_width, map_height) = (terrain.width(), terrain.height());
     let mut buckets: BTreeMap<u16, Vec<(u64, u64)>> = BTreeMap::new();
-    for entity in entities
-        .values()
-        .filter(|entity| entity.air_spatial_bucket().is_some() && air_spatial_tracks_entity(entity))
-    {
+    for entity in entities.values().filter(|entity| {
+        entity.air_spatial_bucket().is_some() && air_spatial_tracks_entity(entity, Some(terrain))
+    }) {
         buckets
             .entry(entity.air_spatial_bucket().expect("filtered above"))
             .or_default()
@@ -868,7 +864,7 @@ fn push_airborne_aoe_damage(
     let Some(entity) = entities.get(entity_id) else {
         return;
     };
-    if entity.health.current == 0 || entity.dying {
+    if entity.health.current() == 0 || entity.dying {
         return;
     }
     let target_z = crate::sim::movement::ground_pose::object_world_z_leptons(entity, Some(terrain));
@@ -904,7 +900,7 @@ fn push_airborne_aoe_damage(
     // category test belongs to THIS site, not to `is_high_flying` — the native
     // predicate itself is universal over `ObjectClass`, so a Jumpjet
     // `UnitClass` like the stock Kirov is high-flying but is not halved here.
-    let distance_leptons = if entity.category == EntityCategory::Aircraft
+    let distance_leptons = if entity.category() == EntityCategory::Aircraft
         && crate::sim::movement::air_movement::is_high_flying(
             entity,
             Some(terrain),
@@ -956,7 +952,7 @@ fn push_entity_aoe_damage(
     let Some(entity) = entities.get(entity_id) else {
         return;
     };
-    if entity.health.current == 0 || entity.dying {
+    if entity.health.current() == 0 || entity.dying {
         return;
     }
 
@@ -972,7 +968,7 @@ fn push_entity_aoe_damage(
     // coordinate. The center record alone gets a two-Level vertical allowance
     // before storing the remaining exact 3D distance. Ordinary objects use
     // their virtual +A4 coordinate, including exact subcell XY and absolute Z.
-    let target_xyz = if entity.category == EntityCategory::Structure {
+    let target_xyz = if entity.category() == EntityCategory::Structure {
         let x = i32::from(scan_rx)
             .wrapping_mul(256)
             .wrapping_add(CELL_CENTER_LEPTON.to_num::<i32>());
@@ -994,7 +990,7 @@ fn push_entity_aoe_damage(
         let z = crate::sim::movement::ground_pose::object_world_z_leptons(entity, terrain);
         [x, y, z]
     };
-    let distance_leptons = if entity.category == EntityCategory::Structure && center_cell {
+    let distance_leptons = if entity.category() == EntityCategory::Structure && center_cell {
         let height_above_cell = impact.z_leptons.wrapping_sub(target_xyz[2]);
         if height_above_cell <= BUILDING_CENTER_HEIGHT_ALLOWANCE_LEPTONS {
             0
@@ -1083,7 +1079,7 @@ mod tests {
     use crate::map::resolved_terrain::{ResolvedTerrainCell, ResolvedTerrainGrid};
     use crate::rules::ini_parser::IniFile;
     use crate::rules::ruleset::RuleSet;
-    use crate::sim::combat::{AttackTarget, TargetKind};
+    use crate::sim::combat::TargetKind;
     use crate::sim::entity_store::EntityStore;
     use crate::sim::game_entity::GameEntity;
     use crate::sim::house_state::{HouseDifficulty, HouseState};
@@ -1134,7 +1130,9 @@ mod tests {
     fn gsi_04_07_damage_signed_zero_returns_before_wall_rng_objects_and_detach() {
         let mut entities = EntityStore::new();
         let mut listener = GameEntity::test_default(20, "MTNK", "Americans", 8, 8);
-        listener.attack_target = Some(AttackTarget::for_cell(8, 8));
+        listener
+            .attack_target
+            .set_for_test(Some(TargetKind::Cell(8, 8)));
         entities.insert(listener);
         let mut interner = test_interner();
         let warhead_ref = interner.intern("BlastWH");
@@ -1169,12 +1167,7 @@ mod tests {
         assert!(result.wall_mutations.is_empty());
         assert!(result.cell_target_detaches.is_empty());
         assert!(matches!(
-            entities
-                .get(20)
-                .unwrap()
-                .attack_target
-                .as_ref()
-                .map(|target| target.target),
+            entities.get(20).unwrap().attack_target.target(),
             Some(TargetKind::Cell(8, 8))
         ));
 
@@ -1213,7 +1206,9 @@ mod tests {
     fn gsi_04_10_scenario_no_damage_returns_before_wall_rng_objects_and_detach() {
         let mut entities = EntityStore::new();
         let mut listener = GameEntity::test_default(20, "MTNK", "Americans", 8, 8);
-        listener.attack_target = Some(AttackTarget::for_cell(8, 8));
+        listener
+            .attack_target
+            .set_for_test(Some(TargetKind::Cell(8, 8)));
         entities.insert(listener);
         let mut interner = test_interner();
         let warhead_ref = interner.intern("BlastWH");
@@ -1256,12 +1251,7 @@ mod tests {
         assert!(result.wall_mutations.is_empty());
         assert!(result.cell_target_detaches.is_empty());
         assert!(matches!(
-            entities
-                .get(20)
-                .unwrap()
-                .attack_target
-                .as_ref()
-                .map(|target| target.target),
+            entities.get(20).unwrap().attack_target.target(),
             Some(TargetKind::Cell(8, 8))
         ));
     }
@@ -1362,11 +1352,11 @@ mod tests {
             (5, "JUMP", EntityCategory::Infantry, 257),
         ] {
             let mut air = GameEntity::test_default(stable_id, type_id, "Soviet", 5, 5);
-            air.category = category;
-            air.health.current = 1000;
+            air.set_category_for_test(category);
+            air.health.set_for_test(1000);
             // Ordinary Aircraft41B920 reaches Object5F6B90: Object+74 must
             // be marked before the physical GetHeight threshold is queried.
-            air.lifecycle.in_limbo = false;
+            air.lifecycle.set_in_limbo_for_test(false);
             air.lifecycle.cell_marked = true;
             air.position.exact_z_leptons = Some(altitude);
             let mut locomotor = crate::sim::movement::locomotor::LocomotorState::from_object_type(
@@ -1374,7 +1364,6 @@ mod tests {
                 0,
             );
             locomotor.layer = MovementLayer::Air;
-            locomotor.altitude = SimFixed::from_num(altitude);
             air.locomotor = Some(locomotor);
             air = air
                 .with_air_spatial_membership_for_test(Some(5 + 5 * 20), stable_id)
@@ -1461,7 +1450,7 @@ mod tests {
             let mut target = GameEntity::test_default(stable_id, "MTNK", "Soviet", rx, 10);
             target.position.sub_x = SimFixed::from_num(sub_x);
             target.position.sub_y = CELL_CENTER_LEPTON;
-            target.health.current = 300;
+            target.health.set_for_test(300);
             entities.insert(target);
         }
         let mut interner = test_interner();
@@ -1559,10 +1548,10 @@ mod tests {
         );
         assert!(death.despawned_ids.is_empty());
         assert!(pings.is_empty());
-        assert_eq!(entities.get(320).unwrap().health.current, 132);
-        assert_eq!(entities.get(384).unwrap().health.current, 188);
-        assert_eq!(entities.get(385).unwrap().health.current, 188);
-        assert_eq!(entities.get(386).unwrap().health.current, 300);
+        assert_eq!(entities.get(320).unwrap().health.current(), 132);
+        assert_eq!(entities.get(384).unwrap().health.current(), 188);
+        assert_eq!(entities.get(385).unwrap().health.current(), 188);
+        assert_eq!(entities.get(386).unwrap().health.current(), 300);
     }
 
     #[test]
@@ -1590,7 +1579,7 @@ mod tests {
             5,
             EntityCategory::Structure,
         );
-        building.health.current = 300;
+        building.health.set_for_test(300);
         entities.insert(building);
         let mut occupancy = OccupancyGrid::new();
         occupancy.add(
@@ -1665,24 +1654,24 @@ mod tests {
             let mut entities = EntityStore::new();
 
             let mut vulnerable = GameEntity::test_default(1, "TARGET", "Victim", 5, 5);
-            vulnerable.type_ref = target_ref;
-            vulnerable.owner = victim_owner;
+            vulnerable.set_type_ref_for_test(target_ref);
+            vulnerable.set_owner_for_test(victim_owner);
             vulnerable.position.sub_x = CELL_CENTER_LEPTON;
             vulnerable.position.sub_y = CELL_CENTER_LEPTON;
-            vulnerable.lifecycle.in_limbo = false;
+            vulnerable.lifecycle.set_in_limbo_for_test(false);
             vulnerable.lifecycle.cell_marked = true;
             entities.insert(vulnerable);
 
             let mut protected = GameEntity::test_default(2, "TARGET", "Victim", 5, 5);
-            protected.type_ref = target_ref;
-            protected.owner = victim_owner;
+            protected.set_type_ref_for_test(target_ref);
+            protected.set_owner_for_test(victim_owner);
             protected.position.sub_x = SimFixed::from_num(
                 CELL_CENTER_LEPTON
                     .to_num::<i32>()
                     .wrapping_add(protected_distance),
             );
             protected.position.sub_y = CELL_CENTER_LEPTON;
-            protected.lifecycle.in_limbo = false;
+            protected.lifecycle.set_in_limbo_for_test(false);
             protected.lifecycle.cell_marked = true;
             protected.invulnerability = Some(InvulnerabilityState::new(
                 crate::sim::timer::CdTimer::started(0, 100),
@@ -1766,7 +1755,7 @@ mod tests {
             assert!(pings.is_empty());
             (
                 records,
-                entities.get(1).unwrap().health.current,
+                entities.get(1).unwrap().health.current(),
                 effects
                     .combat_light_requests
                     .iter()
@@ -1837,9 +1826,9 @@ mod tests {
 
             let make_air = |stable_id, rx, enter_order| {
                 let mut air = GameEntity::test_default(stable_id, "AIRBOMB", "Soviet", rx, 5);
-                air.category = EntityCategory::Aircraft;
-                air.lifecycle.in_limbo = false;
-                air.health.current = hp;
+                air.set_category_for_test(EntityCategory::Aircraft);
+                air.lifecycle.set_in_limbo_for_test(false);
+                air.health.set_for_test(hp);
                 air.position.z = 0;
                 let mut air_locomotor =
                     crate::sim::movement::locomotor::LocomotorState::from_object_type(
@@ -1847,8 +1836,8 @@ mod tests {
                         0,
                     );
                 air_locomotor.layer = MovementLayer::Air;
-                air_locomotor.altitude = SimFixed::from_num(1);
                 air.locomotor = Some(air_locomotor);
+                air.position.exact_z_leptons = Some(1);
                 air = air
                     .with_air_spatial_membership_for_test(Some(rx + 5 * 20), enter_order)
                     .with_air_tracker_cell_for_test((rx as i16, 5));
@@ -1861,11 +1850,11 @@ mod tests {
             let air_perimeter = make_air(5, 3, 3);
 
             let mut center = GameEntity::test_default(20, "GROUNDBOMB", "Soviet", 5, 5);
-            center.lifecycle.in_limbo = false;
-            center.health.current = hp;
+            center.lifecycle.set_in_limbo_for_test(false);
+            center.health.set_for_test(hp);
             let mut east = GameEntity::test_default(10, "GROUNDBOMB", "Soviet", 7, 5);
-            east.lifecycle.in_limbo = false;
-            east.health.current = hp;
+            east.lifecycle.set_in_limbo_for_test(false);
+            east.health.set_for_test(hp);
 
             let mut entities = EntityStore::new();
             entities.insert(east);
@@ -2007,7 +1996,7 @@ mod tests {
             );
         }
         for id in [40, 30, 5, 20, 10] {
-            assert_eq!(fatal_entities.get(id).unwrap().health.current, 0);
+            assert_eq!(fatal_entities.get(id).unwrap().health.current(), 0);
         }
 
         let (hit_order, survives, surviving_walls, surviving_entities, surviving_rng) = run(11);
@@ -2019,7 +2008,7 @@ mod tests {
             assert_eq!(surviving_walls.cell(rx, ry).overlay_id, Some(0));
         }
         for id in [40, 30, 5, 20, 10] {
-            assert_eq!(surviving_entities.get(id).unwrap().health.current, 1);
+            assert_eq!(surviving_entities.get(id).unwrap().health.current(), 1);
         }
     }
 
@@ -2044,7 +2033,7 @@ mod tests {
             let mut entity = GameEntity::test_default(stable_id, "TESTUNIT", "Soviet", rx, ry);
             entity.position.sub_x = SimFixed::from_num(sub_x);
             entity.position.sub_y = SimFixed::from_num(sub_y);
-            entity.health.current = hp;
+            entity.health.set_for_test(hp);
             entity
         };
         let mut entities = EntityStore::new();
@@ -2149,10 +2138,10 @@ mod tests {
         assert!(pings.is_empty());
         assert_eq!(handled_deaths, vec![200]);
         assert_eq!(death.immediate_uninit_ids, vec![200]);
-        assert_eq!(entities.get(200).unwrap().health.current, 0);
-        assert_eq!(entities.get(100).unwrap().health.current, 70);
-        assert_eq!(entities.get(300).unwrap().health.current, 70);
-        assert_eq!(entities.get(400).unwrap().health.current, 70);
+        assert_eq!(entities.get(200).unwrap().health.current(), 0);
+        assert_eq!(entities.get(100).unwrap().health.current(), 70);
+        assert_eq!(entities.get(300).unwrap().health.current(), 70);
+        assert_eq!(entities.get(400).unwrap().health.current(), 70);
     }
 
     #[test]
@@ -2314,7 +2303,9 @@ mod tests {
             wall_aoe_fixture("0", "WallAbsoluteDestroyer=yes\nWall=yes");
         let mut entities = EntityStore::new();
         let mut restored = GameEntity::test_default(20, "MTNK", "Americans", 2, 2);
-        restored.attack_target = Some(AttackTarget::for_cell(8, 8));
+        restored
+            .attack_target
+            .set_for_test(Some(TargetKind::Cell(8, 8)));
         restored.mission.apply_test_fixture(MissionTestFixture {
             current: MissionId::from_known(MissionType::Attack),
             suspended: MissionId::from_known(MissionType::Guard),
@@ -2329,12 +2320,16 @@ mod tests {
         entities.insert(restored);
 
         let mut cleared = GameEntity::test_default(30, "MTNK", "Americans", 3, 2);
-        cleared.attack_target = Some(AttackTarget::for_cell(8, 8));
+        cleared
+            .attack_target
+            .set_for_test(Some(TargetKind::Cell(8, 8)));
         cleared.passively_acquired_target = true;
         entities.insert(cleared);
 
         let mut chain_only = GameEntity::test_default(40, "MTNK", "Americans", 4, 2);
-        chain_only.attack_target = Some(AttackTarget::for_cell(8, 7));
+        chain_only
+            .attack_target
+            .set_for_test(Some(TargetKind::Cell(8, 7)));
         entities.insert(chain_only);
 
         let mut interner = test_interner();
@@ -2391,18 +2386,13 @@ mod tests {
             ],
             "cleanup expiry precedes the direct callback; each roster walk is forward and clears before Restore"
         );
-        assert!(entities.get(30).unwrap().attack_target.is_none());
+        assert!(entities.get(30).unwrap().attack_target.target().is_none());
         assert!(!entities.get(30).unwrap().passively_acquired_target);
         assert!(matches!(
-            entities
-                .get(20)
-                .unwrap()
-                .attack_target
-                .as_ref()
-                .map(|target| target.target),
+            entities.get(20).unwrap().attack_target.target(),
             Some(TargetKind::Cell(8, 8))
         ));
-        assert!(entities.get(40).unwrap().attack_target.is_none());
+        assert!(entities.get(40).unwrap().attack_target.target().is_none());
     }
 
     #[test]
@@ -2501,16 +2491,16 @@ mod tests {
 
             let mut entities = EntityStore::new();
             let mut source = GameEntity::test_default(1, "SOURCE", "SourceHouse", 1, 1);
-            source.type_ref = source_type;
-            source.owner = source_house;
+            source.set_type_ref_for_test(source_type);
+            source.set_owner_for_test(source_house);
             entities.insert(source);
             let mut ally = GameEntity::test_default(2, "TARGET", "AllyHouse", 1, 1);
-            ally.type_ref = target_type;
-            ally.owner = ally_house;
+            ally.set_type_ref_for_test(target_type);
+            ally.set_owner_for_test(ally_house);
             entities.insert(ally);
             let mut enemy = GameEntity::test_default(3, "TARGET", "EnemyHouse", 1, 1);
-            enemy.type_ref = target_type;
-            enemy.owner = enemy_house;
+            enemy.set_type_ref_for_test(target_type);
+            enemy.set_owner_for_test(enemy_house);
             entities.insert(enemy);
             let mut occupancy = OccupancyGrid::new();
             for stable_id in [3, 2, 1] {
@@ -2545,7 +2535,7 @@ mod tests {
 
             // Prove alliance resolution reads the detonation ABI snapshot, not
             // a later live-source owner value.
-            entities.get_mut(1).unwrap().owner = enemy_house;
+            entities.get_mut(1).unwrap().set_owner_for_test(enemy_house);
             let mut alliances = HouseAllianceMap::new();
             alliances
                 .entry("SOURCEHOUSE".to_string())
@@ -2582,9 +2572,9 @@ mod tests {
                 ids,
                 captured_houses,
                 [
-                    entities.get(1).unwrap().health.current,
-                    entities.get(2).unwrap().health.current,
-                    entities.get(3).unwrap().health.current,
+                    entities.get(1).unwrap().health.current(),
+                    entities.get(2).unwrap().health.current(),
+                    entities.get(3).unwrap().health.current(),
                 ],
             )
         }
@@ -2633,8 +2623,8 @@ mod tests {
             let ap = interner.intern("AP");
             let mut entities = EntityStore::new();
             let mut source = GameEntity::test_default(1, "MTNK", "SovietHouse", 1, 1);
-            source.owner = soviet;
-            source.type_ref = mtnk;
+            source.set_owner_for_test(soviet);
+            source.set_type_ref_for_test(mtnk);
             entities.insert(source);
             let mut hut = GameEntity::test_default_of_category(
                 2,
@@ -2644,9 +2634,9 @@ mod tests {
                 5,
                 EntityCategory::Structure,
             );
-            hut.owner = civilian;
-            hut.type_ref = cabhut;
-            hut.health.current = 2000;
+            hut.set_owner_for_test(civilian);
+            hut.set_type_ref_for_test(cabhut);
+            hut.health.set_for_test(2000);
             entities.insert(hut);
 
             let mut occupancy = OccupancyGrid::new();
@@ -2709,7 +2699,11 @@ mod tests {
                 &mut fatal_lifecycle,
                 &mut sound_sink,
             );
-            (entities.get(2).unwrap().health.current, pings.len(), death)
+            (
+                entities.get(2).unwrap().health.current(),
+                pings.len(),
+                death,
+            )
         }
 
         let (immune_hp, immune_pings, immune_death) = run(true);
@@ -2762,19 +2756,19 @@ mod tests {
         let ap = interner.intern("AP");
         let mut entities = EntityStore::new();
         let mut source = GameEntity::test_default(1, "HTNK", "Russians", 1, 1);
-        source.owner = russian;
-        source.type_ref = htnk;
+        source.set_owner_for_test(russian);
+        source.set_type_ref_for_test(htnk);
         entities.insert(source);
         let mut rookie = GameEntity::test_default(2, "MTNK", "Americans", 5, 5);
-        rookie.owner = american;
-        rookie.type_ref = mtnk;
-        rookie.health.current = 300;
+        rookie.set_owner_for_test(american);
+        rookie.set_type_ref_for_test(mtnk);
+        rookie.health.set_for_test(300);
         entities.insert(rookie);
         let mut veteran = GameEntity::test_default(3, "MTNK", "Americans", 5, 5);
-        veteran.owner = american;
-        veteran.type_ref = mtnk;
-        veteran.health.current = 300;
-        veteran.set_veterancy_rank(100);
+        veteran.set_owner_for_test(american);
+        veteran.set_type_ref_for_test(mtnk);
+        veteran.health.set_for_test(300);
+        veteran.veterancy.set_rank_for_test(100);
         entities.insert(veteran);
 
         let mut occupancy = OccupancyGrid::new();
@@ -2843,9 +2837,9 @@ mod tests {
             &mut sound_sink,
         );
 
-        assert_eq!(entities.get(2).unwrap().health.current, 210);
+        assert_eq!(entities.get(2).unwrap().health.current(), 210);
         assert_eq!(
-            entities.get(3).unwrap().health.current,
+            entities.get(3).unwrap().health.current(),
             240,
             "STRONGER divides 90 by stock VeteranArmor 1.5 at the live receiver"
         );
@@ -2888,29 +2882,35 @@ mod tests {
 
         let mut entities = EntityStore::new();
         let mut source = GameEntity::test_default(1, "CAOS", "YuriHouse", 1, 1);
-        source.owner = yuri;
-        source.type_ref = caos;
+        source.set_owner_for_test(yuri);
+        source.set_type_ref_for_test(caos);
         entities.insert(source);
 
         let mut target = GameEntity::test_default(2, "TARGET", "SovietHouse", 5, 5);
-        target.owner = soviet;
-        target.type_ref = target_type;
-        target.health.current = 1000;
-        target.attack_target = Some(AttackTarget::new(1));
+        target.set_owner_for_test(soviet);
+        target.set_type_ref_for_test(target_type);
+        target.health.set_for_test(1000);
+        target
+            .attack_target
+            .set_for_test(Some(TargetKind::Entity(1)));
         entities.insert(target);
 
         let mut allied = GameEntity::test_default(3, "TARGET", "YuriHouse", 5, 5);
-        allied.owner = yuri;
-        allied.type_ref = target_type;
-        allied.health.current = 1000;
-        allied.attack_target = Some(AttackTarget::new(1));
+        allied.set_owner_for_test(yuri);
+        allied.set_type_ref_for_test(target_type);
+        allied.health.set_for_test(1000);
+        allied
+            .attack_target
+            .set_for_test(Some(TargetKind::Entity(1)));
         entities.insert(allied);
 
         let mut immune = GameEntity::test_default(4, "IMMUNE", "SovietHouse", 5, 5);
-        immune.owner = soviet;
-        immune.type_ref = immune_type;
-        immune.health.current = 1000;
-        immune.attack_target = Some(AttackTarget::new(1));
+        immune.set_owner_for_test(soviet);
+        immune.set_type_ref_for_test(immune_type);
+        immune.health.set_for_test(1000);
+        immune
+            .attack_target
+            .set_for_test(Some(TargetKind::Entity(1)));
         entities.insert(immune);
 
         let mut building = GameEntity::test_default_of_category(
@@ -2921,10 +2921,12 @@ mod tests {
             5,
             EntityCategory::Structure,
         );
-        building.owner = soviet;
-        building.type_ref = building_type;
-        building.health.current = 1000;
-        building.attack_target = Some(AttackTarget::new(1));
+        building.set_owner_for_test(soviet);
+        building.set_type_ref_for_test(building_type);
+        building.health.set_for_test(1000);
+        building
+            .attack_target
+            .set_for_test(Some(TargetKind::Entity(1)));
         entities.insert(building);
 
         let mut occupancy = OccupancyGrid::new();
@@ -3001,10 +3003,10 @@ mod tests {
         assert!(pings.is_empty());
 
         let target = entities.get(2).unwrap();
-        assert_eq!(target.health.current, 1000, "Psychedelic skips Object HP");
+        assert_eq!(target.health.current(), 1000, "Psychedelic skips Object HP");
         assert!(target.berserk.active);
         assert_eq!(target.berserk.timer, 300, "600 x heavy Verses 50%");
-        assert!(target.attack_target.is_none());
+        assert!(target.attack_target.target().is_none());
         assert_eq!(target.mission.current(), MissionId::NONE);
         assert_eq!(
             target.mission.queued(),
@@ -3013,12 +3015,9 @@ mod tests {
 
         for stable_id in [3, 4, 5] {
             let control = entities.get(stable_id).unwrap();
-            assert_eq!(control.health.current, 1000);
+            assert_eq!(control.health.current(), 1000);
             assert_eq!(control.berserk, Default::default());
-            assert_eq!(
-                control.attack_target.as_ref().map(|target| target.target),
-                Some(TargetKind::Entity(1))
-            );
+            assert_eq!(control.attack_target.target(), Some(TargetKind::Entity(1)));
             assert_eq!(control.mission.queued(), MissionId::NONE);
         }
 
@@ -3026,7 +3025,9 @@ mod tests {
         // clearing or mission queue callbacks while +0x298 remains active.
         {
             let target = entities.get_mut(2).unwrap();
-            target.attack_target = Some(AttackTarget::new(1));
+            target
+                .attack_target
+                .set_for_test(Some(TargetKind::Entity(1)));
             target.berserk.timer = 17;
             target.mission.apply_test_fixture(MissionTestFixture {
                 current: MissionId::from_known(MissionType::Guard),
@@ -3061,12 +3062,9 @@ mod tests {
         let target = entities.get(2).unwrap();
         assert!(refresh_death.despawned_ids.is_empty());
         assert!(refresh_pings.is_empty());
-        assert_eq!(target.health.current, 1000);
+        assert_eq!(target.health.current(), 1000);
         assert_eq!(target.berserk.timer, 300);
-        assert_eq!(
-            target.attack_target.as_ref().map(|target| target.target),
-            Some(TargetKind::Entity(1))
-        );
+        assert_eq!(target.attack_target.target(), Some(TargetKind::Entity(1)));
         assert_eq!(target.mission.queued(), MissionId::NONE);
     }
 
@@ -3101,33 +3099,33 @@ mod tests {
         let grizape = interner.intern("GRIZAPE");
         let mut entities = EntityStore::new();
         let mut source = GameEntity::test_default(1, "MTNK", "SourceHouse", 1, 1);
-        source.owner = source_house;
-        source.type_ref = mtnk;
+        source.set_owner_for_test(source_house);
+        source.set_type_ref_for_test(mtnk);
         entities.insert(source);
 
         let mut target = GameEntity::test_default(2, "E1", "NormalHouse", 5, 5);
-        target.owner = normal_house;
-        target.type_ref = e1;
-        target.category = EntityCategory::Infantry;
-        target.health.current = 20;
+        target.set_owner_for_test(normal_house);
+        target.set_type_ref_for_test(e1);
+        target.set_category_for_test(EntityCategory::Infantry);
+        target.health.set_for_test(20);
         target.infantry = Some(crate::sim::game_entity::InfantryRuntime::new());
         target.infantry.as_mut().unwrap().is_prone = true;
         entities.insert(target);
 
         let mut easy_prone = GameEntity::test_default(3, "E1", "EasyHouse", 5, 5);
-        easy_prone.owner = easy_house;
-        easy_prone.type_ref = e1;
-        easy_prone.category = EntityCategory::Infantry;
-        easy_prone.health.current = 100;
+        easy_prone.set_owner_for_test(easy_house);
+        easy_prone.set_type_ref_for_test(e1);
+        easy_prone.set_category_for_test(EntityCategory::Infantry);
+        easy_prone.health.set_for_test(100);
         easy_prone.infantry = Some(crate::sim::game_entity::InfantryRuntime::new());
         easy_prone.infantry.as_mut().unwrap().is_prone = true;
         entities.insert(easy_prone);
 
         let mut easy_standing = GameEntity::test_default(4, "E1", "EasyHouse", 5, 5);
-        easy_standing.owner = easy_house;
-        easy_standing.type_ref = e1;
-        easy_standing.category = EntityCategory::Infantry;
-        easy_standing.health.current = 100;
+        easy_standing.set_owner_for_test(easy_house);
+        easy_standing.set_type_ref_for_test(e1);
+        easy_standing.set_category_for_test(EntityCategory::Infantry);
+        easy_standing.health.set_for_test(100);
         easy_standing.infantry = Some(crate::sim::game_entity::InfantryRuntime::new());
         entities.insert(easy_standing);
 
@@ -3200,7 +3198,7 @@ mod tests {
             &mut sound_sink,
         );
 
-        assert_eq!(entities.get(2).unwrap().health.current, 0);
+        assert_eq!(entities.get(2).unwrap().health.current(), 0);
         assert!(death.despawned_ids.contains(&2));
         // The Easy house's `[Easy] Armor=1.2` divides nothing: it only feeds
         // `House+0x1A0`, which no damage path reads. Its country's
@@ -3208,12 +3206,12 @@ mod tests {
         // after the prone pre-scale: ftol(ftol(65 * .5) / 1.2) = 26. Dividing
         // first would give ftol(ftol(65 / 1.2) * .5) = 27.
         assert_eq!(
-            entities.get(3).unwrap().health.current,
+            entities.get(3).unwrap().health.current(),
             74,
             "ftol(65 * .5) = 32, then the country's 1.2 yields 26 (not 27)"
         );
         assert_eq!(
-            entities.get(4).unwrap().health.current,
+            entities.get(4).unwrap().health.current(),
             46,
             "standing Infantry bypasses the concrete prone pre-scale: 65 / 1.2 = 54"
         );
@@ -3305,14 +3303,14 @@ mod tests {
 
             let mut entities = EntityStore::new();
             let mut attacker = GameEntity::test_default(1, "ATTACKER", "AttackerHouse", 3, 5);
-            attacker.owner = attacker_house;
-            attacker.type_ref = attacker_type;
+            attacker.set_owner_for_test(attacker_house);
+            attacker.set_type_ref_for_test(attacker_type);
             entities.insert(attacker);
 
             let mut victim = GameEntity::test_default(2, "E1", "VictimHouse", 5, 5);
-            victim.owner = victim_house;
-            victim.type_ref = victim_type;
-            victim.category = EntityCategory::Infantry;
+            victim.set_owner_for_test(victim_house);
+            victim.set_type_ref_for_test(victim_type);
+            victim.set_category_for_test(EntityCategory::Infantry);
             victim.mission_leaf = crate::sim::mission::leaf::MissionLeafState::for_entity_category(
                 EntityCategory::Infantry,
             );
@@ -3321,7 +3319,7 @@ mod tests {
                 .set_infantry_doing_verified(fixture.doing)
                 .unwrap();
             victim.animation = fixture.animation.map(crate::sim::animation::Animation::new);
-            victim.health.current = health;
+            victim.health.set_for_test(health);
             victim.sub_cell = Some(2);
             victim.on_bridge = fixture
                 .entry_case
@@ -3547,16 +3545,15 @@ mod tests {
                 .get(2)
                 .expect("victim remains represented");
             Outcome {
-                health: victim.health.current,
+                health: victim.health.current(),
                 fear: victim
                     .infantry
                     .as_ref()
                     .expect("Infantry runtime")
                     .fear_level,
                 destination: victim
-                    .movement_target
+                    .locomotor
                     .as_ref()
-                    .and(victim.locomotor.as_ref())
                     .and_then(|l| l.walk_destination_cell()),
                 queued_mission: victim.mission.queued(),
                 rng_changed: world.scenario_rng.state() != before_rng,
@@ -3904,7 +3901,7 @@ mod tests {
         entities.insert(building);
 
         let mut air = GameEntity::test_default(10, "AIR", "Americans", 5, 5);
-        air.category = EntityCategory::Aircraft;
+        air.set_category_for_test(EntityCategory::Aircraft);
         air.position.sub_x = CELL_CENTER_LEPTON;
         air.position.sub_y = CELL_CENTER_LEPTON;
         let mut air_locomotor = crate::sim::movement::locomotor::LocomotorState::from_object_type(
@@ -3912,8 +3909,8 @@ mod tests {
             0,
         );
         air_locomotor.layer = MovementLayer::Air;
-        air_locomotor.altitude = SimFixed::from_num(1);
         air.locomotor = Some(air_locomotor);
+        air.position.exact_z_leptons = Some(1);
         air = air
             .with_air_spatial_membership_for_test(Some(5 + 5 * 20), 1)
             .with_air_tracker_cell_for_test((5, 5));
@@ -4147,7 +4144,7 @@ mod tests {
                 .get(victim_id)
                 .unwrap()
                 .health
-                .current,
+                .current(),
             890,
             "nested raw-100 null-source C4 completes before the later parent receiver"
         );
@@ -4157,6 +4154,7 @@ mod tests {
                 .get(victim_id)
                 .unwrap()
                 .attack_target
+                .target()
                 .is_none(),
             "nested and parent null-source events do not fabricate an attacker"
         );
@@ -4280,7 +4278,7 @@ mod tests {
                 .get(victim_id)
                 .unwrap()
                 .health
-                .current,
+                .current(),
             1000
         );
         let terrain = &sim.production.terrain_objects[&terrain_id];

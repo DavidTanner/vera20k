@@ -363,7 +363,7 @@ impl Simulation {
                     return;
                 };
                 let foot = matches!(
-                    entity.category,
+                    entity.category(),
                     EntityCategory::Unit | EntityCategory::Infantry | EntityCategory::Aircraft
                 );
                 if foot
@@ -376,7 +376,7 @@ impl Simulation {
                     return;
                 }
                 match entity.bunker_link.installed_in() {
-                    Some(bunker) if entity.category == EntityCategory::Unit => {
+                    Some(bunker) if entity.category() == EntityCategory::Unit => {
                         // vtable +0x3C8 Assign_Target(bunker) on the firer.
                         let requested = Some(crate::sim::combat::TargetKind::Entity(bunker));
                         let commits = crate::sim::mission::concrete_effects::assign_target_commits(
@@ -505,7 +505,7 @@ impl Simulation {
         }
         // 0x0071B14E..0x0071B162: a victim that was itself warping lets go.
         if let Some(owner) = self.substrate.entities.get(target).and_then(|entity| {
-            (entity.category == EntityCategory::Structure).then_some(entity.owner())
+            (entity.category() == EntityCategory::Structure).then_some(entity.owner())
         }) {
             self.invalidate_house_power(owner, false); //71B126, before release
         }
@@ -529,7 +529,7 @@ impl Simulation {
         let Some(object) = self.object_type(entity.type_ref(), rules) else {
             return;
         };
-        let structure = match entity.category {
+        let structure = match entity.category() {
             EntityCategory::Unit if object.harvester => false,
             EntityCategory::Structure
                 if !object.insignificant && !object.is_1x1_with_undeploy() =>
@@ -589,10 +589,10 @@ impl Simulation {
         let Some(entity) = self.substrate.entities.get(id) else {
             return false;
         };
-        entity.category == EntityCategory::Unit
+        entity.category() == EntityCategory::Unit
             && entity.radio_contacts.slot(0).is_some_and(|contact| {
                 self.substrate.entities.get(contact).is_some_and(|factory| {
-                    factory.category == EntityCategory::Structure
+                    factory.category() == EntityCategory::Structure
                         && self
                             .object_type(factory.type_ref(), rules)
                             .is_some_and(|object| object.weapons_factory)
@@ -693,7 +693,7 @@ impl Simulation {
         let index = crate::sim::combat::combat_weapon::what_weapon_should_i_use(
             rules, object, &facts, None,
         );
-        crate::sim::combat::combat_weapon::weapon_for_index(object, entity.veterancy(), index)
+        crate::sim::combat::combat_weapon::weapon_for_index(object, entity.veterancy.rank(), index)
             .and_then(|(weapon, _)| rules.weapon(weapon))
             .map_or(0, |weapon| weapon.damage)
     }
@@ -738,7 +738,7 @@ impl Simulation {
             .substrate
             .entities
             .get(target)
-            .map(|entity| entity.category)
+            .map(|entity| entity.category())
         else {
             return;
         };
@@ -825,8 +825,7 @@ impl Simulation {
             self.cost_of(target_entity.owner(), target_type, rules),
         );
         if let Some(attacker_entity) = self.substrate.entities.get_mut(attacker) {
-            crate::sim::combat::veterancy::award_kill(
-                attacker_entity,
+            attacker_entity.veterancy.award_kill(
                 owner_cost,
                 target_cost,
                 true,
@@ -844,7 +843,7 @@ impl Simulation {
         IDLE_TRACE.with(|trace| trace.borrow_mut().push(attacker));
         if self.substrate.entities.get(attacker).is_some_and(|entity| {
             matches!(
-                entity.category,
+                entity.category(),
                 EntityCategory::Unit | EntityCategory::Infantry
             )
         }) {
@@ -899,7 +898,7 @@ impl Simulation {
                 } else if let Some(target) = link.target {
                     self.set_temporal_head(target, None);
                     if let Some(owner) = self.substrate.entities.get(target).and_then(|entity| {
-                        (entity.category == EntityCategory::Structure).then_some(entity.owner())
+                        (entity.category() == EntityCategory::Structure).then_some(entity.owner())
                     }) {
                         self.invalidate_house_power(owner, false); //71AC36
                     }
@@ -935,7 +934,7 @@ impl Simulation {
         };
         self.set_temporal_head(target, None);
         if let Some(owner) = self.substrate.entities.get(target).and_then(|entity| {
-            (entity.category == EntityCategory::Structure).then_some(entity.owner())
+            (entity.category() == EntityCategory::Structure).then_some(entity.owner())
         }) {
             self.invalidate_house_power(owner, false); //ClearWarp71AD04
         }
@@ -979,7 +978,7 @@ impl Simulation {
         if let Some(target) = target {
             self.set_temporal_head(target, None);
             if let Some(owner) = self.substrate.entities.get(target).and_then(|entity| {
-                (entity.category == EntityCategory::Structure).then_some(entity.owner())
+                (entity.category() == EntityCategory::Structure).then_some(entity.owner())
             }) {
                 self.invalidate_house_power(owner, false); //ClearWarp71AD04
             }
@@ -1154,7 +1153,7 @@ impl Simulation {
             .substrate
             .entities
             .get(id)
-            .map(|entity| entity.category)
+            .map(|entity| entity.category())
         else {
             return true;
         };
@@ -1199,7 +1198,7 @@ impl Simulation {
                 .substrate
                 .entities
                 .get(id)
-                .is_none_or(|entity| entity.dying || !entity.lifecycle.object_alive)
+                .is_none_or(|entity| entity.dying || !entity.lifecycle.object_alive())
             {
                 return true;
             }
@@ -1215,10 +1214,11 @@ impl Simulation {
         if category == EntityCategory::Structure {
             self.temporal_building_sparkle(id, rules);
         }
-        // Frozen: TarCom drops, and a Foot's NavCom (`Set_Destination(0, 1)`),
-        // which also ends its path (`UnitClass::Set_Destination @ 0x00741970`
-        // resets the path head): VERA's path executor stops with it, as for
-        // every concrete null destination (`mission::authority`). For a
+        // Frozen: TarCom drops, and a Foot with a NavCom calls
+        // `Set_Destination(0, 1)` (Unit `0x00736321..0x0073634D`, Infantry
+        // `0x0051BBDF..0x0051BC0B`, Aircraft `0x00414CF2..0x00414D1E`; a NULL
+        // NavCom returns without the call). The setter also ends its path
+        // (`UnitClass::Set_Destination @ 0x00741970` resets the path head). For a
         // Drive/Ship Unit that setter also reaches the locomotor Stop, which
         // nulls +34 with no warp gate (Drive `0x004AFE00`, Ship `0x0069F510`;
         // none in `0x00741970` or Foot `0x004D94B0` either), so a released
@@ -1227,17 +1227,14 @@ impl Simulation {
         // does not process.
         let mut clears_destination = false;
         if let Some(entity) = self.substrate.entities.get_mut(id) {
-            if entity.attack_target.is_some() {
+            if entity.attack_target.target().is_some() {
                 crate::sim::mission::concrete_effects::represented_assign_target(entity, None);
             }
-            clears_destination = category != EntityCategory::Structure
-                && (entity.navigation.nav_com.is_some() || entity.movement_target.is_some());
+            clears_destination =
+                category != EntityCategory::Structure && entity.navigation.nav_com.is_some();
         }
         if clears_destination {
             self.assign_null_destination(id, Some(rules), registry, ctx.effects);
-            if let Some(entity) = self.substrate.entities.get_mut(id) {
-                entity.movement_target = None;
-            }
         }
         true
     }
@@ -1255,7 +1252,7 @@ impl Simulation {
         {
             return;
         }
-        let offset = if entity.category == EntityCategory::Aircraft {
+        let offset = if entity.category() == EntityCategory::Aircraft {
             0
         } else {
             SPARKLE_OFFSET_LEPTONS

@@ -333,8 +333,8 @@ pub(crate) fn calculate_threat_score(
         let mut term = ScoreX87::mul(coeff_b, verses);
         if candidate
             .attack_target
-            .as_ref()
-            .is_some_and(|target| target.target == super::TargetKind::Entity(scorer.stable_id()))
+            .target()
+            .is_some_and(|target| target == super::TargetKind::Entity(scorer.stable_id()))
         {
             term = ScoreX87::neg(term);
         }
@@ -731,7 +731,7 @@ impl ScanContext<'_> {
             && self.scanner.mission.current().known() == Some(MissionType::AreaGuard)
             && ratio(self.rules.general.condition_red)
                 .is_some_and(|order| order != MaskedX87Ordering::Greater)
-            && candidate.category == EntityCategory::Structure
+            && candidate.category() == EntityCategory::Structure
             && obj()
                 .zip(self.fire_world)
                 .is_some_and(|(obj, world)| world.cost_of(candidate.owner(), obj, self.rules) > 0)
@@ -765,7 +765,7 @@ impl ScanContext<'_> {
         if self.attacker.category != EntityCategory::Unit {
             return false;
         }
-        if candidate.category == EntityCategory::Aircraft {
+        if candidate.category() == EntityCategory::Aircraft {
             // `0x006F7F85..0x006F7FB7`: a vehicle takes an aircraft on the
             // ground (GetHeight, vt+0x1C8), and not on a building's cell (the
             // cell at its GetCoords, `0x00565730`; `0x0047C520` walks `+0xE4`).
@@ -804,7 +804,7 @@ impl ScanContext<'_> {
     ) -> bool {
         if self.standing.human
             || !self.standing.game_mode_nonzero
-            || candidate.category != EntityCategory::Structure
+            || candidate.category() != EntityCategory::Structure
             || self.attacker.category != EntityCategory::Infantry
             || self.standing.team == Some(true)
         {
@@ -1463,7 +1463,7 @@ fn global_list_scan(ctx: &ScanContext<'_>, flags: u32, zone: Option<u32>) -> Opt
         for candidate in ctx
             .entities
             .values()
-            .filter(|candidate| candidate.category == EntityCategory::Aircraft)
+            .filter(|candidate| candidate.category() == EntityCategory::Aircraft)
         {
             if (ctx.is_ally(candidate) && !ctx.attacks_allies())
                 || !ctx.house_gates_admit(candidate)
@@ -1692,7 +1692,7 @@ fn evaluate_candidate(
     // G6 — `InLimbo`/`Health == 0`. Actual retained Cell lists and separate
     // airborne registrations are not filtered or reconstructed from these
     // facts; eligibility belongs to this receiver.
-    if candidate.health.current == 0 || candidate.dying || candidate.lifecycle.in_limbo {
+    if candidate.health.current() == 0 || candidate.dying || candidate.lifecycle.in_limbo() {
         return None;
     }
 
@@ -1870,7 +1870,7 @@ fn evaluate_candidate(
     }
 
     // `0x006F81FA..0x006F8214`: an `InvisibleInGame=` building (`+0x1701`).
-    let building = candidate.category == EntityCategory::Structure;
+    let building = candidate.category() == EntityCategory::Structure;
     if building && candidate_obj.invisible_in_game {
         return None;
     }
@@ -1878,7 +1878,7 @@ fn evaluate_candidate(
     // The class gate, `0x006F821A..0x006F824A`.
     if !threat_mask::admits_class(
         walk.flags,
-        candidate.category,
+        candidate.category(),
         vehicle_like(ctx, candidate, candidate_obj),
     ) {
         return None;
@@ -2172,7 +2172,7 @@ fn quarry_terms(mask: u32, score: i32, all_to_hunt: bool, facts: QuarryFacts) ->
 /// floor (`0x0041B910` → vt+0x50), or a Unit that is not `NonVehicle=`
 /// (`0x00746400`, UnitType `+0xE1B`). Infantry answer false (`0x004263B0`).
 fn vehicle_like(ctx: &ScanContext<'_>, candidate: &GameEntity, obj: &ObjectType) -> bool {
-    match candidate.category {
+    match candidate.category() {
         EntityCategory::Structure => obj.is_1x1_with_undeploy(),
         EntityCategory::Aircraft => crate::sim::movement::air_movement::is_low_flying(
             candidate,
@@ -2237,7 +2237,6 @@ mod tests {
     use crate::rules::terrain_rules::TerrainClass;
     use crate::sim::combat::threat_posed::live_threat_posed;
     use crate::sim::intern::test_interner;
-    use crate::util::fixed_math::SimFixed;
 
     #[test]
     fn occupied_scan_bound_matches_original_override_slice() {
@@ -2308,8 +2307,8 @@ mod tests {
         category: EntityCategory,
     ) {
         let mut entity = GameEntity::test_default(id, type_id, owner, rx, ry);
-        entity.category = category;
-        entity.lifecycle.in_limbo = false;
+        entity.set_category_for_test(category);
+        entity.lifecycle.set_in_limbo_for_test(false);
         entity.lifecycle.cell_marked = true;
         if category == EntityCategory::Structure {
             entity.foundation = "1x1".to_string();
@@ -2501,14 +2500,7 @@ mod tests {
                 // A supplied positive low height changes the existing live query
                 // while retained Cell order and AirTracker registration stay put.
                 // Below target_is_high_flying, weapon selection alone allows AG.
-                sim.substrate
-                    .entities
-                    .get_mut(3)
-                    .unwrap()
-                    .locomotor
-                    .as_mut()
-                    .unwrap()
-                    .altitude = SimFixed::from_num(1);
+                sim.set_object_height_unmarked(3, 1);
                 assert_eq!(acquire(&sim), if aa { Some(3) } else { Some(2) });
                 sim.substrate
                     .entities
@@ -2608,8 +2600,8 @@ mod tests {
         sim.interner = test_interner();
         let mut locomotor = LocomotorState::for_test_kind(LocomotorKind::Jumpjet);
         locomotor.layer = MovementLayer::Air;
-        locomotor.altitude = SimFixed::from_num(altitude);
         sim.substrate.entities.get_mut(2).unwrap().locomotor = Some(locomotor);
+        sim.set_object_height_unmarked(2, altitude);
         sim.add_entity_occupancy(1);
         // The fixture starts after native takeoff's explicit AirTracker Add;
         // Mark alone does not register a Jumpjet or establish its+560 Cell.
@@ -2651,7 +2643,7 @@ mod tests {
         ] {
             let obj = rules.object(kind).unwrap();
             let mut entity = GameEntity::test_default(1, kind, "Americans", 5, 5);
-            entity.set_veterancy_rank(veterancy);
+            entity.veterancy.set_rank_for_test(veterancy);
             entity.set_gunner_selection_for_test(slot, -1);
             let entities = EntityStore::new();
             let interner = test_interner();
@@ -3181,8 +3173,8 @@ mod tests {
         sim.interner = test_interner();
         let mut locomotor = LocomotorState::for_test_kind(LocomotorKind::Jumpjet);
         locomotor.layer = MovementLayer::Air;
-        locomotor.altitude = SimFixed::from_num(1200);
         sim.substrate.entities.get_mut(2).unwrap().locomotor = Some(locomotor);
+        sim.set_object_height_unmarked(2, 1200);
         sim.add_entity_occupancy(1);
         sim.aircraft_tracker_add(2);
         let target = super::super::acquire_best_target_for_entity(
@@ -3983,7 +3975,7 @@ mod tests {
                 EntityCategory::Unit,
             );
             let entity = entities.get_mut(id).unwrap();
-            entity.health.current = 301;
+            entity.health.set_for_test(301);
             entity.estimated_health =
                 crate::sim::estimated_health::EstimatedHealth::from_raw(estimate);
         }

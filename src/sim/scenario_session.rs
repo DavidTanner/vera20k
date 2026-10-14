@@ -1064,7 +1064,6 @@ mod tests {
                                 entity_id: 1,
                                 target_rx: 20,
                                 target_ry: 2,
-                                queue: false,
                             },
                         )]
                     } else {

@@ -73,7 +73,9 @@ fn original_area_receipt_selects_nullify_after_em_effect_rng_and_before_return()
             target.position.sub_x = SimFixed::from_num(128);
             target.position.sub_y = SimFixed::from_num(128);
             target.position.exact_z_leptons = Some(624);
-            target.health.current = input["receiver_health"].as_i64().unwrap() as i32;
+            target
+                .health
+                .set_for_test(input["receiver_health"].as_i64().unwrap() as i32);
             target.invulnerability = Some(InvulnerabilityState::new(
                 crate::sim::timer::CdTimer::started(
                     input["ic_start"].as_u64().unwrap() as i32,
@@ -311,10 +313,16 @@ fn native_area_receipt_tracks_dispatch_and_strict_iron_curtain_boundary() {
                 SimFixed::from_num(128 + input["distance"].as_i64().unwrap() as i32);
             entity.position.sub_y = SimFixed::from_num(128);
             entity.position.exact_z_leptons = Some(624);
-            entity.health.current = input["health"].as_i64().unwrap() as i32;
-            entity.lifecycle.object_alive = input["alive"].as_bool().unwrap();
+            entity
+                .health
+                .set_for_test(input["health"].as_i64().unwrap() as i32);
+            entity
+                .lifecycle
+                .set_object_alive_for_test(input["alive"].as_bool().unwrap());
             entity.lifecycle.cell_marked = input["marked"].as_bool().unwrap();
-            entity.lifecycle.in_limbo = input["limbo"].as_bool().unwrap();
+            entity
+                .lifecycle
+                .set_in_limbo_for_test(input["limbo"].as_bool().unwrap());
             entity.invulnerability = (input["ic"] == true).then(|| {
                 InvulnerabilityState::new(
                     crate::sim::timer::CdTimer::started(
@@ -346,7 +354,7 @@ fn native_area_receipt_tracks_dispatch_and_strict_iron_curtain_boundary() {
                 .get(target.unwrap())
                 .unwrap()
                 .health
-                .current;
+                .current();
             let rng = world.scenario_rng.logical_state();
             let output = commit_projectiles(
                 &mut world,
@@ -371,7 +379,7 @@ fn native_area_receipt_tracks_dispatch_and_strict_iron_curtain_boundary() {
                     .get(target.unwrap())
                     .unwrap()
                     .health
-                    .current,
+                    .current(),
                 health
             );
             assert_eq!(world.scenario_rng.logical_state(), rng);

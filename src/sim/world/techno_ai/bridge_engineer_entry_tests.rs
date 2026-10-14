@@ -142,7 +142,6 @@ fn capture_probe(
         "mission_only":actor.is_mission_only(), "lifecycle":actor.lifecycle,
         "tube":actor.low_bridge_tube_state, "locomotor":actor.locomotor,
         "mission":actor.mission, "navigation":actor.navigation,
-        "movement_target":actor.movement_target,
         "team_present":sim.team_script_vm.team_for_member(engineer).is_some(),
         "navigation_coord":navigation_coord, "destination_coord":destination,
         "current_coord":crate::sim::movement::ground_pose::position_world_coord(&actor.position),
@@ -373,10 +372,12 @@ fn retail_hills_engineer_enters_hut_and_repairs() {
                 engineer_navigation_state(actor.unwrap()),
             ));
         }
-        let mut state=actor.map_or(Value::Null,|e|json!({
-            "position":e.position,"lifecycle":e.lifecycle,"mission":e.mission,
-            "navigation":e.navigation,"locomotor":e.locomotor,"movement_target":e.movement_target,
-        }));
+        let mut state = actor.map_or(Value::Null, |e| {
+            json!({
+                "position":e.position,"lifecycle":e.lifecycle,"mission":e.mission,
+                "navigation":e.navigation,"locomotor":e.locomotor,
+            })
+        });
         if let Some(mission) = state.get_mut("mission").and_then(Value::as_object_mut) {
             mission.remove("ai_counter");
         }
@@ -394,7 +395,7 @@ fn retail_hills_engineer_enters_hut_and_repairs() {
             .unwrap()
             .bridge_facts
             .has_structural_bridge();
-        if repaired && actor.is_none_or(|e| !e.lifecycle.object_alive) {
+        if repaired && actor.is_none_or(|e| !e.lifecycle.object_alive()) {
             break;
         }
     }
@@ -414,7 +415,7 @@ fn retail_hills_engineer_enters_hut_and_repairs() {
             .simulation
             .entities()
             .get(engineer)
-            .is_none_or(|e| !e.lifecycle.object_alive),
+            .is_none_or(|e| !e.lifecycle.object_alive()),
         "repair consumes the Engineer"
     );
     assert_repaired_hills_authorities(&runtime.simulation, engineer, hut);
@@ -465,7 +466,6 @@ fn engineer_navigation_state(actor: &crate::sim::game_entity::GameEntity) -> Val
     json!({
         "position":actor.position, "mission":actor.mission,
         "navigation":actor.navigation, "locomotor":actor.locomotor,
-        "movement_target":actor.movement_target,
     })
 }
 
@@ -501,7 +501,7 @@ fn assert_repaired_hills_authorities(sim: &Simulation, engineer: u64, hut: u64) 
         sim.entities().get(engineer).is_none(),
         "Engineer retired after repair"
     );
-    assert!(sim.entities().get(hut).unwrap().lifecycle.object_alive);
+    assert!(sim.entities().get(hut).unwrap().lifecycle.object_alive());
     for at in [(66, 76), (67, 75), (68, 74)] {
         assert!(
             sim.cell_objects(at, crate::sim::movement::locomotor::MovementLayer::Ground)

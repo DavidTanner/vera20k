@@ -106,7 +106,7 @@ pub(crate) fn hover_move_to(
     terrain: Option<&ResolvedTerrainGrid>,
     frame: u32,
 ) -> bool {
-    let paralyzed = entity.is_paralyzed(frame);
+    let paralyzed = entity.parasite.is_paralyzed(frame);
     let airborne = hover_is_powered(entity, terrain);
     let Some(hover) = runtime_mut(entity) else {
         return false;
@@ -186,7 +186,7 @@ impl Simulation {
         self.substrate
             .entities
             .get(id)
-            .is_some_and(|e| e.lifecycle.object_alive)
+            .is_some_and(|e| e.lifecycle.object_alive())
     }
 
     fn hover_is_moving(&self, id: u64) -> bool {
@@ -305,24 +305,10 @@ impl Simulation {
         let rules = rules.ok_or_else(|| self.hover_error(id, "Hover Process requires rules"))?;
         let mut out = HoverProcessOutcome::default();
         if self.hover_is_moving(id) && !self.hover_move(id, rules, registry, &mut out, effects)? {
-            self.retire_hover_adapter(id);
             return Ok(out);
         }
         self.hover_process_tail(id, rules, registry, effects);
-        self.retire_hover_adapter(id);
         Ok(out)
-    }
-
-    /// The `movement_target` a Hover order installs
-    /// (`prepare_destination_execution`) tells its readers that the Foot
-    /// moves; it drops once Is_Moving (0x00514C30) is false, with the
-    /// waypoints the corridor lane dropped at arrival (#689 residual).
-    fn retire_hover_adapter(&mut self, id: u64) {
-        if let Some(entity) = self.substrate.entities.get_mut(id)
-            && runtime(entity).is_some_and(|hover| !hover.is_moving())
-        {
-            entity.movement_target = None;
-        }
     }
 
     /// Process 0x00514325..0x00514A1E. Returns false when Process returns
@@ -544,7 +530,8 @@ impl Simulation {
         let terrain = self.resolved_terrain.as_ref();
         if let (Some(terrain), Some(entity)) = (terrain, self.substrate.entities.get(id)) {
             let cells = NativeCellQuery::canonical(terrain);
-            let structural = cells.flags(cells.lookup_world(x, y)) & 0x100 != 0;
+            let entered = cells.lookup_world(x, y);
+            let structural = cells.flags(entered) & 0x100 != 0;
             let height = super::super::air_movement::current_fly_height(entity, Some(terrain));
             let on_bridge =
                 if !entity.on_bridge && structural && height >= BRIDGE_DECK_HEIGHT_LEPTONS {
@@ -554,8 +541,10 @@ impl Simulation {
                 } else {
                     entity.on_bridge
                 };
+            let level = cells.ground_fields(entered).0;
             if let Some(entity) = self.substrate.entities.get_mut(id) {
                 entity.on_bridge = on_bridge;
+                entity.position.z = super::super::movement_bridge::stored_level(level, on_bridge);
             }
         }
         self.foot_mark_put(id, Some(rules), registry, effects);
@@ -1072,7 +1061,7 @@ impl Simulation {
         let Some(entity) = self.substrate.entities.get(id) else {
             return Ok(7);
         };
-        if entity.is_paralyzed(frame) {
+        if entity.parasite.is_paralyzed(frame) {
             return Ok(7);
         }
         let Some(hover) = runtime(entity) else {
@@ -1134,7 +1123,7 @@ impl Simulation {
                 .substrate
                 .entities
                 .get(id)
-                .is_some_and(|entity| entity.lifecycle.in_limbo);
+                .is_some_and(|entity| entity.lifecycle.in_limbo());
             if !in_limbo {
                 if self.track_survives(id) {
                     self.hover_drop_track(id, rules, effects);

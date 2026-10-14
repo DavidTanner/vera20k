@@ -58,12 +58,12 @@ fn boarded_transport(sim: &mut Simulation, rules: &RuleSet, kind: &str) -> (u64,
             e.is_deployed(),
             e.position.rx,
             e.position.ry,
-            e.lifecycle.in_limbo
+            e.lifecycle.in_limbo()
         )),
         sim.substrate.entities.get(carrier).map(|e| (
             e.position.rx,
             e.position.ry,
-            e.lifecycle.in_limbo
+            e.lifecycle.in_limbo()
         )),
         crate::sim::passenger::can_enter_transport(sim, rules, passenger, carrier)
     );
@@ -102,7 +102,7 @@ fn boarded_transport(sim: &mut Simulation, rules: &RuleSet, kind: &str) -> (u64,
             .get(passenger)
             .unwrap()
             .lifecycle
-            .in_limbo
+            .in_limbo()
     );
     (carrier, passenger)
 }
@@ -173,7 +173,7 @@ fn run_drop(sim: &mut Simulation, rules: &RuleSet, carrier: u64, passenger: u64,
         .get_mut(carrier)
         .unwrap()
         .health
-        .current = 37;
+        .set_for_test(37);
     let owner = sim.substrate.entities.get(carrier).unwrap().owner();
     let landing_xy =
         ground_pose::position_world_xy(&sim.substrate.entities.get(carrier).unwrap().position);
@@ -186,7 +186,8 @@ fn run_drop(sim: &mut Simulation, rules: &RuleSet, carrier: u64, passenger: u64,
     assert!(transport.is_falling_down() && transport.was_dropped_as_bomb());
     assert!(!transport.on_bridge);
     assert_eq!(
-        transport.health.current, 37,
+        transport.health.current(),
+        37,
         "bridge callback arms fall without early damage"
     );
     assert_eq!(
@@ -224,14 +225,14 @@ fn run_drop(sim: &mut Simulation, rules: &RuleSet, carrier: u64, passenger: u64,
         let z = ground_pose::position_world_coord(&entity.position).z;
         saw_descent |= before_z.is_some_and(|old| z < old);
         assert!(entity.is_falling_down());
-        assert_eq!(entity.health.current, 37, "damage waits for grounding");
+        assert_eq!(entity.health.current(), 37, "damage waits for grounding");
         assert!(
             sim.substrate
                 .entities
                 .get(passenger)
                 .unwrap()
                 .lifecycle
-                .in_limbo
+                .in_limbo()
         );
     }
     assert!(saw_descent, "normal ObjectAI advances the bridge fall");
@@ -356,7 +357,7 @@ fn vanished_structural_deck_per_cell_arms_the_same_object_fall() {
         ground_pose::position_world_coord(&entity.position).z,
         BRIDGE_DECK_HEIGHT_LEPTONS
     );
-    assert_eq!(entity.health.current, 200);
+    assert_eq!(entity.health.current(), 200);
     assert_eq!(sim.rng_state(), before);
     assert_eq!(
         sim.substrate.occupancy.listed_layer(CELL.0, CELL.1, id),
@@ -411,9 +412,9 @@ fn a_transport_shot_mid_fall_kills_its_passenger_without_the_landing_force_flags
         FrameEffects::default(),
     );
     let passenger = sim.substrate.entities.get(passenger).unwrap();
-    assert!(!passenger.lifecycle.object_alive);
-    assert!(passenger.lifecycle.in_limbo, "never Unlimboed to escape");
-    assert_eq!(passenger.health.current, 0);
+    assert!(!passenger.lifecycle.object_alive());
+    assert!(passenger.lifecycle.in_limbo(), "never Unlimboed to escape");
+    assert_eq!(passenger.health.current(), 0);
     assert!(
         sim.substrate
             .entities

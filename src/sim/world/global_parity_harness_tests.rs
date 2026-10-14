@@ -139,7 +139,7 @@ pub(super) fn print_replay_summary(name: &str, sim: &Simulation) {
         .map(|id| {
             let e = sim.substrate.entities.get(id).unwrap();
             serde_json::json!({"id":id,"type":sim.resolve(e.type_ref()),
-            "health":e.health.current,"position":e.position,"mission":e.mission,
+            "health":e.health.current(),"position":e.position,"mission":e.mission,
             "target":e.attack_target,"nav":e.navigation.nav_com,
             "passive_timer":e.passive_scan_timer,"last_scan":e.last_target_scan_frame,
             "rearm":e.rearm_timer})
@@ -608,7 +608,24 @@ const FINAL_STREAM_STATES: (u64, u64, u64) = (
 // flags in the same finished replay recovers the incoming 9F0CFB4D01682378;
 // all per-frame replay, gameplay and absolute RNG gates remain unchanged.
 // The diagnostic control was removed.
-const GLOBAL_HARNESS_FINAL_HASH: u64 = 0x08F7_A04E_1574_71DE;
+// 2026-10-14: hash composition and coverage only. state_hash folds
+// through the pinned StateHasher instead of std's DefaultHasher (a
+// temporary control folding the finished replay through DefaultHasher
+// still gave the previous 0x08F7_A04E_1574_71DE), fog grids and entities fold
+// as per-House and per-entity digests, cell grids and footprint lists
+// fold as packed byte records, and the edge cache also covers
+// uninitialized cells: code that writes no simulation state.
+// Snapshot349 drops the move-order adapter (`MovementTarget`, #689), whose
+// presence and speed stamp every entity's fold hashed. Hash composition
+// only: a control binary (main with a hash that skips only that fold)
+// gives this value in the same test, with every tripwire above green.
+// Control removed. Previous: 0x6F38_B6BF_3787_953B.
+// Snapshot350 drops the locomotor's altitude copy (#692), which every
+// locomotor's fold hashed. Hash composition only: a control binary (main
+// with a hash that skips only that fold) gives this value in the same
+// test, with every tripwire above green.
+// Control removed. Previous: 0xE527_F567_DC13_C55E.
+const GLOBAL_HARNESS_FINAL_HASH: u64 = 0x0B64_C58D_B313_2AB4;
 
 fn harness_ini() -> IniFile {
     // Multi-faction vehicles + infantry + buildings (war factory, refinery) plus a
@@ -808,16 +825,17 @@ fn harness_script() -> Vec<(u64, Command)> {
                 entity_id: 4,
                 target_rx: 24 + HARNESS_COORD_SHIFT,
                 target_ry: 8 + HARNESS_COORD_SHIFT,
-                queue: false,
             },
         ),
         (
             40,
             Command::AttackMove {
                 entity_id: 4,
-                target_rx: 38 + HARNESS_COORD_SHIFT,
-                target_ry: 8 + HARNESS_COORD_SHIFT,
-                queue: false,
+                target: None,
+                destination: Some(crate::sim::combat::TargetKind::Cell(
+                    38 + HARNESS_COORD_SHIFT,
+                    8 + HARNESS_COORD_SHIFT,
+                )),
             },
         ),
         (
@@ -826,7 +844,6 @@ fn harness_script() -> Vec<(u64, Command)> {
                 entity_id: 6,
                 target_rx: 28 + HARNESS_COORD_SHIFT,
                 target_ry: 10 + HARNESS_COORD_SHIFT,
-                queue: false,
             },
         ),
         (300, Command::Stop { entity_id: 4 }),
@@ -837,7 +854,6 @@ fn harness_script() -> Vec<(u64, Command)> {
                 entity_id: 4,
                 target_rx: 36 + HARNESS_COORD_SHIFT,
                 target_ry: 8 + HARNESS_COORD_SHIFT,
-                queue: false,
             },
         ),
     ]
@@ -940,7 +956,7 @@ fn global_skirmish_replay_is_deterministic_and_baseline_stable() {
                 (298, 16),
                 "Stop retains the active dispatch timer"
             );
-            assert!(tank.attack_target.is_none());
+            assert!(tank.attack_target.target().is_none());
             assert!(tank.navigation.nav_com.is_none());
             assert!(tank.mega_mission.is_attack_move());
             assert_eq!(tank.last_target_scan_frame, 297);
@@ -952,7 +968,7 @@ fn global_skirmish_replay_is_deterministic_and_baseline_stable() {
         // death frame: main's native Infantry cadence changes the duel's draws.
         if rec.substrate.entities.get(4).is_none() {
             let tank = rec.substrate.entities.get(6).expect("surviving tank");
-            assert!(tank.attack_target.is_none());
+            assert!(tank.attack_target.target().is_none());
             let scan = (tank.last_target_scan_frame, tank.passive_scan_timer);
             if target_expired.is_none() {
                 target_expired = Some(tick);
@@ -1136,7 +1152,7 @@ fn global_skirmish_replay_is_deterministic_and_baseline_stable() {
         rep.substrate
             .entities
             .values()
-            .all(|e| e.building_storage == Default::default() && e.aircraft_ammo.is_none()),
+            .all(|e| *e.building_art.storage() == Default::default() && e.aircraft_ammo.is_none()),
         "the fixture contains no storage or aircraft state"
     );
 
@@ -1153,7 +1169,7 @@ fn global_skirmish_replay_is_deterministic_and_baseline_stable() {
         rep.substrate
             .entities
             .get(4)
-            .map(|tank| tank.health.current),
+            .map(|tank| tank.health.current()),
         None,
         "the retasked tank dies in its duel"
     );
@@ -1161,7 +1177,7 @@ fn global_skirmish_replay_is_deterministic_and_baseline_stable() {
         rep.substrate
             .entities
             .get(6)
-            .map(|tank| tank.health.current),
+            .map(|tank| tank.health.current()),
         Some(108),
         "tank 6 takes four 105mm hits (65 * 75% heavy)"
     );
@@ -1229,7 +1245,6 @@ fn dense_converging_setup() -> (
                 entity_id: 1 + i,
                 target_rx: 25,
                 target_ry: y,
-                queue: false,
             },
         ));
         script.push((
@@ -1239,7 +1254,6 @@ fn dense_converging_setup() -> (
                 entity_id: 11 + i,
                 target_rx: 25,
                 target_ry: y,
-                queue: false,
             },
         ));
     }
@@ -1374,7 +1388,6 @@ fn fresh_drive_turn_publishes_on_request_frame_and_restores_before_admission() {
                         entity_id: 1,
                         target_rx: 25,
                         target_ry: 5,
-                        queue: false,
                     },
                 )]
             } else {

@@ -14,7 +14,7 @@ pub(crate) fn finalize(sim: &mut Simulation) {
 
 fn at_or_below_condition_yellow(current: i32, strength: i32, yellow: f64) -> bool {
     crate::sim::building_art::requested_damage_state(
-        crate::sim::components::Health { current },
+        crate::sim::combat::Health::new(current),
         strength,
         yellow,
     )
@@ -31,7 +31,7 @@ pub(crate) fn start_refinery_unload(sim: &mut Simulation, rules: &RuleSet, build
         return;
     };
     let damaged = at_or_below_condition_yellow(
-        building.health.current,
+        building.health.current(),
         object.strength,
         rules.general.condition_yellow,
     );
@@ -49,7 +49,7 @@ pub(crate) fn begin_refinery_unload_gate(sim: &mut Simulation, rules: &RuleSet, 
         return;
     };
     let damaged = at_or_below_condition_yellow(
-        building.health.current,
+        building.health.current(),
         object.strength,
         rules.general.condition_yellow,
     );
@@ -57,7 +57,7 @@ pub(crate) fn begin_refinery_unload_gate(sim: &mut Simulation, rules: &RuleSet, 
     if sim
         .entities()
         .get(building_id)
-        .is_some_and(|entity| entity.building_anim_slots[10].is_none())
+        .is_some_and(|entity| entity.building_art.anim_slots()[10].is_none())
     {
         sim.set_building_anim_slot(building_id, 10, damaged, false, 0, rules);
     }
@@ -127,7 +127,7 @@ pub(crate) fn end_refinery_unload_empty(sim: &mut Simulation, rules: &RuleSet, b
         return;
     };
     let damaged = at_or_below_condition_yellow(
-        building.health.current,
+        building.health.current(),
         object.strength,
         rules.general.condition_yellow,
     );
@@ -226,8 +226,8 @@ mod tests {
                 (origin.x >> 8) as u16,
                 (origin.y >> 8) as u16,
             );
-            entity.type_ref = sim.interner.intern("GAREFN");
-            entity.owner = sim.interner.intern("A");
+            entity.set_type_ref_for_test(sim.interner.intern("GAREFN"));
+            entity.set_owner_for_test(sim.interner.intern("A"));
             entity.position.sub_x = crate::util::fixed_math::SimFixed::from_num(origin.x & 255);
             entity.position.sub_y = crate::util::fixed_math::SimFixed::from_num(origin.y & 255);
             entity.position.exact_z_leptons = Some(origin.z);
@@ -260,9 +260,9 @@ mod tests {
             ry,
             crate::map::entities::EntityCategory::Structure,
         );
-        entity.type_ref = sim.interner.intern(name);
-        entity.owner = sim.interner.intern("Americans");
-        entity.health.current = 100;
+        entity.set_type_ref_for_test(sim.interner.intern(name));
+        entity.set_owner_for_test(sim.interner.intern("Americans"));
+        entity.health.set_for_test(100);
         sim.entities_mut().insert(entity);
     }
     fn refinery_sim_with_bale() -> Simulation {
@@ -428,7 +428,8 @@ mod tests {
             sim.entities()
                 .get(41)
                 .expect("refinery")
-                .building_anim_slots[10]
+                .building_art
+                .anim_slots()[10]
                 .is_some()
         );
         assert_eq!(sim.particle_systems().len(), 1);
@@ -450,10 +451,14 @@ mod tests {
             }
             rules.install_art_data(art);
             let mut sim = refinery_sim_with_bale();
-            sim.entities_mut().get_mut(41).unwrap().health.current = row.input.current;
+            sim.entities_mut()
+                .get_mut(41)
+                .unwrap()
+                .health
+                .set_for_test(row.input.current);
             begin_refinery_unload_gate(&mut sim, &rules, 41);
             finalize(&mut sim);
-            let id = sim.entities().get(41).unwrap().building_anim_slots[10].unwrap();
+            let id = sim.entities().get(41).unwrap().building_art.anim_slots()[10].unwrap();
             assert_eq!(
                 sim.interner.resolve(sim.anim(id).unwrap().type_id),
                 if row.output.refinery_special_damaged {
@@ -478,14 +483,18 @@ mod tests {
     fn missing_damaged_name_smokes_without_constructing_or_changing_flag() {
         let rules = refinery_rules_and_art();
         let mut sim = refinery_sim_with_bale();
-        sim.entities_mut().get_mut(41).unwrap().health.current = 50;
+        sim.entities_mut()
+            .get_mut(41)
+            .unwrap()
+            .health
+            .set_for_test(50);
         begin_refinery_unload_gate(&mut sim, &rules, 41);
         finalize(&mut sim);
         assert!(sim.bale_events.is_empty());
         assert_eq!(sim.particle_systems().len(), 1);
         let building = sim.entities().get(41).unwrap();
-        assert_eq!(building.building_anim_slots[10], None);
-        assert!(!building.building_damage_state_active);
+        assert_eq!(building.building_art.anim_slots()[10], None);
+        assert!(!building.building_art.damage_state_active());
     }
     #[test]
     fn empty_bale_constructs_then_scalar_deletes_and_drain_only_emits_once() {
@@ -498,7 +507,7 @@ mod tests {
         assert!(sim.bale_events.is_empty());
         assert_eq!(sim.particle_systems().len(), 1);
         assert_eq!(
-            sim.entities().get(41).unwrap().building_anim_slots[10],
+            sim.entities().get(41).unwrap().building_art.anim_slots()[10],
             None
         );
         assert_eq!(sim.anims().count(), 0);

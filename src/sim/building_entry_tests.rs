@@ -848,7 +848,12 @@ fn the_nearest_own_bunker_with_room_takes_an_occupier() {
             .unwrap()
             .add_occupant(id, 1);
     }
-    sim.substrate.entities.get_mut(far).unwrap().health.current = 100;
+    sim.substrate
+        .entities
+        .get_mut(far)
+        .unwrap()
+        .health
+        .set_for_test(100);
     assert!(!garrison_seek(&mut sim, &rules, infantry));
     assert!(!entity(&sim, infantry).building_entry.seeking());
 }
@@ -898,7 +903,7 @@ fn a_battle_bunker_team_member_garrisons_the_bunker() {
     assert_eq!(occupants(&sim, bunker), [infantry]);
     assert!(sim.team_script_vm.team(team).is_none());
     let foot = entity(&sim, infantry);
-    assert!(foot.lifecycle.in_limbo);
+    assert!(foot.lifecycle.in_limbo());
     assert!(foot.building_entry.should_enter_occupiable());
 }
 
@@ -1014,7 +1019,7 @@ fn an_occupier_turned_away_at_a_full_bunker_gives_up() {
         !entity(sim, infantry).building_entry.seeking()
     }));
     let foot = entity(&sim, infantry);
-    assert!(!foot.lifecycle.in_limbo);
+    assert!(!foot.lifecycle.in_limbo());
     assert!(matches!(foot.passenger_role, PassengerRole::None));
     assert_ne!(
         foot.mission.current(),

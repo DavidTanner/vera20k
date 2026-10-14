@@ -19,7 +19,7 @@
 use crate::map::entities::EntityCategory;
 use crate::rules::object_type::{Ability, ObjectType, PipScale};
 use crate::rules::ruleset::RuleSet;
-use crate::sim::combat::veterancy::{has_weapon_ability, rank_from_u16};
+use crate::sim::combat::veterancy::has_weapon_ability;
 use crate::sim::components::NavTargetRef;
 use crate::sim::game_entity::GameEntity;
 use crate::sim::mission::authority::EntityReadyInputProvider;
@@ -125,7 +125,7 @@ impl Simulation {
         let Some(unit) = self.substrate.entities.get(id) else {
             return false;
         };
-        if unit.category != EntityCategory::Unit {
+        if unit.category() != EntityCategory::Unit {
             return false;
         }
         let Some(factory) = unit.radio_contacts.slot(0) else {
@@ -135,7 +135,7 @@ impl Simulation {
             .entities
             .get(factory)
             .is_some_and(|building| {
-                building.category == EntityCategory::Structure
+                building.category() == EntityCategory::Structure
                     && rules
                         .object(self.interner.resolve(building.type_ref()))
                         .is_some_and(|object| object.weapons_factory)
@@ -183,7 +183,7 @@ impl Simulation {
             return;
         };
         let owner = unit.owner();
-        if unit.category != EntityCategory::Unit
+        if unit.category() != EntityCategory::Unit
             || self.team_script_vm.team_for_member(id).is_some()
             || unit.dock_entered_with.is_some()
             || crate::sim::combat::combat_weapon::is_ally_by_object(
@@ -283,7 +283,7 @@ impl Simulation {
         };
         CrushCharge {
             crusher: object.crusher
-                || has_weapon_ability(rank_from_u16(unit.veterancy()), object, Ability::Crusher),
+                || has_weapon_ability(unit.veterancy.rank_kind(), object, Ability::Crusher),
             crushable: object_is_crushable_by(
                 object.omni_crusher,
                 CrushTarget::from_entity(victim, self.session.binary_frame),

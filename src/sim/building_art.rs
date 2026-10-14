@@ -1,11 +1,12 @@
-//! Building health-triggered animation state. Building+6E6 is retained state,
-//! independent of actual HP. Original451EE0/442A95/4508D7 write it before
-//! replacing occupied animation slots; selfheal never calls this owner.
+//! A Building's animation art (`BuildingArt`) and the native functions that
+//! change it. Building+6E6 is retained state, independent of actual HP.
+//! Original451EE0/442A95/4508D7 write it before replacing occupied animation
+//! slots; selfheal never calls this owner.
 
 use crate::rules::art_data::BuildingAnimConfig;
 use crate::rules::object_type::ObjectType;
 use crate::rules::ruleset::RuleSet;
-use crate::sim::components::Health;
+use crate::sim::combat::Health;
 use crate::sim::game_entity::GameEntity;
 use crate::sim::world::FrameEffects;
 use crate::sim::world::Simulation;
@@ -26,6 +27,121 @@ mod storage;
 #[path = "building_art_super.rs"]
 mod super_anim;
 pub(crate) use storage::BuildingStorage;
+
+/// A Building's animation art, owned by this module: its 21 AnimClass slots
+/// (Building+55C), their effect-replay marks (+5B0), the damaged-art flag
+/// (+6E6), its StorageClass art, the Stuff flag (+6EA) and the
+/// OnConstructionComplete guard (+6E4).
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub(crate) struct BuildingArt {
+    /// Retained Building+6E6 animation-transition flag (saved454469).
+    /// Selfheal and arbitrary health writes do not refresh this value.
+    damage_state_active: bool,
+    /// Building+55C's 21 retained AnimClass references. AnimStore owns the
+    /// animation objects and their scheduler/timers; these are slot identities.
+    anim_slots: [Option<u64>; 21],
+    /// Building+5B0: effect slots marked for replay by4547C0, cleared by4545D0.
+    anim_effect_replay: [bool; 21],
+    /// Retained raw StorageClass slots and last refinery animation tier.
+    /// Only the tier (+6F0) is art. The amounts are TechnoClass+0x33C, whose
+    /// native writers are economy code (the sale payout 44A232,
+    /// DestructionEffects 441B30, House spend and transfer); no Rust code
+    /// writes them yet, and the art reads them. Porting such a writer moves
+    /// the amounts to its owner.
+    storage: BuildingStorage,
+    /// Building+6EA, constructor43B996 true; distinct from operational6C8.
+    /// Its other native writers (ChangeOwner 4484C6, ReadScenarioBuildings
+    /// 44FC80, GoOnline 452260, EnableStuff 452410, DisableStuff 452480) also
+    /// switch lights, cloak and gap generators and laser fences; only their
+    /// animation loop is ported here.
+    stuff_enabled: bool,
+    /// Building+6E4: OnConstructionComplete's one-time allocation guard.
+    actually_placed: bool,
+}
+
+impl BuildingArt {
+    /// Building+6E6.
+    pub(crate) fn damage_state_active(&self) -> bool {
+        self.damage_state_active
+    }
+
+    /// Building+55C's slots.
+    pub(crate) fn anim_slots(&self) -> &[Option<u64>; 21] {
+        &self.anim_slots
+    }
+
+    /// Building+5B0's replay marks.
+    pub(crate) fn anim_effect_replay(&self) -> &[bool; 21] {
+        &self.anim_effect_replay
+    }
+
+    /// The StorageClass art.
+    pub(crate) fn storage(&self) -> &BuildingStorage {
+        &self.storage
+    }
+
+    /// Building+6EA.
+    pub(crate) fn stuff_enabled(&self) -> bool {
+        self.stuff_enabled
+    }
+
+    /// Building+6E4: OnConstructionComplete has run.
+    pub(crate) fn actually_placed(&self) -> bool {
+        self.actually_placed
+    }
+
+    /// Retained flag transition itself, shared by every reached caller.
+    /// Returns whether native451EE0 proceeds to its ordered occupied-slot
+    /// replacement loop.
+    fn set_damage_state(&mut self, damaged: bool) -> bool {
+        if self.damage_state_active == damaged {
+            return false;
+        }
+        self.damage_state_active = damaged;
+        true
+    }
+}
+
+/// Fixture setup for tests outside this module.
+#[cfg(test)]
+impl BuildingArt {
+    pub(crate) fn set_actually_placed_for_test(&mut self, placed: bool) {
+        self.actually_placed = placed;
+    }
+
+    pub(crate) fn set_damage_state_active_for_test(&mut self, active: bool) {
+        self.damage_state_active = active;
+    }
+
+    pub(crate) fn set_stuff_enabled_for_test(&mut self, enabled: bool) {
+        self.stuff_enabled = enabled;
+    }
+
+    pub(crate) fn anim_slots_mut_for_test(&mut self) -> &mut [Option<u64>; 21] {
+        &mut self.anim_slots
+    }
+
+    pub(crate) fn anim_effect_replay_mut_for_test(&mut self) -> &mut [bool; 21] {
+        &mut self.anim_effect_replay
+    }
+
+    pub(crate) fn storage_mut_for_test(&mut self) -> &mut BuildingStorage {
+        &mut self.storage
+    }
+}
+
+impl Default for BuildingArt {
+    fn default() -> Self {
+        Self {
+            damage_state_active: false,
+            anim_slots: [None; 21],
+            anim_effect_replay: [false; 21],
+            storage: BuildingStorage::default(),
+            stuff_enabled: true,
+            actually_placed: false,
+        }
+    }
+}
 
 #[cfg(test)]
 thread_local! {
@@ -83,10 +199,10 @@ impl Simulation {
         let Some(entity) = self.substrate.entities.get(id) else {
             return;
         };
-        if entity.category != crate::map::entities::EntityCategory::Structure {
+        if entity.category() != crate::map::entities::EntityCategory::Structure {
             return;
         }
-        let slots = entity.building_anim_slots;
+        let slots = entity.building_art.anim_slots;
         for (slot, anim_id) in slots.into_iter().enumerate() {
             let Some(anim_id) = anim_id else { continue };
             let Some(config) = self.building_anim_config(id, slot as u8, rules) else {
@@ -120,15 +236,15 @@ impl Simulation {
         let Some(entity) = self.substrate.entities.get(id) else {
             return;
         };
-        if entity.category != crate::map::entities::EntityCategory::Structure
-            || (entity.building_actually_placed && !captured)
+        if entity.category() != crate::map::entities::EntityCategory::Structure
+            || (entity.building_art.actually_placed && !captured)
         {
             return;
         }
         let Some(object) = rules.object(self.interner.resolve(entity.type_ref())) else {
             return;
         };
-        let first_opening = !entity.building_actually_placed;
+        let first_opening = !entity.building_art.actually_placed;
         let owner = entity.owner();
         let cell = (entity.position.rx, entity.position.ry);
         let refinery = object.refinery;
@@ -209,7 +325,7 @@ impl Simulation {
         //opening (including capture), before publishing placement at446A84.
         self.invalidate_house_power(owner, true);
         if let Some(entity) = self.substrate.entities.get_mut(id) {
-            entity.building_actually_placed = true;
+            entity.building_art.actually_placed = true;
         }
         self.add_building_sensor_array_if_powered(id, rules);
         self.announce_super_weapon_building_complete(id, rules);
@@ -243,7 +359,7 @@ impl Simulation {
         let Some(entity) = self.substrate.entities.get_mut(id) else {
             return;
         };
-        if !set_damage_state(entity, damaged) {
+        if !entity.building_art.set_damage_state(damaged) {
             return;
         }
         for slot in 0..21 {
@@ -251,7 +367,7 @@ impl Simulation {
                 .substrate
                 .entities
                 .get(id)
-                .is_some_and(|e| e.building_anim_slots[slot].is_some())
+                .is_some_and(|e| e.building_art.anim_slots[slot].is_some())
             {
                 self.set_building_anim_slot(id, slot as u8, damaged, false, 0, rules);
             }
@@ -282,7 +398,7 @@ impl Simulation {
             let Some(entity) = self.substrate.entities.get(id) else {
                 return;
             };
-            if entity.building_anim_slots[slot].is_none() {
+            if entity.building_art.anim_slots[slot].is_none() {
                 continue;
             }
             let Some(object) = self.object_type(entity.type_ref(), rules) else {
@@ -387,7 +503,7 @@ impl Simulation {
             .anims
             .get_mut(new_id)?
             .mark_building_anim(config.y_sort);
-        let old = self.substrate.entities.get(id)?.building_anim_slots[usize::from(slot)];
+        let old = self.substrate.entities.get(id)?.building_art.anim_slots[usize::from(slot)];
         if let Some(frame) = old
             .and_then(|old_id| self.anim(old_id))
             .map(|anim| anim.runtime.current_frame)
@@ -404,14 +520,15 @@ impl Simulation {
             anim.building_slot = Some((id, slot));
             anim.z_adjust = config.z_adjust;
         }
-        self.substrate.entities.get_mut(id)?.building_anim_slots[usize::from(slot)] = Some(new_id);
+        self.substrate.entities.get_mut(id)?.building_art.anim_slots[usize::from(slot)] =
+            Some(new_id);
         //451A36 calls4555D0 only when retained StuffEnabled6EA is true.
         //Construction/placement and operational history cannot substitute for it.
         let object = rules.object(
             self.interner
                 .resolve(self.substrate.entities.get(id)?.type_ref()),
         )?;
-        let enabled = self.substrate.entities.get(id)?.building_stuff_enabled
+        let enabled = self.substrate.entities.get(id)?.building_art.stuff_enabled
             && self.building_operational_state(id, rules) == Some(true);
         if !enabled && object.powered && self.building_anim_power_flags(id, slot, rules).powered {
             self.substrate.anims.get_mut(new_id)?.runtime.paused = true;
@@ -424,7 +541,7 @@ impl Simulation {
             .substrate
             .entities
             .get_mut(id)
-            .and_then(|entity| entity.building_anim_slots[usize::from(slot)].take());
+            .and_then(|entity| entity.building_art.anim_slots[usize::from(slot)].take());
         if let Some(old) = old {
             self.scalar_delete_building_anim(old);
         }
@@ -498,7 +615,7 @@ impl Simulation {
             return;
         };
         if !entity.is_object_alive()
-            || entity.building_anim_slots[usize::from(slot)] != Some(expired)
+            || entity.building_art.anim_slots[usize::from(slot)] != Some(expired)
         {
             return;
         }
@@ -545,9 +662,9 @@ impl Simulation {
             .and_then(|anim| anim.building_slot.take());
         if let Some((owner, slot)) = slot
             && let Some(entity) = self.substrate.entities.get_mut(owner)
-            && entity.building_anim_slots[usize::from(slot)] == Some(id)
+            && entity.building_art.anim_slots[usize::from(slot)] == Some(id)
         {
-            entity.building_anim_slots[usize::from(slot)] = None;
+            entity.building_art.anim_slots[usize::from(slot)] = None;
         }
     }
 
@@ -563,7 +680,8 @@ impl Simulation {
             .values()
             .flat_map(|entity| {
                 entity
-                    .building_anim_slots
+                    .building_art
+                    .anim_slots
                     .iter()
                     .enumerate()
                     .filter_map(move |(slot, id)| id.map(|id| (id, entity.stable_id(), slot as u8)))
@@ -604,7 +722,7 @@ pub(crate) fn occupied_body_frame(
     yellow: f64,
     red: f64,
 ) -> u16 {
-    let health = Health { current };
+    let health = Health::new(current);
     let mut frame = if occupants > 0 { 2 } else { 0 };
     if health.compare_ratio(strength, red) != Greater
         || (tech_level > 0 && health.compare_ratio(strength, yellow) != Greater)
@@ -661,7 +779,7 @@ pub(crate) fn body_frame(
     if let Some(occupants) = input.occupants {
         return i32::from(occupied_body_frame(
             u32::from(occupants > 0),
-            health.current,
+            health.current(),
             strength,
             input.tech_level,
             yellow,
@@ -732,16 +850,6 @@ pub(crate) fn receiver_body_frame(
         rules.general.condition_yellow,
         rules.general.condition_red,
     )
-}
-
-/// Retained flag transition itself, shared by every reached caller. Returns
-/// whether native451EE0 proceeds to its ordered occupied-slot replacement loop.
-pub(crate) fn set_damage_state(entity: &mut GameEntity, damaged: bool) -> bool {
-    if entity.building_damage_state_active == damaged {
-        return false;
-    }
-    entity.building_damage_state_active = damaged;
-    true
 }
 
 #[cfg(test)]
@@ -816,8 +924,8 @@ mod body_tests {
                 buildup: [i.buildup_start, i.buildup_count],
                 ordinary: i.frame_pairs,
             };
-            let before = body_frame(input, Health { current: i.before }, i.strength, yellow, red);
-            let after = body_frame(input, Health { current: i.after }, i.strength, yellow, red);
+            let before = body_frame(input, Health::new(i.before), i.strength, yellow, red);
+            let after = body_frame(input, Health::new(i.after), i.strength, yellow, red);
             assert_eq!(
                 (before as u32, after as u32),
                 (row.output.before_frame, row.output.after_frame),
@@ -826,7 +934,7 @@ mod body_tests {
             let changed = before != after;
             assert_eq!(u8::from(changed), row.output.dirty, "native row {index}");
             let retained = if changed {
-                requested_damage_state(Health { current: i.after }, i.strength, yellow)
+                requested_damage_state(Health::new(i.after), i.strength, yellow)
             } else {
                 i.old_flag != 0
             };
@@ -867,9 +975,9 @@ pub(crate) fn slot_test_fixture() -> (Simulation, RuleSet, u64) {
         2,
         crate::map::entities::EntityCategory::Structure,
     );
-    entity.type_ref = sim.interner.intern("B");
-    entity.owner = sim.interner.intern("A");
-    entity.health.current = 100;
+    entity.set_type_ref_for_test(sim.interner.intern("B"));
+    entity.set_owner_for_test(sim.interner.intern("A"));
+    entity.health.set_for_test(100);
     sim.substrate.entities.insert(entity);
     sim.scenario_rng = crate::sim::rng::SimRng::new(0);
     (sim, rules, id)
@@ -936,9 +1044,9 @@ mod slot_tests {
                     60,
                     crate::map::entities::EntityCategory::Structure,
                 );
-                building.type_ref = sim.interner.intern(name);
-                building.owner = sim.interner.intern("A");
-                building.health.current = if damaged { 40 } else { 100 };
+                building.set_type_ref_for_test(sim.interner.intern(name));
+                building.set_owner_for_test(sim.interner.intern("A"));
+                building.health.set_for_test(if damaged { 40 } else { 100 });
                 sim.substrate.entities.insert(building);
                 let slot = row["slot"]["slot"].as_u64().unwrap() as u8;
                 let anim_id = sim
@@ -1000,13 +1108,13 @@ mod slot_tests {
             .unwrap();
         assert_eq!(sim.anim(first).unwrap().world_coord.x, 512);
         sim.set_building_damage_state(id, true, &rules);
-        let replaced = sim.entities().get(id).unwrap().building_anim_slots[3].unwrap();
+        let replaced = sim.entities().get(id).unwrap().building_art.anim_slots[3].unwrap();
         assert_eq!(sim.anim(replaced).unwrap().world_coord.x, 512);
         let timer = sim.anim(replaced).unwrap().runtime.frame_timer;
         // This synthetic owner has never been marked; enter through the real
         // coordinate commit and verify its already retained slot moves in place.
         let entity = sim.entities_mut().get_mut(id).unwrap();
-        entity.lifecycle.in_limbo = true;
+        entity.lifecycle.set_in_limbo_for_test(true);
         entity.lifecycle.cell_marked = false;
         let outcome = sim.try_reveal_entity_with_context(
             id,
@@ -1026,7 +1134,7 @@ mod slot_tests {
         );
         assert!(matches!(outcome, RevealOutcome::Revealed { .. }));
         assert_eq!(
-            sim.entities().get(id).unwrap().building_anim_slots[3],
+            sim.entities().get(id).unwrap().building_art.anim_slots[3],
             Some(replaced)
         );
         assert_eq!(sim.anim(replaced).unwrap().world_coord.x, 768);
@@ -1087,7 +1195,13 @@ mod slot_tests {
                 .is_none(),
             "no sprite, no slot animation, no panic"
         );
-        let slots = sim.substrate.entities.get(id).unwrap().building_anim_slots;
+        let slots = sim
+            .substrate
+            .entities
+            .get(id)
+            .unwrap()
+            .building_art
+            .anim_slots;
         assert!(slots[3].is_some());
         assert!(slots[4].is_none());
     }
@@ -1169,7 +1283,10 @@ mod slot_tests {
             );
             assert!(sim.substrate.pending_delete.contains_object(&missing));
             assert!(!sim.anim(missing).unwrap().in_logic_vector);
-            assert_eq!(sim.entities().get(id).unwrap().building_anim_slots[5], None);
+            assert_eq!(
+                sim.entities().get(id).unwrap().building_art.anim_slots[5],
+                None
+            );
         }
     }
     #[test]
@@ -1200,7 +1317,7 @@ mod slot_tests {
         sim.session.binary_frame = 91;
         let before_rng = sim.scenario_rng.logical_state();
         sim.set_building_damage_state(id, true, &rules);
-        let new = sim.entities().get(id).unwrap().building_anim_slots[3].unwrap();
+        let new = sim.entities().get(id).unwrap().building_art.anim_slots[3].unwrap();
         assert_ne!(old, new);
         assert!(sim.anim(old).is_none());
         assert!(!sim.substrate.pending_delete.contains_object(&old));
@@ -1230,12 +1347,18 @@ mod slot_tests {
         sim.destroy_anim(anim, &rules);
         // Object UnInit5F6616 broadcasts before Limbo/storage removal;
         // Building44EA3A→451B40 clears the matched slot synchronously.
-        assert_eq!(sim.entities().get(id).unwrap().building_anim_slots[3], None);
+        assert_eq!(
+            sim.entities().get(id).unwrap().building_art.anim_slots[3],
+            None
+        );
         assert!(sim.substrate.pending_delete.contains_object(&anim));
         assert!(!sim.anim(anim).unwrap().in_logic_vector);
         sim.process_pending_delete();
         assert!(sim.anim(anim).is_none());
-        assert_eq!(sim.entities().get(id).unwrap().building_anim_slots[3], None);
+        assert_eq!(
+            sim.entities().get(id).unwrap().building_art.anim_slots[3],
+            None
+        );
     }
 
     /// Whole original ObjectUnInit5F65F0 retains ordinary slot3 and its
@@ -1258,9 +1381,9 @@ mod slot_tests {
         sim.uninit_with_rules(id, &rules);
 
         let building = sim.entities().get(id).expect("deferred Building");
-        assert!(!building.lifecycle.object_alive);
-        assert!(building.lifecycle.in_limbo);
-        assert_eq!(building.building_anim_slots[3], Some(anim_id));
+        assert!(!building.lifecycle.object_alive());
+        assert!(building.lifecycle.in_limbo());
+        assert_eq!(building.building_art.anim_slots[3], Some(anim_id));
         let anim = sim.anim(anim_id).expect("slot survives Building UnInit");
         assert_eq!(anim.owner_entity, None);
         assert_eq!(anim.building_slot, Some((id, 3)));
@@ -1303,8 +1426,12 @@ mod slot_tests {
             None,
             crate::sim::world::FrameEffects::default(),
         );
-        let old = sim.entities().get(id).unwrap().building_anim_slots[3].unwrap();
-        sim.entities_mut().get_mut(id).unwrap().health.current = 25;
+        let old = sim.entities().get(id).unwrap().building_art.anim_slots[3].unwrap();
+        sim.entities_mut()
+            .get_mut(id)
+            .unwrap()
+            .health
+            .set_for_test(25);
         sim.grand_opening(
             id,
             false,
@@ -1314,13 +1441,19 @@ mod slot_tests {
             crate::sim::world::FrameEffects::default(),
         );
         assert_eq!(
-            sim.entities().get(id).unwrap().building_anim_slots[3],
+            sim.entities().get(id).unwrap().building_art.anim_slots[3],
             Some(old)
         );
-        assert!(!sim.entities().get(id).unwrap().building_damage_state_active);
+        assert!(
+            !sim.entities()
+                .get(id)
+                .unwrap()
+                .building_art
+                .damage_state_active
+        );
         sim.refresh_building_damage_state(id, &rules);
         assert_ne!(
-            sim.entities().get(id).unwrap().building_anim_slots[3],
+            sim.entities().get(id).unwrap().building_art.anim_slots[3],
             Some(old)
         );
     }
@@ -1384,7 +1517,7 @@ mod native_slot_tests {
             assert_eq!(anim.runtime.frame_timer.duration(), 3);
             assert_eq!(anim.building_slot, Some((id, slot)));
             assert_eq!(
-                sim.entities().get(id).unwrap().building_anim_slots[usize::from(slot)],
+                sim.entities().get(id).unwrap().building_art.anim_slots[usize::from(slot)],
                 Some(new)
             );
             if let Some(old) = old {
@@ -1489,24 +1622,30 @@ mod native_slot_tests {
                     .entities
                     .get_mut(id)
                     .unwrap()
-                    .building_anim_slots[n] = Some(anim);
+                    .building_art
+                    .anim_slots[n] = Some(anim);
                 old[n] = Some(anim);
             }
             sim.substrate
                 .entities
                 .get_mut(id)
                 .unwrap()
-                .building_damage_state_active = input["old_flag"] == 1;
+                .building_art
+                .damage_state_active = input["old_flag"] == 1;
             sim.set_building_damage_state(id, input["requested"] == 1, &rules);
             assert_eq!(
-                sim.entities().get(id).unwrap().building_damage_state_active,
+                sim.entities()
+                    .get(id)
+                    .unwrap()
+                    .building_art
+                    .damage_state_active,
                 row["output"]["retained_flag"] == 1,
                 "{row}"
             );
             let replacements = row["output"]["replacements"].as_array().unwrap();
             let mut previous_new = None;
             for (n, &old_slot) in old.iter().enumerate() {
-                let new = sim.entities().get(id).unwrap().building_anim_slots[n];
+                let new = sim.entities().get(id).unwrap().building_art.anim_slots[n];
                 if let Some(expected) = replacements.iter().find(|r| r["slot"] == n) {
                     let anim = sim.anim(new.unwrap()).unwrap();
                     assert_ne!(new, old_slot, "{row}");

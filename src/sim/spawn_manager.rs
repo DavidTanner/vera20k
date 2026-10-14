@@ -217,7 +217,7 @@ impl SpawnManagerState {
                 SpawnSlotState::InFlight => slot
                     .spawn
                     .and_then(|id| entities.get(id))
-                    .filter(|child| !child.lifecycle.in_limbo)
+                    .filter(|child| !child.lifecycle.in_limbo())
                     .and_then(|child| rules.object(interner.resolve(child.type_ref())))
                     .is_some_and(|kind| kind.missile_spawn),
                 _ => false,
@@ -1020,9 +1020,12 @@ impl SpawnHost for WorldSpawn<'_, '_> {
     fn owner_weapon_burst(&self) -> Option<i32> {
         let rules = self.context.rules()?;
         let owner = self.sim.substrate.entities.get(self.owner_id)?;
-        crate::sim::combat::combat_weapon::primary_for_tier(self.owner_type()?, owner.veterancy())
-            .and_then(|id| rules.weapon(id))
-            .map(|weapon| weapon.burst)
+        crate::sim::combat::combat_weapon::primary_for_tier(
+            self.owner_type()?,
+            owner.veterancy.rank(),
+        )
+        .and_then(|id| rules.weapon(id))
+        .map(|weapon| weapon.burst)
     }
 
     fn owner_health(&self) -> i32 {
@@ -1030,7 +1033,7 @@ impl SpawnHost for WorldSpawn<'_, '_> {
             .substrate
             .entities
             .get(self.owner_id)
-            .map_or(0, |owner| owner.health.current)
+            .map_or(0, |owner| owner.health.current())
     }
 
     fn owner_is_alive(&self) -> bool {
@@ -1038,7 +1041,7 @@ impl SpawnHost for WorldSpawn<'_, '_> {
             .substrate
             .entities
             .get(self.owner_id)
-            .is_some_and(|owner| owner.lifecycle.object_alive && !owner.dying)
+            .is_some_and(|owner| owner.lifecycle.object_alive() && !owner.dying)
     }
 
     fn owner_cell(&self) -> (i32, i32) {
@@ -1098,7 +1101,7 @@ impl SpawnHost for WorldSpawn<'_, '_> {
             .substrate
             .entities
             .get(child)
-            .map_or(0, |child| child.health.current)
+            .map_or(0, |child| child.health.current())
     }
 
     fn child_tracked(&self, child: u64) -> bool {
@@ -1116,15 +1119,17 @@ impl SpawnHost for WorldSpawn<'_, '_> {
     }
 
     fn child_height_over_owner(&self, child: u64) -> i32 {
-        // VERA keeps aircraft altitude on the locomotor rather than in
-        // `position.z`, so the height above the owner's cell is the child's
-        // own altitude.
-        self.sim
-            .substrate
-            .entities
-            .get(child)
-            .and_then(|child| child.locomotor.as_ref())
-            .map_or(0, |locomotor| locomotor.altitude.to_num::<i32>())
+        let terrain = self.sim.resolved_terrain.as_ref();
+        let location_z = |id| {
+            self.sim.substrate.entities.get(id).map(|object| {
+                crate::sim::movement::ground_pose::object_world_z_leptons(object, terrain)
+            })
+        };
+        // `0x006B77C7..0x006B77F7`: a wrapping DWORD subtraction, compared
+        // signed with 0x14.
+        location_z(child)
+            .zip(location_z(self.owner_id))
+            .map_or(0, |(child, owner)| child.wrapping_sub(owner))
     }
 
     fn launch(&mut self, child: u64, burst_parity: Option<i32>) {
@@ -1243,7 +1248,7 @@ impl SpawnHost for WorldSpawn<'_, '_> {
             .substrate
             .entities
             .get(child)
-            .is_none_or(|child| child.lifecycle.in_limbo);
+            .is_none_or(|child| child.lifecycle.in_limbo());
         if let (false, Some(rules)) = (in_limbo, self.context.rules()) {
             self.sim
                 .techno_limbo_with_context(child, self.context.requiring_rules(rules));
@@ -1255,7 +1260,7 @@ impl SpawnHost for WorldSpawn<'_, '_> {
             return;
         };
         if let Some(child) = self.sim.substrate.entities.get_mut(child) {
-            child.health.current = strength;
+            child.health.set(strength);
             child.estimated_health.reset(strength);
             if let Some(ammo) = child.aircraft_ammo.as_mut() {
                 ammo.current = ammo.max;
@@ -1355,7 +1360,7 @@ fn launch_coordinate(
         .spawn_type;
     let owner = sim.substrate.entities.get(owner_id)?;
     let obj = sim.object_type(owner.type_ref(), rules)?;
-    let weapon = crate::sim::combat::combat_weapon::primary_for_tier(obj, owner.veterancy())
+    let weapon = crate::sim::combat::combat_weapon::primary_for_tier(obj, owner.veterancy.rank())
         .and_then(|id| rules.weapon(id));
     let burst = burst_parity.unwrap_or_else(|| owner.weapon_burst.index());
     let base = if burst == 0 {

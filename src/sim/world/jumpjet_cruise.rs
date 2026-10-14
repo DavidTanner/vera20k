@@ -36,7 +36,6 @@ use crate::sim::movement::jumpjet_movement::jumpjet_flight::{
 use crate::sim::movement::locomotor::MovementLayer;
 use crate::sim::occupancy::RawCellKey;
 use crate::sim::world::FrameEffects;
-use crate::util::fixed_math::SimFixed;
 use crate::util::lepton::{
     GROUND_LEVEL_HEIGHT_LEPTONS, ground_height_leptons, lepton_to_cell_packed,
 };
@@ -105,7 +104,7 @@ impl JumpjetFlightHost for CruiseHost<'_> {
         self.trig
     }
     fn owner_kind(&self) -> FlightOwnerKind {
-        FlightOwnerKind::of(self.owner().category)
+        FlightOwnerKind::of(self.owner().category())
     }
     fn is_object_alive(&self) -> bool {
         self.owner().is_object_alive()
@@ -145,16 +144,7 @@ impl JumpjetFlightHost for CruiseHost<'_> {
         );
     }
     fn height_above_ground(&self) -> i32 {
-        let location = self.location();
-        location[2].wrapping_sub(
-            ground_surface_z_at(
-                [location[0], location[1]],
-                self.on_bridge(),
-                self.terrain(),
-                None,
-            )
-            .unwrap_or(0),
-        )
+        crate::sim::movement::air_movement::current_fly_height(self.owner(), self.terrain())
     }
     fn on_bridge(&self) -> bool {
         self.owner().on_bridge
@@ -234,7 +224,7 @@ impl JumpjetFlightHost for CruiseHost<'_> {
         self.owner().locomotor.as_ref().unwrap().balloon_hover
     }
     fn has_target(&self) -> bool {
-        self.owner().attack_target.is_some()
+        self.owner().attack_target.target().is_some()
     }
     fn piggyback_active(&self) -> bool {
         self.owner().foot_locomotor_swap_active
@@ -320,12 +310,13 @@ impl JumpjetFlightHost for CruiseHost<'_> {
         let rules = self.rules;
         let frame_effects = self.frame_effects;
         let registry = self.registry;
-        let speed = self.sim.jumpjet_order_speed(id, rules);
         runtime.with_owner_call(self.sim, id, |sim| {
-            sim.jumpjet_destination(
+            let _ = sim.assign_destination_represented(
                 id,
-                crate::sim::components::NavTargetRef::cell(cell.0 as u16, cell.1 as u16),
-                speed,
+                Some(crate::sim::components::NavTargetRef::cell(
+                    cell.0 as u16,
+                    cell.1 as u16,
+                )),
                 rules,
                 registry,
                 frame_effects,
@@ -373,10 +364,8 @@ impl JumpjetFlightHost for CruiseHost<'_> {
         let rules = self.rules;
         let registry = self.registry;
         let frame_effects = self.frame_effects;
-        let speed = self.sim.jumpjet_order_speed(id, rules);
         runtime.with_owner_call(self.sim, id, |sim| {
             sim.jumpjet_stop_moving(id, rules, registry, frame_effects);
-            sim.publish_jumpjet_order_adapter(id, speed);
         });
         runtime.phase()
     }
@@ -391,7 +380,7 @@ impl JumpjetFlightHost for CruiseHost<'_> {
             .radio_contacts
             .slot(0)
             .and_then(|contact| self.sim.substrate.entities.get(contact))
-            .filter(|contact| contact.category == EntityCategory::Structure)
+            .filter(|contact| contact.category() == EntityCategory::Structure)
             .and_then(|contact| rules.object(self.sim.interner.resolve(contact.type_ref())))
             .is_some_and(|contact| {
                 contact.weapons_factory
@@ -473,13 +462,13 @@ impl JumpjetFlightHost for CruiseHost<'_> {
         let owner = self.sim.substrate.entities.get_mut(id).unwrap();
         owner.lift_may_end = true;
         owner.being_manipulated = false;
-        owner.crashing = false;
+        owner.crash.lower();
         if deploy_to_land {
             owner.set_landing_for_deploy(false);
         }
     }
     fn crashing(&self) -> bool {
-        self.owner().crashing
+        self.owner().crash.is_crashing()
     }
     fn in_bounds(&self, cell: (i16, i16)) -> bool {
         self.sim.map_size_diamond().is_some_and(|(width, height)| {
@@ -670,11 +659,9 @@ impl Simulation {
                 return;
             }
             // Native does not read the setter's answer.
-            let speed = self.jumpjet_order_speed(id, Some(rules));
-            self.jumpjet_destination(
+            let _ = self.assign_destination_represented(
                 id,
-                crate::sim::components::NavTargetRef::from(archive),
-                speed,
+                Some(crate::sim::components::NavTargetRef::from(archive)),
                 Some(rules),
                 registry,
                 frame_effects,
@@ -732,16 +719,9 @@ impl Simulation {
             let state = jumpjet_flight::process(runtime, &mut host);
             let ended_cruise =
                 entry_state == STATE_TRANSLATE && matches!(state, STATE_HOLD | STATE_DESCEND);
-            let height = host.height_above_ground();
             let entity = host.sim.substrate.entities.get_mut(stable_id).unwrap();
-            // The order adapter retires with the flight; the class fields
-            // keep the destination.
-            if host.touched_down || ended_cruise {
-                entity.movement_target = None;
-            }
-            entity.locomotor.as_mut().unwrap().altitude = SimFixed::from_num(height.max(0));
             if host.crash_latched
-                && entity.category == EntityCategory::Infantry
+                && entity.category() == EntityCategory::Infantry
                 && let Some(rules) = rules
                 && let Err(cause) = host.sim.infantry_do_action(
                     stable_id,
@@ -776,6 +756,7 @@ mod tests {
     use crate::sim::movement::ground_pose::position_world_coord;
     use crate::sim::movement::jumpjet_movement::jumpjet_flight::STATE_ASCEND;
     use crate::sim::movement::locomotor::LocomotorState;
+    use crate::util::fixed_math::SimFixed;
     use serde_json::Value;
 
     fn native_row(name: &str) -> Value {
@@ -819,7 +800,7 @@ mod tests {
             cell.slope_type = 1;
         }
         let mut entity = GameEntity::test_default(1, "JUMPJETUNIT", "Americans", 10, 10);
-        entity.category = EntityCategory::Unit;
+        entity.set_category_for_test(EntityCategory::Unit);
         entity.body_facing.snap(u16::from(body_facing) << 8, 0);
         entity.position.sub_x = SimFixed::from_num(128);
         entity.position.sub_y = SimFixed::from_num(128);
@@ -853,16 +834,15 @@ mod tests {
                 .with_moving_for_test(true)
                 .with_flight_for_test(flight);
         }
-        locomotor.altitude = SimFixed::from_num(500);
-
         entity.locomotor = Some(locomotor);
         sim.substrate.entities.insert(entity);
+        sim.set_object_height_unmarked(1, 500);
         sim
     }
 
     /// The fixture's order to cell (16,10) at frame 1001, as Foot's setter
     /// gives it: the Cell NavCom (`0x004D9510`), then the Jumpjet's `Move_To`
-    /// with the cell's coordinate (`0x004D965D`), and the order's adapter.
+    /// with the cell's coordinate (`0x004D965D`).
     fn order_east(sim: &mut Simulation) {
         sim.session.binary_frame = 1001;
         let request = crate::sim::movement::target_cell_coord(
@@ -881,7 +861,6 @@ mod tests {
             .nav_com = Some(crate::sim::components::NavTargetRef::cell(16, 10));
         sim.jumpjet_move_to(1, request, None)
             .expect("Move_To on the fixture map");
-        sim.publish_jumpjet_order_adapter(1, SimFixed::from_num(14));
     }
 
     /// Park a Jumpjet with no order in a given native state and run the tick.
@@ -889,20 +868,17 @@ mod tests {
         let mut sim = hovering_jumpjet(0x40);
         {
             let entity = sim.substrate.entities.get_mut(1).expect("jumpjet");
-            entity.movement_target = None;
             let locomotor = entity.locomotor.as_mut().expect("locomotor");
             locomotor.balloon_hover = balloon_hover;
-            locomotor.altitude = SimFixed::from_num(if state == jumpjet_flight::STATE_GROUND {
-                0
-            } else {
-                500
-            });
             let runtime = locomotor.jumpjet_runtime_mut().expect("runtime");
             *runtime = runtime
                 .clone()
                 .with_phase_for_test(state)
                 .with_moving_for_test(false)
                 .with_destination_for_test(JumpjetRuntime::NULL);
+        }
+        if state == jumpjet_flight::STATE_GROUND {
+            sim.set_object_height_unmarked(1, 0);
         }
         for frame in 0..frames {
             sim.session.binary_frame = 1001 + frame;
@@ -929,7 +905,6 @@ mod tests {
             entity.foot_occupation_enabled = true;
             entity.position.exact_z_leptons = Some(0);
             let locomotor = entity.locomotor.as_mut().expect("locomotor");
-            locomotor.altitude = SimFixed::from_num(0);
             let runtime = locomotor.jumpjet_runtime_mut().expect("runtime");
             *runtime = runtime
                 .clone()
@@ -969,7 +944,13 @@ mod tests {
         let sim = idle_for(jumpjet_flight::STATE_GROUND, false, 400);
         let entity = sim.substrate.entities.get(1).expect("jumpjet");
         let locomotor = entity.locomotor.as_ref().expect("locomotor");
-        assert_eq!(locomotor.altitude, SimFixed::from_num(0));
+        assert_eq!(
+            crate::sim::movement::air_movement::current_fly_height(
+                entity,
+                sim.resolved_terrain.as_ref()
+            ),
+            0
+        );
         assert_eq!(
             locomotor.jumpjet_runtime().map(|runtime| runtime.phase()),
             Some(jumpjet_flight::STATE_GROUND)
@@ -1105,7 +1086,6 @@ mod tests {
             assert_eq!(stats.arrivals, u32::from(last), "{name}: frame {index}");
         }
         let entity = sim.substrate.entities.get(1).expect("jumpjet");
-        assert!(entity.movement_target.is_none());
         let locomotor = entity.locomotor.as_ref().expect("locomotor");
         assert_eq!(
             locomotor.jumpjet_runtime().map(|runtime| runtime.phase()),
@@ -1191,7 +1171,6 @@ mod tests {
         );
         let entity = sim.substrate.entities.get(1).expect("jumpjet");
         assert!(entity.navigation.nav_com.is_none());
-        assert!(entity.movement_target.is_none());
 
         for frame in 0..400 {
             sim.session.binary_frame = 1022 + frame;
@@ -1238,7 +1217,6 @@ mod tests {
             sim.interner = crate::sim::intern::test_interner();
             {
                 let entity = sim.substrate.entities.get_mut(1).expect("jumpjet");
-                entity.movement_target = None;
                 let runtime = entity
                     .locomotor
                     .as_mut()
@@ -1371,7 +1349,6 @@ mod tests {
                 entity_id: hawk,
                 target_rx: landing.0,
                 target_ry: landing.1,
-                queue: false,
             },
         )];
         let mut frames = 0;
@@ -1410,7 +1387,6 @@ mod tests {
                 entity_id: tank,
                 target_rx: x + 12,
                 target_ry: y,
-                queue: false,
             },
         )];
         let mut frames = 0;
@@ -1578,7 +1554,7 @@ mod tests {
                 "frame {frame}"
             );
             let Some(crate::sim::combat::TargetKind::Entity(target)) =
-                entity.attack_target.as_ref().map(|attack| attack.target)
+                entity.attack_target.target()
             else {
                 continue;
             };
@@ -1656,7 +1632,7 @@ mod tests {
             )
         };
         let sim = &scenario.runtime.simulation;
-        let strength = sim.substrate.entities.get(tank).unwrap().health.current;
+        let strength = sim.substrate.entities.get(tank).unwrap().health.current();
         let mut orders = vec![CommandEnvelope::new(
             sim.interner.get("Americans").expect("house"),
             sim.session.tick + 1,
@@ -1674,7 +1650,7 @@ mod tests {
                 damaged = true;
                 break;
             };
-            damaged |= target.health.current < strength;
+            damaged |= target.health.current() < strength;
             let entity = sim.substrate.entities.get(disc).expect("Disc lives");
             if frame > 0 {
                 assert_eq!(

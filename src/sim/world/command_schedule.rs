@@ -260,6 +260,7 @@ impl Simulation {
         matches!(
             command,
             Command::Move { .. }
+                | Command::MoveToObject { .. }
                 | Command::Attack { .. }
                 | Command::ForceAttack { .. }
                 | Command::AttackMove { .. }
@@ -278,6 +279,12 @@ impl Simulation {
         )
     }
 
+    /// The run key of `0x0064CDA0`'s caller: action, target and destination
+    /// tokens (`0x0064CB0A..0x0064CB60`). `0x0064CDA0` returns at once unless
+    /// the destination token is a Cell (`0x0064CDCA..0x0064CDDC`), so a Move
+    /// onto an object, and an attack-move with a target or an object
+    /// destination, have no key: each ends a run and is never spread. The
+    /// click never sends an attack-move with both tokens.
     fn formation_key(command: &Command) -> Option<(u8, u16, u16)> {
         match command {
             Command::Move {
@@ -286,10 +293,10 @@ impl Simulation {
                 ..
             } => Some((0, *target_rx, *target_ry)),
             Command::AttackMove {
-                target_rx,
-                target_ry,
+                target: None,
+                destination: Some(crate::sim::combat::TargetKind::Cell(rx, ry)),
                 ..
-            } => Some((1, *target_rx, *target_ry)),
+            } => Some((1, *rx, *ry)),
             _ => None,
         }
     }
@@ -439,7 +446,7 @@ impl Simulation {
                         continue;
                     };
                     if !matches!(
-                        entity.category,
+                        entity.category(),
                         EntityCategory::Unit | EntityCategory::Infantry | EntityCategory::Aircraft
                     ) || entity.low_bridge_tube_state.is_some()
                     {
@@ -500,8 +507,8 @@ impl Simulation {
                             ..
                         }
                         | Command::AttackMove {
-                            target_rx,
-                            target_ry,
+                            destination:
+                                Some(crate::sim::combat::TargetKind::Cell(target_rx, target_ry)),
                             ..
                         } => {
                             *target_rx = assignment.destination.0 as u16;

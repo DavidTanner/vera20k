@@ -352,7 +352,7 @@ mod ivec3_serde {
 
 /// Deterministic store for `ParticleSystem` instances.
 ///
-/// Mirrors `EntityStore`: BTreeMap-backed so storage iteration is deterministic.
+/// BTreeMap-backed so storage iteration is deterministic.
 /// Identity is assigned by `ObjectSubstrate`; this store deliberately has no
 /// allocator of its own.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]

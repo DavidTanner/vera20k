@@ -361,13 +361,13 @@ pub(crate) fn respond_to_base_attack(
         .houses
         .get(&victim_owner)
         .is_some_and(|house| house.is_human)
-        || attacker.lifecycle.in_limbo
+        || attacker.lifecycle.in_limbo()
         // `0x00708114`: `[g_GameMode 0x00A8B238] == 0 && this->Is_Armed
         // (vt+0x2AC)` — an armed victim in that game mode defends itself
         // instead of calling for help.
         || (!world.session.game_mode_nonzero && is_armed(victim, victim_object))
         || !matches!(
-            attacker.category,
+            attacker.category(),
             EntityCategory::Unit | EntityCategory::Infantry
         )
         || victim_object.insignificant
@@ -427,7 +427,7 @@ pub(crate) fn respond_to_base_attack(
             let Some(candidate) = entities.get(candidate_id) else {
                 continue;
             };
-            if candidate.category != expected_category {
+            if candidate.category() != expected_category {
                 continue;
             }
             let Some(candidate_object) = rules.object(sim.interner.resolve(candidate.type_ref()))

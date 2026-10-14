@@ -114,17 +114,17 @@ fn wallet_survives_prepared_load_and_active_cancellation() {
         0,
         0,
         owner,
-        crate::sim::components::Health { current: 1000 },
+        crate::sim::combat::Health::new(1000),
         producer_type,
         crate::map::entities::EntityCategory::Structure,
         0,
         5,
         false,
     );
-    producer.lifecycle.in_limbo = false;
+    producer.lifecycle.set_in_limbo_for_test(false);
     producer.in_playfield = true;
     producer.finish_building_construction_for_test();
-    producer.building_actually_placed = true;
+    producer.building_art.set_actually_placed_for_test(true);
     saved.substrate.entities.insert(producer);
     saved.add_entity_occupancy(producer_id);
     saved.append_house_base_building_for_test(producer_id);
@@ -340,13 +340,13 @@ fn factory_restore_preserves_supported_held_states_and_constructor_graphs() {
             .map(|entity| {
                 (
                     entity.stable_id(),
-                    entity.type_ref,
+                    entity.type_ref(),
                     entity.owner(),
-                    entity.health.current,
+                    entity.health.current(),
                     entity.dying,
                     entity.lifecycle,
                     entity.in_playfield,
-                    entity.techno_ctor_random_word,
+                    entity.techno_ctor_random_word(),
                     entity.spawn_owner_id,
                     entity.spawn_manager.as_ref().map(|manager| {
                         manager
@@ -390,13 +390,13 @@ fn factory_restore_preserves_supported_held_states_and_constructor_graphs() {
                 .values()
                 .map(|entity| (
                     entity.stable_id(),
-                    entity.type_ref,
+                    entity.type_ref(),
                     entity.owner(),
-                    entity.health.current,
+                    entity.health.current(),
                     entity.dying,
                     entity.lifecycle,
                     entity.in_playfield,
-                    entity.techno_ctor_random_word,
+                    entity.techno_ctor_random_word(),
                     entity.spawn_owner_id,
                     entity.spawn_manager.as_ref().map(|manager| manager
                         .slots
@@ -505,15 +505,13 @@ fn factory_restore_rejects_inconsistent_roots() {
                     .unwrap()
                     .entity_id = Some(parent);
             }
-            "revealed-root" => {
-                saved
-                    .substrate
-                    .entities
-                    .get_mut(parent)
-                    .unwrap()
-                    .lifecycle
-                    .in_limbo = false
-            }
+            "revealed-root" => saved
+                .substrate
+                .entities
+                .get_mut(parent)
+                .unwrap()
+                .lifecycle
+                .set_in_limbo_for_test(false),
             "marked-root" => {
                 let entity = saved.substrate.entities.get_mut(parent).unwrap();
                 entity.lifecycle.cell_marked = true;
@@ -561,11 +559,25 @@ fn factory_restore_rejects_inconsistent_roots() {
                     .unwrap()
                     .type_id = missing
             }
-            "wrong-type" => saved.substrate.entities.get_mut(parent).unwrap().type_ref = other,
-            "wrong-owner" => saved.substrate.entities.get_mut(parent).unwrap().owner = foreign,
+            "wrong-type" => saved
+                .substrate
+                .entities
+                .get_mut(parent)
+                .unwrap()
+                .set_type_ref_for_test(other),
+            "wrong-owner" => saved
+                .substrate
+                .entities
+                .get_mut(parent)
+                .unwrap()
+                .set_owner_for_test(foreign),
             "concrete-category" => {
-                saved.substrate.entities.get_mut(parent).unwrap().category =
-                    crate::map::entities::EntityCategory::Infantry
+                saved
+                    .substrate
+                    .entities
+                    .get_mut(parent)
+                    .unwrap()
+                    .set_category_for_test(crate::map::entities::EntityCategory::Infantry);
             }
             "manager-owned-root" => {
                 saved

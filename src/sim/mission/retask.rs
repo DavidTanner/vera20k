@@ -27,14 +27,14 @@ impl Simulation {
     ///
     /// Then `Assign_Target_Command` (vt+0x4A4, `0x004C73AA`) answers the
     /// mission to queue ([`Self::foot_assign_target_command`]). `target` and
-    /// `destination` are the event's tokens it stores for an attack-move;
-    /// no other mission reads them, and those callers pass `None`.
+    /// `destination` are the event's tokens, which it stores for an
+    /// attack-move; no other mission reads them.
     pub(crate) fn begin_megamission_retask(
         &mut self,
         id: u64,
         mission: MissionType,
         target: Option<crate::sim::combat::TargetKind>,
-        destination: Option<(u16, u16)>,
+        destination: Option<crate::sim::combat::TargetKind>,
         rules: Option<&crate::rules::ruleset::RuleSet>,
         frame_effects: FrameEffects<'_>,
     ) -> MissionType {
@@ -43,7 +43,7 @@ impl Simulation {
         };
         let tethered = entity.dock_entered_with.is_some();
         let foot = matches!(
-            entity.category,
+            entity.category(),
             crate::map::entities::EntityCategory::Unit
                 | crate::map::entities::EntityCategory::Infantry
                 | crate::map::entities::EntityCategory::Aircraft
@@ -55,7 +55,7 @@ impl Simulation {
                 .and_then(|contact| self.substrate.entities.get(contact))
                 .filter(|contact| {
                     contact.is_object_alive()
-                        && contact.category == crate::map::entities::EntityCategory::Structure
+                        && contact.category() == crate::map::entities::EntityCategory::Structure
                 })
                 .zip(rules)
                 .and_then(|(contact, rules)| self.object_type(contact.type_ref(), rules))
@@ -94,7 +94,6 @@ impl Simulation {
         self.assign_null_destination(id, Some(rules), None, frame_effects);
         let _ = self.assign_target_represented(id, None, Some(rules), None, frame_effects);
         if let Some(entity) = self.substrate.entities.get_mut(id) {
-            entity.movement_target = None;
             entity.set_archive_target(None);
         }
         let _ = self.mission_assign_exact(id, MissionId::from_known(MissionType::Guard), now);
@@ -165,7 +164,7 @@ impl Simulation {
         id: u64,
         mission: MissionType,
         target: Option<crate::sim::combat::TargetKind>,
-        destination: Option<(u16, u16)>,
+        destination: Option<crate::sim::combat::TargetKind>,
         rules: Option<&crate::rules::ruleset::RuleSet>,
         frame_effects: FrameEffects<'_>,
     ) {
@@ -174,7 +173,7 @@ impl Simulation {
         self.queue_order_mission(id, queued);
         if let Some(entity) = self.substrate.entities.get_mut(id) {
             entity.suspended_attack_target = None;
-            if entity.category != crate::map::entities::EntityCategory::Structure {
+            if entity.category() != crate::map::entities::EntityCategory::Structure {
                 entity.navigation.suspended_nav_com = None;
             }
         }
@@ -191,7 +190,7 @@ impl Simulation {
         if mission != MissionType::AreaGuard
             && let Some(entity) = self.substrate.entities.get_mut(id)
             && matches!(
-                entity.category,
+                entity.category(),
                 crate::map::entities::EntityCategory::Unit
                     | crate::map::entities::EntityCategory::Infantry
                     | crate::map::entities::EntityCategory::Aircraft
@@ -218,7 +217,7 @@ impl Simulation {
     /// order marker (`sim::slave_manager`).
     pub fn commit_stop_miner_guard(&mut self, id: u64) {
         let is_stoppable_miner = self.substrate.entities.get(id).is_some_and(|entity| {
-            entity.category == crate::map::entities::EntityCategory::Unit
+            entity.category() == crate::map::entities::EntityCategory::Unit
                 && entity.is_harvester()
                 && matches!(
                     entity.mission.current().known(),

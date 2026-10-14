@@ -202,7 +202,7 @@ fn unload_finishing(
         && sim
             .object_type(building.type_ref(), rules)
             .is_some_and(|object| object.refinery)
-        && building.building_anim_slots[8].is_some()
+        && building.building_art.anim_slots()[8].is_some()
     {
         return 1;
     }
@@ -276,7 +276,7 @@ pub(crate) fn per_cell_release_dock_contact(
                 .radio_contacts
                 .slot(0)
                 .and_then(|contact| sim.substrate.entities.get(contact))
-                .filter(|contact| contact.category == EntityCategory::Structure)
+                .filter(|contact| contact.category() == EntityCategory::Structure)
                 .and_then(|contact| sim.object_type(contact.type_ref(), rules))
                 .is_some_and(|building| {
                     if weeder {

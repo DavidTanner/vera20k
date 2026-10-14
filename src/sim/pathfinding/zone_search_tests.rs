@@ -17,15 +17,12 @@ use crate::sim::components::NavTargetRef;
 use crate::sim::entity_store::EntityStore;
 use crate::sim::game_entity::GameEntity;
 use crate::sim::intern::test_interner;
-use crate::sim::miner::miner_system::{issue_move_if_idle, issue_stock_miner_drive_move};
-use crate::sim::movement::issue_move_command_with_layered;
+use crate::sim::miner::miner_system::assign_miner_cell_destination;
 use crate::sim::pathfinding::PathGrid;
 use crate::sim::production::{
     ProductionCategory, STARTING_CREDITS, dispatch_production_changes_for_tests,
 };
 use crate::sim::world::Simulation;
-use crate::util::fixed_math::SimFixed;
-use std::collections::BTreeSet;
 
 fn grid_from_str(s: &str) -> PathGrid {
     let lines: Vec<&str> = s.trim().lines().map(|l| l.trim()).collect();
@@ -81,7 +78,7 @@ fn gsi_04_12_cell_listed_entity(
     ry: u16,
 ) -> GameEntity {
     let mut entity = GameEntity::test_default(stable_id, type_ref, owner, rx, ry);
-    entity.lifecycle.in_limbo = false;
+    entity.lifecycle.set_in_limbo_for_test(false);
     entity.lifecycle.cell_marked = true;
     entity
 }
@@ -119,7 +116,7 @@ fn first_track_process_route(
 ) -> Option<Vec<(u16, u16)>> {
     let entity = sim.substrate.entities.get(id).expect("fixture mover");
     assert!(
-        entity.movement_target.is_some(),
+        crate::sim::movement::motion_query::is_moving(&entity) == Some(true),
         "the order scheduled a Process"
     );
     assert!(
@@ -145,7 +142,7 @@ fn first_track_process_route(
     sim.process_ground_locomotor_for_test(id, rules, Some(grid), None)
         .expect("the first Process completes");
     let entity = sim.substrate.entities.get(id)?;
-    entity.movement_target.as_ref()?;
+    entity.navigation.nav_com?;
     Some(installed_route(entity, start))
 }
 
@@ -197,15 +194,12 @@ fn hierarchy_endpoint_path(
         start,
         goal,
         None,
-        None,
         Some(&zone_grid),
         MovementZone::Normal,
         Some(MovementZone::Normal),
         Some(terrain),
         None,
         None,
-        None,
-        0,
         false,
         false,
         true,
@@ -354,57 +348,6 @@ fn playfield_hierarchy_bridge_projection_tracks_intact_and_destroyed_records() {
 }
 
 #[test]
-fn playfield_hierarchy_initial_order_outside_endpoint_uses_flat_astar() {
-    let grid = PathGrid::new(16, 16);
-    let terrain = gsi_04_12_terrain(16, 16);
-    let zone_grid = hierarchy_endpoint_zone_grid();
-    assert!(!zone_grid.can_reach(
-        MovementZone::Normal,
-        (6, 6),
-        MovementLayer::Ground,
-        (8, 6),
-        MovementLayer::Ground,
-    ));
-
-    let mut entities = EntityStore::new();
-    // A queued Walk order keeps the command-time search adapter; Drive/Ship
-    // reach the same hierarchy/flat choice at their first Process search.
-    let mut mover = gsi_04_12_cell_listed_entity(1, "E1", "Americans", 6, 6);
-    mover.category = crate::map::entities::EntityCategory::Infantry;
-    let mut walk = crate::sim::movement::locomotor::LocomotorState::for_test_kind(
-        crate::rules::locomotor_type::LocomotorKind::Walk,
-    );
-    walk.movement_zone = MovementZone::Normal;
-    mover.locomotor = Some(walk);
-    mover.in_playfield = true;
-    mover.movement_target = Some(crate::sim::components::MovementTarget::default());
-    entities.insert(mover);
-
-    assert!(issue_move_command_with_layered(
-        &mut entities,
-        &grid,
-        1,
-        (8, 6),
-        SimFixed::from_num(128),
-        true,
-        None,
-        None,
-        Some(&terrain),
-        Some(&zone_grid),
-        None,
-        None,
-        Some(hierarchy_endpoint_bounds()),
-        None,
-        crate::sim::movement::DestinationTiming::new(0, 60),
-    ));
-    // The adapter keeps neither the goal nor the found cells: acceptance
-    // above is the flat search's success, and the new speed marks a found
-    // route of at least two cells.
-    let target = entities.get(1).unwrap().movement_target.as_ref().unwrap();
-    assert_eq!(target.speed, SimFixed::from_num(128));
-}
-
-#[test]
 fn zoned_path_reachable_returns_path() {
     let grid = grid_from_str(
         "
@@ -419,13 +362,10 @@ fn zoned_path_reachable_returns_path() {
         (0, 0),
         (4, 2),
         None,
-        None,
         Some(&zg),
         MovementZone::Normal,
         None,
         None,
-        None,
-        0,
         false,
         false,
     );
@@ -451,13 +391,10 @@ fn zoned_path_unreachable_returns_none_instantly() {
         (0, 0),
         (4, 0),
         None,
-        None,
         Some(&zg),
         MovementZone::Normal,
         None,
         None,
-        None,
-        0,
         false,
         false,
     );
@@ -479,12 +416,9 @@ fn zoned_path_no_zone_grid_falls_through() {
         (4, 1),
         None,
         None,
-        None,
         MovementZone::Normal,
         None,
         None,
-        None,
-        0,
         false,
         false,
     );
@@ -504,55 +438,14 @@ fn zoned_path_same_cell() {
         (2, 0),
         (2, 0),
         None,
-        None,
         Some(&zg),
         MovementZone::Normal,
         None,
         None,
-        None,
-        0,
         false,
         false,
     );
     // 0x00429BF3..0x00429C0A: no route for a goal in the start cell.
-    assert!(path.is_none());
-}
-
-#[test]
-fn zoned_path_entity_blocks_respected() {
-    let grid = grid_from_str(
-        "
-        ...
-        ...
-        ...
-    ",
-    );
-    let zg = ZoneGrid::following_path_grid(&grid);
-    // Block the direct path with entities.
-    let mut blocks = BTreeSet::new();
-    blocks.insert((1, 0));
-    blocks.insert((1, 1));
-    blocks.insert((1, 2));
-    // Zone says reachable (static terrain is connected), but entities block.
-    // A* should still find no path since the wall of entities cuts off (2,x).
-    let path = find_path_zoned(
-        &grid,
-        (0, 0),
-        (2, 0),
-        None,
-        Some(&blocks),
-        Some(&zg),
-        MovementZone::Normal,
-        None,
-        None,
-        None,
-        0,
-        false,
-        false,
-    );
-    // Path exists because goal cell is always reachable even if entity-blocked.
-    // But the path would need to go around — with a 3x3 grid fully blocked
-    // in column 1, there's no way around.
     assert!(path.is_none());
 }
 
@@ -614,14 +507,11 @@ fn tube_hierarchy_precheck_rejects_unequal_base_labels_before_connected_graph() 
         (2, 0),
         None, // no native raw-row receipt in this compatibility fixture
         None,
-        None,
         Some(&zg),
         MovementZone::Normal,
         Some(MovementZone::Normal),
         None,
         None,
-        None,
-        0,
         false,
         false,
         Some(&blocker_counts),
@@ -672,11 +562,9 @@ fn wrapper_rejection_precedes_the_marker_transaction() {
             (2, 0),
             &entry,
             None,
-            None,
             Some(&zones),
             MovementZone::Normal,
             Some(MovementZone::Normal),
-            None,
             None,
             None,
             MoverSearchFacts {
@@ -716,14 +604,11 @@ fn zone_precheck_failed_hierarchy_keeps_zone_map_same_zone_fallback() {
         (2, 0),
         None, // no native raw-row receipt in this compatibility fixture
         None,
-        None,
         Some(&zg),
         MovementZone::Normal,
         Some(MovementZone::Normal),
         None,
         None,
-        None,
-        0,
         false,
         false,
         Some(&blocker_counts),
@@ -816,31 +701,21 @@ fn gsi_04_12_layered_production_precheck_projects_only_hierarchy_coordinates() {
         sim.zone_grid = Some(zone_grid.clone());
         sim
     };
-    let order = |sim: &mut Simulation, terrain: &ResolvedTerrainGrid| {
-        assert!(issue_move_command_with_layered(
-            &mut sim.substrate.entities,
-            &astar_grid,
-            1,
-            (3, 0),
-            SimFixed::from_num(128),
-            false,
-            None,
-            None,
-            Some(terrain),
-            Some(&zone_grid),
-            None,
-            None,
-            None,
-            None,
-            crate::sim::movement::DestinationTiming::new(0, 60),
-        ));
-    };
     let rules = RuleSet::from_ini(&IniFile::from_str(
         "[VehicleTypes]\n0=HTNK\n[HTNK]\nSpeed=4\n",
     ))
     .unwrap();
+    let order = |sim: &mut Simulation| {
+        assert!(sim.set_unit_destination(
+            1,
+            crate::sim::components::NavTargetRef::cell(3, 0),
+            &rules,
+            true,
+            crate::sim::world::FrameEffects::default(),
+        ));
+    };
     let mut sim = make_sim(&terrain);
-    order(&mut sim, &terrain);
+    order(&mut sim);
     let route = first_track_process_route(&mut sim, 1, Some(&rules), &astar_grid)
         .expect("the first Process should install the projected hierarchy route");
 
@@ -861,7 +736,7 @@ fn gsi_04_12_layered_production_precheck_projects_only_hierarchy_coordinates() {
 
     terrain.cell_mut(3, 0).unwrap().bridge_facts.raw_flags = 0;
     let mut sim = make_sim(&terrain);
-    order(&mut sim, &terrain);
+    order(&mut sim);
     assert!(
         first_track_process_route(&mut sim, 1, Some(&rules), &astar_grid)
             .is_none_or(|route| route.is_empty()),
@@ -950,8 +825,6 @@ fn caller_count_bridge_detour(
     let route = |counts: Option<&BlockerNeighborCounts>| {
         find_layered_path_zoned_marker(
             &path,
-            None,
-            None,
             start,
             MovementLayer::Ground,
             goal,
@@ -961,9 +834,7 @@ fn caller_count_bridge_detour(
             Some(mz),
             Some(&terrain),
             None,
-            None,
             counts,
-            0,
             false,
             mz == MovementZone::Infantry,
             true,
@@ -1042,7 +913,7 @@ fn gsi_04_12_completed_ground_unit_clearance_rally_threads_exact_blocker_counts(
     // insertion-ordered building projection used by native FindFactory.
     let building = sim.substrate.entities.get_mut(factory).unwrap();
     building.finish_building_construction_for_test();
-    building.building_actually_placed = true;
+    building.building_art.set_actually_placed_for_test(true);
     sim.append_house_base_building_for_test(factory);
     let produced_type = sim.interner.intern("MTNK");
     sim.substrate
@@ -1082,7 +953,7 @@ fn gsi_04_12_completed_ground_unit_clearance_rally_threads_exact_blocker_counts(
         .substrate
         .entities
         .values()
-        .find(|entity| entity.owner == owner && entity.type_ref == produced_type)
+        .find(|entity| entity.owner() == owner && entity.type_ref() == produced_type)
         .expect("completed MTNK should exist");
     assert_eq!((produced.position.rx, produced.position.ry), (1, 0));
     let locomotor = produced.locomotor.as_ref().expect("produced locomotor");
@@ -1241,7 +1112,7 @@ fn gsi_04_12_interaction_order_entry_threads_exact_blocker_counts() {
         Some(NavTargetRef::building(target_id))
     );
     assert!(
-        engineer.movement_target.is_some(),
+        crate::sim::movement::motion_query::is_moving(&engineer) == Some(true),
         "accepted Capture request"
     );
     assert_eq!(
@@ -1421,7 +1292,9 @@ fn gsi_04_12_attack_move_resume_threads_exact_blocker_counts() {
             .unwrap()
             .install_drive_state_for_test(Some(Default::default()))
     );
-    mover.mega_mission = crate::sim::mission::mega_mission::MegaMission::attack_move(Some((3, 0)));
+    mover.mega_mission = crate::sim::mission::mega_mission::MegaMission::attack_move(Some(
+        crate::sim::combat::TargetKind::Cell(3, 0),
+    ));
     let blocker = gsi_04_12_cell_listed_entity(2, "MTNK", "Russians", 2, 0);
 
     let mut sim = Simulation::new();
@@ -1450,7 +1323,7 @@ fn gsi_04_12_attack_move_resume_threads_exact_blocker_counts() {
     assert_eq!(route.last().copied(), Some((3, 0)));
     assert_eq!(
         resumed.mega_mission.destination(),
-        Some((3, 0)),
+        Some(crate::sim::combat::TargetKind::Cell(3, 0)),
         "resume must preserve the continuing attack-move"
     );
 }
@@ -1511,7 +1384,7 @@ fn gsi_04_12_drive_pending_continuation_keeps_hierarchy_context_and_raw_route() 
             .install_drive_state_for_test(Some(Default::default()))
     );
     mover.navigation.nav_com = Some(NavTargetRef::cell(3, 0));
-    mover.navigation.pending_arrival_clear = true;
+    mover.navigation.pending_destination_setter = true;
     let blocker = gsi_04_12_cell_listed_entity(2, "MTNK", "Russians", 2, 0);
 
     // The pending pass on the production Simulation host, with the fixture's
@@ -1545,9 +1418,9 @@ fn gsi_04_12_drive_pending_continuation_keeps_hierarchy_context_and_raw_route() 
         .get(1)
         .expect("continued Drive mover");
     assert_eq!(continued.navigation.nav_com, Some(NavTargetRef::cell(3, 0)));
-    assert!(!continued.navigation.pending_arrival_clear);
+    assert!(!continued.navigation.pending_destination_setter);
     assert!(
-        continued.movement_target.is_some(),
+        crate::sim::movement::motion_query::is_moving(&continued) == Some(true),
         "pending Drive continuation should rebuild the hierarchy route"
     );
     let route = installed_route(continued, (1, 0));
@@ -1564,7 +1437,7 @@ fn gsi_04_12_drive_pending_continuation_keeps_hierarchy_context_and_raw_route() 
 }
 
 #[test]
-fn gsi_04_12_stock_miner_move_entries_thread_exact_world_context() {
+fn gsi_04_12_stock_miner_move_entry_threads_exact_world_context() {
     let rules = RuleSet::from_ini(&IniFile::from_str(
         "[VehicleTypes]\n0=HARV\n\n\
          [HARV]\nStrength=1000\nArmor=heavy\nSpeed=5\nHarvester=yes\n",
@@ -1589,7 +1462,7 @@ fn gsi_04_12_stock_miner_move_entries_thread_exact_world_context() {
                 (3, 0),
                 MovementLayer::Bridge,
             ),
-            "fixture must make either miner entry fail if it drops blocker counts"
+            "fixture must make the miner entry fail if it drops blocker counts"
         );
 
         let mut terrain = gsi_04_12_terrain(5, 1);
@@ -1632,32 +1505,16 @@ fn gsi_04_12_stock_miner_move_entries_thread_exact_world_context() {
     };
 
     let mut ore_trip = make_sim();
-    assert!(issue_stock_miner_drive_move(
+    assign_miner_cell_destination(
         &mut ore_trip,
         &rules,
         1,
         (3, 0),
         None,
         crate::sim::world::FrameEffects::default(),
-    ));
+    );
     assert_eq!(
         first_track_process_route(&mut ore_trip, 1, Some(&rules), &path_grid)
-            .and_then(|route| route.last().copied()),
-        Some((3, 0)),
-    );
-
-    let mut refinery_return = make_sim();
-    issue_move_if_idle(
-        &mut refinery_return,
-        Some(&rules),
-        1,
-        (3, 0),
-        SimFixed::from_num(128),
-        None,
-        crate::sim::world::FrameEffects::default(),
-    );
-    assert_eq!(
-        first_track_process_route(&mut refinery_return, 1, Some(&rules), &path_grid)
             .and_then(|route| route.last().copied()),
         Some((3, 0)),
     );
@@ -1731,15 +1588,12 @@ fn tube_hierarchy_explicit_registry_keeps_flat_and_layered_corridor_active() {
         (0, 1),
         (39, 1),
         None,
-        None,
         Some(&zones),
         MovementZone::Normal,
         Some(MovementZone::Normal),
         Some(&terrain),
         None,
-        None,
         Some(&counts),
-        0,
         false,
         false,
         true,
@@ -1755,15 +1609,12 @@ fn tube_hierarchy_explicit_registry_keeps_flat_and_layered_corridor_active() {
         (0, 1),
         (39, 1),
         None,
-        None,
         Some(&zones),
         MovementZone::Normal,
         Some(MovementZone::Normal),
         Some(&terrain),
         None,
-        None,
         Some(&counts),
-        0,
         false,
         false,
         false,
@@ -1776,8 +1627,6 @@ fn tube_hierarchy_explicit_registry_keeps_flat_and_layered_corridor_active() {
     );
     let layered = find_layered_path_zoned_marker(
         &grid,
-        None,
-        None,
         (0, 1),
         MovementLayer::Ground,
         (39, 1),
@@ -1787,9 +1636,7 @@ fn tube_hierarchy_explicit_registry_keeps_flat_and_layered_corridor_active() {
         Some(MovementZone::Normal),
         Some(&terrain),
         None,
-        None,
         Some(&counts),
-        0,
         false,
         false,
         true,
@@ -1854,15 +1701,12 @@ fn tube_hierarchy_gate_uses_raw_invalid_labels_and_flat_goal_bridge_flag() {
             (0, 0),
             (1, 0),
             None,
-            None,
             Some(zones),
             MovementZone::Normal,
             Some(MovementZone::Normal),
             Some(terrain),
             None,
-            None,
             Some(&counts),
-            0,
             false,
             false,
             true,
@@ -2084,15 +1928,12 @@ fn tube_hierarchy_missing_record_sentinel_controls_actual_route_gate() {
             (4, 7),
             (5, 7),
             None,
-            None,
             Some(&zones),
             MovementZone::Normal,
             Some(MovementZone::Normal),
             Some(&terrain),
             None,
-            None,
             Some(&counts),
-            0,
             false,
             false,
             true,
@@ -2117,8 +1958,6 @@ fn tube_hierarchy_missing_record_sentinel_controls_actual_route_gate() {
     assert!(
         find_layered_path_zoned_marker(
             &grid,
-            None,
-            None,
             (5, 7),
             MovementLayer::Bridge,
             (6, 7),
@@ -2128,9 +1967,7 @@ fn tube_hierarchy_missing_record_sentinel_controls_actual_route_gate() {
             Some(MovementZone::Normal),
             Some(&terrain),
             None,
-            None,
             Some(&counts),
-            0,
             false,
             false,
             true,
@@ -2261,15 +2098,12 @@ fn tube_hierarchy_native_entry_prefix_matches_original_executable() {
                     hole,
                     hole,
                     None,
-                    None,
                     Some(&zones),
                     MovementZone::Normal,
                     Some(MovementZone::Normal),
                     Some(&terrain),
                     None,
                     None,
-                    None,
-                    0,
                     false,
                     false,
                     false,
@@ -2282,8 +2116,6 @@ fn tube_hierarchy_native_entry_prefix_matches_original_executable() {
             assert!(
                 find_layered_path_zoned_marker(
                     &grid,
-                    None,
-                    None,
                     hole,
                     MovementLayer::Ground,
                     hole,
@@ -2294,8 +2126,6 @@ fn tube_hierarchy_native_entry_prefix_matches_original_executable() {
                     Some(&terrain),
                     None,
                     None,
-                    None,
-                    0,
                     false,
                     false,
                     false,

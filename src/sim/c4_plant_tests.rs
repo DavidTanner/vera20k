@@ -9,7 +9,7 @@
 use crate::rules::art_data::ArtRegistry;
 use crate::rules::ini_parser::IniFile;
 use crate::rules::ruleset::RuleSet;
-use crate::sim::combat::AttackTarget;
+use crate::sim::combat::TargetKind;
 use crate::sim::command::{Command, CommandEnvelope};
 use crate::sim::components::{DriveCoord, NavTargetRef};
 use crate::sim::mission::{MissionId, MissionType};
@@ -204,8 +204,12 @@ fn mission_attacks_c4_arm_sends_a_demolition_man_to_sabotage() {
         let (mut sim, _) = arena(&rules);
         let target = spawn(&mut sim, &rules, building, enemy, 16, 10);
         let actor = spawn(&mut sim, &rules, kind, owner, 10, 10);
-        sim.substrate.entities.get_mut(actor).unwrap().attack_target =
-            Some(AttackTarget::new(target));
+        sim.substrate
+            .entities
+            .get_mut(actor)
+            .unwrap()
+            .attack_target
+            .set_for_test(Some(TargetKind::Entity(target)));
         let now = sim.session.binary_frame;
         sim.mission_assign_exact(actor, MissionId::from_known(MissionType::Attack), now)
             .unwrap();
@@ -245,7 +249,7 @@ fn a_hunting_demolition_man_whose_scan_finds_a_building_sabotages_it() {
     let entity = sim.substrate.entities.get(actor).unwrap();
     assert!(
         matches!(
-            entity.attack_target.as_ref().map(|attack| attack.target),
+            entity.attack_target.target(),
             Some(crate::sim::combat::TargetKind::Entity(id)) if id == target
         ),
         "the scan holds the building"
@@ -314,7 +318,8 @@ fn a_tanya_ordered_to_sabotage_walks_in_and_plants_the_charge() {
         .entities
         .get(building)
         .unwrap()
-        .elite_flash_frames;
+        .flashing
+        .frames();
     assert!((12..=13).contains(&flash), "flash {flash}");
     let planter = sim.substrate.entities.get(tanya).unwrap();
     assert_eq!(planter.rearm_timer.start_frame(), planted as i32);
@@ -331,9 +336,10 @@ fn a_tanya_ordered_to_sabotage_walks_in_and_plants_the_charge() {
         let frame = sim.session.binary_frame;
         step(&mut sim, &rules, &grid);
         let planter = sim.substrate.entities.get(tanya).unwrap();
-        let on_building = planter.attack_target.as_ref().is_some_and(|attack| {
-            attack.target == crate::sim::combat::TargetKind::Entity(building)
-        });
+        let on_building = planter
+            .attack_target
+            .target()
+            .is_some_and(|attack| attack == crate::sim::combat::TargetKind::Entity(building));
         overridden |= planter.mission.current() == attack && on_building;
         sent_back |= overridden
             && planter.mission.current() == SABOTAGE
@@ -400,7 +406,7 @@ fn a_walking_planter_plants_and_draws_for_its_rearm_alone() {
         (pending.timer.duration(), pending.source_entity_id),
         (26, Some(tanya))
     );
-    assert_eq!(target.elite_flash_frames, 13);
+    assert_eq!(target.flashing.frames(), 13);
     let planter = sim.substrate.entities.get(tanya).unwrap();
     assert_eq!(planter.rearm_timer.duration(), rof);
     assert_eq!(planter.navigation.nav_com, None);
@@ -442,7 +448,8 @@ fn a_second_planter_leaves_the_first_charge_alone() {
         .entities
         .get_mut(building)
         .unwrap()
-        .elite_flash_frames = 0;
+        .flashing
+        .start(0);
     stand_in(&mut sim, second, building);
     let (rof, after) = expected_draws(&sim, true);
 
@@ -453,7 +460,7 @@ fn a_second_planter_leaves_the_first_charge_alone() {
 
     let target = sim.substrate.entities.get(building).unwrap();
     assert_eq!(target.pending_c4_detonation, charge);
-    assert_eq!(target.elite_flash_frames, 0, "no second flash");
+    assert_eq!(target.flashing.frames(), 0, "no second flash");
     let planter = sim.substrate.entities.get(second).unwrap();
     assert_eq!(
         (
@@ -504,7 +511,7 @@ fn a_sold_or_curtained_building_takes_no_charge() {
             target.pending_c4_detonation.is_none(),
             "curtained {curtained}"
         );
-        assert_eq!(target.elite_flash_frames, 0, "curtained {curtained}");
+        assert_eq!(target.flashing.frames(), 0, "curtained {curtained}");
         let planter = sim.substrate.entities.get(tanya).unwrap();
         assert_eq!(planter.rearm_timer.duration(), rof);
         assert_eq!(sim.scenario_rng.logical_state(), after);

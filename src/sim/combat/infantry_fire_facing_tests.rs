@@ -93,7 +93,9 @@ fn infantry_fire_start_heading_matches_original_code_vectors() {
         if row["deployed"] == true {
             firer.mission_leaf.set_infantry_doing_verified(28).unwrap();
         }
-        firer.attack_target = Some(AttackTarget::new(2));
+        firer
+            .attack_target
+            .set_for_test(Some(TargetKind::Entity(2)));
         let result = visit(&mut store, &rules, 100);
         let firer = store.get(1).unwrap();
         let expected = row["facing"].as_u64().unwrap() as u16;
@@ -110,13 +112,17 @@ fn infantry_refused_or_reloading_does_not_snap() {
     let rules = infantry_fire_frame_rules();
     for out_of_range in [false, true] {
         let mut store = pair();
-        let attack = AttackTarget::new(2);
+        let attack = TargetKind::Entity(2);
         if out_of_range {
             store.get_mut(2).unwrap().position.rx = 50;
         } else {
             store.get_mut(1).unwrap().rearm_timer = crate::sim::timer::CdTimer::started(100, 20);
         }
-        store.get_mut(1).unwrap().attack_target = Some(attack);
+        store
+            .get_mut(1)
+            .unwrap()
+            .attack_target
+            .set_for_test(Some(attack));
         assert!(
             visit(&mut store, &rules, 100)
                 .consequences
@@ -141,7 +147,9 @@ fn infantry_fire_speed_refusal_matches_original_threshold() {
         firer.foot_speed.set_speed_fraction(SimFixed::from_bits(
             row["fixed_bits"].as_i64().unwrap() as i32,
         ));
-        firer.attack_target = Some(AttackTarget::new(2));
+        firer
+            .attack_target
+            .set_for_test(Some(TargetKind::Entity(2)));
         let result = visit(&mut store, &rules, 100);
         let firer = store.get(1).unwrap();
         let refused = row["refused"].as_bool().unwrap();
@@ -167,14 +175,18 @@ fn infantry_fire_speed_refusal_matches_original_threshold() {
 fn infantry_speed_refusal_at_fire_frame_clears_firing_latch() {
     let rules = infantry_fire_frame_rules();
     let mut store = pair();
-    store.get_mut(1).unwrap().attack_target = Some(AttackTarget::new(2));
+    store
+        .get_mut(1)
+        .unwrap()
+        .attack_target
+        .set_for_test(Some(TargetKind::Entity(2)));
     visit(&mut store, &rules, 100);
     let body = store.get(1).unwrap().body_facing;
     set_infantry_stage(&mut store, 1, 2);
     let firer = store.get_mut(1).unwrap();
     assert!(firer.mission_leaf.foot_firing_sequence_latch() != 0);
-    // Isolate the live Foot predicate from the older movement-target shortcut.
-    assert!(firer.movement_target.is_none());
+    // The live Foot speed alone refuses the fire frame: the locomotor is still.
+    assert!(crate::sim::movement::motion_query::is_moving(&firer) != Some(true));
     firer.foot_speed.set_speed_fraction(SimFixed::ONE);
     let result = visit(&mut store, &rules, 101);
     let firer = store.get(1).unwrap();
@@ -218,7 +230,6 @@ fn rocketeer_pair() -> (EntityStore, RuleSet) {
         rules.object("JJ").unwrap(),
         0,
     );
-    locomotor.altitude = SimFixed::from_num(500);
     let runtime = locomotor.jumpjet_runtime_mut().unwrap();
     *runtime = runtime
         .clone()
@@ -237,7 +248,11 @@ fn rocketeer_pair() -> (EntityStore, RuleSet) {
 fn a_rocketeer_refused_at_its_fire_frame_hovers() {
     use crate::sim::movement::infantry_action::{DO_FIRE_FLY, DO_HOVER};
     let (mut store, rules) = rocketeer_pair();
-    store.get_mut(1).unwrap().attack_target = Some(AttackTarget::new(2));
+    store
+        .get_mut(1)
+        .unwrap()
+        .attack_target
+        .set_for_test(Some(TargetKind::Entity(2)));
     visit(&mut store, &rules, 100);
     let doing = |store: &EntityStore| {
         store
@@ -268,7 +283,11 @@ fn a_rocketeer_refused_at_its_fire_frame_hovers() {
 fn firing_latch_keeps_start_facing_when_target_moves() {
     let rules = infantry_fire_frame_rules();
     let mut store = pair();
-    store.get_mut(1).unwrap().attack_target = Some(AttackTarget::new(2));
+    store
+        .get_mut(1)
+        .unwrap()
+        .attack_target
+        .set_for_test(Some(TargetKind::Entity(2)));
     visit(&mut store, &rules, 100);
     let facing = store.get(1).unwrap().body_facing;
     store.get_mut(2).unwrap().position.rx = 2;
@@ -280,7 +299,7 @@ fn firing_latch_keeps_start_facing_when_target_moves() {
         result.consequences.fire_events()[0].facing,
         (facing.current(101) >> 8) as u8
     );
-    assert_eq!(store.get(2).unwrap().health.current, 100);
+    assert_eq!(store.get(2).unwrap().health.current(), 100);
 }
 
 fn production_rules(fire_up: u32) -> RuleSet {
@@ -399,7 +418,7 @@ fn production_zero_delay_shot_and_restore_use_new_heading() {
     assert_eq!(event.fire_coord.x, source_x + delta.0);
     assert_eq!(event.fire_coord.y, source_y + delta.1);
     assert_eq!(
-        sim.substrate.entities.get(target).unwrap().health.current,
+        sim.substrate.entities.get(target).unwrap().health.current(),
         100
     );
 
@@ -428,15 +447,17 @@ fn cell_and_building_fire_headings_match_original_coordinate_getters() {
         let mut firer = make_infantry_entity(1, "E1", 5, 5, 125);
         firer.position.sub_x = SimFixed::from_num(row["source"][0].as_i64().unwrap() as i32 % 256);
         firer.position.sub_y = SimFixed::from_num(row["source"][1].as_i64().unwrap() as i32 % 256);
-        firer.attack_target = Some(if row["target_kind"] == "cell" {
-            AttackTarget::for_cell(8, 5)
-        } else {
-            let mut target = make_structure_entity(2, "TARGET", 8, 5, 125, 125);
-            // Construction stamps the type's `Foundation=2x3`.
-            target.foundation = "2x3".to_string();
-            store.insert(target);
-            AttackTarget::new(2)
-        });
+        firer
+            .attack_target
+            .set_for_test(Some(if row["target_kind"] == "cell" {
+                TargetKind::Cell(8, 5)
+            } else {
+                let mut target = make_structure_entity(2, "TARGET", 8, 5, 125, 125);
+                // Construction stamps the type's `Foundation=2x3`.
+                target.foundation = "2x3".to_string();
+                store.insert(target);
+                TargetKind::Entity(2)
+            }));
         store.insert(firer);
         let result = visit(&mut store, &rules, 100);
         assert!(result.consequences.fire_events().is_empty());
@@ -483,7 +504,7 @@ fn production_firing_latch_restores_heading_and_reaches_emission() {
                     .get(target)
                     .unwrap()
                     .health
-                    .current,
+                    .current(),
                 100
             );
             return;
@@ -530,7 +551,6 @@ fn production_attack_during_paid_walk_step_case(boosted: bool) {
             entity_id: firer,
             target_rx: 5,
             target_ry: 10,
-            queue: false,
         },
     );
     for _ in 0..50 {
@@ -645,7 +665,7 @@ fn production_attack_during_paid_walk_step_case(boosted: bool) {
                 "face target at accepted fire start"
             );
             assert_eq!(
-                sim.substrate.entities.get(target).unwrap().health.current,
+                sim.substrate.entities.get(target).unwrap().health.current(),
                 100
             );
             return;

@@ -373,8 +373,8 @@ pub(crate) fn should_retaliate(
     // lifecycle already retired cannot be one.
     if !victim.is_alive()
         || victim.dying
-        || !victim.lifecycle.object_alive
-        || victim.lifecycle.in_limbo
+        || !victim.lifecycle.object_alive()
+        || victim.lifecycle.in_limbo()
     {
         return false;
     }
@@ -398,7 +398,7 @@ pub(crate) fn should_retaliate(
     }
     // `0x00708807..0x0070881F`: draining (`+0x1CC`) for a house that is not
     // human (`House+0x1EC`).
-    if victim.drain_target.is_some() && !house.is_some_and(|house| house.is_human) {
+    if victim.drain.target().is_some() && !house.is_some_and(|house| house.is_human) {
         return false;
     }
     // `0x0070882F` a full CaptureManager (being controlled is no gate);
@@ -409,7 +409,7 @@ pub(crate) fn should_retaliate(
         .as_ref()
         .is_some_and(|manager| manager.is_full())
         || victim.spawn_manager.is_some()
-        || (human && victim.attack_target.is_some())
+        || (human && victim.attack_target.target().is_some())
         || crate::sim::mission::control::current_control(rules, &victim.mission)
             .is_some_and(|entry| !entry.retaliate)
     {
@@ -466,10 +466,10 @@ pub(crate) fn should_retaliate(
     if human {
         // `0x00708905..0x007089A5`: a human's C4 infantryman, or a rank that
         // holds C4, leaves a building source alone.
-        if source.category == EntityCategory::Structure
-            && ((victim.category == EntityCategory::Infantry && victim_type.c4)
+        if source.category() == EntityCategory::Structure
+            && ((victim.category() == EntityCategory::Infantry && victim_type.c4)
                 || super::veterancy::has_weapon_ability(
-                    super::veterancy::rank_from_u16(victim.veterancy()),
+                    victim.veterancy.rank_kind(),
                     victim_type,
                     Ability::C4,
                 ))
@@ -478,7 +478,7 @@ pub(crate) fn should_retaliate(
         }
         // `0x007089AF..0x007089E2`: a human's unit that deploys into an
         // `Artillary=` building (none in retail).
-        if victim.category == EntityCategory::Unit
+        if victim.category() == EntityCategory::Unit
             && victim_type
                 .deploys_into
                 .as_deref()
@@ -493,14 +493,14 @@ pub(crate) fn should_retaliate(
         const AREA_GUARD: i32 = 0x0B;
         const PATROL: i32 = 0x19;
         if !rules.general.player_return_fire
-            && victim.category != EntityCategory::Structure
+            && victim.category() != EntityCategory::Structure
             && !matches!(victim.mission.current().raw(), GUARD | AREA_GUARD | PATROL)
         {
             return false;
         }
     }
     // `0x00708A2C..0x00708A54`: a member of a `Suicide=` team.
-    if victim.category != EntityCategory::Structure
+    if victim.category() != EntityCategory::Structure
         && world
             .team_script_vm
             .member_team_type(victim_id)
@@ -516,8 +516,7 @@ pub(crate) fn should_retaliate(
         .get(&victim.owner())
         .and_then(|house| house.enemy_house);
     if !human
-        && let Some(TargetKind::Entity(current_id)) =
-            victim.attack_target.as_ref().map(|target| target.target)
+        && let Some(TargetKind::Entity(current_id)) = victim.attack_target.target()
         && let (Some(current_score), Some(source_score)) = (
             calculate_ai_threat_score(
                 entities,
@@ -545,7 +544,7 @@ pub(crate) fn should_retaliate(
         return false;
     }
     // `0x00708AAA..0x00708AC3`: a Foot never turns on the parasite eating it.
-    if victim.parasite_eating_me == Some(source_id) {
+    if victim.parasite.eater() == Some(source_id) {
         return false;
     }
     // `0x00708AC5..0x00708B09`: the selected weapon's Verses against the
@@ -582,7 +581,7 @@ pub(crate) fn build_attacker_snapshot(
     AttackerSnapshot {
         stable_id: entity.stable_id(),
         owner: entity.owner(),
-        category: entity.category,
+        category: entity.category(),
         target,
         pos_rx: entity.position.rx,
         pos_ry: entity.position.ry,
@@ -591,7 +590,7 @@ pub(crate) fn build_attacker_snapshot(
         sub_x: entity.position.sub_x,
         sub_y: entity.position.sub_y,
         type_id: entity.type_ref(),
-        veterancy: entity.veterancy(),
+        veterancy: entity.veterancy.rank(),
         barrel_facing: entity.barrel_facing,
         hull_facing: entity.body_facing,
         garrison,
@@ -661,7 +660,7 @@ mod tests {
         assert_eq!(yaggun_obj.primary(), Some("AGGattling"));
 
         let mut sref = GameEntity::test_default(1, "SREF", "Americans", 5, 5);
-        sref.category = EntityCategory::Unit;
+        sref.set_category_for_test(EntityCategory::Unit);
         let yaggun = GameEntity::test_default_of_category(
             2,
             "YAGGUN",
@@ -687,14 +686,14 @@ mod tests {
         let mut entities = EntityStore::new();
 
         let mut sref = GameEntity::test_default(1, "SREF", "Americans", 5, 5);
-        sref.category = EntityCategory::Unit;
-        sref.lifecycle.in_limbo = false;
+        sref.set_category_for_test(EntityCategory::Unit);
+        sref.lifecycle.set_in_limbo_for_test(false);
         sref.lifecycle.cell_marked = true;
         entities.insert(sref);
 
         let mut enemy = GameEntity::test_default(2, "HTNK", "Russians", 6, 5);
-        enemy.category = EntityCategory::Unit;
-        enemy.lifecycle.in_limbo = false;
+        enemy.set_category_for_test(EntityCategory::Unit);
+        enemy.lifecycle.set_in_limbo_for_test(false);
         enemy.lifecycle.cell_marked = true;
         entities.insert(enemy);
 

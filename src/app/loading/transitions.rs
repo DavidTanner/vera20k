@@ -376,6 +376,7 @@ pub(crate) fn apply_map_load_result(state: &mut AppState, result: init::MapLoadR
     state.match_state.sim_runtime = incoming.map(|(mut simulation, rules)| {
         simulation.install_fresh_process_main(&state.frontend.frontend_main_rng);
         simulation.session.set_started(true);
+        simulation.batch_path_searches();
         crate::sim::runtime::SimRuntime {
             simulation,
             resources: crate::sim::runtime::SimResources {

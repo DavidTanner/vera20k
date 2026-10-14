@@ -86,7 +86,7 @@ pub(super) fn finish_fresh_head(
         return false;
     };
     loco.begin_walk_motion();
-    if entity.lifecycle.object_alive {
+    if entity.lifecycle.object_alive() {
         let current = super::ground_pose::position_world_coord(&entity.position);
         let facing = crate::util::direction_tables::facing16_from_delta(
             head.x.wrapping_sub(current.x),
@@ -111,7 +111,7 @@ impl crate::sim::world::Simulation {
     /// this destructive raw clear, including when another walker reused it.
     pub(crate) fn release_walk_occupation_before_foot_limbo(&mut self, id: u64) {
         let Some((owner, coord)) = self.substrate.entities.get(id).and_then(|e| {
-            if e.lifecycle.in_limbo {
+            if e.lifecycle.in_limbo() {
                 return None;
             }
             let loco = e.locomotor.as_ref()?;
@@ -188,11 +188,11 @@ impl crate::sim::world::Simulation {
             .entities
             .get_mut(id)
             .ok_or("retired Walk head owner")?;
-        if !picked && !actor.lifecycle.in_limbo {
+        if !picked && !actor.lifecycle.in_limbo() {
             if let Some(loco) = actor.locomotor.as_mut() {
                 loco.set_step_head(None);
             }
-            if !actor.lifecycle.object_alive {
+            if !actor.lifecycle.object_alive() {
                 return Ok(false);
             }
         }
@@ -269,7 +269,7 @@ mod tests {
         {
             let mut actor =
                 crate::sim::game_entity::GameEntity::test_default(1, "E1", "Owner", 9, 10);
-            actor.lifecycle.object_alive = false;
+            actor.lifecycle.set_object_alive_for_test(false);
             actor.locomotor = Some(super::super::locomotor::LocomotorState::for_test_kind(
                 crate::rules::locomotor_type::LocomotorKind::Walk,
             ));
@@ -332,16 +332,16 @@ mod tests {
             4,
             EntityCategory::Structure,
         );
-        master.owner = owner;
-        master.type_ref = interner.intern("MASTER");
+        master.set_owner_for_test(owner);
+        master.set_type_ref_for_test(interner.intern("MASTER"));
         let slav = interner.intern("SLAV");
         // An existing manager that does not hold the slave refuses it.
         master.slave_manager = Some(SlaveManager::new(slav, [None; 0], 0, 0, 0));
         entities.insert(master);
         let mut slave = GameEntity::test_default(2, "SLAV", "Owner", 3, 4);
-        slave.owner = owner;
-        slave.type_ref = interner.intern("SLAV");
-        slave.category = EntityCategory::Infantry;
+        slave.set_owner_for_test(owner);
+        slave.set_type_ref_for_test(interner.intern("SLAV"));
+        slave.set_category_for_test(EntityCategory::Infantry);
         slave.position.sub_x = SimFixed::from_num(192);
         slave.position.sub_y = SimFixed::from_num(64);
         slave.locomotor = Some(LocomotorState::for_test_kind(LocomotorKind::Walk));
@@ -622,7 +622,7 @@ mod tests {
     #[test]
     fn fresh_walk_head_effects_and_rng_match_original_process() {
         use crate::sim::{
-            components::{FootPathQueue, MovementTarget, NavTargetRef},
+            components::{FootPathQueue, NavTargetRef},
             entity_store::EntityStore,
             game_entity::GameEntity,
             intern::StringInterner,
@@ -650,7 +650,7 @@ mod tests {
         for row in corpus["ready_path"].as_array().unwrap() {
             let input = &row["input"];
             let mut entity = GameEntity::test_default(1, "E1", "Owner", 9, 10);
-            entity.category = crate::map::entities::EntityCategory::Infantry;
+            entity.set_category_for_test(crate::map::entities::EntityCategory::Infantry);
             if input["infantry_constructor_facing"]
                 .as_bool()
                 .unwrap_or(false)
@@ -661,7 +661,7 @@ mod tests {
                 // Retain the older corpus's explicitly supplied rate0 owner.
                 entity.body_facing = super::super::FacingClass::new(0, 0);
             }
-            entity.owner = InternedId::from_index(41);
+            entity.set_owner_for_test(InternedId::from_index(41));
             entity.position.sub_x = SimFixed::from_num(input["sub"][0].as_i64().unwrap());
             entity.position.sub_y = SimFixed::from_num(input["sub"][1].as_i64().unwrap());
             entity.position.exact_z_leptons = Some(260);
@@ -695,7 +695,6 @@ mod tests {
             if input["nav"].as_bool().unwrap_or(true) {
                 entity.navigation.nav_com = Some(NavTargetRef::Cell { rx: 10, ry: 10 });
             }
-            entity.movement_target = Some(MovementTarget::default());
             let current = super::super::ground_pose::position_world_coord(&entity.position);
             let mut raw = RawCellOccupationGrid::default();
             raw_at(
@@ -981,7 +980,7 @@ pub(super) fn select_step_head_at(
             _ => None,
         };
         if let Some(target) = target {
-            priority = match target.category {
+            priority = match target.category() {
                 EntityCategory::Unit | EntityCategory::Aircraft => {
                     let c = super::ground_pose::position_world_coord(&target.position);
                     ((c.x / 256) as i16, (c.y / 256) as i16)

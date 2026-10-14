@@ -32,7 +32,7 @@ pub(super) fn publish_fresh_track_target(
     };
     let speed_type = loco.speed_type;
     let below_yellow = crate::sim::pathfinding::terrain_speed::is_at_or_below_condition_yellow(
-        entity.health.current,
+        entity.health.current(),
         strength,
         rules.general.condition_yellow,
     );
@@ -156,7 +156,7 @@ pub(super) fn advance(
     let retained_target = loco.track_target_fraction(family);
     let prefix = super::drive_locomotion::TrackSpeedPrefix {
         accelerates: entity.drive_accelerates,
-        unit_passive: entity.category == crate::map::entities::EntityCategory::Unit
+        unit_passive: entity.category() == crate::map::entities::EntityCategory::Unit
             && object.is_some_and(|object| object.passive),
         selector,
         raw_type_speed: object.map_or(0, |o| {
@@ -226,10 +226,6 @@ mod tests {
         for kind in [LocomotorKind::Drive, LocomotorKind::Ship] {
             let mut mover = entity(kind, 0, SIM_ONE);
             mover.drive_accelerates = false;
-            mover.movement_target = Some(crate::sim::components::MovementTarget {
-                speed: SimFixed::from_num(150),
-                ..Default::default()
-            });
             assert_eq!(
                 advance(
                     &mut mover,
@@ -255,39 +251,29 @@ mod tests {
                 ),
                 11
             );
-            assert_eq!(
-                mover.movement_target.as_ref().unwrap().speed,
-                SimFixed::from_num(150)
-            );
         }
     }
 
     #[test]
-    fn live_type_speed_wins_over_the_path_speed_cache() {
+    fn track_budget_reads_the_live_type_speed() {
         let rules = RuleSet::from_ini(&IniFile::from_str(
             "[VehicleTypes]\n0=MTNK\n[MTNK]\nStrength=100\nSpeed=6\nAccelerates=no\n",
         ))
         .unwrap();
         for kind in [LocomotorKind::Drive, LocomotorKind::Ship] {
-            for cached_speed in [15, 1500] {
-                let mut mover = entity(kind, 0, SIM_ONE);
-                mover.drive_accelerates = false;
-                mover.movement_target = Some(crate::sim::components::MovementTarget {
-                    speed: SimFixed::from_num(cached_speed),
-                    ..Default::default()
-                });
-                assert_eq!(
-                    advance(
-                        &mut mover,
-                        rules.object("MTNK"),
-                        Some(&rules),
-                        &Default::default(),
-                        None,
-                        None
-                    ),
-                    15
-                );
-            }
+            let mut mover = entity(kind, 0, SIM_ONE);
+            mover.drive_accelerates = false;
+            assert_eq!(
+                advance(
+                    &mut mover,
+                    rules.object("MTNK"),
+                    Some(&rules),
+                    &Default::default(),
+                    None,
+                    None
+                ),
+                15
+            );
         }
     }
 

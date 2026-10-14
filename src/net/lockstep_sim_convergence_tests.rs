@@ -318,7 +318,6 @@ fn two_instance_multiplayer_checksums_match_every_frame_and_catch_a_desync() {
             entity_id: actor,
             target_rx: 15,
             target_ry: 10,
-            queue: false,
         }),
         20 => Some(Command::Guard {
             entity_id: guard,
@@ -400,7 +399,7 @@ fn two_instance_multiplayer_checksums_match_every_frame_and_catch_a_desync() {
         live.substrate
             .entities
             .get(enemy)
-            .is_none_or(|enemy| enemy.health.current < 125),
+            .is_none_or(|enemy| enemy.health.current() < 125),
         "the scene exchanged fire"
     );
 

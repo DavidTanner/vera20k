@@ -11,8 +11,8 @@ use crate::map::resolved_terrain::{ResolvedTerrainCell, ResolvedTerrainGrid};
 use crate::rules::locomotor_type::LocomotorKind;
 use crate::rules::terrain_rules::{SpeedCostProfile, TerrainClass};
 use crate::sim::anim_class::{AnimObject, AnimRuntime, AnimWorldCoord};
-use crate::sim::combat::{AttackTarget, TargetKind};
-use crate::sim::components::{DriveOccupationFootprint, Health, NavTargetRef};
+use crate::sim::combat::{Health, TargetKind};
+use crate::sim::components::{DriveOccupationFootprint, NavTargetRef};
 use crate::sim::game_entity::GameEntity;
 use crate::sim::house_state::HouseState;
 use crate::sim::mission::state::MissionTestFixture;
@@ -70,7 +70,7 @@ fn native_trigger_reveal_cell_put_discovers_unshrouded_campaign_resident() {
         sim.fog = FogState::new(24, 24);
         let mut plane = OwnerVisibility::new(24, 24);
         if revealed {
-            plane.mark_sight(10, 10);
+            plane.mark_visible(10, 10);
         }
         sim.fog.by_owner.insert(player, plane);
         let typ = sim.interner.intern("E1");
@@ -81,7 +81,7 @@ fn native_trigger_reveal_cell_put_discovers_unshrouded_campaign_resident() {
             0,
             0,
             owner,
-            Health { current: 100 },
+            Health::new(100),
             typ,
             EntityCategory::Infantry,
             0,
@@ -185,7 +185,7 @@ fn constructor_complete_foot_destructors_match_native_team_gate_and_rng() {
             )
         }));
         let actor = sim.entities().get(member).unwrap();
-        assert!(actor.lifecycle.object_alive && actor.lifecycle.in_limbo);
+        assert!(actor.lifecycle.object_alive() && actor.lifecycle.in_limbo());
         assert_eq!(row["prior"]["alive"], 1);
         assert_eq!(row["prior"]["limbo"], 1);
         assert_eq!(row["prior"]["type_present"], true);
@@ -320,14 +320,14 @@ pub(super) fn insert_entity(sim: &mut Simulation, stable_id: u64, category: Enti
         0,
         0,
         owner,
-        Health { current: 100 },
+        Health::new(100),
         type_ref,
         category,
         0,
         5,
         category != EntityCategory::Infantry,
     );
-    entity.category = category;
+    entity.set_category_for_test(category);
     sim.substrate.entities.insert(entity);
 }
 
@@ -367,7 +367,7 @@ fn insert_reservation_building(
         0,
         0,
         owner,
-        Health { current: 100 },
+        Health::new(100),
         type_ref,
         EntityCategory::Structure,
         0,
@@ -474,7 +474,7 @@ fn receiver_fatal_limbo_clears_elevated_ground_occupation() {
 
     commit_receiver_authority_lethal_hit(&mut sim, 1);
 
-    assert!(sim.substrate.entities.get(1).unwrap().lifecycle.in_limbo);
+    assert!(sim.substrate.entities.get(1).unwrap().lifecycle.in_limbo());
     assert_eq!(
         sim.substrate.raw_cell_occupation.ground_bits(3, 4),
         0,
@@ -504,7 +504,7 @@ fn receiver_fatal_limbo_clears_sparse_map_dummy_reservation() {
 
     commit_receiver_authority_lethal_hit(&mut sim, 41);
 
-    assert!(sim.substrate.entities.get(41).unwrap().lifecycle.in_limbo);
+    assert!(sim.substrate.entities.get(41).unwrap().lifecycle.in_limbo());
     assert_eq!(
         sim.substrate.base_reservations.dummy_mask(),
         0,
@@ -547,7 +547,7 @@ fn receiver_garrison_survivor_keeps_height_aware_playfield_membership() {
     let passenger_type = sim.interner.intern("OCCUPANT");
     {
         let passenger = sim.substrate.entities.get_mut(passenger_id).unwrap();
-        passenger.type_ref = passenger_type;
+        passenger.set_type_ref_for_test(passenger_type);
         passenger.passenger_role = PassengerRole::Inside {
             transport_id: building_id,
             open_topped: false,
@@ -555,7 +555,7 @@ fn receiver_garrison_survivor_keeps_height_aware_playfield_membership() {
     }
     {
         let building = sim.substrate.entities.get_mut(building_id).unwrap();
-        building.type_ref = building_type;
+        building.set_type_ref_for_test(building_type);
         building.foundation = "2x2".to_string();
         let mut cargo = PassengerCargo::new(5, 1);
         assert!(cargo.board(passenger_id, 1));
@@ -606,8 +606,8 @@ fn receiver_garrison_survivor_keeps_height_aware_playfield_membership() {
     );
 
     let passenger = sim.substrate.entities.get(passenger_id).unwrap();
-    assert!(passenger.lifecycle.object_alive);
-    assert!(!passenger.lifecycle.in_limbo);
+    assert!(passenger.lifecycle.object_alive());
+    assert!(!passenger.lifecycle.in_limbo());
     assert_eq!(
         (
             passenger.position.rx,
@@ -641,7 +641,7 @@ fn uninit_clears_aircraft_bridge_occupation() {
     // starts a crash and does not immediately UnInit.
     sim.uninit_with_context(1, super::UninitContext::default());
 
-    assert!(sim.substrate.entities.get(1).unwrap().lifecycle.in_limbo);
+    assert!(sim.substrate.entities.get(1).unwrap().lifecycle.in_limbo());
     assert_eq!(sim.substrate.raw_cell_occupation.ground_bits(3, 4), 0);
     assert_eq!(sim.substrate.raw_cell_occupation.deck_bits(3, 4), 0);
 }
@@ -886,7 +886,7 @@ fn a_revealed_building_takes_the_floor_at_its_location_as_its_z() {
 /// UnitType's Unlimbo coordinate adjustment (virtual +0x6C, `0x00747EB0`)
 /// clamps the input Z to the floor whatever the locomotor, so a Hover, Fly,
 /// Jumpjet, Rocket or Teleport unit starts on the floor as a Drive one does,
-/// and the altitude mirror takes the committed GetHeight, whatever it held.
+/// at GetHeight 0.
 /// Ground=52 is the original-code result ramp_1_sub_128_128 in
 /// tools/ramp_height_vectors.json.
 #[test]
@@ -907,9 +907,8 @@ fn every_unit_locomotor_takes_the_floor_clamp_at_unlimbo() {
             .unwrap()
             .slope_type = 1;
         insert_entity(&mut sim, 1, EntityCategory::Unit);
-        let mut locomotor = LocomotorState::for_test_kind(kind);
-        locomotor.altitude = SimFixed::from_num(500);
-        sim.substrate.entities.get_mut(1).unwrap().locomotor = Some(locomotor);
+        sim.substrate.entities.get_mut(1).unwrap().locomotor =
+            Some(LocomotorState::for_test_kind(kind));
         assert!(matches!(
             sim.try_reveal_entity(1, common_raw_request(2, 2, 0, 128, 128)),
             RevealOutcome::Revealed { .. }
@@ -917,8 +916,11 @@ fn every_unit_locomotor_takes_the_floor_clamp_at_unlimbo() {
         let unit = sim.substrate.entities.get(1).unwrap();
         assert_eq!(unit.position.exact_z_leptons, Some(52), "{kind:?}");
         assert_eq!(
-            unit.locomotor.as_ref().unwrap().altitude,
-            SimFixed::from_num(0),
+            crate::sim::movement::air_movement::current_fly_height(
+                unit,
+                sim.resolved_terrain.as_ref()
+            ),
+            0,
             "{kind:?}"
         );
     }
@@ -1174,7 +1176,7 @@ fn zero_speed_foot_drive_ship_payloads_survive_all_world_spawn_paths() {
         .substrate
         .entities
         .values()
-        .find(|entity| sim.interner.resolve(entity.type_ref) == "ZMAPD")
+        .find(|entity| sim.interner.resolve(entity.type_ref()) == "ZMAPD")
         .unwrap();
     assert_eq!(
         crate::sim::movement::slope_transition::state_for_entity(map_entity)
@@ -1295,11 +1297,12 @@ fn techno_playfield_ctor_unlimbo_and_movement_hysteresis() {
     );
 }
 
-fn install_fly_aircraft(sim: &mut Simulation, stable_id: u64, altitude: SimFixed) {
+/// A Fly aircraft in limbo holding `target_height`. A Reveal without rules
+/// commits no exact Z, so a caller lifts it afterwards through SetHeight.
+fn install_fly_aircraft(sim: &mut Simulation, stable_id: u64, target_height: SimFixed) {
     insert_entity(sim, stable_id, EntityCategory::Aircraft);
     let mut locomotor = LocomotorState::for_test_kind(LocomotorKind::Fly);
-    locomotor.altitude = altitude;
-    locomotor.set_fly_target_height(altitude.to_num::<i32>());
+    locomotor.set_fly_target_height(target_height.to_num::<i32>());
     // Process steps the height of a moving Fly only (`0x004CDA0B`); a null
     // destination keeps Horizontal_Step and the landing drift out of it.
     locomotor.fly_runtime_mut().unwrap().retain_destination(
@@ -1791,6 +1794,8 @@ fn gsi_04_12_object_raw_occupation_airborne_and_non_fly_aircraft_are_excluded() 
     install_common_raw_terrain(&mut sim, 8, 8, 0, None);
     install_fly_aircraft(&mut sim, 1, SimFixed::from_num(1));
     let _ = sim.try_reveal_entity(1, common_raw_request(3, 4, 0, 128, 128));
+    // SetHeight's Mark pair re-lists it at height 1, in the air.
+    sim.set_object_height(1, 1, None, None, crate::sim::world::FrameEffects::default());
 
     insert_entity(&mut sim, 2, EntityCategory::Aircraft);
     sim.substrate.entities.get_mut(2).unwrap().locomotor =
@@ -1878,7 +1883,12 @@ fn gsi_04_12_object_raw_occupation_production_fly_tick_unmarks_takeoff_and_marks
     );
 
     let aircraft = sim.substrate.entities.get(1).unwrap();
-    assert!(aircraft.locomotor.as_ref().unwrap().altitude > SimFixed::from_num(0));
+    assert!(
+        crate::sim::movement::air_movement::current_fly_height(
+            aircraft,
+            sim.resolved_terrain.as_ref()
+        ) > 0
+    );
     assert!(
         aircraft.lifecycle.cell_marked,
         "the post-process Mark transaction completed"
@@ -1896,11 +1906,9 @@ fn gsi_04_12_object_raw_occupation_production_fly_tick_unmarks_takeoff_and_marks
             .as_mut()
             .unwrap();
         locomotor.begin_fly_landing();
-        locomotor.altitude = SimFixed::from_num(1);
         locomotor.set_fly_target_height(0);
     }
     // Supply the matching physical state for this independent landing visit.
-    // Changing cached controller height cannot move an exact Object coordinate.
     sim.substrate
         .entities
         .get_mut(1)
@@ -1916,8 +1924,11 @@ fn gsi_04_12_object_raw_occupation_production_fly_tick_unmarks_takeoff_and_marks
 
     let aircraft = sim.substrate.entities.get(1).unwrap();
     assert_eq!(
-        aircraft.locomotor.as_ref().unwrap().altitude,
-        SimFixed::from_num(0)
+        crate::sim::movement::air_movement::current_fly_height(
+            aircraft,
+            sim.resolved_terrain.as_ref()
+        ),
+        0
     );
     assert!(aircraft.lifecycle.cell_marked);
     assert_eq!(
@@ -1957,12 +1968,10 @@ fn gsi_05_05_fly_takeoff_commits_absolute_z_after_remove_process() {
     );
 
     let aircraft = sim.substrate.entities.get(1).unwrap();
-    let altitude = aircraft
-        .locomotor
-        .as_ref()
-        .unwrap()
-        .altitude
-        .to_num::<i32>();
+    let altitude = crate::sim::movement::air_movement::current_fly_height(
+        aircraft,
+        sim.resolved_terrain.as_ref(),
+    );
     assert!(altitude > 0);
     assert_eq!(aircraft.position.exact_z_leptons, Some(208 + altitude));
     assert!(!sim.substrate.occupancy.contains_entity(3, 4, 1));
@@ -1977,6 +1986,8 @@ fn gsi_05_05_fly_landing_on_bridge_uses_absolute_z_for_deck_put() {
     install_fly_aircraft(&mut sim, 1, SimFixed::from_num(1));
     sim.substrate.entities.get_mut(1).unwrap().on_bridge = true;
     let _ = sim.try_reveal_entity(1, common_raw_request(3, 4, 0, 128, 128));
+    // SetHeight's Mark pair re-lists it one lepton above the deck, in the air.
+    sim.set_object_height(1, 1, None, None, crate::sim::world::FrameEffects::default());
     assert_eq!(sim.substrate.raw_cell_occupation.ground_bits(3, 4), 0);
     assert_eq!(sim.substrate.raw_cell_occupation.deck_bits(3, 4), 0);
 
@@ -2001,8 +2012,11 @@ fn gsi_05_05_fly_landing_on_bridge_uses_absolute_z_for_deck_put() {
 
     let aircraft = sim.substrate.entities.get(1).unwrap();
     assert_eq!(
-        aircraft.locomotor.as_ref().unwrap().altitude,
-        SimFixed::from_num(0)
+        crate::sim::movement::air_movement::current_fly_height(
+            aircraft,
+            sim.resolved_terrain.as_ref()
+        ),
+        0
     );
     assert_eq!(aircraft.position.exact_z_leptons, Some(416));
     assert_eq!(
@@ -2104,13 +2118,25 @@ fn gsi_04_07_damage_air_spatial_entry_crossing_and_exit_keep_vector_order() {
     sim.session.map_height = 40;
     install_common_raw_terrain(&mut sim, 40, 40, 0, None);
     // Foot Unlimbo4D72B2 adds ConsideredAircraft only above the native
-    // high-flight threshold (208 leptons). The altitude cache uses leptons,
-    // whereas the Reveal request below uses coarse levels: four levels = 416.
+    // high-flight threshold (208 leptons); a Reveal without rules commits no
+    // exact Z, so the fixture lifts both aircraft and adds them in Unlimbo's
+    // order (`unlimbo_adds_a_high_flying_considered_aircraft_to_the_air_tracker`
+    // covers that admission).
     install_fly_aircraft(&mut sim, 20, SimFixed::from_num(416));
     install_fly_aircraft(&mut sim, 10, SimFixed::from_num(416));
 
     let _ = sim.try_reveal_entity(20, common_raw_request(2, 4, 4, 128, 128));
     let _ = sim.try_reveal_entity(10, common_raw_request(3, 4, 4, 128, 128));
+    for id in [20, 10] {
+        sim.set_object_height(
+            id,
+            416,
+            None,
+            None,
+            crate::sim::world::FrameEffects::default(),
+        );
+        sim.aircraft_tracker_add(id);
+    }
     let first = sim.substrate.entities.get(20).unwrap();
     let second = sim.substrate.entities.get(10).unwrap();
     assert!(first.air_spatial_bucket().is_some());
@@ -2191,7 +2217,7 @@ fn unlimbo_adds_a_high_flying_considered_aircraft_to_the_air_tracker() {
         insert_entity(&mut sim, 30, EntityCategory::Unit);
         let type_ref = sim.interner.intern("JJET");
         let entity = sim.substrate.entities.get_mut(30).unwrap();
-        entity.type_ref = type_ref;
+        entity.set_type_ref_for_test(type_ref);
         // UnitType's floor clamp keeps the level-4 input, 416 leptons up.
         entity.locomotor = Some(LocomotorState::for_test_kind(LocomotorKind::Jumpjet));
 
@@ -2261,7 +2287,7 @@ fn lifecycle_authority_reveal_commits_coords_then_marks_then_registers() {
     );
     assert_eq!(entity.position.sub_x, SimFixed::from_num(128));
     assert_eq!(entity.position.sub_y, SimFixed::from_num(64));
-    assert!(!entity.lifecycle.in_limbo);
+    assert!(!entity.lifecycle.in_limbo());
     assert!(entity.lifecycle.cell_marked);
     assert!(entity.in_logic_vector);
     assert!(sim.substrate.occupancy.contains_entity(10, 20, 1));
@@ -2290,7 +2316,7 @@ fn reveal_stops_after_mark_when_object_is_not_alive() {
         .get_mut(1)
         .unwrap()
         .lifecycle
-        .object_alive = false;
+        .set_object_alive_for_test(false);
 
     assert_eq!(
         sim.try_reveal_entity(1, request(10, 20, PlacementEvidence::MarkSucceeded)),
@@ -2299,7 +2325,7 @@ fn reveal_stops_after_mark_when_object_is_not_alive() {
         }
     );
     let entity = sim.substrate.entities.get(1).unwrap();
-    assert!(!entity.lifecycle.in_limbo);
+    assert!(!entity.lifecycle.in_limbo());
     assert!(entity.lifecycle.cell_marked);
     assert!(!entity.in_logic_vector);
     assert!(sim.lifecycle_outputs.is_empty());
@@ -2319,8 +2345,8 @@ fn lifecycle_authority_reveal_mark_failure_keeps_adjusted_coords_alive_limbo() {
         (entity.position.rx, entity.position.ry, entity.position.z),
         (10, 20, 2)
     );
-    assert!(entity.lifecycle.object_alive);
-    assert!(entity.lifecycle.in_limbo);
+    assert!(entity.lifecycle.object_alive());
+    assert!(entity.lifecycle.in_limbo());
     assert!(!entity.lifecycle.cell_marked);
     assert!(!entity.in_logic_vector);
     assert_eq!(
@@ -2348,7 +2374,7 @@ fn lifecycle_authority_reveal_early_reject_commits_nothing() {
         (entity.position.rx, entity.position.ry),
         (before.rx, before.ry)
     );
-    assert!(entity.lifecycle.in_limbo);
+    assert!(entity.lifecycle.in_limbo());
     assert!(sim.lifecycle_test_events.is_empty());
 }
 
@@ -2373,7 +2399,7 @@ fn lifecycle_authority_reveal_rejects_an_already_marked_limbo_object() {
         (entity.position.rx, entity.position.ry),
         (before.rx, before.ry)
     );
-    assert!(entity.lifecycle.in_limbo);
+    assert!(entity.lifecycle.in_limbo());
     assert!(entity.lifecycle.cell_marked);
     assert!(sim.lifecycle_test_events.is_empty());
 }
@@ -2391,7 +2417,7 @@ fn lifecycle_authority_reveal_logic_failure_keeps_successful_mark() {
         }
     );
     let entity = sim.substrate.entities.get(1).unwrap();
-    assert!(!entity.lifecycle.in_limbo);
+    assert!(!entity.lifecycle.in_limbo());
     assert!(entity.lifecycle.cell_marked);
     assert!(!entity.in_logic_vector);
     assert!(sim.substrate.occupancy.contains_entity(10, 20, 1));
@@ -2515,8 +2541,8 @@ fn open_topped_direct_registration_keeps_hidden_passenger_live() {
 
     assert!(sim.register_open_topped_passenger(1));
     let passenger = sim.substrate.entities.get(1).unwrap();
-    assert!(passenger.lifecycle.object_alive);
-    assert!(passenger.lifecycle.in_limbo);
+    assert!(passenger.lifecycle.object_alive());
+    assert!(passenger.lifecycle.in_limbo());
     assert!(!passenger.lifecycle.cell_marked);
     assert!(passenger.in_logic_vector);
     assert_eq!(sim.live_object_order_snapshot(), vec![2, 1]);
@@ -2612,8 +2638,8 @@ fn lifecycle_authority_conceal_dirty_eligibility_emits_dirty_before_drawn_clear(
         ]
     );
     let entity = sim.substrate.entities.get(1).unwrap();
-    assert!(entity.lifecycle.object_alive);
-    assert!(entity.lifecycle.in_limbo);
+    assert!(entity.lifecycle.object_alive());
+    assert!(entity.lifecycle.in_limbo());
     assert!(!entity.lifecycle.cell_marked);
     assert!(!entity.in_logic_vector);
 }
@@ -2662,7 +2688,7 @@ fn lifecycle_authority_conceal_deselects_unmarks_unregisters_then_sets_limbo() {
     assert!(!entity.selected);
     assert!(!entity.lifecycle.cell_marked);
     assert!(!entity.in_logic_vector);
-    assert!(entity.lifecycle.in_limbo);
+    assert!(entity.lifecycle.in_limbo());
 }
 
 #[test]
@@ -2813,8 +2839,8 @@ fn lifecycle_authority_conceal_keeps_object_alive() {
 
     let _ = sim.object_conceal(1);
     let entity = sim.substrate.entities.get(1).unwrap();
-    assert!(entity.lifecycle.object_alive);
-    assert!(entity.lifecycle.in_limbo);
+    assert!(entity.lifecycle.object_alive());
+    assert!(entity.lifecycle.in_limbo());
     assert!(!entity.dying);
     assert!(!sim.substrate.pending_delete.contains_object(&1));
 }
@@ -2915,8 +2941,8 @@ fn lifecycle_authority_uninit_limbos_while_alive_then_clears_alive_then_queues()
 
     sim.uninit(1);
     let entity = sim.substrate.entities.get(1).unwrap();
-    assert!(!entity.lifecycle.object_alive);
-    assert!(entity.lifecycle.in_limbo);
+    assert!(!entity.lifecycle.object_alive());
+    assert!(entity.lifecycle.in_limbo());
     assert!(!entity.lifecycle.cell_marked);
     assert!(entity.dying);
     assert_eq!(sim.substrate.pending_delete.object_ids(), vec![1]);
@@ -3017,7 +3043,7 @@ fn gsi_05_03_conceal_destroy_and_uninit_broadcast_before_unmark() {
             .get(1)
             .unwrap()
             .lifecycle
-            .object_alive
+            .object_alive()
     );
 
     let mut uninit = Simulation::new();
@@ -3085,8 +3111,8 @@ fn gsi_05_03_dead_nonlimbo_stored_object_still_runs_conceal() {
     let _ = sim.reveal(1);
     {
         let entity = sim.substrate.entities.get_mut(1).unwrap();
-        entity.lifecycle.object_alive = false;
-        assert!(!entity.lifecycle.in_limbo);
+        entity.lifecycle.set_object_alive_for_test(false);
+        assert!(!entity.lifecycle.in_limbo());
         assert!(entity.lifecycle.cell_marked);
     }
     sim.lifecycle_test_events.clear();
@@ -3118,8 +3144,8 @@ fn gsi_05_03_dead_nonlimbo_stored_object_still_runs_conceal() {
     assert!(destroy < unmark && unmark < limbo_set);
 
     let entity = sim.substrate.entities.get(1).unwrap();
-    assert!(!entity.lifecycle.object_alive);
-    assert!(entity.lifecycle.in_limbo);
+    assert!(!entity.lifecycle.object_alive());
+    assert!(entity.lifecycle.in_limbo());
     assert!(!entity.lifecycle.cell_marked);
     assert!(!entity.in_logic_vector);
 }
@@ -3136,8 +3162,8 @@ fn lifecycle_authority_uninit_dead_limbo_remains_resolvable_until_drain() {
         .entities
         .get(1)
         .expect("dead object remains stored until the ordinary drain");
-    assert!(!entity.lifecycle.object_alive);
-    assert!(entity.lifecycle.in_limbo);
+    assert!(!entity.lifecycle.object_alive());
+    assert!(entity.lifecycle.in_limbo());
     assert!(!entity.lifecycle.cell_marked);
     assert!(!entity.in_logic_vector);
     assert_eq!(sim.substrate.pending_delete.object_ids(), vec![1]);
@@ -3232,7 +3258,7 @@ fn nested_transport_uninit_keeps_inner_cargo_until_its_recursive_transaction() {
     assert_eq!(sim.substrate.pending_delete.object_ids(), vec![3, 2, 1]);
     for id in [1, 2, 3] {
         let entity = sim.substrate.entities.get(id).unwrap();
-        assert!(!entity.lifecycle.object_alive);
+        assert!(!entity.lifecycle.object_alive());
         assert_eq!(entity.passenger_role.inside_transport_id(), None);
     }
     for id in [1, 2] {
@@ -3274,8 +3300,8 @@ fn nested_transport_parent_expiry_preserves_its_independent_cargo() {
             let _ = sim.reveal(1);
             let _ = sim.reveal(2);
             let parent = sim.substrate.entities.get_mut(1).unwrap();
-            parent.lifecycle.object_alive = alive;
-            parent.health.current = health;
+            parent.lifecycle.set_object_alive_for_test(alive);
+            parent.health.set_for_test(health);
             let mut cargo = PassengerCargo::new(5, 2);
             cargo.board_forced(3, 1);
             let entity = sim.substrate.entities.get_mut(2).unwrap();
@@ -3449,9 +3475,9 @@ fn pointer_expiry_clears_live_target_and_navigation_refs() {
     let _ = sim.try_reveal_entity(2, request(9, 11, PlacementEvidence::MarkSucceeded));
 
     let listener = sim.substrate.entities.get_mut(1).unwrap();
-    listener.attack_target = Some(AttackTarget {
-        target: TargetKind::Entity(2),
-    });
+    listener
+        .attack_target
+        .set_for_test(Some(TargetKind::Entity(2)));
     listener.suspended_attack_target = Some(TargetKind::Entity(2));
     listener.navigation.suspended_nav_com = Some(NavTargetRef::Entity { id: 2 });
     listener.navigation.nav_com_aux = Some(NavTargetRef::Object { id: 2 });
@@ -3464,7 +3490,7 @@ fn pointer_expiry_clears_live_target_and_navigation_refs() {
     sim.uninit(2);
 
     let listener = sim.substrate.entities.get(1).unwrap();
-    assert!(listener.attack_target.is_none());
+    assert!(listener.attack_target.target().is_none());
     assert!(listener.suspended_attack_target.is_none());
     assert!(listener.navigation.suspended_nav_com.is_none());
     assert!(listener.navigation.nav_com_aux.is_none());
@@ -3551,7 +3577,9 @@ fn target_expiry_rearms_passive_scan_and_restores_suspended_mission() {
     sim.session.binary_frame = 105;
 
     let listener = sim.substrate.entities.get_mut(1).unwrap();
-    listener.attack_target = Some(AttackTarget::new(2));
+    listener
+        .attack_target
+        .set_for_test(Some(TargetKind::Entity(2)));
     listener.suspended_attack_target = Some(TargetKind::Entity(3));
     listener.navigation.suspended_nav_com = Some(NavTargetRef::Cell { rx: 7, ry: 8 });
     listener.passive_scan_timer.arm(100, 20);
@@ -3578,10 +3606,7 @@ fn target_expiry_rearms_passive_scan_and_restores_suspended_mission() {
         MissionId::from_known(MissionType::Guard)
     );
     assert_eq!(listener.mission.suspended(), MissionId::NONE);
-    assert_eq!(
-        listener.attack_target.as_ref().map(|target| target.target),
-        Some(TargetKind::Entity(3))
-    );
+    assert_eq!(listener.attack_target.target(), Some(TargetKind::Entity(3)));
     assert_eq!(
         listener.navigation.nav_com,
         Some(NavTargetRef::Cell { rx: 7, ry: 8 })
@@ -3628,7 +3653,9 @@ fn infantry_target_expiry_clears_firing_action_before_target() {
             .unwrap()
         );
         let listener = sim.substrate.entities.get_mut(1).unwrap();
-        listener.attack_target = Some(AttackTarget::new(2));
+        listener
+            .attack_target
+            .set_for_test(Some(TargetKind::Entity(2)));
         listener.mission_leaf =
             crate::sim::mission::MissionLeafState::infantry_raw_for_test(1, doing);
         // Isolate the class action: the separate PointerExpired timer gate
@@ -3637,7 +3664,7 @@ fn infantry_target_expiry_clears_firing_action_before_target() {
         let before = sim.scenario_rng.logical_state();
         sim.uninit_with_rules(2, &rules);
         let listener = sim.substrate.entities.get(1).unwrap();
-        assert!(listener.attack_target.is_none());
+        assert!(listener.attack_target.target().is_none());
         assert_eq!(listener.infantry_sprite_pose().unwrap().0, expected_doing);
         let leaf = listener.mission_leaf.as_infantry().unwrap();
         assert_eq!(leaf.firing_sequence_latch(), 0);
@@ -4453,7 +4480,7 @@ fn score_stats_credit_the_killer_and_charge_the_victim_once() {
     );
     insert_entity(&mut sim, 1, EntityCategory::Unit);
     let victim = sim.substrate.entities.get_mut(1).unwrap();
-    victim.health.current = 0;
+    victim.health.set_for_test(0);
     sim.record_the_kill(
         1,
         None,
@@ -4502,7 +4529,7 @@ fn score_stats_come_from_the_kill_record_captured_at_destruction() {
     );
     insert_entity(&mut sim, 1, EntityCategory::Infantry);
     let victim = sim.substrate.entities.get_mut(1).unwrap();
-    victim.health.current = 0;
+    victim.health.set_for_test(0);
     sim.record_the_kill(
         1,
         None,
@@ -4526,7 +4553,12 @@ fn score_stats_ignore_a_removal_that_was_not_a_destruction() {
     sim.houses
         .insert(owner, HouseState::new(owner, 0, None, true, 0, 10));
     insert_entity(&mut sim, 1, EntityCategory::Structure);
-    sim.substrate.entities.get_mut(1).unwrap().health.current = 400;
+    sim.substrate
+        .entities
+        .get_mut(1)
+        .unwrap()
+        .health
+        .set_for_test(400);
 
     sim.uninit(1);
 
@@ -4547,7 +4579,12 @@ fn score_stats_count_a_self_inflicted_kill_but_award_no_points() {
     sim.houses
         .insert(owner, HouseState::new(owner, 0, None, true, 0, 10));
     insert_entity(&mut sim, 1, EntityCategory::Structure);
-    sim.substrate.entities.get_mut(1).unwrap().health.current = 0;
+    sim.substrate
+        .entities
+        .get_mut(1)
+        .unwrap()
+        .health
+        .set_for_test(0);
     sim.record_the_kill(
         1,
         None,
@@ -4587,7 +4624,7 @@ fn dont_score_victims_book_no_kill_no_loss_and_no_points() {
     );
     insert_entity(&mut sim, 1, EntityCategory::Infantry);
     let victim = sim.substrate.entities.get_mut(1).unwrap();
-    victim.health.current = 0;
+    victim.health.set_for_test(0);
     victim.dont_score = true;
     // Retained attribution does not bypass the victim's DontScore gate.
     victim.killed_by = Some(killer_owner);
@@ -4652,7 +4689,7 @@ fn lifecycle_authority_animated_death_stays_represented_until_uninit() {
     let _ = sim.reveal(1);
 
     let entity = sim.substrate.entities.get_mut(1).unwrap();
-    entity.health.current = 0;
+    entity.health.set_for_test(0);
     entity.dying = true;
     let tracking = &sim.houses.get(&owner).unwrap().tracking;
     assert_eq!(
@@ -4661,8 +4698,8 @@ fn lifecycle_authority_animated_death_stays_represented_until_uninit() {
     );
     let entity = sim.substrate.entities.get(1).unwrap();
     assert!(!entity.destruction_recorded);
-    assert!(entity.lifecycle.object_alive);
-    assert!(!entity.lifecycle.in_limbo);
+    assert!(entity.lifecycle.object_alive());
+    assert!(!entity.lifecycle.in_limbo());
     assert!(entity.lifecycle.cell_marked);
     assert!(entity.in_logic_vector);
 
@@ -4678,7 +4715,7 @@ fn lifecycle_authority_animated_death_stays_represented_until_uninit() {
             .get(1)
             .unwrap()
             .lifecycle
-            .object_alive
+            .object_alive()
     );
     assert!(!sim.substrate.entities.get(1).unwrap().in_logic_vector);
 }
@@ -5051,7 +5088,11 @@ fn homing_ground_impact_reaches_damage_and_cleanup_through_runtime_frame() {
             let source_id = sim.allocate_stable_id();
             insert_entity(&mut sim, source_id, EntityCategory::Unit);
             let type_ref = sim.interner.intern("MTNK");
-            sim.substrate.entities.get_mut(source_id).unwrap().type_ref = type_ref;
+            sim.substrate
+                .entities
+                .get_mut(source_id)
+                .unwrap()
+                .set_type_ref_for_test(type_ref);
             shot.source_id = source_id;
             shot.arm_frames = 0;
             Some(source_id)
@@ -5190,7 +5231,8 @@ fn gsi_05_02_mixed_fixture() -> (Simulation, [u64; 6]) {
         .entities
         .get_mut(entity_id)
         .unwrap()
-        .attack_target = Some(AttackTarget::for_cell(1, 0));
+        .attack_target
+        .set_for_test(Some(TargetKind::Cell(1, 0)));
     sim.register_live_object(entity_id);
 
     let anim_id = sim.allocate_stable_id();
@@ -5742,7 +5784,7 @@ fn gsi_05_04_building_get_coords_uses_foundation_center_cell() {
     let gapowr = sim.interner.intern("GAPOWR");
     {
         let target = sim.substrate.entities.get_mut(target_id).unwrap();
-        target.type_ref = gapowr;
+        target.set_type_ref_for_test(gapowr);
         target.foundation = "2x2".to_string();
     }
     assert!(matches!(
@@ -5850,8 +5892,8 @@ fn gsi_05_04_combat_fatal_expiry_keeps_authoritative_cell_target() {
     let victim_type = sim.interner.intern("VICTIM");
     {
         let victim = sim.substrate.entities.get_mut(victim_id).unwrap();
-        victim.type_ref = victim_type;
-        victim.health.current = 10;
+        victim.set_type_ref_for_test(victim_type);
+        victim.health.set_for_test(10);
     }
     assert!(matches!(
         sim.try_reveal_entity(victim_id, common_raw_request(5, 6, 0, 128, 128)),
@@ -5897,8 +5939,8 @@ fn gsi_05_04_combat_fatal_expiry_keeps_authoritative_cell_target() {
         .entities
         .get(victim_id)
         .expect("fatal target remains resolvable before the common drain");
-    assert!(!victim.lifecycle.object_alive);
-    assert!(victim.lifecycle.in_limbo);
+    assert!(!victim.lifecycle.object_alive());
+    assert!(victim.lifecycle.in_limbo());
     assert!(sim.substrate.pending_delete.contains_object(&victim_id));
     assert_eq!(
         sim.projectiles.get(listener_id).unwrap().target,
@@ -5938,7 +5980,7 @@ fn gsi_05_04_combat_fatal_garrison_recursion_keeps_cell_target() {
     let passenger_type = sim.interner.intern("OCCUPANT");
     {
         let passenger = sim.substrate.entities.get_mut(passenger_id).unwrap();
-        passenger.type_ref = passenger_type;
+        passenger.set_type_ref_for_test(passenger_type);
         passenger.passenger_role = PassengerRole::Inside {
             transport_id: building_id,
             open_topped: false,
@@ -5946,9 +5988,9 @@ fn gsi_05_04_combat_fatal_garrison_recursion_keeps_cell_target() {
     }
     {
         let building = sim.substrate.entities.get_mut(building_id).unwrap();
-        building.type_ref = building_type;
+        building.set_type_ref_for_test(building_type);
         building.foundation = "2x2".to_string();
-        building.health.current = 10;
+        building.health.set_for_test(10);
         let mut cargo = PassengerCargo::new(5, 1);
         assert!(cargo.board(passenger_id, 1));
         building.passenger_role = PassengerRole::Transport { cargo };
@@ -5988,7 +6030,11 @@ fn gsi_05_04_combat_fatal_garrison_recursion_keeps_cell_target() {
     ] {
         let blocker_id = sim.allocate_stable_id();
         insert_entity(&mut sim, blocker_id, EntityCategory::Unit);
-        sim.substrate.entities.get_mut(blocker_id).unwrap().type_ref = blocker_type;
+        sim.substrate
+            .entities
+            .get_mut(blocker_id)
+            .unwrap()
+            .set_type_ref_for_test(blocker_type);
         assert!(matches!(
             sim.try_reveal_entity(blocker_id, common_raw_request(rx, ry, 0, 128, 128)),
             RevealOutcome::Revealed { .. }
@@ -6034,8 +6080,8 @@ fn gsi_05_04_combat_fatal_garrison_recursion_keeps_cell_target() {
         .entities
         .get(passenger_id)
         .expect("no-exit occupant remains resolvable before common drain");
-    assert!(!passenger.lifecycle.object_alive);
-    assert!(passenger.lifecycle.in_limbo);
+    assert!(!passenger.lifecycle.object_alive());
+    assert!(passenger.lifecycle.in_limbo());
     assert!(sim.substrate.pending_delete.contains_object(&passenger_id));
     assert_eq!(
         sim.projectiles.get(listener_id).unwrap().target,
@@ -6196,6 +6242,15 @@ fn gsi_05_04_high_flying_source_and_target_become_explicit_null() {
         sim.try_reveal_entity(target_id, request(13, 15, PlacementEvidence::MarkSucceeded)),
         RevealOutcome::Revealed { .. }
     ));
+    // A Reveal without rules commits no exact Z; SetHeight puts the aircraft
+    // at 208, the high-flight threshold.
+    sim.set_object_height(
+        target_id,
+        208,
+        None,
+        None,
+        crate::sim::world::FrameEffects::default(),
+    );
     let projectile_id = sim.allocate_stable_id();
     let mut spawn = gsi_05_04_guided_projectile(
         target_id,
@@ -6419,13 +6474,15 @@ fn wave_pointer_expiry_target_survives_dying_then_uninit_starts_decay_tail() {
         let owner = sim.substrate.entities.get_mut(owner_id).unwrap();
         owner.position.rx = 0;
         owner.position.ry = 0;
-        owner.attack_target = Some(AttackTarget::new(target_id));
+        owner
+            .attack_target
+            .set_for_test(Some(TargetKind::Entity(target_id)));
     }
     {
         let target = sim.substrate.entities.get_mut(target_id).unwrap();
         target.position.rx = 4;
         target.position.ry = 0;
-        target.health.current = 0;
+        target.health.set_for_test(0);
         target.dying = true;
     }
 
@@ -6478,17 +6535,19 @@ fn wave_pointer_expiry_owner_allows_dying_damage_then_uninit_nulls_later_calls()
     insert_entity(&mut sim, owner_id, EntityCategory::Unit);
     {
         let owner = sim.substrate.entities.get_mut(owner_id).unwrap();
-        owner.type_ref = sim.interner.intern("FIRER");
-        owner.health.current = 0;
+        owner.set_type_ref_for_test(sim.interner.intern("FIRER"));
+        owner.health.set_for_test(0);
         owner.dying = true;
-        owner.attack_target = Some(AttackTarget::for_cell(4, 5));
+        owner
+            .attack_target
+            .set_for_test(Some(TargetKind::Cell(4, 5)));
     }
     let receiver_id = sim.allocate_stable_id();
     insert_entity(&mut sim, receiver_id, EntityCategory::Unit);
     {
         let receiver = sim.substrate.entities.get_mut(receiver_id).unwrap();
-        receiver.type_ref = sim.interner.intern("VICTIM");
-        receiver.health = Health { current: 30 };
+        receiver.set_type_ref_for_test(sim.interner.intern("VICTIM"));
+        receiver.health = Health::new(30);
     }
     assert!(matches!(
         sim.try_reveal_entity(receiver_id, common_raw_request(4, 5, 0, 128, 128)),
@@ -6530,7 +6589,7 @@ fn wave_pointer_expiry_owner_allows_dying_damage_then_uninit_nulls_later_calls()
             .get(receiver_id)
             .unwrap()
             .health
-            .current,
+            .current(),
         20,
         "DamageArea consults the represented owner pointer, not health/dying state",
     );
@@ -6556,7 +6615,7 @@ fn wave_pointer_expiry_owner_allows_dying_damage_then_uninit_nulls_later_calls()
             .get(receiver_id)
             .unwrap()
             .health
-            .current,
+            .current(),
         20,
         "the now-null live owner makes every later DamageArea call a no-op",
     );
@@ -6575,7 +6634,8 @@ fn wave_pointer_expiry_ignores_unrelated_object_and_preserves_owner_link() {
         .entities
         .get_mut(owner_id)
         .unwrap()
-        .attack_target = Some(AttackTarget::new(target_id));
+        .attack_target
+        .set_for_test(Some(TargetKind::Entity(target_id)));
     let wave_id = sim.allocate_stable_id();
     sim.admit_wave(
         wave_id,
@@ -6606,8 +6666,8 @@ fn gsi_01_05_lethal_bullet_commits_receiver_before_retirement_and_double_compact
     let victim_type = sim.interner.intern("VICTIM");
     {
         let victim = sim.substrate.entities.get_mut(victim_id).unwrap();
-        victim.type_ref = victim_type;
-        victim.health.current = 10;
+        victim.set_type_ref_for_test(victim_type);
+        victim.health.set_for_test(10);
     }
     assert!(matches!(
         sim.try_reveal_entity(victim_id, common_raw_request(5, 6, 0, 128, 128)),
@@ -6621,7 +6681,7 @@ fn gsi_01_05_lethal_bullet_commits_receiver_before_retirement_and_double_compact
         .entities
         .get_mut(successor_id)
         .unwrap()
-        .type_ref = successor_type;
+        .set_type_ref_for_test(successor_type);
     assert!(matches!(
         sim.try_reveal_entity(successor_id, common_raw_request(8, 9, 0, 128, 128)),
         RevealOutcome::Revealed { .. }
@@ -6658,8 +6718,8 @@ fn gsi_01_05_lethal_bullet_commits_receiver_before_retirement_and_double_compact
         .entities
         .get(victim_id)
         .expect("fatal receiver remains resolvable until common drain");
-    assert!(!victim.lifecycle.object_alive);
-    assert!(victim.lifecycle.in_limbo);
+    assert!(!victim.lifecycle.object_alive());
+    assert!(victim.lifecycle.in_limbo());
     assert_eq!(victim.mission.ai_counter(), 0);
     assert_eq!(
         sim.substrate
@@ -6701,8 +6761,12 @@ fn gsi_01_05_terminal_wave_damages_once_before_single_current_removal() {
     let victim_id = sim.allocate_stable_id();
     insert_entity(&mut sim, victim_id, EntityCategory::Unit);
     let victim_type = sim.interner.intern("VICTIM");
-    sim.substrate.entities.get_mut(victim_id).unwrap().type_ref = victim_type;
-    sim.substrate.entities.get_mut(victim_id).unwrap().health = Health { current: 30 };
+    sim.substrate
+        .entities
+        .get_mut(victim_id)
+        .unwrap()
+        .set_type_ref_for_test(victim_type);
+    sim.substrate.entities.get_mut(victim_id).unwrap().health = Health::new(30);
     assert!(matches!(
         sim.try_reveal_entity(victim_id, common_raw_request(4, 5, 0, 128, 128)),
         RevealOutcome::Revealed { .. }
@@ -6715,7 +6779,7 @@ fn gsi_01_05_terminal_wave_damages_once_before_single_current_removal() {
         .entities
         .get_mut(successor_id)
         .unwrap()
-        .type_ref = successor_type;
+        .set_type_ref_for_test(successor_type);
     assert!(matches!(
         sim.try_reveal_entity(successor_id, common_raw_request(8, 9, 0, 128, 128)),
         RevealOutcome::Revealed { .. }
@@ -6724,14 +6788,17 @@ fn gsi_01_05_terminal_wave_damages_once_before_single_current_removal() {
     let wave_id = sim.allocate_stable_id();
     let firer_id = sim.allocate_stable_id();
     insert_entity(&mut sim, firer_id, EntityCategory::Unit);
-    sim.substrate.entities.get_mut(firer_id).unwrap().type_ref = sim.interner.intern("FIRER");
     sim.substrate
         .entities
         .get_mut(firer_id)
         .unwrap()
-        .attack_target = Some(AttackTarget {
-        target: TargetKind::Entity(victim_id),
-    });
+        .set_type_ref_for_test(sim.interner.intern("FIRER"));
+    sim.substrate
+        .entities
+        .get_mut(firer_id)
+        .unwrap()
+        .attack_target
+        .set_for_test(Some(TargetKind::Entity(victim_id)));
     let mut wave = Wave::new_owned(
         0,
         firer_id,
@@ -6761,7 +6828,7 @@ fn gsi_01_05_terminal_wave_damages_once_before_single_current_removal() {
             .get(victim_id)
             .unwrap()
             .health
-            .current,
+            .current(),
         20,
         "Wave receiver fires once at its Logic slot and is not replayed later"
     );
@@ -6811,10 +6878,10 @@ fn terminal_type_zero_wave_with_empty_recorded_vector_has_no_damage_area_tail() 
     insert_entity(&mut sim, firer_id, EntityCategory::Unit);
     {
         let firer = sim.substrate.entities.get_mut(firer_id).unwrap();
-        firer.type_ref = sim.interner.intern("FIRER");
-        firer.attack_target = Some(AttackTarget {
-            target: TargetKind::Cell(4, 5),
-        });
+        firer.set_type_ref_for_test(sim.interner.intern("FIRER"));
+        firer
+            .attack_target
+            .set_for_test(Some(TargetKind::Cell(4, 5)));
     }
     let wave_id = sim.allocate_stable_id();
     let mut wave = Wave::new_owned(
@@ -6864,7 +6931,11 @@ fn wave_elite_ambient_damage_carries_within_cell_and_resets_on_next_cell() {
     let mut sim = Simulation::new();
     let second_id = sim.allocate_stable_id();
     insert_entity(&mut sim, second_id, EntityCategory::Unit);
-    sim.substrate.entities.get_mut(second_id).unwrap().type_ref = sim.interner.intern("SECOND");
+    sim.substrate
+        .entities
+        .get_mut(second_id)
+        .unwrap()
+        .set_type_ref_for_test(sim.interner.intern("SECOND"));
     assert!(matches!(
         sim.try_reveal_entity(second_id, common_raw_request(4, 5, 0, 128, 128)),
         RevealOutcome::Revealed { .. }
@@ -6872,7 +6943,11 @@ fn wave_elite_ambient_damage_carries_within_cell_and_resets_on_next_cell() {
 
     let first_id = sim.allocate_stable_id();
     insert_entity(&mut sim, first_id, EntityCategory::Unit);
-    sim.substrate.entities.get_mut(first_id).unwrap().type_ref = sim.interner.intern("FIRST");
+    sim.substrate
+        .entities
+        .get_mut(first_id)
+        .unwrap()
+        .set_type_ref_for_test(sim.interner.intern("FIRST"));
     assert!(matches!(
         sim.try_reveal_entity(first_id, common_raw_request(4, 5, 0, 128, 128)),
         RevealOutcome::Revealed { .. }
@@ -6880,7 +6955,11 @@ fn wave_elite_ambient_damage_carries_within_cell_and_resets_on_next_cell() {
 
     let next_id = sim.allocate_stable_id();
     insert_entity(&mut sim, next_id, EntityCategory::Unit);
-    sim.substrate.entities.get_mut(next_id).unwrap().type_ref = sim.interner.intern("NEXT");
+    sim.substrate
+        .entities
+        .get_mut(next_id)
+        .unwrap()
+        .set_type_ref_for_test(sim.interner.intern("NEXT"));
     assert!(matches!(
         sim.try_reveal_entity(next_id, common_raw_request(5, 5, 0, 128, 128)),
         RevealOutcome::Revealed { .. }
@@ -6890,11 +6969,11 @@ fn wave_elite_ambient_damage_carries_within_cell_and_resets_on_next_cell() {
     insert_entity(&mut sim, firer_id, EntityCategory::Unit);
     {
         let firer = sim.substrate.entities.get_mut(firer_id).unwrap();
-        firer.type_ref = sim.interner.intern("FIRER");
-        firer.set_veterancy_rank(200);
-        firer.attack_target = Some(AttackTarget {
-            target: TargetKind::Entity(next_id),
-        });
+        firer.set_type_ref_for_test(sim.interner.intern("FIRER"));
+        firer.veterancy.set_rank_for_test(200);
+        firer
+            .attack_target
+            .set_for_test(Some(TargetKind::Entity(next_id)));
     }
 
     let wave_id = sim.allocate_stable_id();
@@ -6920,7 +6999,12 @@ fn wave_elite_ambient_damage_carries_within_cell_and_resets_on_next_cell() {
     assert!(sim.object_ai_visit_one(wave_id, Some(&rules), ObjectAiCtx::default()));
 
     assert_eq!(
-        sim.substrate.entities.get(first_id).unwrap().health.current,
+        sim.substrate
+            .entities
+            .get(first_id)
+            .unwrap()
+            .health
+            .current(),
         93
     );
     assert_eq!(
@@ -6929,12 +7013,17 @@ fn wave_elite_ambient_damage_carries_within_cell_and_resets_on_next_cell() {
             .get(second_id)
             .unwrap()
             .health
-            .current,
+            .current(),
         93,
         "second occupant receives the first callback's 7-point mutable value",
     );
     assert_eq!(
-        sim.substrate.entities.get(next_id).unwrap().health.current,
+        sim.substrate
+            .entities
+            .get(next_id)
+            .unwrap()
+            .health
+            .current(),
         85,
         "the next recorded cell reloads elite AmbientDamage=15, never Damage=8",
     );
@@ -6978,7 +7067,11 @@ fn wave_shared_damage_passes_a_unit_inside_its_war_factory() {
     let unit = |sim: &mut Simulation, kind: &str| {
         let id = sim.allocate_stable_id();
         insert_entity(sim, id, EntityCategory::Unit);
-        sim.substrate.entities.get_mut(id).unwrap().type_ref = sim.interner.intern(kind);
+        sim.substrate
+            .entities
+            .get_mut(id)
+            .unwrap()
+            .set_type_ref_for_test(sim.interner.intern(kind));
         assert!(matches!(
             sim.try_reveal_entity(id, common_raw_request(4, 5, 0, 128, 128)),
             RevealOutcome::Revealed { .. }
@@ -6991,7 +7084,7 @@ fn wave_shared_damage_passes_a_unit_inside_its_war_factory() {
     insert_entity(&mut sim, factory_id, EntityCategory::Structure);
     {
         let factory = sim.substrate.entities.get_mut(factory_id).unwrap();
-        factory.type_ref = sim.interner.intern("WEAP");
+        factory.set_type_ref_for_test(sim.interner.intern("WEAP"));
         factory.foundation = "1x1".to_string();
     }
     assert!(matches!(
@@ -7010,10 +7103,10 @@ fn wave_shared_damage_passes_a_unit_inside_its_war_factory() {
     insert_entity(&mut sim, firer_id, EntityCategory::Unit);
     {
         let firer = sim.substrate.entities.get_mut(firer_id).unwrap();
-        firer.type_ref = sim.interner.intern("FIRER");
-        firer.attack_target = Some(AttackTarget {
-            target: TargetKind::Entity(second_id),
-        });
+        firer.set_type_ref_for_test(sim.interner.intern("FIRER"));
+        firer
+            .attack_target
+            .set_for_test(Some(TargetKind::Entity(second_id)));
     }
     let wave_id = sim.allocate_stable_id();
     let mut wave = Wave::new_owned(
@@ -7031,7 +7124,7 @@ fn wave_shared_damage_passes_a_unit_inside_its_war_factory() {
     sim.admit_wave(wave_id, wave);
 
     assert!(sim.object_ai_visit_one(wave_id, Some(&rules), ObjectAiCtx::default()));
-    let health = |id: u64| sim.substrate.entities.get(id).unwrap().health.current;
+    let health = |id: u64| sim.substrate.entities.get(id).unwrap().health.current();
     assert_eq!(health(first_id), 100);
     assert_eq!(health(second_id), 90);
 }
@@ -7061,7 +7154,11 @@ fn wave_walks_nonbuilding_terrain_building_order_and_terrain_owns_wood_gate() {
 
         let unit_id = sim.allocate_stable_id();
         insert_entity(&mut sim, unit_id, EntityCategory::Unit);
-        sim.substrate.entities.get_mut(unit_id).unwrap().type_ref = sim.interner.intern("UNIT");
+        sim.substrate
+            .entities
+            .get_mut(unit_id)
+            .unwrap()
+            .set_type_ref_for_test(sim.interner.intern("UNIT"));
         assert!(matches!(
             sim.try_reveal_entity(unit_id, common_raw_request(4, 5, 0, 128, 128)),
             RevealOutcome::Revealed { .. }
@@ -7071,7 +7168,7 @@ fn wave_walks_nonbuilding_terrain_building_order_and_terrain_owns_wood_gate() {
         insert_entity(&mut sim, building_id, EntityCategory::Structure);
         {
             let building = sim.substrate.entities.get_mut(building_id).unwrap();
-            building.type_ref = sim.interner.intern("BLDG");
+            building.set_type_ref_for_test(sim.interner.intern("BLDG"));
             building.foundation = "1x1".to_string();
         }
         assert!(matches!(
@@ -7092,10 +7189,10 @@ fn wave_walks_nonbuilding_terrain_building_order_and_terrain_owns_wood_gate() {
         insert_entity(&mut sim, firer_id, EntityCategory::Unit);
         {
             let firer = sim.substrate.entities.get_mut(firer_id).unwrap();
-            firer.type_ref = sim.interner.intern("FIRER");
-            firer.attack_target = Some(AttackTarget {
-                target: TargetKind::Entity(building_id),
-            });
+            firer.set_type_ref_for_test(sim.interner.intern("FIRER"));
+            firer
+                .attack_target
+                .set_for_test(Some(TargetKind::Entity(building_id)));
         }
         let wave_id = sim.allocate_stable_id();
         let mut wave = Wave::new_owned(
@@ -7128,14 +7225,19 @@ fn wave_walks_nonbuilding_terrain_building_order_and_terrain_owns_wood_gate() {
             .collect::<Vec<_>>();
         (
             selected,
-            sim.substrate.entities.get(unit_id).unwrap().health.current,
+            sim.substrate
+                .entities
+                .get(unit_id)
+                .unwrap()
+                .health
+                .current(),
             sim.production.terrain_objects[&terrain_id].health,
             sim.substrate
                 .entities
                 .get(building_id)
                 .unwrap()
                 .health
-                .current,
+                .current(),
         )
     }
 
@@ -7175,10 +7277,10 @@ fn wave_tail_consumes_wall_roll_before_mandatory_cliff_chance_roll() {
     insert_entity(&mut sim, firer_id, EntityCategory::Unit);
     {
         let firer = sim.substrate.entities.get_mut(firer_id).unwrap();
-        firer.type_ref = sim.interner.intern("FIRER");
-        firer.attack_target = Some(AttackTarget {
-            target: TargetKind::Cell(4, 1),
-        });
+        firer.set_type_ref_for_test(sim.interner.intern("FIRER"));
+        firer
+            .attack_target
+            .set_for_test(Some(TargetKind::Cell(4, 1)));
     }
 
     let mut cells = Vec::new();
@@ -7296,8 +7398,8 @@ fn assert_direct_fatal_death_weapon_starts_crater(bridge: bool) {
     let victim_id = sim.allocate_stable_id();
     insert_entity(&mut sim, victim_id, EntityCategory::Unit);
     let victim = sim.substrate.entities.get_mut(victim_id).unwrap();
-    victim.type_ref = sim.interner.intern("VICTIM");
-    victim.health = Health { current: 1 };
+    victim.set_type_ref_for_test(sim.interner.intern("VICTIM"));
+    victim.health = Health::new(1);
     assert!(matches!(
         sim.try_reveal_entity(victim_id, common_raw_request(4, 5, 0, 128, 128)),
         RevealOutcome::Revealed { .. }
@@ -7315,8 +7417,10 @@ fn assert_direct_fatal_death_weapon_starts_crater(bridge: bool) {
         let firer_id = sim.allocate_stable_id();
         insert_entity(&mut sim, firer_id, EntityCategory::Unit);
         let firer = sim.substrate.entities.get_mut(firer_id).unwrap();
-        firer.type_ref = sim.interner.intern("FIRER");
-        firer.attack_target = Some(AttackTarget::new(victim_id));
+        firer.set_type_ref_for_test(sim.interner.intern("FIRER"));
+        firer
+            .attack_target
+            .set_for_test(Some(TargetKind::Entity(victim_id)));
         let wave_id = sim.allocate_stable_id();
         let mut wave = Wave::new_owned(
             0,
@@ -7392,10 +7496,10 @@ fn wave_cliff_collapse_consumes_exact_body_rng_and_spawns_row_major_anims() {
     insert_entity(&mut sim, firer_id, EntityCategory::Unit);
     {
         let firer = sim.substrate.entities.get_mut(firer_id).unwrap();
-        firer.type_ref = sim.interner.intern("FIRER");
-        firer.attack_target = Some(AttackTarget {
-            target: TargetKind::Cell(4, 1),
-        });
+        firer.set_type_ref_for_test(sim.interner.intern("FIRER"));
+        firer
+            .attack_target
+            .set_for_test(Some(TargetKind::Cell(4, 1)));
     }
     let mut cells = Vec::new();
     for ry in 0..16 {
@@ -7628,6 +7732,7 @@ fn wave_cliff_collapse_consumes_exact_body_rng_and_spawns_row_major_anims() {
             .get(firer_id)
             .unwrap()
             .attack_target
+            .target()
             .is_none()
     );
 
@@ -7709,9 +7814,9 @@ fn gsi_01_05_wave_reselects_live_cell_list_after_fatal_receiver_unmark() {
     let building_type = sim.interner.intern("DUPBLDG");
     {
         let building = sim.substrate.entities.get_mut(building_id).unwrap();
-        building.type_ref = building_type;
+        building.set_type_ref_for_test(building_type);
         building.foundation = "2x1".to_string();
-        building.health.current = 10;
+        building.health.set_for_test(10);
     }
     assert!(matches!(
         sim.try_reveal_entity(building_id, common_raw_request(4, 5, 0, 128, 128)),
@@ -7723,14 +7828,17 @@ fn gsi_01_05_wave_reselects_live_cell_list_after_fatal_receiver_unmark() {
     let wave_id = sim.allocate_stable_id();
     let firer_id = sim.allocate_stable_id();
     insert_entity(&mut sim, firer_id, EntityCategory::Unit);
-    sim.substrate.entities.get_mut(firer_id).unwrap().type_ref = sim.interner.intern("FIRER");
     sim.substrate
         .entities
         .get_mut(firer_id)
         .unwrap()
-        .attack_target = Some(AttackTarget {
-        target: TargetKind::Entity(building_id),
-    });
+        .set_type_ref_for_test(sim.interner.intern("FIRER"));
+    sim.substrate
+        .entities
+        .get_mut(firer_id)
+        .unwrap()
+        .attack_target
+        .set_for_test(Some(TargetKind::Entity(building_id)));
     let mut wave = Wave::new_owned(
         0,
         firer_id,
@@ -7770,8 +7878,8 @@ fn gsi_01_05_wave_reselects_live_cell_list_after_fatal_receiver_unmark() {
         "fatal UnInit from the first cell removes the 2x1 foundation entry before the second recorded cell selects its current occupants"
     );
     let building = sim.substrate.entities.get(building_id).unwrap();
-    assert!(!building.lifecycle.object_alive);
-    assert!(building.lifecycle.in_limbo);
+    assert!(!building.lifecycle.object_alive());
+    assert!(building.lifecycle.in_limbo());
     assert!(!sim.substrate.occupancy.contains_entity(4, 5, building_id));
     assert!(!sim.substrate.occupancy.contains_entity(5, 5, building_id));
     assert_eq!(
@@ -7873,7 +7981,9 @@ fn detach_sweep_restores_before_clearing_target_in_descending_id_order() {
 
     for attacker in [1, 2] {
         let entity = sim.substrate.entities.get_mut(attacker).unwrap();
-        entity.attack_target = Some(AttackTarget::new(3));
+        entity
+            .attack_target
+            .set_for_test(Some(TargetKind::Entity(3)));
         entity.suspended_attack_target = Some(TargetKind::Entity(4));
         entity.navigation.nav_com = None;
         entity.navigation.suspended_nav_com = Some(NavTargetRef::Cell { rx: 7, ry: 8 });
@@ -7900,7 +8010,7 @@ fn detach_sweep_restores_before_clearing_target_in_descending_id_order() {
         // Restore-then-clear: the archived target is reinstalled and the
         // null-out is skipped because it no longer matches the detaching object.
         assert_eq!(
-            entity.attack_target.as_ref().map(|target| target.target),
+            entity.attack_target.target(),
             Some(TargetKind::Entity(4)),
             "attacker {attacker} kept the target the Restore installed"
         );
@@ -7942,7 +8052,9 @@ fn detach_sweep_clears_target_when_no_mission_was_suspended() {
     insert_entity(&mut sim, 2, EntityCategory::Structure);
 
     let attacker = sim.substrate.entities.get_mut(1).unwrap();
-    attacker.attack_target = Some(AttackTarget::new(2));
+    attacker
+        .attack_target
+        .set_for_test(Some(TargetKind::Entity(2)));
     attacker.passively_acquired_target = true;
     attacker
         .mission
@@ -7952,7 +8064,7 @@ fn detach_sweep_clears_target_when_no_mission_was_suspended() {
     sim.stop_all_targeting_on_detach(2, None, None, crate::sim::world::FrameEffects::default());
 
     let attacker = sim.substrate.entities.get(1).unwrap();
-    assert!(attacker.attack_target.is_none());
+    assert!(attacker.attack_target.target().is_none());
     assert!(!attacker.passively_acquired_target);
     assert_eq!(
         attacker.mission.current(),
@@ -7981,7 +8093,9 @@ fn detach_sweep_never_matches_a_cell_target() {
     insert_entity(&mut sim, 2, EntityCategory::Structure);
 
     let attacker = sim.substrate.entities.get_mut(1).unwrap();
-    attacker.attack_target = Some(AttackTarget::for_cell(9, 11));
+    attacker
+        .attack_target
+        .set_for_test(Some(TargetKind::Cell(9, 11)));
     attacker.mission.apply_test_fixture(attack_fixture(
         MissionType::Attack,
         MissionId::from_known(MissionType::Move),
@@ -7991,7 +8105,7 @@ fn detach_sweep_never_matches_a_cell_target() {
 
     let attacker = sim.substrate.entities.get(1).unwrap();
     assert_eq!(
-        attacker.attack_target.as_ref().map(|target| target.target),
+        attacker.attack_target.target(),
         Some(TargetKind::Cell(9, 11))
     );
     assert_eq!(
@@ -8007,7 +8121,9 @@ fn bridge_cell_success_restores_before_conditional_target_clear() {
     insert_entity(&mut sim, 1, EntityCategory::Infantry);
     insert_entity(&mut sim, 2, EntityCategory::Unit);
     let attacker = sim.substrate.entities.get_mut(1).unwrap();
-    attacker.attack_target = Some(AttackTarget::for_cell(9, 11));
+    attacker
+        .attack_target
+        .set_for_test(Some(TargetKind::Cell(9, 11)));
     attacker.suspended_attack_target = Some(TargetKind::Entity(2));
     attacker.navigation.suspended_nav_com = Some(NavTargetRef::Cell { rx: 7, ry: 8 });
     attacker.mission.apply_test_fixture(attack_fixture(
@@ -8022,10 +8138,7 @@ fn bridge_cell_success_restores_before_conditional_target_clear() {
         crate::sim::world::FrameEffects::default(),
     );
     let attacker = sim.substrate.entities.get(1).unwrap();
-    assert_eq!(
-        attacker.attack_target.as_ref().map(|target| target.target),
-        Some(TargetKind::Entity(2))
-    );
+    assert_eq!(attacker.attack_target.target(), Some(TargetKind::Entity(2)));
     assert_eq!(
         attacker.navigation.nav_com,
         Some(NavTargetRef::Cell { rx: 7, ry: 8 })
@@ -8051,7 +8164,7 @@ fn insert_naval_build_const_fixture(
         0,
         0,
         owner,
-        Health { current: 1000 },
+        Health::new(1000),
         type_ref,
         EntityCategory::Structure,
         0,
@@ -8174,7 +8287,7 @@ fn naval_build_const_capture_moves_old_entry_to_new_owner_tail() {
     // (`0x00449197..0x004491D2`).
     assert_eq!(house_buildings(&sim, old_owner), vec![12]);
     assert_eq!(house_buildings(&sim, new_owner), vec![50, 40]);
-    assert_eq!(sim.substrate.entities.get(40).unwrap().owner, new_owner);
+    assert_eq!(sim.substrate.entities.get(40).unwrap().owner(), new_owner);
 }
 
 #[test]
@@ -8312,7 +8425,7 @@ fn production_air_wrapper_keeps_fly_exact_producer_and_reads_live_dummy() {
 }
 
 #[test]
-fn production_air_wrapper_retains_native_jumpjet_result_even_when_height_cache_clamps() {
+fn production_air_wrapper_retains_native_jumpjet_result_below_the_ground() {
     fn fixture() -> Simulation {
         let mut sim = Simulation::new();
         install_common_raw_terrain(&mut sim, 8, 8, 2, None);
@@ -8321,7 +8434,6 @@ fn production_air_wrapper_retains_native_jumpjet_result_even_when_height_cache_c
         e.position.exact_z_leptons = Some(-37);
         let mut loco = LocomotorState::for_test_kind(LocomotorKind::Jumpjet);
         loco.balloon_hover = true;
-        loco.altitude = SimFixed::from_num(500);
         let runtime = loco.jumpjet_runtime_mut().unwrap();
         *runtime = runtime
             .clone()
@@ -8347,18 +8459,6 @@ fn production_air_wrapper_retains_native_jumpjet_result_even_when_height_cache_c
         expected,
         Some(-37),
         "stationary native hold retains raw owner Z"
-    );
-    assert_eq!(
-        direct
-            .substrate
-            .entities
-            .get(1)
-            .unwrap()
-            .locomotor
-            .as_ref()
-            .unwrap()
-            .altitude,
-        SimFixed::from_num(0)
     );
     let mut wrapped = fixture();
     wrapped.tick_air_movement_with_cell_lists_one(
@@ -8413,20 +8513,17 @@ fn fly_cross_level_move_lands_on_destination_surface_after_restore() {
         entity.position.exact_z_leptons = Some(origin_z);
         entity.body_facing.snap(0x0000, 0);
         let loco = entity.locomotor.as_mut().unwrap();
-        loco.altitude = SimFixed::from_num(600);
         loco.set_fly_target_height(600);
 
         let fly = loco.fly_runtime_mut().unwrap();
         fly.current_speed = SIM_ONE;
         fly.target_speed = SIM_ONE;
-        assert!(sim.issue_air_cell_destination(
-            1,
-            (2, 2),
-            SimFixed::from_num(3840),
-            Some(&rules),
-            None,
-            crate::sim::world::FrameEffects::default()
-        ));
+        let cells = sim
+            .resolved_terrain
+            .as_ref()
+            .map(crate::map::resolved_terrain::NativeCellQuery::canonical);
+        let coordinate = crate::sim::movement::target_cell_coord(2, 2, cells.as_ref());
+        assert!(sim.move_air_coordinate(1, coordinate, None, Some(&rules)));
         sim.tick_air_movement_with_cell_lists_one(
             1,
             Some(&rules),
@@ -8441,7 +8538,10 @@ fn fly_cross_level_move_lands_on_destination_surface_after_restore() {
         assert!((moved_z - origin_z).abs() <= 21);
         assert_ne!(moved_z, origin_z);
         assert_eq!(
-            entity.locomotor.as_ref().unwrap().altitude.to_num::<i32>(),
+            crate::sim::movement::air_movement::current_fly_height(
+                entity,
+                sim.resolved_terrain.as_ref()
+            ),
             moved_z - destination_ground,
         );
         // Stopped over its destination's cell, as the arrival leaves it, the
@@ -8476,7 +8576,11 @@ fn fly_cross_level_move_lands_on_destination_surface_after_restore() {
             }
             assert_eq!(restored.state_hash(), sim.state_hash());
             let entity = sim.substrate.entities.get(1).unwrap();
-            if entity.locomotor.as_ref().unwrap().air_phase() == AirMovePhase::Landed {
+            let height = crate::sim::movement::air_movement::current_fly_height(
+                entity,
+                sim.resolved_terrain.as_ref(),
+            );
+            if entity.locomotor.as_ref().unwrap().air_phase(height) == AirMovePhase::Landed {
                 assert_eq!(entity.position.exact_z_leptons, Some(destination_ground));
                 assert_eq!(
                     sim.foot_navigation_coordinate(1).unwrap().z,
@@ -8774,7 +8878,7 @@ fn jumpjet_process_compares_live_layer_queries_not_cached_registration() {
     // The native tail's alive gate prevents another submission after death.
     let before = sim.entity_display_layer(id, None).unwrap();
     let entity = sim.substrate.entities.get_mut(id).unwrap();
-    entity.lifecycle.object_alive = false;
+    entity.lifecycle.set_object_alive_for_test(false);
     entity.position.exact_z_leptons = Some(0);
     sim.complete_jumpjet_display_process(id, before, None);
     assert_eq!(sim.substrate.display.layer_of(id), Some(DisplayLayer::TOP));
@@ -8792,7 +8896,7 @@ fn display_registration_expires_with_a_resubmitted_uninit_owner() {
     insert_entity(&mut sim, id, EntityCategory::Unit);
     sim.try_reveal_entity(id, common_raw_request(3, 3, 0, 128, 128));
     sim.uninit(id);
-    assert!(sim.substrate.entities.get(id).unwrap().lifecycle.in_limbo);
+    assert!(sim.substrate.entities.get(id).unwrap().lifecycle.in_limbo());
     sim.submit_entity_display(id, None, None);
     assert_eq!(
         sim.substrate.display.layer_of(id),

@@ -50,7 +50,7 @@ pub(super) fn current_target_disposition(
     rules: &RuleSet,
     interner: &StringInterner,
 ) -> ExistingTargetDisposition {
-    match candidate.attack_target.as_ref().map(|target| target.target) {
+    match candidate.attack_target.target() {
         Some(TargetKind::Entity(id)) if id == attacker_id => {
             ExistingTargetDisposition::RequestedAttacker
         }
@@ -128,7 +128,7 @@ pub(super) fn candidate_admitted(
     if peek == FireError::Illegal {
         return false;
     }
-    if candidate.category == EntityCategory::Unit
+    if candidate.category() == EntityCategory::Unit
         && (candidate_object.resource_gatherer || candidate.bunker_link.installed_in().is_some())
     {
         return false;

@@ -324,7 +324,7 @@ pub(crate) fn deploy_center(
     foundation: Option<(u16, u16)>,
 ) -> Option<(i16, i16)> {
     let cell = owner_cell(owner);
-    if owner.category != EntityCategory::Structure {
+    if owner.category() != EntityCategory::Structure {
         return Some(cell);
     }
     let (width, height) = foundation?;
@@ -606,7 +606,7 @@ impl Simulation {
                     if let (Some(strength), Some(entity)) =
                         (strength, self.substrate.entities.get_mut(slave))
                     {
-                        entity.health.current = strength;
+                        entity.health.set(strength);
                         entity.estimated_health.reset(strength);
                     }
                 }
@@ -680,8 +680,8 @@ impl Simulation {
         let Some(owner) = self.substrate.entities.get(master) else {
             return;
         };
-        let building = owner.category == EntityCategory::Structure;
-        let unit = owner.category == EntityCategory::Unit;
+        let building = owner.category() == EntityCategory::Structure;
+        let unit = owner.category() == EntityCategory::Unit;
         let driving = owner.navigation.nav_com.is_some();
         let deploy_pending = owner.mcv_deploy_pending;
         let guarding = owner.mission.current().known() == Some(MissionType::Guard);
@@ -1054,7 +1054,7 @@ impl Simulation {
         let Some(owner) = self.substrate.entities.get(master) else {
             return;
         };
-        let field = (owner.category == EntityCategory::Unit)
+        let field = (owner.category() == EntityCategory::Unit)
             .then_some(owner.navigation.nav_com)
             .flatten()
             .and_then(|target| {
@@ -1102,12 +1102,12 @@ impl Simulation {
         rules: &RuleSet,
     ) -> Option<(u16, u16)> {
         use crate::sim::find_nearby_cell::{
-            NearbyAnchorGate, NearbyFootprint, NearbyQuery, NearbySearchOptions, PassabilityArgs,
+            NearbyFootprint, NearbyQuery, NearbySearchOptions, PassabilityArgs,
             find_nearby_passable_cell_with_options, map_owned_radius_cap,
         };
         let owner = self.substrate.entities.get(master)?;
         let object = self.object_type(owner.type_ref(), rules)?;
-        let foundation = if owner.category == EntityCategory::Structure {
+        let foundation = if owner.category() == EntityCategory::Structure {
             crate::rules::foundation::foundation_dimensions(&object.foundation)
         } else if let Some(into) = object.deploys_into.as_deref().and_then(|n| rules.object(n)) {
             crate::rules::foundation::foundation_dimensions(&into.foundation)
@@ -1144,7 +1144,6 @@ impl Simulation {
                     bridge_aware_zone: search.bridge_aware,
                 },
                 footprint: NearbyFootprint::new(search.footprint.0, search.footprint.1),
-                anchor_gate: NearbyAnchorGate::NativeHeightAware,
                 allow_bridge_cells: search.allow_bridge_cells,
                 check_height: search.check_height,
                 check_occupancy: search.check_occupancy,
@@ -1229,16 +1228,14 @@ impl Simulation {
         registry: Option<&OverlayTypeRegistry>,
         frame_effects: FrameEffects<'_>,
     ) {
-        match self.set_infantry_destination(
+        if let Err(cause) = self.assign_destination_represented(
             slave,
-            crate::sim::components::NavTargetRef::cell(cell.0, cell.1),
-            rules,
+            Some(crate::sim::components::NavTargetRef::cell(cell.0, cell.1)),
+            Some(rules),
             registry,
             frame_effects,
         ) {
-            Ok(true) => {}
-            Ok(false) => log::debug!("slave {slave} has no Walk setter for {cell:?}"),
-            Err(cause) => log::debug!("slave {slave} could not be sent to {cell:?}: {cause}"),
+            log::debug!("slave {slave} could not be sent to {cell:?}: {cause}");
         }
         self.queue_slave_mission(slave, MissionType::Move);
     }
@@ -1549,7 +1546,7 @@ impl Simulation {
                 .substrate
                 .entities
                 .get(master)
-                .is_some_and(|owner| owner.category == EntityCategory::Structure)
+                .is_some_and(|owner| owner.category() == EntityCategory::Structure)
         {
             crate::sim::world::building_anim::emit_refinery_smoke(self, rules, master);
         }
@@ -1615,7 +1612,7 @@ impl Simulation {
                         continue;
                     };
                     entity.slave.owner = None;
-                    if entity.lifecycle.in_limbo {
+                    if entity.lifecycle.in_limbo() {
                         self.uninit_with_context(
                             slave,
                             UninitContext::default().with_effects(frame_effects),
@@ -1662,7 +1659,7 @@ impl Simulation {
                 continue;
             };
             entity.slave.owner = None;
-            if entity.lifecycle.in_limbo {
+            if entity.lifecycle.in_limbo() {
                 self.slave_dies_inside(slave, killer, rules, registry, frame_effects);
                 continue;
             }
@@ -1721,7 +1718,7 @@ impl Simulation {
             .substrate
             .entities
             .get(slave)
-            .map(|entity| entity.health.current)
+            .map(|entity| entity.health.current())
         else {
             return;
         };
@@ -1839,7 +1836,7 @@ mod tests {
                 .get(slave)
                 .unwrap()
                 .lifecycle
-                .in_limbo
+                .in_limbo()
         );
         assert_eq!(
             sim.substrate
@@ -1861,7 +1858,7 @@ mod tests {
             crate::sim::world::FrameEffects::default()
         )));
         let entity = sim.substrate.entities.get(slave).unwrap();
-        assert!(!entity.lifecycle.in_limbo);
+        assert!(!entity.lifecycle.in_limbo());
         assert_eq!(entity.sub_cell, Some(0));
         assert_eq!(
             (entity.position.sub_x, entity.position.sub_y),

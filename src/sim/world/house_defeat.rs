@@ -424,7 +424,7 @@ impl Simulation {
                     .substrate
                     .entities
                     .get(id)
-                    .map(|entity| entity.health.current)
+                    .map(|entity| entity.health.current())
                 else {
                     continue;
                 };

@@ -44,7 +44,7 @@ fn unit_refusals_match_native_and_leave_orders_and_rng_untouched() {
         let frame = input["frame"].as_u64().unwrap_or(100) as u32;
         let now = frame.wrapping_add(input["elapsed"].as_u64().unwrap_or(0) as u32);
         let mut actor = GameEntity::test_default(1, "MTNK", "Allies", 5, 5);
-        actor.category = EntityCategory::Unit;
+        actor.set_category_for_test(EntityCategory::Unit);
         actor
             .mission
             .apply_test_fixture(crate::sim::mission::state::MissionTestFixture {
@@ -118,7 +118,7 @@ fn unit_flags_override_mission_scatter_and_nav_com() {
     ))
     .unwrap();
     let mut actor = GameEntity::test_default(1, "MTNK", "Allies", 5, 5);
-    actor.category = EntityCategory::Unit;
+    actor.set_category_for_test(EntityCategory::Unit);
     actor.locomotor = Some(LocomotorState::for_test_kind(LocomotorKind::Drive));
     let guard = with_mission(&actor, MissionType::Guard);
     let hunt = with_mission(&actor, MissionType::Hunt);
@@ -161,7 +161,7 @@ fn unit_checks_active_locomotor_and_body_rotation_not_stashed_slot_or_turret() {
     let rules = no_rules();
     let flags = ScatterFlags::new(true, true);
     let mut actor = GameEntity::test_default(1, "CMIN", "Allies", 5, 5);
-    actor.category = EntityCategory::Unit;
+    actor.set_category_for_test(EntityCategory::Unit);
     let mut actor = with_mission(&actor, MissionType::Move);
     actor.locomotor = Some(LocomotorState::for_test_kind(LocomotorKind::Teleport));
     assert!(!unit_scatter_admitted(&actor, flags, &rules, 100));
@@ -208,7 +208,7 @@ fn scatter_requests_keep_call_order_and_ask_each_object_once() {
 #[test]
 fn unit_receiver_does_not_read_its_own_motion() {
     let mut actor = GameEntity::test_default(1, "MTNK", "Allies", 5, 5);
-    actor.category = EntityCategory::Unit;
+    actor.set_category_for_test(EntityCategory::Unit);
     let mut actor = with_mission(&actor, MissionType::Move);
     actor.locomotor = Some(LocomotorState::for_test_kind(LocomotorKind::Drive));
     let head = DriveCoord::cell(6, 5, 0);
@@ -372,14 +372,16 @@ fn cell_scatter_dispatch_matches_original_execution() {
                 0,
                 0,
                 owner,
-                crate::sim::components::Health { current: 100 },
+                crate::sim::combat::Health::new(100),
                 kind,
                 EntityCategory::Unit,
                 0,
                 5,
                 true,
             );
-            entity.set_veterancy_rank(object["rank"].as_u64().unwrap_or(0) as u16 * 100);
+            entity
+                .veterancy
+                .set_rank_for_test(object["rank"].as_u64().unwrap_or(0) as u16 * 100);
             let mut house = HouseState::new(owner, 0, None, true, 0, 10);
             house.current_iq = object["iq"].as_i64().unwrap_or(0) as i32;
             houses.insert(owner, house);
@@ -409,7 +411,7 @@ fn cell_scatter_dispatch_matches_original_execution() {
         assert_eq!(dispatched, expected_technos, "{}", input["name"]);
         let elite = technos
             .iter()
-            .any(|&id| entities.get(id).unwrap().veterancy() >= RANK_ELITE_U16);
+            .any(|&id| entities.get(id).unwrap().veterancy.rank() >= RANK_ELITE_U16);
         for id in others {
             assert_eq!(
                 scatter_dispatch_allowed(
@@ -445,7 +447,7 @@ fn unforced_walk_reads_house_iq_ability_elite_and_player_scatter() {
     let stock = rules(false);
     let mut entities = EntityStore::new();
     let mut man = GameEntity::test_default(2, "E1", "Soviet", 5, 5);
-    man.category = EntityCategory::Infantry;
+    man.set_category_for_test(EntityCategory::Infantry);
     let owner = man.owner();
     entities.insert(man);
     let mut houses = BTreeMap::new();
@@ -456,7 +458,11 @@ fn unforced_walk_reads_house_iq_ability_elite_and_player_scatter() {
     };
     for (iq, rank, expected) in [(1, 0, false), (2, 0, true), (1, 100, true)] {
         houses.get_mut(&owner).unwrap().current_iq = iq;
-        entities.get_mut(2).unwrap().set_veterancy_rank(rank);
+        entities
+            .get_mut(2)
+            .unwrap()
+            .veterancy
+            .set_rank_for_test(rank);
         assert_eq!(
             walk(&entities, &houses, &stock, &[2]),
             if expected { vec![2] } else { vec![] },
@@ -464,11 +470,11 @@ fn unforced_walk_reads_house_iq_ability_elite_and_player_scatter() {
         );
     }
     houses.get_mut(&owner).unwrap().current_iq = 0;
-    entities.get_mut(2).unwrap().set_veterancy_rank(0);
+    entities.get_mut(2).unwrap().veterancy.set_rank_for_test(0);
     assert_eq!(walk(&entities, &houses, &rules(true), &[2]), vec![2]);
     let mut elite = GameEntity::test_default(3, "E1", "Soviet", 5, 5);
-    elite.category = EntityCategory::Infantry;
-    elite.set_veterancy_rank(200);
+    elite.set_category_for_test(EntityCategory::Infantry);
+    elite.veterancy.set_rank_for_test(200);
     entities.insert(elite);
     assert_eq!(walk(&entities, &houses, &stock, &[3, 2]), vec![3, 2]);
     assert!(walk(&entities, &houses, &stock, &[2]).is_empty());
@@ -503,7 +509,10 @@ fn unit_null_arm_moves_hover_and_jumpjet_units() {
     ] {
         let actor = sim.substrate.entities.get(id).unwrap();
         assert_eq!(actor.locomotor.as_ref().unwrap().active_kind(), kind);
-        assert!(actor.movement_target.is_none() && actor.navigation.nav_com.is_none());
+        assert!(
+            crate::sim::movement::motion_query::is_moving(&actor) != Some(true)
+                && actor.navigation.nav_com.is_none()
+        );
     }
     let rng = sim.scenario_rng.state();
     let flags = ScatterFlags::new(true, true);
@@ -520,7 +529,10 @@ fn unit_null_arm_moves_hover_and_jumpjet_units() {
         .unwrap()
     );
     let unit = sim.substrate.entities.get(hover).unwrap();
-    assert!(unit.movement_target.is_some(), "the Hover route");
+    assert!(
+        crate::sim::movement::motion_query::is_moving(&unit) == Some(true),
+        "the Hover route"
+    );
     assert_eq!(
         unit.navigation.nav_com,
         Some(crate::sim::components::NavTargetRef::cell(cell.0, cell.1))
@@ -544,7 +556,7 @@ fn unit_null_arm_moves_hover_and_jumpjet_units() {
         Some(NavTargetRef::cell(cell.0, cell.1)),
         "the Jumpjet's setter writes its NavCom"
     );
-    assert!(unit.movement_target.is_some());
+    assert!(crate::sim::movement::motion_query::is_moving(&unit) == Some(true));
     assert_eq!(sim.scenario_rng.state(), rng);
 }
 
@@ -591,7 +603,7 @@ fn unit_null_arm_matches_original_execution() {
                 .unwrap()
         } else {
             let mut actor = GameEntity::test_default(1, "MTNK", "Allies", 10, 10);
-            actor.category = EntityCategory::Unit;
+            actor.set_category_for_test(EntityCategory::Unit);
             actor.locomotor = Some(LocomotorState::for_test_kind(LocomotorKind::Drive));
             sim.substrate
                 .entities
@@ -675,7 +687,9 @@ fn receive_damage_scatter_gates_match_original_execution() {
         };
         let actor = GameEntity::test_default_of_category(1, type_name, "Allies", 5, 5, category);
         let mut actor = with_mission(&actor, MissionType::Guard);
-        actor.set_veterancy_rank(input["rank"].as_u64().unwrap_or(0) as u16 * 100);
+        actor
+            .veterancy
+            .set_rank_for_test(input["rank"].as_u64().unwrap_or(0) as u16 * 100);
         if !flag("null_locomotor") {
             let mut locomotor = LocomotorState::for_test_kind(LocomotorKind::Walk);
             locomotor.set_walk_destination(flag("moving").then(|| DriveCoord::cell(6, 5, 0)));
@@ -685,7 +699,9 @@ fn receive_damage_scatter_gates_match_original_execution() {
             actor.dock_entered_with = Some(9);
         }
         if flag("target") {
-            actor.attack_target = Some(crate::sim::combat::AttackTarget::new(9));
+            actor
+                .attack_target
+                .set_for_test(Some(crate::sim::combat::TargetKind::Entity(9)));
         }
         if flag("nav") {
             actor.navigation.nav_com = Some(NavTargetRef::cell(9, 9));
@@ -761,7 +777,7 @@ fn receive_damage_scatter_gates_match_original_execution() {
 #[test]
 fn unit_source_arm_matches_original_execution() {
     use crate::rules::ini_parser::IniFile;
-    use crate::sim::combat::AttackTarget;
+    use crate::sim::combat::TargetKind;
     use crate::sim::movement::fresh_oracle_seam::{self, FreshCallRecord};
     let rows: serde_json::Value = serde_json::from_str(crate::test_fixture::text(
         "tools/spatial_oracle/unit_source_scatter.json",
@@ -811,7 +827,9 @@ fn unit_source_arm_matches_original_execution() {
             actor.navigation.nav_com = Some(NavTargetRef::cell(8, 8));
         }
         if flag("target") {
-            actor.attack_target = Some(AttackTarget::for_cell(5, 5));
+            actor
+                .attack_target
+                .set_for_test(Some(TargetKind::Cell(5, 5)));
         }
         actor.turret_rotation_latch = flag("turret_latch");
         if flag("unload_active") {

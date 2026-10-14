@@ -1537,16 +1537,6 @@ fn load_iso_palette(asset_manager: &AssetManager, theater_ext: &str) -> Option<P
         .and_then(|bytes| Palette::from_bytes(bytes).ok())
 }
 
-/// Check if a cell is walkable on either the ground or bridge layer.
-/// Delegates to the unified `PathGrid::is_any_layer_walkable()` method.
-pub(crate) fn is_any_layer_walkable(
-    grid: &crate::sim::pathfinding::PathGrid,
-    x: u16,
-    y: u16,
-) -> bool {
-    grid.is_any_layer_walkable(x, y)
-}
-
 pub(crate) fn screen_point_to_world(state: &AppState, screen_x: f32, screen_y: f32) -> (f32, f32) {
     screen_point_to_world_with_camera(
         (screen_x, screen_y),
@@ -1638,15 +1628,7 @@ pub(crate) fn nearest_walkable_cell(
     start: (u16, u16),
     max_radius: u16,
 ) -> Option<(u16, u16)> {
-    grid.nearest_walkable_any_layer(start.0, start.1, max_radius, None, None)
-}
-
-pub(crate) fn nearest_walkable_cell_layered(
-    grid: &crate::sim::pathfinding::PathGrid,
-    start: (u16, u16),
-    max_radius: u16,
-) -> Option<(u16, u16)> {
-    grid.nearest_walkable_any_layer(start.0, start.1, max_radius, None, None)
+    grid.nearest_walkable_any_layer(start.0, start.1, max_radius)
 }
 
 pub(crate) fn clamp_cell_to_grid(

@@ -203,13 +203,13 @@ pub fn producer_candidates_for_owner_category(
         if e.dying {
             continue;
         }
-        if e.lifecycle.in_limbo {
+        if e.lifecycle.in_limbo() {
             continue;
         }
         if !interner.resolve(e.owner()).eq_ignore_ascii_case(owner) {
             continue;
         }
-        if e.category != EntityCategory::Structure {
+        if e.category() != EntityCategory::Structure {
             continue;
         }
         if e.building_up() {

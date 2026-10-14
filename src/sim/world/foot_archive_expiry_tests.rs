@@ -2,7 +2,7 @@
 //! seam. Native/producers excluded: spatial_oracle/foot_archive_expiry.md.
 
 use super::*;
-use crate::sim::components::Health;
+use crate::sim::combat::Health;
 use crate::sim::mission::state::MissionTestFixture;
 use crate::sim::mission::{MissionDispatchTimer, MissionId, MissionType};
 use crate::sim::vision::FogState;
@@ -37,7 +37,7 @@ fn native_foot_archive_expiry_matches_all_22_original_class_rows() {
             0,
             0,
             owner,
-            Health { current: 100 },
+            Health::new(100),
             type_ref,
             category,
             0,
@@ -62,7 +62,9 @@ fn native_foot_archive_expiry_matches_all_22_original_class_rows() {
             },
         )));
         if input["target_match"].as_bool().unwrap() {
-            listener.attack_target = Some(crate::sim::combat::AttackTarget::new(2));
+            listener
+                .attack_target
+                .set_for_test(Some(crate::sim::combat::TargetKind::Entity(2)));
         }
         sim.substrate.entities.insert(listener);
         if input["sensor"].as_i64().unwrap() != 0 {
@@ -98,11 +100,7 @@ fn native_foot_archive_expiry_matches_all_22_original_class_rows() {
         };
         let target = (row["target"] != 0).then_some(TargetKind::Entity(2));
         assert_eq!(listener.archive_target(), archive, "{input}");
-        assert_eq!(
-            listener.attack_target.as_ref().map(|attack| attack.target),
-            target,
-            "{input}"
-        );
+        assert_eq!(listener.attack_target.target(), target, "{input}");
         assert_eq!(
             sim.scenario_rng.logical_state(),
             rng_before,

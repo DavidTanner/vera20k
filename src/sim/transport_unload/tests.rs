@@ -235,7 +235,7 @@ impl Fixture {
             .substrate
             .entities
             .get(id)
-            .is_some_and(|e| !e.lifecycle.in_limbo)
+            .is_some_and(|e| !e.lifecycle.in_limbo())
     }
 
     fn cargo_ids(&self, transport: u64) -> Vec<u64> {
@@ -606,6 +606,65 @@ fn internal_ejection_preserves_passenger_archive() {
     }
 }
 
+/// The ejectors keep the passenger's target: Unit Mission_Unload clears it
+/// only when the passenger leaves another house's OpenTopped transport,
+/// through the class NULL setter (`0x0073DB9D..0x0073DBC3`), and KickOutUnit
+/// has no target write (`0x00415BF9..0x00415C21`). The passenger's own AI
+/// may drop the target later; this checks what the ejector leaves.
+#[test]
+fn ejection_keeps_the_passengers_target_unless_it_leaves_another_houses_open_transport() {
+    use crate::sim::combat::TargetKind;
+
+    for (transport_type, other_house, keeps) in [
+        ("BFRT", false, true),
+        ("BFRT", true, false),
+        ("LCRF", true, true),
+        ("SHAD", false, true),
+    ] {
+        let mut fx = Fixture::new(|_, _| false);
+        let transport = fx.spawn(transport_type, 20, 20, 0);
+        let passenger = fx.board(transport, 1)[0];
+        let target = Some(TargetKind::Cell(9, 9));
+        let other = fx.sim.intern("Russians");
+        let pax = fx.sim.substrate.entities.get_mut(passenger).unwrap();
+        pax.attack_target.set_for_test(target);
+        pax.passively_acquired_target = true;
+        pax.weapon_burst.complete_shot(3);
+        if other_house {
+            pax.set_owner_for_test(other);
+        }
+        let effects = crate::sim::world::FrameEffects::default();
+        if transport_type == "SHAD" {
+            assert!(super::eject_from_aircraft(
+                &mut fx.sim,
+                &fx.rules,
+                None,
+                transport,
+                effects
+            ));
+        } else {
+            assert!(matches!(
+                super::eject_head_passenger(&mut fx.sim, &fx.rules, transport, None, effects),
+                super::EjectOutcome::Placed
+            ));
+        }
+        assert!(fx.revealed(passenger), "{transport_type}: passenger leaves");
+        let pax = fx.sim.substrate.entities.get(passenger).unwrap();
+        let case = format!("{transport_type}, other house {other_house}");
+        if keeps {
+            assert_eq!(pax.attack_target.target(), target, "{case}");
+            assert!(pax.passively_acquired_target, "{case}");
+            assert_eq!(pax.weapon_burst.index(), 1, "{case}");
+        } else {
+            // Through the class setter: its NULL arm resets the burst
+            // (`0x006FCF5B`), which a raw store would not.
+            assert_eq!(pax.attack_target.target(), None, "{case}");
+            assert!(!pax.passively_acquired_target, "{case}");
+            assert_eq!(pax.weapon_burst.index(), 0, "{case}");
+        }
+    }
+}
+
 /// `TurretCount > 0`: `+0x6E4 = (cargo == 1 ? 0 : 1)` — the IFV keeps its
 /// last passenger (the first boarded, at the cargo tail).
 #[test]
@@ -646,12 +705,10 @@ fn hover_transport_on_water_moves_to_shore_before_unloading() {
     for _ in 0..3 {
         fx.tick();
     }
-    let moving = fx
-        .sim
-        .substrate
-        .entities
-        .get(lcrf)
-        .is_some_and(|e| e.movement_target.is_some() || e.navigation.nav_com.is_some());
+    let moving = fx.sim.substrate.entities.get(lcrf).is_some_and(|e| {
+        crate::sim::movement::motion_query::is_moving(&e) == Some(true)
+            || e.navigation.nav_com.is_some()
+    });
     assert!(moving, "the landing craft is driven toward land first");
     assert_eq!(
         fx.cargo_ids(lcrf).len(),
@@ -670,6 +727,43 @@ fn hover_transport_on_water_moves_to_shore_before_unloading() {
         let (rx, _) = fx.cell(id);
         assert!(rx >= 25, "passenger {id} placed on land (x={rx})");
     }
+}
+
+/// The water-to-land pre-move pushes no height gate (`0x0073D782`): a bank
+/// two levels above the water still answers Find_Nearby_Passable_Cell, so the
+/// landing craft is sent to it instead of waiting on the water.
+#[test]
+fn hover_transport_on_water_is_sent_to_a_raised_bank() {
+    let mut fx = Fixture::new(|rx, _| rx < 25);
+    let terrain = fx.sim.resolved_terrain.as_mut().unwrap();
+    for y in 0..MAP {
+        for x in 25..MAP {
+            terrain.cell_mut(x, y).unwrap().level = 2;
+        }
+    }
+    let lcrf = fx.spawn("LCRF", 20, 20, 0x40);
+    fx.board(lcrf, 2);
+    assert!(fx.apply(Command::UnloadPassengers { transport_id: lcrf }));
+
+    let mut sent = None;
+    for _ in 0..10 {
+        fx.tick();
+        sent = fx
+            .sim
+            .substrate
+            .entities
+            .get(lcrf)
+            .unwrap()
+            .navigation
+            .nav_com;
+        if sent.is_some() {
+            break;
+        }
+    }
+    assert!(
+        matches!(sent, Some(crate::sim::components::NavTargetRef::Cell { rx, .. }) if rx >= 25),
+        "sent to the raised bank: {sent:?}"
+    );
 }
 
 /// A Move order re-assigns the mission and interrupts the unload.
@@ -693,7 +787,6 @@ fn move_order_cancels_a_running_unload() {
         entity_id: bfrt,
         target_rx: 30,
         target_ry: 30,
-        queue: false,
     }));
     for _ in 0..80 {
         fx.tick();
@@ -707,57 +800,42 @@ fn move_order_cancels_a_running_unload() {
     assert_ne!(fx.mission(bfrt), MissionId::from_known(MissionType::Unload));
 }
 
-/// The Aircraft Unload slot ejects only once `GetHeight() == 0 && altitude ==
-/// 0.0`; an airborne Nighthawk holds its cargo.
+/// The Aircraft Unload slot ejects only once `GetHeight() == 0` and the
+/// approach pitch `+0x2E8 == 0.0` (`0x004151FF`, `0x0041520D`): an airborne
+/// Nighthawk holds its cargo, and so does a grounded one still pitched.
 #[test]
 fn nighthawk_unloads_only_when_landed() {
     let mut fx = Fixture::new(|_, _| false);
     let shad = fx.spawn("SHAD", 20, 20, 0);
     let pax = fx.board(shad, 2);
-    {
-        let loco = fx
-            .sim
-            .substrate
-            .entities
-            .get_mut(shad)
-            .expect("aircraft")
-            .locomotor
-            .as_mut()
-            .expect("locomotor");
-        loco.altitude = SimFixed::from_num(600);
-    }
+    fx.sim.set_object_height_unmarked(shad, 600);
     assert!(fx.apply(Command::UnloadPassengers { transport_id: shad }));
     assert_eq!(fx.mission(shad), MissionId::from_known(MissionType::Unload));
     for _ in 0..30 {
-        {
-            let loco = fx
-                .sim
-                .substrate
-                .entities
-                .get_mut(shad)
-                .expect("aircraft")
-                .locomotor
-                .as_mut()
-                .expect("locomotor");
-            loco.altitude = SimFixed::from_num(600);
-        }
+        fx.sim.set_object_height_unmarked(shad, 600);
         crate::sim::aircraft::dispatch_mission(&mut fx.sim, shad, &fx.rules, Default::default());
         fx.sim.session.binary_frame += 1;
     }
     assert_eq!(fx.cargo_ids(shad).len(), 2, "airborne: nothing leaves");
 
-    {
-        let loco = fx
-            .sim
+    fx.sim.set_object_height_unmarked(shad, 0);
+    let pitch = |fx: &mut Fixture, angle: SimFixed| {
+        fx.sim
             .substrate
             .entities
             .get_mut(shad)
             .expect("aircraft")
-            .locomotor
-            .as_mut()
-            .expect("locomotor");
-        loco.altitude = SIM_ZERO;
+            .flight_attitude
+            .approach(0, 1, angle);
+    };
+    pitch(&mut fx, SimFixed::from_num(1));
+    for _ in 0..30 {
+        crate::sim::aircraft::dispatch_mission(&mut fx.sim, shad, &fx.rules, Default::default());
+        fx.sim.session.binary_frame += 1;
     }
+    assert_eq!(fx.cargo_ids(shad).len(), 2, "pitched: nothing leaves");
+
+    pitch(&mut fx, SIM_ZERO);
     let mut frames = Vec::new();
     for _ in 0..80 {
         crate::sim::aircraft::dispatch_mission(&mut fx.sim, shad, &fx.rules, Default::default());
@@ -794,18 +872,7 @@ fn nighthawk_ejects_five_passengers_to_scanned_neighbours() {
     let mut fx = Fixture::new(|_, _| false);
     let shad = fx.spawn("SHAD", 20, 20, 0);
     let pax = fx.board(shad, 5);
-    {
-        let loco = fx
-            .sim
-            .substrate
-            .entities
-            .get_mut(shad)
-            .expect("aircraft")
-            .locomotor
-            .as_mut()
-            .expect("locomotor");
-        loco.altitude = SIM_ZERO;
-    }
+    fx.sim.set_object_height_unmarked(shad, 0);
     assert!(fx.apply(Command::UnloadPassengers { transport_id: shad }));
 
     // (id, reveal frame, mission, destination) captured the tick each surfaces.
@@ -957,12 +1024,10 @@ fn relaxed_pass_drives_vehicle_passenger_to_the_fnpc_cell() {
     // so the state-3 scan starts at octant 5; the strict pass fails
     // everywhere (ring two is water) and the relaxed restart accepts octant
     // 6 (W), exit cell (19, 20). The FNPC expectation is taken now, with the
-    // passenger still in limbo, exactly as the handler sees it.
+    // passenger still in limbo, exactly as the handler sees it: the free exit
+    // cell passes every argument, so ring 0 answers it.
     let exit = (19u16, 20u16);
-    let expected = {
-        let pax = fx.sim.substrate.entities.get(bggy).expect("passenger");
-        super::find_nearby_passable_for(&fx.sim, &fx.rules, pax, exit, None).expect("FNPC result")
-    };
+    let expected = exit;
     let spawn_elevation = fx
         .sim
         .substrate
@@ -1005,17 +1070,62 @@ fn relaxed_pass_drives_vehicle_passenger_to_the_fnpc_cell() {
     );
 }
 
-fn set_altitude(fx: &mut Fixture, id: u64, altitude: i32) {
-    let loco = fx
+/// The vehicle passenger's Find_Nearby_Passable_Cell (`0x0073DA96..0x0073DADD`)
+/// runs the playfield anchor gate with no height gate. The strict pass takes
+/// octant 5, exit (19, 21), which lies outside this playfield diamond
+/// (`y - x < 2`), so ring 0 fails and ring 1 answers. Its only in-diamond
+/// cells besides the transport's own are (19, 20) and (20, 21), raised two
+/// levels.
+#[test]
+fn vehicle_passenger_off_the_playfield_exit_lands_on_raised_in_playfield_ground() {
+    let mut fx = Fixture::new(|_, _| false);
+    fx.sim.playfield_bounds = Some(crate::map::playfield::PlayfieldBounds {
+        base: 0,
+        off_fc: -1,
+        off_100: -100,
+        off_104: 100,
+        off_108: 200,
+    });
+    let terrain = fx.sim.resolved_terrain.as_mut().unwrap();
+    for (x, y) in [(19, 20), (20, 21)] {
+        terrain.cell_mut(x, y).unwrap().level = 2;
+    }
+    let bfrt = fx.spawn("BFRT", 20, 20, 0);
+    let bggy = fx.spawn("BGGY", 24, 24, 0);
+    assert_eq!(
+        fx.sim.techno_limbo_with_rules(bggy, &fx.rules, None),
+        ConcealOutcome::Concealed
+    );
+    let boarded = fx
         .sim
         .substrate
         .entities
-        .get_mut(id)
-        .expect("aircraft")
-        .locomotor
-        .as_mut()
-        .expect("locomotor");
-    loco.altitude = SimFixed::from_num(altitude);
+        .get_mut(bfrt)
+        .and_then(|t| t.passenger_role.cargo_mut())
+        .is_some_and(|cargo| cargo.board(bggy, 1));
+    assert!(boarded, "cargo accepts the vehicle");
+    fx.sim
+        .substrate
+        .entities
+        .get_mut(bggy)
+        .expect("passenger")
+        .passenger_role = PassengerRole::Inside {
+        transport_id: bfrt,
+        open_topped: true,
+    };
+    assert!(fx.apply(Command::UnloadPassengers { transport_id: bfrt }));
+
+    let order = fx.run_until_revealed_with_missions(&[bggy], 200);
+    assert_eq!(order.len(), 1, "the vehicle left: {order:?}");
+    let cell = fx.cell(bggy);
+    assert!(
+        [(19, 20), (20, 21)].contains(&cell),
+        "placed on raised in-playfield ground, not the exit: {cell:?}"
+    );
+}
+
+fn set_altitude(fx: &mut Fixture, id: u64, altitude: i32) {
+    fx.sim.set_object_height_unmarked(id, altitude);
 }
 
 fn handler_state(fx: &Fixture, id: u64) -> u32 {
@@ -1087,10 +1197,10 @@ fn descending_nighthawk_draws_no_scenario_rng_until_it_ejects() {
 }
 
 /// `UnitClass::Mission_Unload` state 0 waits (`return 10`) only while the
-/// locomotor's Is_Moving (`0x0073D729`) is true. An order alone does not hold
-/// the unload; a Drive with a destination does, before it has any speed.
+/// locomotor's Is_Moving (`0x0073D729`) is true: a Drive with a destination
+/// holds the unload before it has any speed.
 #[test]
-fn unit_unload_waits_on_the_locomotors_is_moving_not_the_order() {
+fn unit_unload_waits_on_the_locomotors_is_moving() {
     let run = |setup: &dyn Fn(&mut crate::sim::game_entity::GameEntity)| {
         let mut fx = Fixture::new(|_, _| false);
         let bfrt = fx.spawn("BFRT", 20, 20, 0x40);
@@ -1107,11 +1217,6 @@ fn unit_unload_waits_on_the_locomotors_is_moving_not_the_order() {
     };
     let waiting = (super::WAIT_MOVING_FRAMES, super::STATE_PICK_EXIT);
     assert_ne!(run(&|_| {}), waiting, "a standing transport unloads");
-    assert_ne!(
-        run(&|e| e.movement_target = Some(crate::sim::components::MovementTarget::default())),
-        waiting,
-        "an order alone does not hold the unload"
-    );
     assert_eq!(
         run(&|e| {
             {
@@ -1181,29 +1286,25 @@ fn jumpjet_transport_ordered_to_unload_in_flight_lands_first() {
         entity_id: hind,
         target_rx: 36,
         target_ry: 20,
-        queue: false,
     }));
     let altitude = |fx: &Fixture| {
-        fx.sim
-            .substrate
-            .entities
-            .get(hind)
-            .and_then(|e| e.locomotor.as_ref())
-            .map(|loco| loco.altitude)
-            .expect("locomotor")
+        crate::sim::movement::air_movement::current_fly_height(
+            fx.sim.substrate.entities.get(hind).expect("aircraft"),
+            fx.sim.resolved_terrain.as_ref(),
+        )
     };
     for _ in 0..150 {
         fx.tick();
     }
     let ordered_at = fx.cell(hind);
-    assert!(altitude(&fx) > SIM_ZERO, "in flight");
+    assert!(altitude(&fx) > 0, "in flight");
     assert!(fx.apply(Command::UnloadPassengers { transport_id: hind }));
     let mut landed_reveals = 0;
     for _ in 0..600 {
         fx.tick();
         let out = pax.iter().filter(|&&id| fx.revealed(id)).count();
         if out > landed_reveals {
-            assert_eq!(altitude(&fx), SIM_ZERO, "a passenger left in the air");
+            assert_eq!(altitude(&fx), 0, "a passenger left in the air");
             landed_reveals = out;
         }
         if out == pax.len() {
@@ -1230,7 +1331,6 @@ fn unload_order_stops_a_driving_transport_where_it_is() {
         entity_id: bfrt,
         target_rx: 36,
         target_ry: 20,
-        queue: false,
     }));
     for _ in 0..40 {
         fx.tick();
@@ -1255,10 +1355,10 @@ fn unload_order_stops_a_driving_transport_where_it_is() {
 }
 
 /// `AircraftClass::Mission_Unload` state 2 moves on to state 3 when the
-/// locomotor's Is_Moving (`0x0041549D`) is false; the order is not asked.
+/// locomotor's Is_Moving (`0x0041549D`) is false.
 /// The fixture's `[SHAD]` is an aircraft to reach this slot.
 #[test]
-fn landed_aircraft_transport_unload_asks_the_locomotor_not_the_order() {
+fn landed_aircraft_transport_unload_asks_the_locomotor() {
     let run = |setup: &dyn Fn(&mut crate::sim::game_entity::GameEntity)| {
         let mut fx = Fixture::new(|_, _| false);
         let shad = fx.spawn("SHAD", 20, 20, 0);
@@ -1286,9 +1386,9 @@ fn landed_aircraft_transport_unload_asks_the_locomotor_not_the_order() {
         handler_state(&fx, shad)
     };
     assert_eq!(
-        run(&|e| e.movement_target = Some(crate::sim::components::MovementTarget::default())),
+        run(&|_| {}),
         super::AIR_STATE_EJECT,
-        "an order alone does not hold a landed aircraft transport"
+        "a still landed aircraft transport ejects"
     );
     assert_eq!(
         run(&|e| {
@@ -1456,7 +1556,7 @@ fn cargo_departure_ground_reveal_rejection_preserves_route_retry_state() {
             );
             let pax = fx.sim.substrate.entities.get(passenger).unwrap();
             assert_eq!(pax.passenger_role.inside_transport_id(), Some(transport));
-            assert!(pax.lifecycle.in_limbo);
+            assert!(pax.lifecycle.in_limbo());
             assert_eq!(pax.lifecycle.cell_marked, !already_revealed);
             assert!(!pax.in_logic_vector);
             assert_eq!(pax.locomotor.as_ref().unwrap().layer, MovementLayer::Ground);

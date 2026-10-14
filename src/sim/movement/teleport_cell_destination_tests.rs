@@ -149,12 +149,12 @@ fn fixture(row: &Value, rules: &RuleSet) -> (Simulation, u64, InternedId) {
         .construct_object_limbo_at_height("CLEG", "Americans", 10, 10, 0, 0, rules)
         .unwrap();
     let actor = sim.substrate.entities.get_mut(id).unwrap();
-    assert_eq!(actor.category, EntityCategory::Infantry);
+    assert_eq!(actor.category(), EntityCategory::Infantry);
     assert_eq!(
         actor.locomotor.as_ref().unwrap().active_kind(),
         LocomotorKind::Teleport
     );
-    actor.lifecycle.in_limbo = false;
+    actor.lifecycle.set_in_limbo_for_test(false);
     actor.lifecycle.cell_marked = true;
     super::super::ground_pose::put_location(&mut actor.position, coord(&before["actor"]["coords"]));
     actor.on_bridge = signed(&before["actor"]["on_bridge"]) != 0;
@@ -233,10 +233,10 @@ fn fixture(row: &Value, rules: &RuleSet) -> (Simulation, u64, InternedId) {
             .unwrap();
         let supplied = coord(&transport["coords"]);
         let vehicle = sim.substrate.entities.get_mut(target).unwrap();
-        vehicle.lifecycle.in_limbo = false;
+        vehicle.lifecycle.set_in_limbo_for_test(false);
         vehicle.lifecycle.cell_marked = true;
         super::super::ground_pose::put_location(&mut vehicle.position, supplied);
-        vehicle.health.current = signed(&transport["health"]);
+        vehicle.health.set_for_test(signed(&transport["health"]));
         vehicle.on_bridge = transport
             .get("on_bridge")
             .and_then(Value::as_bool)
@@ -267,8 +267,12 @@ fn fixture(row: &Value, rules: &RuleSet) -> (Simulation, u64, InternedId) {
             // The native TimerCheck fixture supplies a nonnull TarCom+2B4,
             // deliberately excluding passive-acquisition/idle callbacks.
             assert_ne!(before["actor"]["target"], "0x0");
-            sim.substrate.entities.get_mut(id).unwrap().attack_target =
-                Some(crate::sim::combat::AttackTarget::new(target));
+            sim.substrate
+                .entities
+                .get_mut(id)
+                .unwrap()
+                .attack_target
+                .set_for_test(Some(crate::sim::combat::TargetKind::Entity(target)));
         }
         assert_eq!((cell.0, cell.1), pair(&row["transport_input"]["mapcoords"]));
         assert_eq!(
@@ -496,7 +500,7 @@ fn execute(
             //Original class EAX is register residue (e.g.100), not a Bool
             //contract. Compare the owned state/query/fullRNG below instead.
             let _ = sim
-                .set_infantry_destination(
+                .assign_infantry_destination(
                     id,
                     NavTargetRef::cell(rx, ry),
                     rules,
@@ -1022,7 +1026,6 @@ fn two_ordinary_cleg_moves_publish_class_destinations_before_process() {
                 entity_id: id,
                 target_rx,
                 target_ry: 10,
-                queue: false
             },
             Some(&rules),
             None,
@@ -1077,7 +1080,7 @@ fn a_deferred_restore_keeps_a_cleg_object_navcom() {
     let target = NavTargetRef::object(object);
     let cleg = sim.substrate.entities.get_mut(id).unwrap();
     cleg.navigation.nav_com = Some(target);
-    cleg.navigation.pending_arrival_clear = true;
+    cleg.navigation.pending_destination_setter = true;
     sim.complete_pending_order(
         id,
         Some(&rules),
@@ -1086,7 +1089,7 @@ fn a_deferred_restore_keeps_a_cleg_object_navcom() {
     );
     let cleg = sim.substrate.entities.get(id).unwrap();
     assert_eq!(cleg.navigation.nav_com, Some(target));
-    assert!(!cleg.navigation.pending_arrival_clear);
+    assert!(!cleg.navigation.pending_destination_setter);
     assert!(
         cleg.locomotor
             .as_ref()
@@ -1132,7 +1135,7 @@ fn overlay_destination_without_registered_inputs_is_atomic() {
             "Teleport Cell admission requires registered overlay inputs before mutation"
         );
         assert!(
-            sim.set_infantry_destination(
+            sim.assign_infantry_destination(
                 id,
                 target,
                 &rules,
@@ -1172,7 +1175,7 @@ fn teleport_admission_input_error_restores_physical_occupation() {
         .speed_costs = crate::rules::terrain_rules::SpeedCostProfile::default();
     let raw = bincode::serialize(&sim.substrate.raw_cell_occupation).unwrap();
     assert!(
-        !sim.set_infantry_destination(
+        !sim.assign_infantry_destination(
             id,
             NavTargetRef::cell(12, 10),
             &rules,
@@ -1291,22 +1294,23 @@ fn cleg_overlay_cell_requests_match_every_original_command_boundary() {
                 assert_rng(&sim, &boundary["rng_before"], &context);
                 assert_eq!(boundary["input"]["kind"], "set_destination");
                 if ordinary_command {
+                    // The event runs whatever the class answers: the setter
+                    // at 4C747C is void. Its refusal shows in the state and
+                    // 718080 below.
                     let (rx, ry) = pair(&boundary["input"]["cell"]);
-                    assert_eq!(
+                    assert!(
                         sim.apply_command_with_overlays(
                             "Americans",
                             &Command::Move {
                                 entity_id: id,
                                 target_rx: rx,
                                 target_ry: ry,
-                                queue: false
                             },
                             Some(&rules),
                             Some(&registry),
                             crate::sim::world::FrameEffects::default(),
                         ),
-                        boundary["query_al"].as_u64().unwrap() != 0,
-                        "{context}: request acceptance"
+                        "{context}: the Move event runs"
                     );
                 } else {
                     execute(&mut sim, id, &boundary["input"], &rules, Some(&registry));

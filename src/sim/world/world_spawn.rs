@@ -1,8 +1,7 @@
 //! Entity spawning for the Simulation.
 //!
 //! Handles spawning entities from map data (`spawn_from_map`) and from
-//! production (`spawn_object`). All entities are stored in EntityStore only
-//! (BTreeMap<u64, GameEntity>).
+//! production (`spawn_object`). All entities are stored in EntityStore only.
 //!
 //! Dependency rules: same as sim/ (depends on rules/, map/; never render/ui/audio/net).
 
@@ -24,9 +23,9 @@ use crate::rules::overlay_types::OverlayTypeRegistry;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::base_plan::pack_base_plan_cell;
 use crate::sim::base_plan_generation::{preflight_recalc, recalc_base_plan};
+use crate::sim::combat::Health;
 use crate::sim::combat::TargetKind;
 use crate::sim::combat::veterancy::{has_weapon_ability, rank_from_u16};
-use crate::sim::components::Health;
 use crate::sim::game_entity::{
     GameEntity, GeneratedTechnoInit, StructureUpgradeLink, TechnoConstructorInit,
 };
@@ -408,15 +407,12 @@ impl Simulation {
                 // Typed production admission has already resolved the class type.
                 // Rules-less construction remains an explicit diagnostic seam, using
                 // the supplied health directly rather than inventing a type maximum.
-                let health = Health {
-                    current: rules
-                        .map(|rules| {
-                            authored_health::map_object_type(map_ent.category, &map_ent.type_id, rules)
-                                .expect("resolved map type")
-                                .strength
-                        })
-                        .unwrap_or(map_ent.health),
-                };
+                let strength = rules.map(|rules| {
+                    authored_health::map_object_type(map_ent.category, &map_ent.type_id, rules)
+                        .expect("resolved map type")
+                        .strength
+                });
+                let health = Health::new(strength.unwrap_or(map_ent.health));
 
                 let uses_voxel_default: bool = match map_ent.category {
                     EntityCategory::Unit | EntityCategory::Aircraft => true,
@@ -535,7 +531,7 @@ impl Simulation {
                 // the shared constructor installed; explicit zero resets it.
                 // Executed setter controls: input_oracle/selection_navigation.
                 if let Some(percent) = map_ent.veterancy {
-                    ge.set_veterancy_from_percent(percent);
+                    ge.veterancy.set_from_percent(percent);
                 }
                 // Authored ReadFromINI resolves/births the Tag after the
                 // concrete constructor and before class Unlimbo. Shared
@@ -730,7 +726,7 @@ impl Simulation {
             .substrate
             .entities
             .get_mut(stable_id)
-            .filter(|entity| entity.category == EntityCategory::Structure)
+            .filter(|entity| entity.category() == EntityCategory::Structure)
         else {
             return false;
         };
@@ -1119,7 +1115,7 @@ impl Simulation {
             .substrate
             .entities
             .get(stable_id)
-            .is_some_and(|entity| entity.category == EntityCategory::Infantry);
+            .is_some_and(|entity| entity.category() == EntityCategory::Infantry);
         let requested_position = if is_infantry {
             self.infantry_unlimbo_position(requested_position, Some(rules))?
         } else {
@@ -1283,8 +1279,7 @@ impl Simulation {
 
         // This boundary receives newly constructed objects. Make those constructor
         // facts explicit so storage can never imply cell or logic presence.
-        ge.lifecycle.object_alive = true;
-        ge.lifecycle.in_limbo = true;
+        ge.lifecycle.reset_constructed();
         ge.lifecycle.cell_marked = false;
         ge.in_logic_vector = false;
         ge.destruction_recorded = false;
@@ -1311,7 +1306,7 @@ impl Simulation {
         let Some(entity) = self.substrate.entities.get(stable_id) else {
             return false;
         };
-        debug_assert!(entity.lifecycle.in_limbo && !entity.lifecycle.cell_marked);
+        debug_assert!(entity.lifecycle.in_limbo() && !entity.lifecycle.cell_marked);
         let spawn_children = self
             .substrate
             .entities
@@ -1446,7 +1441,7 @@ impl Simulation {
             .substrate
             .entities
             .get(stable_id)
-            .is_some_and(|entity| entity.category == EntityCategory::Infantry);
+            .is_some_and(|entity| entity.category() == EntityCategory::Infantry);
         let position = if infantry {
             let Some(position) = self.infantry_unlimbo_position(position, rules) else {
                 return (
@@ -1492,7 +1487,7 @@ impl Simulation {
                 .entities
                 .get(stable_id)
                 .is_some_and(|entity| {
-                    entity.category == EntityCategory::Structure && !entity.building_up()
+                    entity.category() == EntityCategory::Structure && !entity.building_up()
                 })
             {
                 // RESIDUAL: native Begin_Mode applies a new mode at once while
@@ -1550,7 +1545,7 @@ impl Simulation {
         // Other classes' +1AC constructor receivers are separate migrations.
         // Terrain-less diagnostics retain their existing generic Mark seam.
         if !matches!(
-            entity.category,
+            entity.category(),
             EntityCategory::Unit | EntityCategory::Infantry
         ) || self.resolved_terrain.is_none()
         {
@@ -1608,8 +1603,8 @@ impl Simulation {
         let Some((category, veterancy, in_playfield, type_ref)) =
             self.substrate.entities.get(stable_id).map(|entity| {
                 (
-                    entity.category,
-                    entity.veterancy(),
+                    entity.category(),
+                    entity.veterancy.rank(),
                     entity.in_playfield,
                     entity.type_ref(),
                 )
@@ -1711,7 +1706,7 @@ impl Simulation {
         let Some(source) = self.substrate.entities.get(stable_id) else {
             return false;
         };
-        if source.dying || source.lifecycle.in_limbo {
+        if source.dying || source.lifecycle.in_limbo() {
             return false;
         }
         // Deploy asks CanDeploySlashUnload (vslot +0x314, 0x00700D50) first
@@ -1723,7 +1718,7 @@ impl Simulation {
         let stolen_mcv = source.mind_control.controller().is_some()
             && crate::sim::mcv_deploy::deploys_into(self, source, rules)
                 .is_some_and(|yard| yard.construction_yard);
-        if source.parasite_eating_me.is_some() || stolen_mcv {
+        if source.parasite.eater().is_some() || stolen_mcv {
             if let Some(entity) = self.substrate.entities.get_mut(stable_id) {
                 entity.mcv_deploy_pending = false;
             }
@@ -1751,8 +1746,8 @@ impl Simulation {
                 yard_obj.deploy_facing,
                 (
                     entity.selected,
-                    entity.veterancy_raw,
-                    entity.attack_target.as_ref().map(|t| t.target),
+                    entity.veterancy.clone(),
+                    entity.attack_target.target(),
                 ),
                 // Native rounds FacingClass::Current, including wrap at 0xff80.
                 entity.body_facing_dir(self.session.binary_frame),
@@ -1984,15 +1979,15 @@ impl Simulation {
             .filter(|(id, entity)| {
                 *id != stable_id
                     && *id != new_sid
-                    && entity.lifecycle.object_alive
+                    && entity.lifecycle.object_alive()
                     && entity
                         .attack_target
-                        .as_ref()
-                        .is_some_and(|target| target.target == TargetKind::Entity(stable_id))
+                        .target()
+                        .is_some_and(|target| target == TargetKind::Entity(stable_id))
             })
             .map(|(id, entity)| {
                 let drops = hijacker_drops
-                    && entity.category == EntityCategory::Infantry
+                    && entity.category() == EntityCategory::Infantry
                     && self
                         .object_type(entity.type_ref(), rules)
                         .is_some_and(|obj| obj.vehicle_thief);
@@ -2012,7 +2007,7 @@ impl Simulation {
         // 0x007397D2..0x007397DE: the unit's veterancy (`+0x150`); the rank
         // cache (`+0x13C`) stays the building's own.
         if let Some(building) = self.substrate.entities.get_mut(new_sid) {
-            building.veterancy_raw = veterancy;
+            building.veterancy.inherit(&veterancy);
         }
         // 0x007397E4..0x007397F4: a building deployed for a house other than
         // the local player's (`IsHumanPlayer`, here whether a human controls
@@ -2193,7 +2188,11 @@ impl Simulation {
                     rules.object(self.interner.resolve(unit_type_id))?,
                     crate::sim::conversion_health::ConversionKind::Building,
                 );
-                Some((health, building.archive_target(), building.veterancy_raw))
+                Some((
+                    health,
+                    building.archive_target(),
+                    building.veterancy.clone(),
+                ))
             })
         else {
             return;
@@ -2229,11 +2228,11 @@ impl Simulation {
             .filter(|(id, entity)| {
                 *id != sid
                     && *id != new_sid
-                    && entity.lifecycle.object_alive
+                    && entity.lifecycle.object_alive()
                     && entity
                         .attack_target
-                        .as_ref()
-                        .is_some_and(|target| target.target == TargetKind::Entity(sid))
+                        .target()
+                        .is_some_and(|target| target == TargetKind::Entity(sid))
             })
             .map(|(id, _)| id)
             .collect();
@@ -2265,7 +2264,7 @@ impl Simulation {
             unit.selected = was_selected;
             // The VeterancyClass (`+0x150`); the rank cache (`+0x13C`) stays
             // the unit's own.
-            unit.veterancy_raw = veterancy;
+            unit.veterancy.inherit(&veterancy);
         }
         self.transfer_slave_manager(sid, new_sid, false, rules, overlay_registry, frame_effects);
         // A building's archive is a cell. Of its VERA writers (the Slave
@@ -2330,7 +2329,7 @@ impl Simulation {
         let Some(entity) = self.substrate.entities.get(stable_id) else {
             return false;
         };
-        if entity.category != EntityCategory::Structure
+        if entity.category() != EntityCategory::Structure
             || entity.building_up()
             || entity.building_down()
         {

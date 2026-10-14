@@ -6,9 +6,9 @@
 //! (`0x004DF320`), RefreshMegaMission (`0x004DF4B0`) and the PointerExpired
 //! slice (`0x004D9AC9..0x004D9B43`) for Unit and Infantry, with QueueMission,
 //! the scan and the setters as recording stubs. Compared here are the rows
-//! whose state a [`MegaMission`] can hold: a mission of NONE or 29, cell
-//! destinations, object or cell targets, every present event tag resolving to
-//! a token, and no scripted callback. Each compares the answer, the four
+//! whose state a [`MegaMission`] can hold: a mission of NONE or 29, cell or
+//! object destinations and targets, every present event tag resolving to a
+//! token, and no scripted callback. Each compares the answer, the four
 //! fields, the mission the body queues and the destination and target its
 //! setters receive.
 //!
@@ -19,19 +19,17 @@
 //! - `convert_target` (`0x004DF280`): no retail caller, so no port;
 //! - `saved_coordinate` (GetAttackMoveCoords `0x004DF1F0`, vt+0x4B8): only
 //!   the radar's attack-move lines call it (`0x0063BC53`, `0x0063C4A2`);
-//! - setup events holding a token a decoded event never carries: a missing
-//!   object (tag 52, index 999), an unsupported tag (1), an invalid tag
-//!   (255), or an event mission outside the mission table (-128, 127);
-//! - object destinations, which a MegaMission here cannot hold (its residual
-//!   in `mega_mission.rs`).
+//! - setup events holding a token a decoded event never carries: an
+//!   unsupported tag (1), an invalid tag (255), or an event mission outside
+//!   the mission table (-128, 127).
 
 use super::MegaMission;
 use crate::map::entities::EntityCategory;
 use crate::rules::ini_parser::IniFile;
 use crate::rules::locomotor_type::LocomotorKind;
 use crate::rules::ruleset::RuleSet;
-use crate::sim::combat::{AttackTarget, TargetKind};
-use crate::sim::components::{Health, NavTargetRef};
+use crate::sim::combat::{Health, TargetKind};
+use crate::sim::components::NavTargetRef;
 use crate::sim::game_entity::GameEntity;
 use crate::sim::mission::state::MissionTestFixture;
 use crate::sim::mission::{MissionDispatchTimer, MissionId, MissionType};
@@ -41,7 +39,7 @@ use serde_json::Value;
 
 const OWNER: u64 = 1;
 // The corpus `pointers`, and what each stands for here: the two destinations
-// are cells, the three targets objects 2..=4.
+// are cells, the three targets objects 2..=4, which a destination may name too.
 const DESTINATION_A: i64 = 0x2000_3000;
 const DESTINATION_B: i64 = 0x2000_3100;
 const TARGET_A: i64 = 0x2000_4000;
@@ -49,13 +47,26 @@ const TARGET_B: i64 = 0x2000_4100;
 const TARGET_C: i64 = 0x2000_4200;
 const CELL_A: (u16, u16) = (10, 12);
 const CELL_B: (u16, u16) = (20, 22);
+/// The object an expiring DESTINATION_A stands for.
+const DESTINATION_OBJECT: u64 = 5;
+/// An object no fixture holds.
+const DELETED_OBJECT: u64 = 999;
 
-/// A destination token, or `None` when it is no cell.
-fn destination(token: i64) -> Option<Option<(u16, u16)>> {
+/// A cell token's Cell.
+fn cell(token: i64) -> Option<(u16, u16)> {
+    match token {
+        DESTINATION_A => Some(CELL_A),
+        DESTINATION_B => Some(CELL_B),
+        _ => None,
+    }
+}
+
+/// A destination token: a Cell, one of the target objects, or none.
+fn destination(token: i64) -> Option<Option<TargetKind>> {
     match token {
         0 => Some(None),
-        DESTINATION_A => Some(Some(CELL_A)),
-        DESTINATION_B => Some(Some(CELL_B)),
+        DESTINATION_A | DESTINATION_B => cell(token).map(|(rx, ry)| Some(TargetKind::Cell(rx, ry))),
+        TARGET_A | TARGET_B | TARGET_C => target(token),
         _ => None,
     }
 }
@@ -141,7 +152,7 @@ fn fixture(row: &Value, owner_type: &str, unread_mission: Option<i64>) -> Option
         0,
         0,
         owner,
-        Health { current: 100 },
+        Health::new(100),
         type_ref,
         category,
         0,
@@ -167,8 +178,9 @@ fn fixture(row: &Value, owner_type: &str, unread_mission: Option<i64>) -> Option
         assert!(locomotor.install_drive_state_for_test(Some(Default::default())));
     }
     entity.locomotor = Some(locomotor);
-    entity.attack_target =
-        target(int(&state["current_target"]))?.map(|target| AttackTarget { target });
+    entity
+        .attack_target
+        .set_for_test(target(int(&state["current_target"]))?);
     entity.mega_mission = mega_mission(state, unread_mission)?;
     sim.substrate.entities.insert(entity);
     let target_type = sim.interner.intern("U00");
@@ -182,7 +194,7 @@ fn fixture(row: &Value, owner_type: &str, unread_mission: Option<i64>) -> Option
                 0,
                 0,
                 enemy,
-                Health { current: 100 },
+                Health::new(100),
                 target_type,
                 EntityCategory::Unit,
                 0,
@@ -241,11 +253,11 @@ fn compare_after(sim: &Simulation, row: &Value, unread_mission: Option<i64>, con
     for event in row["events"].as_array().unwrap() {
         match event["name"].as_str().unwrap() {
             "assign_destination" => {
-                let cell = destination(int(&event["args"][0]))
+                let destination = destination(int(&event["args"][0]))
                     .unwrap_or_else(|| panic!("{context}: destination token"));
                 assert_eq!(
                     entity.navigation.nav_com,
-                    cell.map(|(rx, ry)| NavTargetRef::cell(rx, ry)),
+                    destination.map(NavTargetRef::from),
                     "{context}: Set_Destination"
                 );
             }
@@ -253,7 +265,7 @@ fn compare_after(sim: &Simulation, row: &Value, unread_mission: Option<i64>, con
                 let target = target(int(&event["args"][0]))
                     .unwrap_or_else(|| panic!("{context}: target token"));
                 assert_eq!(
-                    entity.attack_target.as_ref().map(|attack| attack.target),
+                    entity.attack_target.target(),
                     target,
                     "{context}: Assign_Target"
                 );
@@ -321,29 +333,38 @@ fn mega_mission_bodies_match_the_original_rows() {
                 compare_after(&sim, row, None, context);
             }
             "expiry_slice" => {
-                let expired = match int(&input["expired_pointer"]) {
-                    TARGET_A => 2,
-                    TARGET_B => 3,
-                    TARGET_C => 4,
-                    _ => continue,
-                };
                 // The map lookup answers its configured cell: DESTINATION_B
                 // unless the row names another.
-                let Some(cell) = input
-                    .get("map_cell")
-                    .map_or(Some(Some(CELL_B)), |cell| destination(int(cell)))
+                let Some(cell) =
+                    input
+                        .get("map_cell")
+                        .map_or(Some(Some(CELL_B)), |token| match int(token) {
+                            0 => Some(None),
+                            token => cell(token).map(Some),
+                        })
                 else {
                     continue;
                 };
                 let Some(mut sim) = fixture(row, &format!("{letter}00"), None) else {
                     continue;
                 };
-                sim.substrate
-                    .entities
-                    .get_mut(OWNER)
-                    .unwrap()
-                    .mega_mission
-                    .pointer_expired(expired, cell);
+                let mega = &mut sim.substrate.entities.get_mut(OWNER).unwrap().mega_mission;
+                let expired = match int(&input["expired_pointer"]) {
+                    TARGET_A => 2,
+                    TARGET_B => 3,
+                    TARGET_C => 4,
+                    // No Cell expires here, so an expiring DESTINATION_A
+                    // stands for an object MegaDestination, which the slice
+                    // compares by pointer (`0x004D9B35..0x004D9B3D`).
+                    DESTINATION_A => {
+                        if mega.destination == Some(TargetKind::Cell(CELL_A.0, CELL_A.1)) {
+                            mega.destination = Some(TargetKind::Entity(DESTINATION_OBJECT));
+                        }
+                        DESTINATION_OBJECT
+                    }
+                    _ => continue,
+                };
+                mega.pointer_expired(expired, cell);
                 compare_after(&sim, row, None, context);
             }
             "setup" => {
@@ -355,24 +376,22 @@ fn mega_mission_bodies_match_the_original_rows() {
                         None => continue,
                     },
                 };
-                // Present tags whose token resolves: a cell (tag 11, the
-                // map's configured cell) or the indexed object 101.
+                // The tags a decoded event carries: a cell (tag 11, the map's
+                // configured cell), the indexed object 101, or index 999,
+                // which no object holds: one deleted before the event ran.
                 let token = |tag: &str, id: &str| match (int(&event[tag]), int(&event[id])) {
                     (0, _) => Some(None),
-                    (11, _) => Some(Some(DESTINATION_B)),
-                    (52, 101) => Some(Some(TARGET_B)),
+                    (11, _) => Some(Some(TargetKind::Cell(CELL_B.0, CELL_B.1))),
+                    (52, 101) => Some(Some(TargetKind::Entity(3))),
+                    (52, 999) => Some(Some(TargetKind::Entity(DELETED_OBJECT))),
                     _ => None,
                 };
-                let (Some(target_token), Some(destination_token)) = (
+                let (Some(event_target), Some(event_destination)) = (
                     token("event_target_tag", "event_target_id"),
                     token("event_destination_tag", "event_destination_id"),
                 ) else {
                     continue;
                 };
-                let Some(event_destination) = destination(destination_token.unwrap_or(0)) else {
-                    continue;
-                };
-                let event_target = target(target_token.unwrap_or(0)).unwrap();
                 // Setup never reads the saved mission, which the corpus seeds 5.
                 let unread = Some(int(&input["state"]["saved_mission"]));
                 let owner_type = format!(
@@ -401,12 +420,12 @@ fn mega_mission_bodies_match_the_original_rows() {
     }
     let expected = [
         ("clear", 4),
-        ("expiry_slice", 16),
+        ("expiry_slice", 24),
         ("has_saved_mission", 4),
         ("idle_resume", 112),
         ("is_attack_move", 4),
         ("resume", 48),
-        ("setup", 44),
+        ("setup", 104),
     ]
     .map(|(entry, count)| (entry.to_owned(), count));
     assert_eq!(compared, std::collections::BTreeMap::from(expected));

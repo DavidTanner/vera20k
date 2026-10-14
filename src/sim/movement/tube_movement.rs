@@ -17,7 +17,6 @@ use crate::map::tube_facts::{TubeFact, TubeId, TubeSource};
 use crate::rules::ruleset::RuleSet;
 use crate::sim::components::{DriveCoord, Position};
 use crate::sim::entity_store::EntityStore;
-use crate::sim::game_entity::GameEntity;
 use crate::sim::intern::StringInterner;
 use crate::sim::movement::ScatterFlags;
 use crate::sim::movement::bump_crush;
@@ -270,7 +269,7 @@ pub(crate) fn tick_active_tube_object(
     let Some(tube) = terrain.tube(state.tube_id) else {
         return true;
     };
-    let category = entity.category;
+    let category = entity.category();
     let speed = rules
         .and_then(|rules| rules.object(interner.resolve(entity.type_ref())))
         .map_or(0, |object| {
@@ -376,7 +375,7 @@ fn finalize_tube_object(
     let Some(entity) = entities.get(entity_id) else {
         return true;
     };
-    let category = entity.category;
+    let category = entity.category();
     let reached_cell = (entity.position.rx, entity.position.ry);
 
     let infantry_subcell = if category == EntityCategory::Infantry {
@@ -523,12 +522,12 @@ fn put_after_tube(
         ry,
         entity_id,
         MovementLayer::Ground,
-        (entity.category == EntityCategory::Infantry)
+        (entity.category() == EntityCategory::Infantry)
             .then_some(entity.sub_cell)
             .flatten(),
-        CellListInsertion::from_category(entity.category),
+        CellListInsertion::from_category(entity.category()),
     );
-    match entity.category {
+    match entity.category() {
         EntityCategory::Unit => {
             raw_cell_occupation.mark_ground(rx, ry, VEHICLE_OCCUPATION_BIT);
             cell_occupation.mark_vehicle_on_layer(rx, ry, entity_id, MovementLayer::Ground);
@@ -572,20 +571,15 @@ fn scatter_exit_blockers(
             continue;
         };
         if !matches!(
-            blocker.category,
+            blocker.category(),
             EntityCategory::Unit | EntityCategory::Infantry
         ) || blocker.locomotor.is_none()
-            || locomotor_is_moving(blocker)
+            || super::motion_query::is_moving(blocker) == Some(true)
         {
             continue;
         }
         scatters.request(blocker_id, ScatterFlags::new(true, true));
     }
-}
-
-fn locomotor_is_moving(entity: &GameEntity) -> bool {
-    // Other families still require their retained-state/lifecycle migration.
-    super::motion_query::is_moving(entity).unwrap_or_else(|| entity.movement_target.is_some())
 }
 
 fn stop_blocked_mover(entities: &mut EntityStore, entity_id: u64) {
@@ -688,7 +682,7 @@ mod tests {
     use super::*;
     use crate::map::resolved_terrain::{ResolvedTerrainCell, ResolvedTerrainGrid};
     use crate::map::tube_facts::TubeSource;
-    use crate::sim::components::{Health, MovementTarget};
+    use crate::sim::combat::Health;
     use crate::sim::game_entity::GameEntity;
     use crate::sim::occupancy::CellListInsertion;
 
@@ -698,7 +692,7 @@ mod tests {
         use crate::sim::movement::locomotor::LocomotorState;
         for kind in [LocomotorKind::Walk, LocomotorKind::Jumpjet] {
             let mut actor = GameEntity::test_default(2, "E1", "Americans", 5, 5);
-            actor.category = EntityCategory::Infantry;
+            actor.set_category_for_test(EntityCategory::Infantry);
             let mut loco = LocomotorState::for_test_kind(kind);
             if let Some(state) = loco.jumpjet_runtime_mut() {
                 *state = state
@@ -769,14 +763,14 @@ mod tests {
             0,
             0,
             crate::sim::intern::test_intern("Americans"),
-            Health { current: 100 },
+            Health::new(100),
             crate::sim::intern::test_intern(kind),
             EntityCategory::Unit,
             0,
             5,
             true,
         );
-        entity.lifecycle.in_limbo = false;
+        entity.lifecycle.set_in_limbo_for_test(false);
         entity.lifecycle.cell_marked = true;
         entity.locomotor = Some(LocomotorState::for_test_kind(
             crate::rules::locomotor_type::LocomotorKind::Drive,
@@ -827,15 +821,11 @@ mod tests {
         ] {
             let terrain = explicit_terrain(vec![2, 2]);
             let mut entity = unit(1);
-            entity.category = category;
+            entity.set_category_for_test(category);
             entity.locomotor = Some(LocomotorState::for_test_kind(LocomotorKind::Teleport));
             entity.lifecycle.cell_marked = false;
             entity.position.rx = 2;
             entity.foot_speed.set_speed_fraction(SimFixed::lit("0.625"));
-            entity.movement_target = Some(MovementTarget {
-                speed: SimFixed::from_num(150),
-                ..Default::default()
-            });
             let state = LowBridgeTubeMovementState {
                 tube_id: TubeId(0),
                 cursor: 2,
@@ -990,11 +980,12 @@ mod tests {
         let mut raw = RawCellOccupationGrid::new();
         raw.mark_ground(0, 0, VEHICLE_OCCUPATION_BIT);
 
+        let (stable_id, category) = (entity.stable_id(), entity.category());
         begin_path_tube_step(
             &mut true,
             &mut entity.navigation.path_replay,
-            entity.stable_id,
-            entity.category,
+            stable_id,
+            category,
             &mut entity.position,
             &mut entity.locomotor,
             &mut entity.low_bridge_tube_state,
@@ -1094,7 +1085,7 @@ mod tests {
         let mut terrain = explicit_terrain(vec![2, 2]);
         terrain.cell_mut(2, 0).unwrap().slope_type = 1;
         let mut entity = unit(1);
-        entity.category = EntityCategory::Infantry;
+        entity.set_category_for_test(EntityCategory::Infantry);
         entity.lifecycle.cell_marked = false;
         entity.position.rx = 2;
         entity.position.sub_x = crate::util::fixed_math::SimFixed::from_num(64);
@@ -1181,7 +1172,7 @@ mod tests {
         assert!(cargo.board(2, 1));
         transport.passenger_role = PassengerRole::Transport { cargo };
         let mut rider = unit_of(2, "E1");
-        rider.category = EntityCategory::Infantry;
+        rider.set_category_for_test(EntityCategory::Infantry);
         rider.position.rx = 3;
         rider.passenger_role = PassengerRole::Inside {
             transport_id: 1,

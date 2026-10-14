@@ -15,8 +15,9 @@ use crate::rng_continuation::MapGenRngContinuation;
 use crate::rules::ini_parser::IniFile;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::bridge_state::BridgeRuntimeState;
+use crate::sim::combat::Health;
 use crate::sim::command::Command;
-use crate::sim::components::{Health, NavTargetRef, PendingC4Detonation};
+use crate::sim::components::{NavTargetRef, PendingC4Detonation};
 use crate::sim::game_entity::GameEntity;
 use crate::sim::timer::CdTimer;
 
@@ -132,7 +133,7 @@ fn spawn_seal(sim: &mut Simulation, rx: u16, ry: u16) -> u64 {
         0,
         0,
         owner,
-        Health { current: 125 },
+        Health::new(125),
         ty,
         EntityCategory::Infantry,
         0,
@@ -156,7 +157,7 @@ fn spawn_cabhut(sim: &mut Simulation, rx: u16, ry: u16) -> u64 {
         0,
         0,
         owner,
-        Health { current: 200 },
+        Health::new(200),
         ty,
         EntityCategory::Structure,
         0,
@@ -318,7 +319,7 @@ fn c4_order_from_a_distance_reaches_the_building_while_moving_or_idle() {
                 .unwrap();
             if moving {
                 assert!(
-                    sim.set_infantry_destination(
+                    sim.assign_infantry_destination(
                         seal,
                         NavTargetRef::cell(seal_at.0, seal_at.1 + 5),
                         &rules,
@@ -331,12 +332,9 @@ fn c4_order_from_a_distance_reaches_the_building_while_moving_or_idle() {
                     step_with_overlay_registry(&mut sim, &rules, &registry);
                 }
                 assert!(
-                    sim.substrate
-                        .entities
-                        .get(seal)
-                        .unwrap()
-                        .movement_target
-                        .is_some(),
+                    crate::sim::movement::motion_query::is_moving(
+                        sim.substrate.entities.get(seal).unwrap()
+                    ) == Some(true),
                     "the SEAL is mid-walk when the order lands"
                 );
             }
@@ -422,7 +420,10 @@ fn capture_building_command_accepts_collapsed_noncapturable_hut_for_every_relati
             Some(NavTargetRef::building(cabhut)),
             "relation={relation}"
         );
-        assert!(actor.attack_target.is_none(), "native queue target is null");
+        assert!(
+            actor.attack_target.target().is_none(),
+            "native queue target is null"
+        );
         assert_eq!(
             (
                 sim.scenario_rng.logical_state(),
@@ -491,9 +492,11 @@ fn ordinary_friendly_repair_uses_capture_event_without_hut_exception() {
             .get_mut(target)
             .unwrap()
             .health
-            .current = row["arrivals"][0]["before"]["building"]["actual_hp"]
-            .as_i64()
-            .unwrap() as i32;
+            .set_for_test(
+                row["arrivals"][0]["before"]["building"]["actual_hp"]
+                    .as_i64()
+                    .unwrap() as i32,
+            );
         assert!(!rules.object("CABHUT").unwrap().bridge_repair_hut);
         let rng = (
             sim.scenario_rng.logical_state(),
@@ -648,7 +651,7 @@ fn c4_on_cabhut_collapses_bridge_and_hut_survives() {
     let cabhut = sim
         .spawn_object_at_height("CABHUT", "Soviets", 15, 15, 0, 0, &rules)
         .expect("hut must be constructed and placed beside the concrete strip");
-    let cabhut_max_hp = sim.substrate.entities.get(cabhut).unwrap().health.current;
+    let cabhut_max_hp = sim.substrate.entities.get(cabhut).unwrap().health.current();
     let seal = sim
         .spawn_object_at_height("GHOST", "Americans", 16, 15, 0, 0, &rules)
         .expect("SEAL must be constructed with a Walk locomotor in the adjacent cell");
@@ -699,7 +702,7 @@ fn c4_on_cabhut_collapses_bridge_and_hut_survives() {
         let result = step_with_overlay_registry(&mut sim, &rules, &registry);
         bridge_state_changed_seen |= result.bridge_state_changed;
         // Hut HP invariant — hold across every tick of the window.
-        let cur = sim.substrate.entities.get(cabhut).unwrap().health.current;
+        let cur = sim.substrate.entities.get(cabhut).unwrap().health.current();
         assert_eq!(
             cur, cabhut_max_hp,
             "hut HP must stay at max during C4Delay (plant_start={plant_start}, sim.session.tick={})",
@@ -715,7 +718,8 @@ fn c4_on_cabhut_collapses_bridge_and_hut_survives() {
         .get(cabhut)
         .expect("hut entity must survive the explosion");
     assert_eq!(
-        hut.health.current, cabhut_max_hp,
+        hut.health.current(),
+        cabhut_max_hp,
         "hut HP unchanged: BridgeRepairHut branch must skip damage"
     );
     assert!(!hut.dying, "hut must not be marked dying");
@@ -814,7 +818,7 @@ fn c4_on_cabhut_without_bridge_clears_pending_marker() {
     let (mut sim, rules) = build_sim();
     let cabhut = spawn_cabhut(&mut sim, 9, 10);
     let seal = spawn_seal(&mut sim, 10, 10);
-    let cabhut_max_hp = sim.substrate.entities.get(cabhut).unwrap().health.current;
+    let cabhut_max_hp = sim.substrate.entities.get(cabhut).unwrap().health.current();
     sim.bridge_state = Some(BridgeRuntimeState::default());
     plant_c4(&mut sim, &rules, cabhut, seal);
 
@@ -825,7 +829,7 @@ fn c4_on_cabhut_without_bridge_clears_pending_marker() {
     }
 
     let hut = sim.substrate.entities.get(cabhut).unwrap();
-    assert_eq!(hut.health.current, cabhut_max_hp);
+    assert_eq!(hut.health.current(), cabhut_max_hp);
     assert!(!hut.dying);
     assert!(hut.pending_c4_detonation.is_none());
     assert!(
@@ -845,7 +849,7 @@ fn c4_on_invulnerable_cabhut_still_dispatches_bridge_and_clears_pending() {
     let seal = sim
         .spawn_object_at_height("GHOST", "Americans", 16, 15, 0, 0, &rules)
         .expect("SEAL must be constructed with a Walk locomotor in the adjacent cell");
-    let cabhut_max_hp = sim.substrate.entities.get(cabhut).unwrap().health.current;
+    let cabhut_max_hp = sim.substrate.entities.get(cabhut).unwrap().health.current();
     plant_c4(&mut sim, &rules, cabhut, seal);
     sim.substrate
         .entities
@@ -863,7 +867,7 @@ fn c4_on_invulnerable_cabhut_still_dispatches_bridge_and_clears_pending() {
     }
 
     let hut = sim.substrate.entities.get(cabhut).unwrap();
-    assert_eq!(hut.health.current, cabhut_max_hp);
+    assert_eq!(hut.health.current(), cabhut_max_hp);
     assert!(!hut.dying);
     assert!(hut.pending_c4_detonation.is_none());
     assert!(bridge_state_changed_seen);
@@ -932,7 +936,7 @@ fn c4_on_cabhut_low_overlay_collapses_low_bridge() {
     let seal = sim
         .spawn_object_at_height("GHOST", "Americans", 16, 15, 0, 0, &rules)
         .expect("SEAL beside the hut");
-    let hut_hp = sim.substrate.entities.get(cabhut).unwrap().health.current;
+    let hut_hp = sim.substrate.entities.get(cabhut).unwrap().health.current();
     plant_c4(&mut sim, &rules, cabhut, seal);
 
     let mut changed = false;
@@ -940,7 +944,7 @@ fn c4_on_cabhut_low_overlay_collapses_low_bridge() {
         changed |= step_with_overlay_registry(&mut sim, &rules, &registry).bridge_state_changed;
     }
     let hut = sim.substrate.entities.get(cabhut).unwrap();
-    assert_eq!(hut.health.current, hut_hp);
+    assert_eq!(hut.health.current(), hut_hp);
     assert!(!hut.dying);
     assert!(hut.pending_c4_detonation.is_none());
     assert!(changed);

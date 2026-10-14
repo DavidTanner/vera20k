@@ -112,10 +112,10 @@ fn fixture(input: &Value) -> (Simulation, RuleSet, u64, Vec<InternedId>) {
     let id = sim.allocate_stable_id();
     let mut building =
         GameEntity::test_default_of_category(id, "B", "", 10, 11, EntityCategory::Structure);
-    building.type_ref = sim.interner.intern("B");
-    building.owner = houses[input["current_owner"].as_u64().unwrap() as usize];
-    building.health.current = 100;
-    building.building_actually_placed = true;
+    building.set_type_ref_for_test(sim.interner.intern("B"));
+    building.set_owner_for_test(houses[input["current_owner"].as_u64().unwrap() as usize]);
+    building.health.set_for_test(100);
+    building.building_art.set_actually_placed_for_test(true);
     building.mission_leaf =
         crate::sim::mission::leaf::MissionLeafState::for_entity_category(EntityCategory::Structure);
     let mut cargo = PassengerCargo::new(10, 1);
@@ -130,13 +130,13 @@ fn fixture(input: &Value) -> (Simulation, RuleSet, u64, Vec<InternedId>) {
             11,
             EntityCategory::Infantry,
         );
-        passenger.type_ref = sim.interner.intern("E1");
-        passenger.owner = houses[owner.as_u64().unwrap() as usize];
+        passenger.set_type_ref_for_test(sim.interner.intern("E1"));
+        passenger.set_owner_for_test(houses[owner.as_u64().unwrap() as usize]);
         passenger.passenger_role = PassengerRole::Inside {
             transport_id: id,
             open_topped: false,
         };
-        passenger.lifecycle.in_limbo = true;
+        passenger.lifecycle.set_in_limbo_for_test(true);
         passenger.locomotor = Some(
             crate::sim::movement::locomotor::LocomotorState::for_test_kind(
                 crate::rules::locomotor_type::LocomotorKind::Walk,
@@ -151,7 +151,12 @@ fn fixture(input: &Value) -> (Simulation, RuleSet, u64, Vec<InternedId>) {
         sim.reveal_entity_with_rules(id, &rules),
         crate::sim::world::RevealOutcome::Revealed { .. }
     ));
-    sim.substrate.entities.get_mut(id).unwrap().health.current = integer(&input["current_hp"]);
+    sim.substrate
+        .entities
+        .get_mut(id)
+        .unwrap()
+        .health
+        .set_for_test(integer(&input["current_hp"]));
     sim.set_building_anim_slot(id, 3, false, false, 0, &rules)
         .unwrap();
     sim.sound_events.clear();
@@ -179,7 +184,13 @@ fn allegiance_matches_native_decisions_for_valid_rosters() {
             continue;
         }
         let (mut sim, rules, id, houses) = fixture(input);
-        let old_anim = sim.substrate.entities.get(id).unwrap().building_anim_slots[3];
+        let old_anim = sim
+            .substrate
+            .entities
+            .get(id)
+            .unwrap()
+            .building_art
+            .anim_slots()[3];
         let old_owner = sim.substrate.entities.get(id).unwrap().owner();
         let changed = reconcile_civilian_garrison_owner_for_building(
             &mut sim,
@@ -218,7 +229,7 @@ fn allegiance_matches_native_decisions_for_valid_rosters() {
                 .any(|call| call["op"] == op)
         };
         assert_eq!(
-            building.building_anim_slots[3] != old_anim,
+            building.building_art.anim_slots()[3] != old_anim,
             called("refresh_anims"),
             "{name}"
         );
@@ -304,7 +315,7 @@ fn building_ai_caller_admission_matches_native_unwarped_gates() {
             .get_mut(id)
             .unwrap()
             .lifecycle
-            .object_alive = input["alive"].as_bool().unwrap();
+            .set_object_alive_for_test(input["alive"].as_bool().unwrap());
         rules.general.condition_red = -1.0; // no ejection or death dependency
         let old_owner = sim.substrate.entities.get(id).unwrap().owner();
         sim.object_ai_visit_one(id, Some(&rules), ObjectAiCtx::default());
@@ -399,7 +410,7 @@ fn zero_capacity_map_garrison_abandons_without_allocated_cargo() {
 
     let building = sim.substrate.entities.get(id).unwrap();
     assert_eq!(sim.interner.resolve(building.owner()), "Town");
-    assert_ne!(building.building_anim_slots[3], Some(old_anim));
+    assert_ne!(building.building_art.anim_slots()[3], Some(old_anim));
     assert!(sim.sound_events.iter().any(|event| matches!(event,
         SimSoundEvent::VocCentered { sound_id } if sound_id == "Abandon"
     )));

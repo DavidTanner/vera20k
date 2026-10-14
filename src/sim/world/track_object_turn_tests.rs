@@ -1,9 +1,7 @@
 use super::*;
 use crate::rules::ini_parser::IniFile;
 use crate::rules::locomotor_type::LocomotorKind;
-use crate::sim::components::{
-    DriveCoord, FootPathQueue, MovementTarget, NavTargetRef, TrackProgress,
-};
+use crate::sim::components::{DriveCoord, FootPathQueue, NavTargetRef, TrackProgress};
 use crate::sim::game_entity::GameEntity;
 use crate::sim::movement::drive_track;
 use crate::sim::movement::locomotor::LocomotorState;
@@ -21,9 +19,9 @@ fn fixture() -> (Simulation, RuleSet) {
     sim.fog.height = 32;
     sim.session.binary_frame = 10;
     let mut entity = GameEntity::test_default(1, "MTNK", "Americans", 10, 10);
-    entity.category = EntityCategory::Unit;
-    entity.lifecycle.object_alive = true;
-    entity.lifecycle.in_limbo = false;
+    entity.set_category_for_test(EntityCategory::Unit);
+    entity.lifecycle.set_object_alive_for_test(true);
+    entity.lifecycle.set_in_limbo_for_test(false);
     entity.lifecycle.cell_marked = true;
     entity.is_voxel = false;
     entity.drive_accelerates = false;
@@ -48,10 +46,6 @@ fn fixture() -> (Simulation, RuleSet) {
     );
     // The accepted head (10,9) was the route's last cell, so Foot+5E0 holds
     // no word beyond it: the committed head alone models the route.
-    entity.movement_target = Some(MovementTarget {
-        speed: SimFixed::from_num(330),
-        ..Default::default()
-    });
     sim.interner = crate::sim::intern::test_interner();
     // Drive ProcessMovement4B3673..368D stores the frame anchor and
     // duration. Active TrackProcess4B0F20 does not mutate that timer.
@@ -90,7 +84,7 @@ fn object_turn_resets_foot_idle_latch_only_on_native_live_continuation() {
         let (mut sim, _) = fixture();
         let actor = sim.substrate.entities.get_mut(1).unwrap();
         actor.locomotor = None;
-        actor.lifecycle.object_alive = alive;
+        actor.lifecycle.set_object_alive_for_test(alive);
         actor.mission_leaf.set_foot_idle_entry_latch(1);
         let rng = sim.rng_state();
         sim.advance_live_object_turn(1, None, techno_ai::ObjectAiCtx::default())
@@ -163,14 +157,14 @@ fn post_ai_object_alive_gate_precedes_drive_ship_process_slope_sampling() {
             }
             slope_transition::snap_after_successful_unlimbo(entity, 2, 9);
             let old_slope = *slope_transition::state_for_entity(entity).unwrap();
-            entity.lifecycle.object_alive = object_alive;
-            assert!(entity.health.current > 0 && !entity.dying);
+            entity.lifecycle.set_object_alive_for_test(object_alive);
+            assert!(entity.health.current() > 0 && !entity.dying);
 
             let outcome = sim
                 .advance_live_object_turn(1, Some(&rules), techno_ai::ObjectAiCtx::default())
                 .expect("object turn");
             let entity = sim.substrate.entities.get(1).unwrap();
-            assert_eq!(entity.lifecycle.object_alive, object_alive);
+            assert_eq!(entity.lifecycle.object_alive(), object_alive);
             let slope = slope_transition::state_for_entity(entity).unwrap();
             if object_alive {
                 assert_eq!(slope.hash_fields(), (2, 5, 10, 3), "{kind:?}");
@@ -429,7 +423,7 @@ fn terminal_sensor_receiver_finishes_before_shp_and_is_not_deferred_to_cell_chan
     assert!(!sim.fog.has_sensor_for_house(owner, 5, 10));
     assert!(sim.fog.has_sensor_for_house(owner, 10, 10));
     assert!(entity.navigation.nav_com.is_none());
-    assert!(entity.movement_target.is_none());
+    assert!(crate::sim::movement::motion_query::is_moving(&entity) != Some(true));
     assert_eq!(
         entity.body_frame_counter, 5,
         "terminal retired movement before IdleRate=0 SHP admission"
@@ -538,8 +532,7 @@ fn first_process_after_command_applies_raw_head_once_without_a_paid_point_and_af
     for kind in [LocomotorKind::Drive, LocomotorKind::Ship] {
         for reload in [false, true] {
             let (mut sim, _) = fixture();
-            // TrackProcess queries the live type speed; a zero speed on the
-            // command's path adapter alone does not stop this getter.
+            // TrackProcess queries the live type speed: Speed=0 pays nothing.
             let rules = RuleSet::from_ini(&IniFile::from_str(
                 "[VehicleTypes]\n0=MTNK\n[MTNK]\nStrength=500\nSpeed=0\nSensorsSight=1\nWalkRate=1\nIdleRate=0\n",
             ))
@@ -551,20 +544,14 @@ fn first_process_after_command_applies_raw_head_once_without_a_paid_point_and_af
             if let Some(loco) = entity.locomotor.as_mut() {
                 let _ = loco.install_ship_state_for_test(None);
             };
-            entity.movement_target = None;
             entity.locomotor = Some(LocomotorState::for_test_kind(kind));
             let grid = crate::sim::pathfinding::PathGrid::new(32, 32);
-            assert!(crate::sim::movement::issue_move_command(
-                &mut sim.substrate.entities,
-                &grid,
+            assert!(sim.set_unit_destination(
                 1,
-                (10, 9),
-                SimFixed::from_num(0),
-                false,
-                None,
-                None,
-                None,
-                crate::sim::movement::DestinationTiming::new(0, 60),
+                NavTargetRef::cell(10, 9),
+                &rules,
+                true,
+                crate::sim::world::FrameEffects::default(),
             ));
             if reload {
                 let bytes = GameSnapshot::save(&sim, 0, 0, "pending_apply", 0);
@@ -670,17 +657,12 @@ fn terminal_arrival_resets_owner_speed_before_next_accelerating_move() {
     );
     assert_eq!(sim.current_speed_for_test(1, &rules), 0);
     let grid = crate::sim::pathfinding::PathGrid::new(32, 32);
-    assert!(crate::sim::movement::issue_move_command(
-        &mut sim.substrate.entities,
-        &grid,
+    assert!(sim.set_unit_destination(
         1,
-        (10, 6),
-        SimFixed::from_num(330),
-        false,
-        None,
-        None,
-        None,
-        crate::sim::movement::DestinationTiming::new(0, 60),
+        NavTargetRef::cell(10, 6),
+        &rules,
+        true,
+        crate::sim::world::FrameEffects::default(),
     ));
     let entity = sim.substrate.entities.get_mut(1).unwrap();
     entity.drive_accelerates = true;
@@ -711,19 +693,13 @@ fn ship_fresh_claim_survives_next_object_visit_and_snapshot_rebuild() {
     if let Some(loco) = entity.locomotor.as_mut() {
         let _ = loco.install_ship_state_for_test(None);
     };
-    entity.movement_target = None;
     let grid = crate::sim::pathfinding::PathGrid::new(32, 32);
-    assert!(crate::sim::movement::issue_move_command(
-        &mut sim.substrate.entities,
-        &grid,
+    assert!(sim.set_unit_destination(
         1,
-        (10, 7),
-        SimFixed::from_num(330),
-        false,
-        None,
-        None,
-        None,
-        crate::sim::movement::DestinationTiming::new(0, 60),
+        NavTargetRef::cell(10, 7),
+        &rules,
+        true,
+        crate::sim::world::FrameEffects::default(),
     ));
     sim.install_fixture_path_grid(Some(&grid));
     let ctx = techno_ai::ObjectAiCtx::default;
@@ -748,14 +724,6 @@ fn ship_fresh_claim_survives_next_object_visit_and_snapshot_rebuild() {
             .unwrap()
             .foot_occupation_enabled
     );
-    sim.substrate
-        .entities
-        .get_mut(1)
-        .unwrap()
-        .movement_target
-        .as_mut()
-        .unwrap()
-        .speed = SimFixed::from_num(15);
     sim.advance_live_object_turn(1, Some(&rules), ctx())
         .expect("fixture object turn must complete");
     assert!(
@@ -879,7 +847,7 @@ fn bridge_terminal_uses_owner_height_to_reach_ground_navcom_target() {
             .destination()
             .is_none()
     );
-    assert!(entity.movement_target.is_none());
+    assert!(crate::sim::movement::motion_query::is_moving(&entity) != Some(true));
     assert_eq!(entity.foot_speed.applied_fraction(), SimFixed::from_num(0));
 }
 

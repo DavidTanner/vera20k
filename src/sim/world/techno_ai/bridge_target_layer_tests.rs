@@ -5,7 +5,7 @@ use super::*;
 use crate::map::resolved_terrain::{ResolvedTerrainGrid, test_flat_cell};
 use crate::rules::art_data::ArtRegistry;
 use crate::rules::retail_ini_fixture::retail_rules_and_art;
-use crate::sim::components::Health;
+use crate::sim::combat::Health;
 use crate::sim::game_entity::GameEntity;
 use crate::sim::house_state::HouseState;
 use crate::sim::mission::{MissionId, MissionTimer};
@@ -110,16 +110,14 @@ fn supplied_world(rules: &RuleSet, case: &Value) -> Simulation {
             6,
             0,
             owner,
-            Health {
-                current: obj.strength,
-            },
+            Health::new(obj.strength),
             sim.intern("FV"),
             EntityCategory::Unit,
             0,
             6,
             true,
         );
-        entity.lifecycle.in_limbo = false;
+        entity.lifecycle.set_in_limbo_for_test(false);
         entity.lifecycle.cell_marked = true;
         entity.in_playfield = true;
         entity.locomotor = Some(LocomotorState::from_object_type(obj, 0));
@@ -232,14 +230,19 @@ fn supply_step(sim: &mut Simulation, rules: &RuleSet, input: &Value) {
         };
     }
     if let Some(health) = input["health"].as_i64() {
-        sim.substrate.entities.get_mut(2).unwrap().health.current = health as i32;
+        sim.substrate
+            .entities
+            .get_mut(2)
+            .unwrap()
+            .health
+            .set_for_test(health as i32);
     }
 }
 
 fn assert_state(sim: &Simulation, state: &Value, label: &str) {
     use crate::sim::combat::TargetKind;
     let source = sim.substrate.entities.get(1).unwrap();
-    let name = match source.attack_target.as_ref().map(|a| a.target) {
+    let name = match source.attack_target.target() {
         None => "null",
         Some(TargetKind::Entity(1)) => "source",
         Some(TargetKind::Entity(2)) => "target",
@@ -395,7 +398,6 @@ fn move_retail_fv(
             entity_id: id,
             target_rx: destination.0,
             target_ry: destination.1,
-            queue: false,
         },
     );
     let mut stop_sent = false;
@@ -432,7 +434,9 @@ fn move_retail_fv(
             )
             .unwrap();
         let entity = runtime.simulation.substrate.entities.get(id).unwrap();
-        if (entity.position.rx, entity.position.ry) == stop_at && entity.movement_target.is_none() {
+        if (entity.position.rx, entity.position.ry) == stop_at
+            && crate::sim::movement::motion_query::is_moving(&entity) != Some(true)
+        {
             assert_eq!(
                 entity.on_bridge, deck,
                 "ordinary Move selected wrong layer at {stop_at:?}"
@@ -492,9 +496,12 @@ fn assert_retail_target_state_restored(live: &Simulation, restored: &Simulation,
                 after.passively_acquired_target
             );
             assert_eq!(before.estimated_health, after.estimated_health);
-            assert_eq!(before.health.current, after.health.current);
-            assert_eq!(before.lifecycle.object_alive, after.lifecycle.object_alive);
-            assert_eq!(before.lifecycle.in_limbo, after.lifecycle.in_limbo);
+            assert_eq!(before.health.current(), after.health.current());
+            assert_eq!(
+                before.lifecycle.object_alive(),
+                after.lifecycle.object_alive()
+            );
+            assert_eq!(before.lifecycle.in_limbo(), after.lifecycle.in_limbo());
             assert_eq!(before.dying, after.dying);
         }
     }
@@ -607,6 +614,7 @@ pub(super) fn retail_hills_collapsed_scene(
                 .get(source)
                 .unwrap()
                 .attack_target
+                .target()
                 .is_none()
         );
         assert!(
@@ -685,6 +693,7 @@ pub(super) fn retail_hills_collapsed_scene(
                 .get(source)
                 .unwrap()
                 .attack_target
+                .target()
                 .is_none()
         );
         std::mem::swap(&mut runtime.simulation, &mut first);

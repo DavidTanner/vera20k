@@ -3,10 +3,10 @@
 //! Verifies the sim-side entry point for `Command::ForceAttackCell` —
 //! Ctrl + left-click on empty terrain.
 
-use super::{AttackTarget, TargetKind, install_cell_attack_target_for_test};
+use super::{TargetKind, install_cell_attack_target_for_test};
 use crate::rules::ini_parser::IniFile;
 use crate::rules::ruleset::RuleSet;
-use crate::sim::components::{Health, MovementTarget};
+use crate::sim::combat::Health;
 use crate::sim::entity_store::EntityStore;
 use crate::sim::game_entity::GameEntity;
 use crate::sim::intern::test_interner;
@@ -28,7 +28,7 @@ fn ff_rules() -> RuleSet {
 
 fn make_unit(id: u64, type_ref: &str, rx: u16, ry: u16, hp: i32) -> GameEntity {
     let mut e = GameEntity::test_default(id, type_ref, "Americans", rx, ry);
-    e.health = Health { current: hp };
+    e.health = Health::new(hp);
     e
 }
 
@@ -47,8 +47,8 @@ fn issue_attack_cell_sets_cell_target_for_armed_unit() {
         ok,
         "install_cell_attack_target_for_test should succeed for armed unit"
     );
-    let attack = store.get(1).unwrap().attack_target.as_ref().unwrap();
-    assert!(matches!(attack.target, TargetKind::Cell(50, 50)));
+    let attack = store.get(1).unwrap().attack_target.target().unwrap();
+    assert!(matches!(attack, TargetKind::Cell(50, 50)));
     assert_eq!(
         store.get(1).unwrap().rearm_timer,
         rearm,
@@ -67,21 +67,7 @@ fn issue_attack_cell_rejects_unarmed_attacker() {
     let ok = install_cell_attack_target_for_test(&mut store, 1, 50, 50, Some(&rules), &interner);
 
     assert!(!ok, "ForceAttackCell on unarmed unit must return false");
-    assert!(store.get(1).unwrap().attack_target.is_none());
-}
-
-#[test]
-fn issue_attack_cell_clears_movement_target() {
-    let mut store = EntityStore::new();
-    store.insert(make_unit(1, "MTNK", 5, 5, 300));
-    store.get_mut(1).unwrap().movement_target = Some(MovementTarget::default());
-    let interner = test_interner();
-    let rules = ff_rules();
-
-    let ok = install_cell_attack_target_for_test(&mut store, 1, 50, 50, Some(&rules), &interner);
-
-    assert!(ok);
-    assert!(store.get(1).unwrap().movement_target.is_none());
+    assert!(store.get(1).unwrap().attack_target.target().is_none());
 }
 
 #[test]
@@ -100,14 +86,14 @@ fn issue_attack_cell_returns_false_for_missing_attacker() {
 
 #[test]
 fn for_cell_constructor_creates_cell_variant() {
-    let at = AttackTarget::for_cell(42, 17);
-    assert!(matches!(at.target, TargetKind::Cell(42, 17)));
+    let at = TargetKind::Cell(42, 17);
+    assert!(matches!(at, TargetKind::Cell(42, 17)));
 }
 
 #[test]
 fn new_constructor_creates_entity_variant() {
-    let at = AttackTarget::new(123);
-    assert!(matches!(at.target, TargetKind::Entity(123)));
+    let at = TargetKind::Entity(123);
+    assert!(matches!(at, TargetKind::Entity(123)));
 }
 
 /// Production proof for the combat-explosion animation route: a real shot,
@@ -245,11 +231,11 @@ fn force_fire_cell_approach_then_fire_integration() {
 
     let entity = sim.substrate.entities.get(1).unwrap();
     assert!(
-        entity.attack_target.is_some(),
+        entity.attack_target.target().is_some(),
         "the command tail sets attack_target"
     );
     assert!(
-        entity.movement_target.is_none(),
+        crate::sim::movement::motion_query::is_moving(&entity) != Some(true),
         "the completed object walk cannot observe a tail-dispatched command"
     );
 
@@ -259,7 +245,7 @@ fn force_fire_cell_approach_then_fire_integration() {
         sim.substrate
             .entities
             .get(1)
-            .is_some_and(|e| e.movement_target.is_some()),
+            .is_some_and(|e| crate::sim::movement::motion_query::is_moving(&e) == Some(true)),
         "the following frame approaches the out-of-range target"
     );
 
@@ -276,7 +262,7 @@ fn force_fire_cell_approach_then_fire_integration() {
             sim.substrate
                 .entities
                 .get(1)
-                .is_some_and(|e| e.attack_target.is_some()),
+                .is_some_and(|e| e.attack_target.target().is_some()),
             "attack_target dropped mid-approach (parity bug)"
         );
     }

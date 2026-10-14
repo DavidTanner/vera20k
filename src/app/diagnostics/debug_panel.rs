@@ -262,7 +262,7 @@ pub(crate) fn draw_debug_panel(ctx: &egui::Context, state: &AppState) {
                 let mut found: Vec<String> = Vec::new();
                 for entity in sim.entities().values() {
                     if entity.position.rx == cursor_rx && entity.position.ry == cursor_ry {
-                        let cat_str = match entity.category {
+                        let cat_str = match entity.category() {
                             EntityCategory::Unit => "Unit",
                             EntityCategory::Infantry => "Inf",
                             EntityCategory::Structure => "Bld",
@@ -273,7 +273,7 @@ pub(crate) fn draw_debug_panel(ctx: &egui::Context, state: &AppState) {
                             sim.interner.resolve(entity.type_ref()),
                             cat_str,
                             sim.interner.resolve(entity.owner()),
-                            entity.health.current,
+                            entity.health.current(),
                             state
                                 .rules()
                                 .and_then(
@@ -295,7 +295,7 @@ pub(crate) fn draw_debug_panel(ctx: &egui::Context, state: &AppState) {
                 // Show building footprint info for structures near cursor.
                 if let Some(rules) = state.rules() {
                     for entity in sim.entities().values() {
-                        if entity.category != EntityCategory::Structure {
+                        if entity.category() != EntityCategory::Structure {
                             continue;
                         }
                         let foundation = rules
@@ -355,7 +355,7 @@ pub(crate) fn draw_debug_panel(ctx: &egui::Context, state: &AppState) {
                                 entity.position.sub_x,
                                 entity.position.sub_y,
                             ));
-                            if entity.movement_target.is_some() {
+                            if crate::sim::movement::motion_query::is_moving(entity) == Some(true) {
                                 // The Foot+5E0 words from the reference cell.
                                 let path: Vec<(u16, u16)> = entity
                                     .navigation
@@ -469,11 +469,12 @@ pub(crate) fn draw_debug_panel(ctx: &egui::Context, state: &AppState) {
                     {
                         ui.label(format!("Archived ore: ({x},{y})"));
                     }
-                    let has_mt = entity.movement_target.is_some();
+                    let moving =
+                        crate::sim::movement::motion_query::is_moving(entity) == Some(true);
                     let has_tp = entity.teleport_state().is_some();
                     ui.label(format!(
                         "Movement: {} Teleport: {}",
-                        if has_mt { "active" } else { "idle" },
+                        if moving { "active" } else { "idle" },
                         if has_tp { "active" } else { "idle" },
                     ));
                 }

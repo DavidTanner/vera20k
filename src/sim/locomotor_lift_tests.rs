@@ -91,14 +91,13 @@ fn move_away(sim: &mut Simulation, magnetron: u64) {
             entity_id: magnetron,
             target_rx: 4,
             target_ry: 16,
-            queue: false,
         },
     );
 }
 
 /// Lethal damage through the production receiver, as a weapon deals it.
 fn kill(sim: &mut Simulation, rules: &RuleSet, victim: u64, attacker: u64) {
-    let health = entity(sim, victim).health.current;
+    let health = entity(sim, victim).health.current();
     let warhead = sim.interner.intern(&rules.bridge_warheads.crush_name);
     sim.commit_noncombat_aoe_receivers(
         rules,
@@ -127,7 +126,7 @@ fn lift(rules: &RuleSet) -> (Simulation, PathGrid, u64, u64) {
     let (mut sim, grid) = arena(rules);
     let magnetron = spawn(&mut sim, rules, "TELE", "Americans", 10, 16);
     let tank = spawn(&mut sim, rules, "MTNK", "Russians", 16, 16);
-    let health = entity(&sim, tank).health.current;
+    let health = entity(&sim, tank).health.current();
     order(
         &mut sim,
         "Americans",
@@ -145,7 +144,7 @@ fn lift(rules: &RuleSet) -> (Simulation, PathGrid, u64, u64) {
     let held = entity(&sim, tank);
     assert_eq!(held.locomotor_source, Some(magnetron));
     assert_eq!(entity(&sim, magnetron).locomotor_target, Some(tank));
-    assert_eq!(held.health.current, health, "the beam deals no damage");
+    assert_eq!(held.health.current(), health, "the beam deals no damage");
     let locomotor = held.locomotor.as_ref().unwrap();
     assert_eq!(locomotor.active_kind(), LocomotorKind::Jumpjet);
     assert!(locomotor.piggyback.is_some(), "the Drive is suspended");
@@ -162,7 +161,7 @@ fn retail_magnetron_pulls_a_tank_beside_itself_and_lets_go() {
         return;
     };
     let (mut sim, grid, magnetron, tank) = lift(&rules);
-    let health = entity(&sim, tank).health.current;
+    let health = entity(&sim, tank).health.current();
     let americans = sim.interner.get("Americans").unwrap();
 
     assert!(
@@ -172,14 +171,14 @@ fn retail_magnetron_pulls_a_tank_beside_itself_and_lets_go() {
         "the tank arrives and is let go"
     );
     let dropped = entity(&sim, tank);
-    assert!(dropped.crashing);
+    assert!(dropped.crash.is_crashing());
     assert_eq!(dropped.manipulated_by, Some(magnetron));
     assert_eq!(dropped.warped_by_house, Some(americans));
     assert_eq!(dropped.locomotor_source, None);
     let holder = entity(&sim, magnetron);
     assert_eq!(holder.locomotor_target, None);
     assert!(
-        holder.attack_target.is_none(),
+        holder.attack_target.target().is_none(),
         "the release clears its target"
     );
     let offset = (
@@ -198,7 +197,7 @@ fn retail_magnetron_pulls_a_tank_beside_itself_and_lets_go() {
         }),
         "the tank lands and its lift ends"
     );
-    assert_eq!(entity(&sim, tank).health.current, health);
+    assert_eq!(entity(&sim, tank).health.current(), health);
 }
 
 /// Let go over another object, the tank is centred on that cell and falls
@@ -214,7 +213,7 @@ fn retail_tank_let_go_over_a_unit_crashes_onto_it() {
     };
     let (mut sim, grid, magnetron, tank) = lift(&rules);
     let below = spawn(&mut sim, &rules, "AMCV", "Americans", 13, 16);
-    let below_health = entity(&sim, below).health.current;
+    let below_health = entity(&sim, below).health.current();
     let americans = sim.interner.get("Americans").unwrap();
     let kills = sim.houses[&americans].stats.units_killed();
 
@@ -233,7 +232,7 @@ fn retail_tank_let_go_over_a_unit_crashes_onto_it() {
         "the tank crashes onto the Unit"
     );
     assert!(
-        entity(&sim, below).health.current < below_health,
+        entity(&sim, below).health.current() < below_health,
         "the fall hurts the Unit below"
     );
     assert_eq!(
@@ -255,11 +254,11 @@ fn retail_tank_let_go_over_clear_ground_lands_and_drives_again() {
     };
     for death in [false, true] {
         let (mut sim, grid, magnetron, tank) = lift(&rules);
-        let health = entity(&sim, tank).health.current;
+        let health = entity(&sim, tank).health.current();
         climb(&mut sim, &rules, &grid, tank);
         if death {
             kill(&mut sim, &rules, magnetron, tank);
-            assert!(!entity(&sim, magnetron).lifecycle.object_alive);
+            assert!(!entity(&sim, magnetron).lifecycle.object_alive());
         } else {
             move_away(&mut sim, magnetron);
             assert!(
@@ -285,8 +284,8 @@ fn retail_tank_let_go_over_clear_ground_lands_and_drives_again() {
             "the tank lands and its lift ends (death {death})"
         );
         let landed = entity(&sim, tank);
-        assert_eq!(landed.health.current, health, "death {death}");
-        assert!(!landed.crashing && !landed.being_manipulated);
+        assert_eq!(landed.health.current(), health, "death {death}");
+        assert!(!landed.crash.is_crashing() && !landed.being_manipulated);
         assert!(!landed.lift_may_end);
         assert_eq!(landed.manipulated_by, None);
         assert_eq!(landed.warped_by_house, None);
@@ -326,7 +325,7 @@ fn retail_tank_killed_in_the_air_is_uninit_at_once() {
         }
         kill(&mut sim, &rules, tank, magnetron);
         assert!(
-            !entity(&sim, tank).lifecycle.object_alive,
+            !entity(&sim, tank).lifecycle.object_alive(),
             "dropped {dropped}"
         );
         assert_eq!(
@@ -409,7 +408,7 @@ fn retail_locomotor_arm_admission() {
         released.lift_may_end,
         "a grounded release lets the lift end"
     );
-    assert!(!released.crashing && !released.being_manipulated);
+    assert!(!released.crash.is_crashing() && !released.being_manipulated);
 }
 
 /// The links and the drop's credit are saved, and each one moves the world

@@ -11,8 +11,8 @@ use super::foot_mission_oracle_tests::{
     signed, xyz,
 };
 use crate::rules::ruleset::RuleSet;
+use crate::sim::combat::Health;
 use crate::sim::combat::fire_error_world::FireSubject;
-use crate::sim::components::Health;
 use crate::sim::game_entity::GameEntity;
 use crate::sim::mission::authority::EntityReadyInputProvider;
 use crate::sim::mission::state::MissionTestFixture;
@@ -103,11 +103,11 @@ fn firing_fixture(case: &Value, rules: &RuleSet) -> SuppliedFootFixture {
         signed(&before["rearm_timer_words"][0]),
         signed(&before["rearm_timer_words"][2]),
     );
-    actor.health = Health {
-        current: signed(&before["health"]),
-    };
-    actor.lifecycle.in_limbo = before["limbo"] != 0;
-    actor.lifecycle.object_alive = before["alive"] != 0;
+    actor.health = Health::new(signed(&before["health"]));
+    actor.lifecycle.set_in_limbo_for_test(before["limbo"] != 0);
+    actor
+        .lifecycle
+        .set_object_alive_for_test(before["alive"] != 0);
     let target_id = fixture.id(&case["input"]["target"]).unwrap();
     let target = fixture.sim.substrate.entities.get_mut(target_id).unwrap();
     let before = &case["target_before"];
@@ -118,11 +118,11 @@ fn firing_fixture(case: &Value, rules: &RuleSet) -> SuppliedFootFixture {
     target.position.sub_y = SimFixed::from_num(position[1] % 256);
     target.position.exact_z_leptons = Some(position[2]);
     target.on_bridge = before["on_bridge"] != 0;
-    target.health = Health {
-        current: signed(&before["health"]),
-    };
-    target.lifecycle.in_limbo = before["limbo"] != 0;
-    target.lifecycle.object_alive = before["alive"] != 0;
+    target.health = Health::new(signed(&before["health"]));
+    target.lifecycle.set_in_limbo_for_test(before["limbo"] != 0);
+    target
+        .lifecycle
+        .set_object_alive_for_test(before["alive"] != 0);
     target.mission.apply_test_fixture(MissionTestFixture {
         current: MissionId::from_raw(signed(&before["mission"])),
         suspended: MissionId::NONE,
@@ -245,7 +245,7 @@ fn assert_source(fixture: &SuppliedFootFixture, expected: &Value, name: &str) {
         "{name}: dispatch clock"
     );
     assert_eq!(
-        actor.attack_target.as_ref().map(|target| target.target),
+        actor.attack_target.target(),
         fixture.target(&expected["target"]),
         "{name}: target"
     );
@@ -292,17 +292,17 @@ fn assert_source(fixture: &SuppliedFootFixture, expected: &Value, name: &str) {
         "{name}: passive targeting"
     );
     assert_eq!(
-        actor.health.current,
+        actor.health.current(),
         signed(&expected["health"]),
         "{name}: HP"
     );
     assert_eq!(
-        actor.lifecycle.in_limbo,
+        actor.lifecycle.in_limbo(),
         expected["limbo"] != 0,
         "{name}: limbo"
     );
     assert_eq!(
-        actor.lifecycle.object_alive,
+        actor.lifecycle.object_alive(),
         expected["alive"] != 0,
         "{name}: alive"
     );
@@ -596,7 +596,7 @@ fn assert_target(fixture: &SuppliedFootFixture, expected: &Value, name: &str) {
         "{name}: target XYZ"
     );
     assert_eq!(
-        target.health.current,
+        target.health.current(),
         signed(&expected["health"]),
         "{name}: MTNK damage"
     );
@@ -611,7 +611,7 @@ fn assert_target(fixture: &SuppliedFootFixture, expected: &Value, name: &str) {
         "{name}: MTNK queue"
     );
     assert_eq!(
-        target.attack_target.as_ref().map(|target| target.target),
+        target.attack_target.target(),
         fixture.target(&expected["target"]),
         "{name}: synchronous MTNK retaliation target"
     );
@@ -621,12 +621,12 @@ fn assert_target(fixture: &SuppliedFootFixture, expected: &Value, name: &str) {
         "{name}: target layer"
     );
     assert_eq!(
-        target.lifecycle.object_alive,
+        target.lifecycle.object_alive(),
         expected["alive"] != 0,
         "{name}: target alive"
     );
     assert_eq!(
-        target.lifecycle.in_limbo,
+        target.lifecycle.in_limbo(),
         expected["limbo"] != 0,
         "{name}: target limbo"
     );
@@ -897,8 +897,8 @@ fn original_single_listener_expiry_clears_pending_shot_and_shortens_passive_time
                 let target_id = fixture.id(&case["input"]["target"]).unwrap();
                 let target = fixture.sim.substrate.entities.get(target_id).unwrap();
                 let owner = target.owner();
-                let health = target.health.current;
-                let alive = target.lifecycle.object_alive;
+                let health = target.health.current();
+                let alive = target.lifecycle.object_alive();
                 let xyz = xyz(&case["target_before"]["position"]);
                 // Original direct51AA10(control1), with the expired pointer
                 // STILL alive and registered. Do not substitute UnInit or a
@@ -927,7 +927,7 @@ fn original_single_listener_expiry_clears_pending_shot_and_shortens_passive_time
                         .get(target_id)
                         .unwrap()
                         .lifecycle
-                        .object_alive
+                        .object_alive()
                 );
                 assert!(fixture.sim.logic_order().contains(&target_id));
                 compared += 1;

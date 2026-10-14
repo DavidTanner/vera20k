@@ -323,11 +323,11 @@ impl Simulation {
                 .entities
                 .iter_sorted()
                 .filter_map(|(id, entity)| {
-                    if !entity.lifecycle.object_alive || entity.lifecycle.in_limbo {
+                    if !entity.lifecycle.object_alive() || entity.lifecycle.in_limbo() {
                         return None;
                     }
                     let own = entity.owner() == owner;
-                    let allied_building = entity.category == EntityCategory::Structure
+                    let allied_building = entity.category() == EntityCategory::Structure
                         && crate::map::houses::is_allied_with(
                             &self.house_alliances,
                             self.interner.resolve(entity.owner()),
@@ -420,7 +420,15 @@ impl Simulation {
             return None;
         }
         let ability = vision::entity_has_sight_ability(entity, &self.interner, Some(rules));
-        vision::entity_sight_footprint(&self.fog, entity, config, height_grid, ability, current)
+        vision::entity_sight_footprint(
+            &self.fog,
+            entity,
+            config,
+            height_grid,
+            self.resolved_terrain.as_ref(),
+            ability,
+            current,
+        )
     }
 
     /// `TechnoClass::UpdateReveal(0, 0, 1, PlayerPtr, 0)` (`0x0070AF50`) for
@@ -564,9 +572,9 @@ impl Simulation {
         }
         let height_grid = self.sight_height_grid(&config);
         for (id, entity) in self.substrate.entities.iter_sorted() {
-            if entity.category != EntityCategory::Structure
-                || !entity.lifecycle.object_alive
-                || entity.lifecycle.in_limbo
+            if entity.category() != EntityCategory::Structure
+                || !entity.lifecycle.object_alive()
+                || entity.lifecycle.in_limbo()
                 || self.house_is_human_player(entity.owner())
                 || !self
                     .object_type(entity.type_ref(), rules)
@@ -599,9 +607,9 @@ impl Simulation {
             return;
         };
         if entity.dying
-            || entity.lifecycle.in_limbo
+            || entity.lifecycle.in_limbo()
             || !matches!(
-                entity.category,
+                entity.category(),
                 EntityCategory::Unit | EntityCategory::Infantry | EntityCategory::Aircraft
             )
             || !crate::sim::movement::motion_query::is_moving_now(
@@ -655,6 +663,7 @@ impl Simulation {
                     entity,
                     &config,
                     height_grid.as_deref(),
+                    self.resolved_terrain.as_ref(),
                     ability,
                     &self.interner,
                     viewer,

@@ -8,8 +8,8 @@ impl Simulation {
         let Some(entity) = self.substrate.entities.get_mut(id) else {
             return;
         };
-        entity.building_stuff_enabled = enabled;
-        let slots = entity.building_anim_slots;
+        entity.building_art.stuff_enabled = enabled;
+        let slots = entity.building_art.anim_slots;
         for (slot, anim_id) in slots.into_iter().enumerate() {
             if self
                 .building_anim_power_flags(id, slot as u8, rules)
@@ -26,7 +26,7 @@ impl Simulation {
         let Some(entity) = self.substrate.entities.get(id) else {
             return;
         };
-        if entity.category == crate::map::entities::EntityCategory::Structure
+        if entity.category() == crate::map::entities::EntityCategory::Structure
             && !entity.building_has_engineer
             && rules
                 .object(self.interner.resolve(entity.type_ref()))
@@ -42,7 +42,7 @@ impl Simulation {
         let Some(entity) = self.substrate.entities.get_mut(id) else {
             return;
         };
-        if entity.category != crate::map::entities::EntityCategory::Structure {
+        if entity.category() != crate::map::entities::EntityCategory::Structure {
             return;
         }
         entity.building_has_engineer = true;
@@ -64,10 +64,10 @@ impl Simulation {
         let Some(object) = rules.object(self.interner.resolve(entity.type_ref())) else {
             return;
         };
-        if entity.category != crate::map::entities::EntityCategory::Structure
+        if entity.category() != crate::map::entities::EntityCategory::Structure
             || !object.infantry_absorb
             || object.extra_power <= 0
-            || !entity.building_actually_placed
+            || !entity.building_art.actually_placed
             || entity.in_construction_bstate()
         {
             return;
@@ -83,7 +83,14 @@ impl Simulation {
         );
         let (remove, keep) = if occupied { (3, 4) } else { (4, 3) };
         self.clear_building_anim_slot(id, remove);
-        if self.substrate.entities.get(id).unwrap().building_anim_slots[usize::from(keep)].is_none()
+        if self
+            .substrate
+            .entities
+            .get(id)
+            .unwrap()
+            .building_art
+            .anim_slots[usize::from(keep)]
+        .is_none()
         {
             // Absorbed passengers (+114) are not the distinct +694 garrison
             // vector. Stock YAPOWR has only the former. Custom types combining
@@ -166,12 +173,12 @@ mod tests {
     #[test]
     fn authored_tech_slots_pause_then_changed_owner_resumes_and_restore_retains_latch() {
         let (mut sim, rules, id) = fixture("NeedsEngineer=yes\nCapturable=yes\nPowered=no");
-        let anim = sim.entities().get(id).unwrap().building_anim_slots[3].unwrap();
+        let anim = sim.entities().get(id).unwrap().building_art.anim_slots[3].unwrap();
         // Rate=900 produces one frame per native timer tick; Rate=0 freezes.
         assert_eq!(sim.anim(anim).unwrap().runtime.rate_reload, 1);
         assert!(sim.anim(anim).unwrap().effective_end > 3);
         let frame = sim.anim(anim).unwrap().runtime.current_frame;
-        assert!(!sim.entities().get(id).unwrap().building_stuff_enabled);
+        assert!(!sim.entities().get(id).unwrap().building_art.stuff_enabled);
         assert_eq!(sim.building_operational_state(id, &rules), Some(false));
         for _ in 0..6 {
             tick(&mut sim, &rules);
@@ -196,7 +203,7 @@ mod tests {
             crate::sim::world::FrameEffects::default(),
         );
         assert!(sim.entities().get(id).unwrap().building_has_engineer);
-        assert!(sim.entities().get(id).unwrap().building_stuff_enabled);
+        assert!(sim.entities().get(id).unwrap().building_art.stuff_enabled);
         assert!(!sim.anim(anim).unwrap().runtime.paused);
         for _ in 0..3 {
             tick(&mut sim, &rules);
@@ -216,27 +223,31 @@ mod tests {
     #[test]
     fn offline_damage_replacement_uses_constructor_power_gate() {
         let (mut sim, rules, id) = fixture("NeedsEngineer=yes\nCapturable=yes\nPowered=no");
-        let old = sim.entities().get(id).unwrap().building_anim_slots[3].unwrap();
+        let old = sim.entities().get(id).unwrap().building_art.anim_slots[3].unwrap();
         assert!(sim.anim(old).unwrap().runtime.paused);
-        sim.entities_mut().get_mut(id).unwrap().health.current = 25;
+        sim.entities_mut()
+            .get_mut(id)
+            .unwrap()
+            .health
+            .set_for_test(25);
         sim.refresh_building_damage_state(id, &rules);
-        let replaced = sim.entities().get(id).unwrap().building_anim_slots[3].unwrap();
+        let replaced = sim.entities().get(id).unwrap().building_art.anim_slots[3].unwrap();
         assert!(
             !sim.anim(replaced).unwrap().runtime.paused,
             "replacement does not copy pause; TypePowered is false"
         );
-        assert!(!sim.entities().get(id).unwrap().building_stuff_enabled);
+        assert!(!sim.entities().get(id).unwrap().building_art.stuff_enabled);
     }
 
     #[test]
     fn absorb_slots_follow_cargo_through_logic_damage_and_restore() {
         let (mut sim, rules, id) = fixture("InfantryAbsorb=yes\nExtraPower=100\nPassengers=5");
         tick(&mut sim, &rules);
-        let empty = sim.entities().get(id).unwrap().building_anim_slots[3].unwrap();
-        assert!(sim.entities().get(id).unwrap().building_anim_slots[4].is_none());
+        let empty = sim.entities().get(id).unwrap().building_art.anim_slots[3].unwrap();
+        assert!(sim.entities().get(id).unwrap().building_art.anim_slots[4].is_none());
         tick(&mut sim, &rules);
         assert_eq!(
-            sim.entities().get(id).unwrap().building_anim_slots[3],
+            sim.entities().get(id).unwrap().building_art.anim_slots[3],
             Some(empty)
         );
         let passenger = sim.spawn_object("E1", "Neutral", 6, 6, 0, &rules).unwrap();
@@ -258,15 +269,19 @@ mod tests {
                 .board(passenger, 1)
         );
         tick(&mut sim, &rules);
-        let occupied = sim.entities().get(id).unwrap().building_anim_slots[4].unwrap();
+        let occupied = sim.entities().get(id).unwrap().building_art.anim_slots[4].unwrap();
         assert!(sim.anim(empty).is_none());
         assert_eq!(
             sim.interner.resolve(sim.anim(occupied).unwrap().type_id),
             "M"
         );
-        sim.entities_mut().get_mut(id).unwrap().health.current = 25;
+        sim.entities_mut()
+            .get_mut(id)
+            .unwrap()
+            .health
+            .set_for_test(25);
         sim.refresh_building_damage_state(id, &rules);
-        let damaged = sim.entities().get(id).unwrap().building_anim_slots[4].unwrap();
+        let damaged = sim.entities().get(id).unwrap().building_art.anim_slots[4].unwrap();
         assert_eq!(
             sim.interner.resolve(sim.anim(damaged).unwrap().type_id),
             "MD"
@@ -279,7 +294,7 @@ mod tests {
         restored.retain_process_state_for_load(crate::sim::world::SnapshotProcessState::Live(&sim));
         restored.restore_after_snapshot_load().unwrap();
         assert_eq!(
-            restored.entities().get(id).unwrap().building_anim_slots[4],
+            restored.entities().get(id).unwrap().building_art.anim_slots[4],
             Some(damaged)
         );
         // Exercise the empty transition after restoring its actual slot identity.
@@ -294,8 +309,8 @@ mod tests {
         cargo.passenger_sizes.clear();
         cargo.total_size = 0;
         tick(&mut restored, &rules);
-        let empty = restored.entities().get(id).unwrap().building_anim_slots[3].unwrap();
-        assert!(restored.entities().get(id).unwrap().building_anim_slots[4].is_none());
+        let empty = restored.entities().get(id).unwrap().building_art.anim_slots[3].unwrap();
+        assert!(restored.entities().get(id).unwrap().building_art.anim_slots[4].is_none());
         assert_eq!(
             restored
                 .interner

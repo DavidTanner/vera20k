@@ -9,7 +9,8 @@ use crate::map::entities::EntityCategory;
 use crate::rules::ini_parser::IniFile;
 use crate::rules::locomotor_type::LocomotorKind;
 use crate::rules::ruleset::RuleSet;
-use crate::sim::components::{HarvestOverlay, Health};
+use crate::sim::combat::Health;
+use crate::sim::components::HarvestOverlay;
 use crate::sim::game_entity::GameEntity;
 use crate::sim::house_state::HouseState;
 use crate::sim::intern::InternedId;
@@ -147,9 +148,7 @@ fn spawn_miner(sim: &mut Simulation, sid: u64, kind: MinerKind, rx: u16, ry: u16
         0,
         0,
         owner_id,
-        Health {
-            current: health_val,
-        },
+        Health::new(health_val),
         type_id_interned,
         EntityCategory::Unit,
         0,
@@ -174,7 +173,7 @@ fn spawn_miner(sim: &mut Simulation, sid: u64, kind: MinerKind, rx: u16, ry: u16
         MinerKind::Slave => {}
     }
     ge.miner = Some(Miner::new(kind, &MinerConfig::default(), 0));
-    ge.lifecycle.in_limbo = false;
+    ge.lifecycle.set_in_limbo_for_test(false);
     sim.substrate.entities.insert(ge);
     if kind != MinerKind::Slave {
         // Direct insertion skips stock miner Unlimbo's idle/Commence. Supply
@@ -215,7 +214,7 @@ fn spawn_refinery(sim: &mut Simulation, sid: u64, rx: u16, ry: u16) {
         0,
         0,
         owner_id,
-        Health { current: 900 },
+        Health::new(900),
         type_id,
         EntityCategory::Structure,
         0,
@@ -223,7 +222,7 @@ fn spawn_refinery(sim: &mut Simulation, sid: u64, rx: u16, ry: u16) {
         false,
     );
     // Placed in its cells' lists: on the map, out of limbo and marked.
-    ge.lifecycle.in_limbo = false;
+    ge.lifecycle.set_in_limbo_for_test(false);
     ge.lifecycle.cell_marked = true;
     // Construction stamps the type's `Foundation=4x3`.
     ge.foundation = "4x3".to_string();
@@ -268,14 +267,14 @@ fn spawn_structure_owned(
         0,
         0,
         owner_id,
-        Health { current: 900 },
+        Health::new(900),
         type_id_interned,
         EntityCategory::Structure,
         0,
         5,
         false,
     );
-    ge.lifecycle.in_limbo = false;
+    ge.lifecycle.set_in_limbo_for_test(false);
     sim.substrate.entities.insert(ge);
     occupy_structure_cells(sim, sid, rx, ry, 1, 1);
     join_house_list(sim, sid, owner_id);
@@ -302,14 +301,14 @@ fn spawn_inert_dock_instance(sim: &mut Simulation) {
         0,
         0,
         owner_id,
-        Health { current: 900 },
+        Health::new(900),
         type_id,
         EntityCategory::Structure,
         0,
         5,
         false,
     );
-    ge.lifecycle.in_limbo = false;
+    ge.lifecycle.set_in_limbo_for_test(false);
     sim.substrate.entities.insert(ge);
     sim.houses
         .entry(owner_id)
@@ -412,7 +411,7 @@ fn process_units(
             .substrate
             .entities
             .get(id)
-            .is_some_and(|e| e.category == EntityCategory::Unit)
+            .is_some_and(|e| e.category() == EntityCategory::Unit)
         {
             sim.process_ground_locomotor_one(
                 id,
@@ -1090,7 +1089,7 @@ fn unloading_credits_refinery_owner_under_mind_control() {
         .entities
         .get_mut(miner_id)
         .expect("miner entity")
-        .owner = mc_owner;
+        .set_owner_for_test(mc_owner);
 
     let americans_before = credits_for_owner(&sim, "Americans");
     let russians_before = credits_for_owner(&sim, "Russians");
@@ -1799,7 +1798,7 @@ fn harvester_caps_extraction_at_remaining_capacity() {
     );
 
     let entity = sim.substrate.entities.get(miner_id).expect("miner entity");
-    assert!(entity.movement_target.is_none());
+    assert!(crate::sim::movement::motion_query::is_moving(&entity) != Some(true));
     assert!(entity.teleport_state().is_none());
 
     let after_remaining = crate::sim::tiberium::test_support::stock_amount_at(&sim, (20, 20));
@@ -1857,7 +1856,7 @@ fn filling_extraction_waits_for_full_gate_before_war_return() {
         );
         assert_eq!(entity.archive_target(), None);
         assert_eq!(miner.reserved_refinery, None);
-        assert!(entity.movement_target.is_none());
+        assert!(crate::sim::movement::motion_query::is_moving(&entity) != Some(true));
         assert!(entity.teleport_state().is_none());
         let overlay = entity.harvest_overlay.expect("harvest overlay");
         assert!(overlay.visible);
@@ -1884,7 +1883,7 @@ fn filling_extraction_waits_for_full_gate_before_war_return() {
         );
         assert_eq!(entity.archive_target(), None);
         assert_eq!(miner.reserved_refinery, None);
-        assert!(entity.movement_target.is_none());
+        assert!(crate::sim::movement::motion_query::is_moving(&entity) != Some(true));
         let overlay = entity.harvest_overlay.expect("harvest overlay");
         assert!(overlay.visible);
         assert_eq!(
@@ -1916,7 +1915,7 @@ fn filling_extraction_waits_for_full_gate_before_war_return() {
             Some(crate::sim::combat::TargetKind::Cell(31, 30))
         );
         assert_eq!(miner.reserved_refinery, None);
-        assert!(entity.movement_target.is_none());
+        assert!(crate::sim::movement::motion_query::is_moving(&entity) != Some(true));
         assert!(entity.teleport_state().is_none());
         let overlay = entity.harvest_overlay.expect("harvest overlay");
         assert!(!overlay.visible);
@@ -2556,7 +2555,7 @@ fn stop_commits_guard_and_takes_a_harvesting_miner_off_the_loop() {
         .get_mut(miner_id)
         .expect("miner present")
         .lifecycle
-        .in_limbo = false;
+        .set_in_limbo_for_test(false);
     sim.mission_assign_exact(miner_id, MissionId::from_known(MissionType::Harvest), 0)
         .expect("miner exists");
     let owner = sim.interner.get("Americans").expect("owner interned");
@@ -2584,7 +2583,7 @@ fn stop_commits_guard_and_takes_a_harvesting_miner_off_the_loop() {
         "Stop force-assigns Guard to a miner that was on Harvest"
     );
     assert_eq!(miner.mission.queued(), MissionId::NONE);
-    assert!(miner.movement_target.is_none());
+    assert!(crate::sim::movement::motion_query::is_moving(&miner) != Some(true));
 
     // And the harvest handler must decline it from here on, so the FSM cursor
     // stops advancing.
@@ -2621,7 +2620,7 @@ fn stop_does_not_force_guard_on_a_non_miner() {
         0,
         0,
         owner_id,
-        Health { current: 300 },
+        Health::new(300),
         type_id,
         EntityCategory::Unit,
         0,
@@ -2629,7 +2628,7 @@ fn stop_does_not_force_guard_on_a_non_miner() {
         true,
     );
     tank.miner = None;
-    tank.lifecycle.in_limbo = false;
+    tank.lifecycle.set_in_limbo_for_test(false);
     sim.substrate.entities.insert(tank);
     sim.substrate.next_stable_object_id = 8;
     sim.mission_assign_exact(7, MissionId::from_known(MissionType::Move), 0)
@@ -2738,14 +2737,14 @@ fn occupy_refinery(sim: &mut Simulation, refinery_sid: u64, occupant_sid: u64) {
         0,
         0,
         owner_id,
-        Health { current: 600 },
+        Health::new(600),
         type_id,
         EntityCategory::Unit,
         0,
         5,
         true,
     );
-    ge.lifecycle.in_limbo = false;
+    ge.lifecycle.set_in_limbo_for_test(false);
     sim.substrate.entities.insert(ge);
     if sim.substrate.next_stable_object_id <= occupant_sid {
         sim.substrate.next_stable_object_id = occupant_sid + 1;
@@ -3190,7 +3189,8 @@ fn trace_unload_presentation(
                 .entities
                 .get(2)
                 .expect("refinery")
-                .building_anim_slots[10]
+                .building_art
+                .anim_slots()[10]
                 .and_then(|id| sim.anim(id))
                 .is_some_and(|anim| anim.type_id == special),
         );
@@ -3333,7 +3333,9 @@ fn damaged_refinery_ore_only_unload_smokes_twice_without_special_anim() {
     let miner_id = spawn_docked_miner(&mut sim, &[(ResourceType::Ore, 25); 5]);
     {
         let refinery = sim.substrate.entities.get_mut(2).expect("refinery");
-        refinery.health.current = rules.object("GAREFN").expect("refinery type").strength / 2;
+        refinery
+            .health
+            .set_for_test(rules.object("GAREFN").expect("refinery type").strength / 2);
     }
 
     let trace = trace_unload_presentation(&mut sim, &rules, miner_id, 60);
@@ -3443,7 +3445,7 @@ fn refinery_death_drops_the_unloading_miner_at_the_kill() {
         sim.substrate
             .entities
             .get(2)
-            .is_none_or(|refinery| refinery.dying || refinery.health.current == 0),
+            .is_none_or(|refinery| refinery.dying || refinery.health.current() == 0),
         "the refinery died"
     );
     let miner_entity = sim
@@ -3855,7 +3857,7 @@ fn captured_harvesting_miner_requeues_harvest_for_the_new_owner() {
         .get_mut(miner_id)
         .unwrap()
         .lifecycle
-        .in_limbo = true;
+        .set_in_limbo_for_test(true);
     assert!(matches!(
         sim.reveal_entity_with_rules(miner_id, &rules),
         crate::sim::world::RevealOutcome::Revealed { .. }
@@ -3892,7 +3894,7 @@ fn captured_harvesting_miner_requeues_harvest_for_the_new_owner() {
     );
 
     let miner = sim.substrate.entities.get(miner_id).expect("miner present");
-    assert_eq!(miner.owner, captor);
+    assert_eq!(miner.owner(), captor);
     assert_eq!(
         miner.mission.current().known(),
         Some(MissionType::Guard),
@@ -3903,9 +3905,9 @@ fn captured_harvesting_miner_requeues_harvest_for_the_new_owner() {
         MissionId::from_known(MissionType::Harvest),
         "the idle-mode harvester arm re-queues Harvest on ore"
     );
-    assert!(miner.attack_target.is_none());
+    assert!(miner.attack_target.target().is_none());
     assert!(miner.navigation.nav_com.is_none());
-    assert!(miner.movement_target.is_none());
+    assert!(crate::sim::movement::motion_query::is_moving(&miner) != Some(true));
 }
 
 /// Same owner change, miner standing off ore, captured by a HUMAN house
@@ -3929,7 +3931,7 @@ fn captured_miner_off_ore_under_a_human_house_parks_on_guard() {
         .get_mut(miner_id)
         .unwrap()
         .lifecycle
-        .in_limbo = true;
+        .set_in_limbo_for_test(true);
     assert!(matches!(
         sim.reveal_entity_with_rules(miner_id, &rules),
         crate::sim::world::RevealOutcome::Revealed { .. }
@@ -3955,7 +3957,7 @@ fn captured_miner_off_ore_under_a_human_house_parks_on_guard() {
     );
 
     let miner = sim.substrate.entities.get(miner_id).expect("miner present");
-    assert_eq!(miner.owner, captor);
+    assert_eq!(miner.owner(), captor);
     assert_eq!(miner.mission.current().known(), Some(MissionType::Guard));
     assert_eq!(miner.mission.queued(), MissionId::NONE);
 }
@@ -3981,7 +3983,7 @@ fn captured_miner_off_ore_under_an_ai_house_requeues_harvest() {
         .get_mut(miner_id)
         .unwrap()
         .lifecycle
-        .in_limbo = true;
+        .set_in_limbo_for_test(true);
     assert!(matches!(
         sim.reveal_entity_with_rules(miner_id, &rules),
         crate::sim::world::RevealOutcome::Revealed { .. }
@@ -4007,7 +4009,7 @@ fn captured_miner_off_ore_under_an_ai_house_requeues_harvest() {
     );
 
     let miner = sim.substrate.entities.get(miner_id).expect("miner present");
-    assert_eq!(miner.owner, captor);
+    assert_eq!(miner.owner(), captor);
     assert_eq!(miner.mission.current().known(), Some(MissionType::Guard));
     assert_eq!(
         miner.mission.queued(),
@@ -4035,7 +4037,7 @@ fn captured_miner_in_radio_contact_gets_only_the_forced_guard() {
         .get_mut(miner_id)
         .unwrap()
         .lifecycle
-        .in_limbo = true;
+        .set_in_limbo_for_test(true);
     assert!(matches!(
         sim.reveal_entity_with_rules(miner_id, &rules),
         crate::sim::world::RevealOutcome::Revealed { .. }
@@ -4068,7 +4070,7 @@ fn captured_miner_in_radio_contact_gets_only_the_forced_guard() {
     );
 
     let miner = sim.substrate.entities.get(miner_id).expect("miner present");
-    assert_eq!(miner.owner, captor);
+    assert_eq!(miner.owner(), captor);
     assert_eq!(miner.mission.current().known(), Some(MissionType::Guard));
     assert_eq!(miner.mission.queued(), MissionId::NONE);
 }

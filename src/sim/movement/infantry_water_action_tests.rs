@@ -198,10 +198,12 @@ fn fixture(row: &Value, rules: &RuleSet, type_name: &str) -> (Simulation, u64) {
         },
     );
     actor.on_bridge = input["bridge"].as_bool().unwrap_or(false);
-    actor.health.current = row["before"]["health"]
-        .as_i64()
-        .or_else(|| input["health"].as_i64())
-        .unwrap_or(100) as i32;
+    actor.health.set_for_test(
+        row["before"]["health"]
+            .as_i64()
+            .or_else(|| input["health"].as_i64())
+            .unwrap_or(100) as i32,
+    );
     actor
         .mission_leaf
         .set_infantry_doing_verified(input["current"].as_i64().unwrap_or(-1) as i32)
@@ -479,7 +481,7 @@ fn native_physical_ghost_tanya_wet_death_uses_raw_doing_and_stage() {
             sim.substrate
                 .entities
                 .get(id)
-                .is_none_or(|actor| !actor.lifecycle.object_alive)
+                .is_none_or(|actor| !actor.lifecycle.object_alive())
         );
         count += 1;
     }
@@ -544,7 +546,8 @@ fn physical_wet_death_advances_in_logic_and_uninitializes_without_animation() {
                 "{name}: wet death retained"
             );
             assert_eq!(
-                actor.health.current, 0,
+                actor.health.current(),
+                0,
                 "{name}: retained native death Health0"
             );
             assert!(

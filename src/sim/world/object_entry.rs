@@ -16,8 +16,9 @@ use crate::rules::{
     object_type::ObjectType,
 };
 use crate::sim::combat::combat_weapon;
-use crate::sim::combat::veterancy::{has_weapon_ability, rank_from_u16};
+use crate::sim::combat::veterancy::has_weapon_ability;
 use crate::sim::movement::bump_crush::{self, CrushCapability, CrushTarget};
+use crate::sim::movement::motion_query::is_moving;
 use crate::sim::{components::NavTargetRef, game_entity::GameEntity, intern::InternedId};
 use crate::sim::{movement::locomotor::MovementLayer, occupancy::CellObjectMember};
 
@@ -119,7 +120,7 @@ fn row_nonzero(live: &EntryReadContext<'_>, cell: Cell, speed: SpeedType) -> Res
         .speed_costs
         .cost_for_speed_type(speed)
         .map(|speed| speed != 0)
-        .ok_or("repair admission has no resolved speed row".into())
+        .ok_or_else(|| "repair admission has no resolved speed row".into())
 }
 fn raw(live: &EntryReadContext<'_>, cell: Cell, layer: MovementLayer) -> (u8, Option<InternedId>) {
     let key = crate::sim::occupancy::RawCellKey::from_native(live.terrain(), cell);
@@ -180,8 +181,8 @@ fn infantry_target_admission(
         }
     };
     let attack_target_is = |id| {
-        mover.attack_target.as_ref().is_some_and(
-            |a| matches!(a.target, crate::sim::combat::TargetKind::Entity(target) if target == id),
+        mover.attack_target.target().is_some_and(
+            |a| matches!(a, crate::sim::combat::TargetKind::Entity(target) if target == id),
         )
     };
     if cell_target_is(blocker_cell) || attack_target_is(blocker.stable_id()) {
@@ -226,10 +227,6 @@ fn infantry_target_admission(
     Ok(InfantryTargetAdmission::Ordinary)
 }
 
-fn moving(e: &GameEntity) -> bool {
-    crate::sim::movement::motion_query::is_moving(e).unwrap_or(e.movement_target.is_some())
-}
-
 fn head_on(mover: &GameEntity, blocker: &GameEntity, frame: u32) -> bool {
     use crate::util::direction_tables::{dir_from_facing16, facing16_from_delta};
     let facing = |e: &GameEntity| e.body_facing_current(frame);
@@ -263,7 +260,7 @@ impl Simulation {
             .substrate
             .entities
             .get(id)
-            .is_none_or(|e| e.category != EntityCategory::Infantry)
+            .is_none_or(|e| e.category() != EntityCategory::Infantry)
         {
             return Err("Infantry entry requires a live Infantry receiver".into());
         }
@@ -286,12 +283,12 @@ impl Simulation {
         rules: &RuleSet,
         registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     ) -> Result<u8, String> {
-        if self
-            .substrate
-            .entities
-            .get(id)
-            .is_none_or(|e| !matches!(e.category, EntityCategory::Infantry | EntityCategory::Unit))
-        {
+        if self.substrate.entities.get(id).is_none_or(|e| {
+            !matches!(
+                e.category(),
+                EntityCategory::Infantry | EntityCategory::Unit
+            )
+        }) {
             return Err("Foot entry requires a live Infantry or Unit receiver".into());
         }
         // An installed oracle seam answers before the receiver's type is
@@ -396,7 +393,7 @@ impl Simulation {
             .entities
             .get(id)
             .ok_or("Can_Enter_Cell of a retired mover")?;
-        if mover.category == EntityCategory::Aircraft {
+        if mover.category() == EntityCategory::Aircraft {
             return Ok(self.aircraft_can_enter(id, cell));
         }
         let terrain = self
@@ -449,10 +446,10 @@ fn classify_entry(
         .rules
         .object(live.sim.interner.resolve(e.type_ref()))
         .ok_or("repair admission missing ObjectType")?;
-    if e.category == EntityCategory::Structure {
+    if e.category() == EntityCategory::Structure {
         return building_impassable(live, e, obj, cell).map(|hard| if hard { 7 } else { 0 });
     }
-    if e.category == EntityCategory::Aircraft {
+    if e.category() == EntityCategory::Aircraft {
         return aircraft_entry(live, e, cell);
     }
     classify_foot_entry(live, &EntryMover::new(live, id, e, obj), cell, args)
@@ -470,44 +467,81 @@ struct EntryMover<'a> {
     crusher: bool,
     /// Answers of `allied(mover owner, house)` already asked, and blocker
     /// types already resolved by name; the alliance graph and rules are fixed
-    /// for the receiver's lifetime.
-    allies: std::cell::RefCell<Vec<(InternedId, bool)>>,
-    types: std::cell::RefCell<Vec<(InternedId, &'a ObjectType)>>,
+    /// for the receiver's lifetime. A search asks these for every blocker it
+    /// meets.
+    allies: InternedCache<bool>,
+    types: InternedCache<&'a ObjectType>,
+    /// The receiver's `weapon_damage_value`, which the Infantry branches
+    /// compare with zero for each enemy blocker. The receiver is borrowed
+    /// unchanged for the mover's lifetime, so one computation serves them all.
+    damage: std::cell::OnceCell<i32>,
+}
+
+/// Facts already looked up, direct-mapped by interned index. A slot two
+/// names share keeps the last one, so the other is only looked up again.
+/// Slots hold their name's index plus one: a new cache is all zeros, cheap
+/// to build for a receiver that answers one query.
+struct InternedCache<T>([std::cell::Cell<(u32, Option<T>)>; 64]);
+
+impl<T: Copy> InternedCache<T> {
+    fn new() -> Self {
+        Self(std::array::from_fn(|_| std::cell::Cell::new((0, None))))
+    }
+
+    /// `id`'s kept fact, else `look_up`'s, kept when there is one.
+    fn get_or(&self, id: InternedId, look_up: impl FnOnce() -> Option<T>) -> Option<T> {
+        let tag = id.index().wrapping_add(1);
+        let slot = &self.0[id.index() as usize % self.0.len()];
+        if let (kept, Some(fact)) = slot.get()
+            && kept == tag
+        {
+            return Some(fact);
+        }
+        let fact = look_up()?;
+        slot.set((tag, Some(fact)));
+        Some(fact)
+    }
 }
 
 impl<'a> EntryMover<'a> {
     fn new(live: &EntryReadContext<'a>, id: u64, e: &'a GameEntity, obj: &'a ObjectType) -> Self {
-        let weapon0 = combat_weapon::weapon_for_index(obj, e.veterancy(), 0)
+        let weapon0 = combat_weapon::weapon_for_index(obj, e.veterancy.rank(), 0)
             .and_then(|(name, _)| live.rules.weapon(name));
         let crusher =
-            obj.crusher || has_weapon_ability(rank_from_u16(e.veterancy()), obj, Ability::Crusher);
+            obj.crusher || has_weapon_ability(e.veterancy.rank_kind(), obj, Ability::Crusher);
         Self {
             id,
             e,
             obj,
             weapon0,
             crusher,
-            allies: std::cell::RefCell::default(),
-            types: std::cell::RefCell::default(),
+            allies: InternedCache::new(),
+            types: InternedCache::new(),
+            damage: std::cell::OnceCell::new(),
         }
+    }
+
+    fn weapon_damage(&self, live: &EntryReadContext<'_>) -> i32 {
+        *self.damage.get_or_init(|| {
+            crate::sim::combat::combat_weapon::weapon_damage_value(
+                self.e,
+                self.obj,
+                &live.sim.substrate.entities,
+                live.rules,
+                &live.sim.interner,
+            )
+        })
     }
 
     fn object_type(&self, live: &EntryReadContext<'a>, id: InternedId) -> Option<&'a ObjectType> {
-        if let Some(&(_, kind)) = self.types.borrow().iter().find(|(t, _)| *t == id) {
-            return Some(kind);
-        }
-        let kind = live.rules.object(live.sim.interner.resolve(id))?;
-        self.types.borrow_mut().push((id, kind));
-        Some(kind)
+        self.types
+            .get_or(id, || live.rules.object(live.sim.interner.resolve(id)))
     }
 
     fn allied_with(&self, live: &EntryReadContext<'_>, house: InternedId) -> bool {
-        if let Some(&(_, answer)) = self.allies.borrow().iter().find(|(h, _)| *h == house) {
-            return answer;
-        }
-        let answer = allied(live, self.e.owner(), house);
-        self.allies.borrow_mut().push((house, answer));
-        answer
+        self.allies
+            .get_or(house, || Some(allied(live, self.e.owner(), house)))
+            == Some(true)
     }
 
     /// `house`'s own mask asked about the mover, as a closed gate's House
@@ -581,7 +615,12 @@ impl Simulation {
             .substrate
             .entities
             .get(id)
-            .filter(|e| matches!(e.category, EntityCategory::Infantry | EntityCategory::Unit))
+            .filter(|e| {
+                matches!(
+                    e.category(),
+                    EntityCategory::Infantry | EntityCategory::Unit
+                )
+            })
             .ok_or("Foot entry requires a live Infantry or Unit receiver")?;
         let obj = rules
             .object(self.interner.resolve(e.type_ref()))
@@ -606,7 +645,7 @@ fn classify_foot_entry<'a>(
         crusher,
         ..
     } = mover;
-    let infantry = e.category == EntityCategory::Infantry;
+    let infantry = e.category() == EntityCategory::Infantry;
     let (mut bits, mut owner) = raw(live, cell, MovementLayer::Ground);
     let initial_level = live.level(cell);
     let mut vehicle_occupied = bits & 0x20 != 0;
@@ -740,13 +779,9 @@ fn classify_foot_entry<'a>(
         if flags.wall {
             //4F9A10 asks the mover's House: its own index, or its Allies bit
             //for Cell+0x50 (-1 is no ally). A one-way ally of the mover is not.
-            let allied = live_overlay.wall_owner.is_some_and(|o| {
-                crate::map::houses::is_allied_with(
-                    &live.sim.house_alliances,
-                    live.sim.interner.resolve(e.owner()),
-                    live.sim.interner.resolve(o),
-                )
-            });
+            let allied = live_overlay
+                .wall_owner
+                .is_some_and(|o| mover.allied_with(live, o));
             let warhead = weapon0
                 .and_then(|w| w.warhead.as_deref())
                 .and_then(|name| live.rules.warhead(name));
@@ -805,7 +840,7 @@ fn classify_foot_entry<'a>(
                     &combat_weapon::attacker_facts(e, obj),
                     Some(&combat_weapon::TargetFacts::Terrain),
                 );
-                let weapon = combat_weapon::weapon_for_index(obj, e.veterancy(), selected)
+                let weapon = combat_weapon::weapon_for_index(obj, e.veterancy.rank(), selected)
                     .and_then(|(name, _)| live.rules.weapon(name));
                 if !weapon
                     .and_then(|w| w.warhead.as_deref())
@@ -879,13 +914,13 @@ fn classify_foot_entry<'a>(
                 }
             }
         }
-        if b.category == EntityCategory::Structure {
+        if b.category() == EntityCategory::Structure {
             if !infantry {
                 //73F57C..5A2: a contacted Building whose458A00 result is
                 //false is skipped before the ordinary Building branches.
                 if matches!(crate::sim::pathfinding::cell_entry::decide_live_vehicle_building_entry(
                     crate::sim::pathfinding::cell_entry::LiveVehicleBuildingEntry {
-                        mover_category:e.category,
+                        mover_category:e.category(),
                         branch:crate::sim::pathfinding::cell_entry::VehicleBuildingEntryBranch::RadioContact { mover_has_contact:e.has_live_contact_with(blocker_id) },
                         checked_building_id:blocker_id,candidate_building_id:first_building(),
                         candidate_x:p.0 as u16,building_origin_x:b.position.rx,
@@ -947,7 +982,7 @@ fn classify_foot_entry<'a>(
                 if (bt.unit_repair||bt.bunker)&&first_building()==Some(blocker_id)
                     && matches!(crate::sim::pathfinding::cell_entry::decide_live_vehicle_building_entry(
                         crate::sim::pathfinding::cell_entry::LiveVehicleBuildingEntry {
-                            mover_category:e.category,branch:crate::sim::pathfinding::cell_entry::VehicleBuildingEntryBranch::UnitRepairOrBunker,
+                            mover_category:e.category(),branch:crate::sim::pathfinding::cell_entry::VehicleBuildingEntryBranch::UnitRepairOrBunker,
                             checked_building_id:blocker_id,candidate_building_id:first_building(),
                             candidate_x:p.0 as u16,building_origin_x:b.position.rx,
                             number_impassable_rows:bt.number_impassable_rows,is_unit_repair:bt.unit_repair,is_bunker:bt.bunker,
@@ -975,7 +1010,7 @@ fn classify_foot_entry<'a>(
         //producers; there is no extra gate in this admission arm.
         if !infantry
             && mission == Some(MissionType::Enter)
-            && b.category == EntityCategory::Unit
+            && b.category() == EntityCategory::Unit
             && object_target_is(e, b)
         {
             return Ok(0);
@@ -1000,23 +1035,17 @@ fn classify_foot_entry<'a>(
                 continue;
             }
             if if infantry {
-                crate::sim::combat::combat_weapon::weapon_damage_value(
-                    e,
-                    obj,
-                    &live.sim.substrate.entities,
-                    live.rules,
-                    &live.sim.interner,
-                ) <= 0
+                mover.weapon_damage(live) <= 0
             } else {
                 weapon0.is_none()
             } {
                 return Ok(7);
             }
-            if b.category == EntityCategory::Structure && bt.bridge_repair_hut {
+            if b.category() == EntityCategory::Structure && bt.bridge_repair_hut {
                 return Ok(7);
             }
             if infantry {
-                if b.category == EntityCategory::Infantry {
+                if b.category() == EntityCategory::Infantry {
                     if infantry_disguised_to(live, b, e.owner())? {
                         //51C61F is an assignment, not a boolean soft latch.
                         entry_result = 6;
@@ -1031,12 +1060,12 @@ fn classify_foot_entry<'a>(
             //73F865..8C0: Foot NavCom, body turn, then active IsMoving.
             if b.navigation.nav_com.is_some()
                 || b.body_facing.is_rotating(live.sim.session.binary_frame)
-                || moving(b)
+                || is_moving(b) == Some(true)
             {
                 if head_on(e, b, live.sim.session.binary_frame) {
                     return Ok(7);
                 }
-                if (b.foot_occupation_enabled && b.category != EntityCategory::Infantry)
+                if (b.foot_occupation_enabled && b.category() != EntityCategory::Infantry)
                     || crate::sim::movement::drive_track::occupant_slot_a4_answers_true(b)
                 {
                     entry_result = entry_result.max(2);
@@ -1045,10 +1074,10 @@ fn classify_foot_entry<'a>(
                 entry_result = entry_result.max(6);
             }
         } else {
-            match b.category {
+            match b.category() {
                 EntityCategory::Aircraft | EntityCategory::Structure => return Ok(7),
                 EntityCategory::Unit => {
-                    if !moving(b) && b.navigation.nav_com.is_none() {
+                    if is_moving(b) != Some(true) && b.navigation.nav_com.is_none() {
                         entry_result = entry_result.max(6);
                     } else if b.foot_occupation_enabled
                         || crate::sim::movement::drive_track::occupant_slot_a4_answers_true(b)
@@ -1057,7 +1086,7 @@ fn classify_foot_entry<'a>(
                     }
                 }
                 EntityCategory::Infantry => {
-                    if !moving(b) {
+                    if is_moving(b) != Some(true) {
                         stationary_infantry = stationary_infantry.wrapping_add(1);
                     }
                 }
@@ -1081,14 +1110,7 @@ fn classify_foot_entry<'a>(
                     entry_result = if stationary_infantry == 3 { 6 } else { 2 };
                 }
             } else {
-                if crate::sim::combat::combat_weapon::weapon_damage_value(
-                    e,
-                    obj,
-                    &live.sim.substrate.entities,
-                    live.rules,
-                    &live.sim.interner,
-                ) <= 0
-                {
+                if mover.weapon_damage(live) <= 0 {
                     return Ok(7);
                 }
                 entry_result = entry_result.max(5);
@@ -1116,7 +1138,7 @@ fn classify_foot_entry<'a>(
                     .into_iter()
                     .flat_map(|list| list.iter_layer(MovementLayer::Ground))
                     .filter_map(|member| live.sim.substrate.entities.get(member.entity_id))
-                    .find(|unit| unit.category == EntityCategory::Unit)
+                    .find(|unit| unit.category() == EntityCategory::Unit)
                     .is_some_and(|unit| {
                         crate::sim::pathfinding::cell_entry::unit_tail_is_crushable_by(
                             unit,
@@ -1268,6 +1290,29 @@ fn building_impassable(
 mod tests {
     use super::*;
 
+    /// Two names 64 indexes apart share a slot: each is looked up again
+    /// after the other took the slot, and a missing fact keeps nothing.
+    #[test]
+    fn interned_cache_keeps_the_last_name_per_slot() {
+        let cache = InternedCache::<u32>::new();
+        let (a, b) = (InternedId::from_index(1), InternedId::from_index(65));
+        let look_ups = std::cell::Cell::new(0);
+        let get = |id, fact| {
+            cache.get_or(id, || {
+                look_ups.set(look_ups.get() + 1);
+                Some(fact)
+            })
+        };
+        assert_eq!(get(a, 10), Some(10));
+        assert_eq!(get(a, 99), Some(10));
+        assert_eq!(get(b, 20), Some(20));
+        assert_eq!(get(a, 30), Some(30));
+        assert_eq!(look_ups.get(), 3);
+        let c = InternedId::from_index(2);
+        assert_eq!(cache.get_or(c, || None), None);
+        assert_eq!(get(c, 40), Some(40));
+    }
+
     fn impassable(
         live: &EntryReadContext<'_>,
         object: CellObjectMember,
@@ -1396,9 +1441,9 @@ mod tests {
             ),
         ] {
             let mut e = GameEntity::test_default(id, name, "Americans", cell.0, cell.1);
-            e.owner = sim.intern("Americans");
-            e.type_ref = sim.intern(name);
-            e.category = category;
+            e.set_owner_for_test(sim.intern("Americans"));
+            e.set_type_ref_for_test(sim.intern(name));
+            e.set_category_for_test(category);
             sim.substrate.entities.insert(e);
         }
         sim.substrate.occupancy.add(
@@ -1423,9 +1468,9 @@ mod tests {
         // controls both return7 for this otherwise-clear unusable rim.
         let (mut sim, rules, _) = crate::sim::world::entry_test_fixture::fixture();
         let mut mover = GameEntity::test_default(90, "ENGINEER", "Americans", 15, 15);
-        mover.owner = sim.intern("Americans");
-        mover.type_ref = sim.intern("ENGINEER");
-        mover.category = EntityCategory::Infantry;
+        mover.set_owner_for_test(sim.intern("Americans"));
+        mover.set_type_ref_for_test(sim.intern("ENGINEER"));
+        mover.set_category_for_test(EntityCategory::Infantry);
         mover.in_playfield = true;
         sim.substrate.entities.insert(mover);
         sim.playfield_bounds = Some(
@@ -1455,9 +1500,9 @@ mod tests {
     fn nested_escape_priority_restores_the_callers_cell_admission() {
         let (mut sim, rules, _) = crate::sim::world::entry_test_fixture::fixture();
         let mut mover = GameEntity::test_default(90, "ENGINEER", "Americans", 15, 15);
-        mover.owner = sim.intern("Americans");
-        mover.type_ref = sim.intern("ENGINEER");
-        mover.category = EntityCategory::Infantry;
+        mover.set_owner_for_test(sim.intern("Americans"));
+        mover.set_type_ref_for_test(sim.intern("ENGINEER"));
+        mover.set_category_for_test(EntityCategory::Infantry);
         mover.in_playfield = true;
         sim.substrate.entities.insert(mover);
         sim.playfield_bounds = Some(
@@ -1603,8 +1648,8 @@ mod tests {
             15,
             EntityCategory::Structure,
         );
-        b.owner = sim.intern("Americans");
-        b.type_ref = sim.intern("BUILDING");
+        b.set_owner_for_test(sim.intern("Americans"));
+        b.set_type_ref_for_test(sim.intern("BUILDING"));
         sim.substrate.entities.insert(b);
         sim.substrate.occupancy.add(
             16,
@@ -1643,8 +1688,8 @@ mod tests {
             EntityCategory::Structure,
         );
         assert!(rules.object("HIDDEN").unwrap().invisible_in_game);
-        b.owner = sim.intern("Americans");
-        b.type_ref = sim.intern("HIDDEN");
+        b.set_owner_for_test(sim.intern("Americans"));
+        b.set_type_ref_for_test(sim.intern("HIDDEN"));
         sim.substrate.entities.insert(b);
         sim.substrate.occupancy.remove(16, 15, 91);
         for id in [92, 91] {
@@ -1694,9 +1739,9 @@ mod tests {
             ),
         ] {
             let mut entity = GameEntity::test_default(id, name, owner, p.0, p.1);
-            entity.owner = sim.intern(owner);
-            entity.type_ref = sim.intern(name);
-            entity.category = category;
+            entity.set_owner_for_test(sim.intern(owner));
+            entity.set_type_ref_for_test(sim.intern(name));
+            entity.set_category_for_test(category);
             if category == EntityCategory::Structure {
                 // Construction stamps the type's `Foundation=2x2`.
                 entity.foundation = "2x2".to_string();
@@ -1812,10 +1857,12 @@ mod tests {
             .unwrap()
             .navigation
             .nav_com = None;
-        sim.substrate.entities.get_mut(70).unwrap().attack_target =
-            Some(crate::sim::combat::AttackTarget {
-                target: crate::sim::combat::TargetKind::Entity(71),
-            });
+        sim.substrate
+            .entities
+            .get_mut(70)
+            .unwrap()
+            .attack_target
+            .set_for_test(Some(crate::sim::combat::TargetKind::Entity(71)));
         // Raw blocker lookup stamps(60,60), then first Building+48 stamps
         //(62,62). Attack-target identity is deliberately evaluated last.
         for (id, p) in [(72, (60, 60)), (71, (61, 61))] {
@@ -1927,9 +1974,8 @@ mod tests {
             .entities
             .get_mut(infantry)
             .unwrap()
-            .attack_target = Some(crate::sim::combat::AttackTarget {
-            target: crate::sim::combat::TargetKind::Entity(hut),
-        });
+            .attack_target
+            .set_for_test(Some(crate::sim::combat::TargetKind::Entity(hut)));
         sim.resolved_terrain
             .as_ref()
             .unwrap()
@@ -2003,8 +2049,8 @@ mod tests {
             15,
             EntityCategory::Structure,
         );
-        later.owner = sim.intern("Americans");
-        later.type_ref = sim.intern("CABHUT");
+        later.set_owner_for_test(sim.intern("Americans"));
+        later.set_type_ref_for_test(sim.intern("CABHUT"));
         sim.substrate.entities.insert(later);
         sim.substrate.occupancy.add(
             16,

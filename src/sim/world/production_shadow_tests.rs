@@ -52,12 +52,12 @@ fn spawn_war_factory(sim: &mut Simulation, owner: InternedId) {
         5,
         EntityCategory::Structure,
     );
-    e.owner = owner;
-    e.type_ref = gaweap;
-    e.lifecycle.in_limbo = false;
+    e.set_owner_for_test(owner);
+    e.set_type_ref_for_test(gaweap);
+    e.lifecycle.set_in_limbo_for_test(false);
     e.in_playfield = true;
     e.finish_building_construction_for_test();
-    e.building_actually_placed = true;
+    e.building_art.set_actually_placed_for_test(true);
     sim.substrate.entities.insert(e);
     sim.add_entity_occupancy(1);
     sim.append_house_base_building_for_test(1);

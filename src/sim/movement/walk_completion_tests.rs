@@ -97,7 +97,6 @@ fn completed_path_head_speed_matches_original_pre_percell_gate() {
 
 #[test]
 fn completed_corner_keeps_heading_until_next_head_is_accepted() {
-    use crate::sim::components::MovementTarget;
     use crate::sim::movement::{FacingClass, ground_pose, walk_head};
 
     let rules = RuleSet::from_ini(&IniFile::from_str(
@@ -130,7 +129,6 @@ fn completed_corner_keeps_heading_until_next_head_is_accepted() {
         cursor: 0,
         reference_cell: Some((5, 5)),
     };
-    actor.movement_target = Some(MovementTarget::default());
     let loco = actor.locomotor.as_mut().unwrap();
     loco.set_walk_destination(Some(DriveCoord::cell(6, 6, 0)));
     loco.set_step_head(Some(head));
@@ -222,10 +220,12 @@ fn post_percell_completion_matches_original_setter_refusal_and_stop_order() {
         rules.general.blockage_path_delay_ticks = i32_value(&input["blockage"]);
         sim.session.binary_frame = input["frame"].as_u64().unwrap() as u32;
         let mut actor = GameEntity::test_default(1, "E1", "Americans", 16, 15);
-        actor.category = EntityCategory::Infantry;
+        actor.set_category_for_test(EntityCategory::Infantry);
         actor.locomotor = Some(LocomotorState::for_test_kind(LocomotorKind::Walk));
-        actor.lifecycle.object_alive = input["alive"] == 1;
-        actor.lifecycle.in_limbo = input["limbo"] == 1;
+        actor
+            .lifecycle
+            .set_object_alive_for_test(input["alive"] == 1);
+        actor.lifecycle.set_in_limbo_for_test(input["limbo"] == 1);
         actor.set_falling_down_for_test(input["falling"].as_u64().unwrap() != 0);
         // Keep signed/aliased full XYZ in the existing physical coordinate owner.
         // The query must compare the native truncated low16 cell words.
@@ -386,14 +386,18 @@ fn paid_walk_world_scold_tails_match_original_boundaries() {
         let mut sim = Simulation::new();
         sim.interner = crate::sim::intern::test_interner();
         let mut actor = GameEntity::test_default(1, "E1", "Americans", 9, 10);
-        actor.category = EntityCategory::Infantry;
+        actor.set_category_for_test(EntityCategory::Infantry);
         actor.locomotor = Some(LocomotorState::for_test_kind(LocomotorKind::Walk));
         actor
             .navigation
             .path_runtime
             .set_scold_latch_for_test(row["supplied_byte"].as_u64().unwrap() as u8);
-        actor.lifecycle.object_alive = case != "dead_post_percell";
-        actor.lifecycle.in_limbo = case == "limbo_post_percell";
+        actor
+            .lifecycle
+            .set_object_alive_for_test(case != "dead_post_percell");
+        actor
+            .lifecycle
+            .set_in_limbo_for_test(case == "limbo_post_percell");
         actor.set_falling_down_for_test(case == "falling_post_percell");
         let head = DriveCoord::cell(10, 10, 0);
         actor.locomotor.as_mut().unwrap().set_step_head(Some(head));

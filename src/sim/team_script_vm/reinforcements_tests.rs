@@ -250,7 +250,7 @@ fn script50_uses_the_existing_signed_flash_owner_and_original_countdown() {
             .map(|(index, count)| {
                 let id = index as u64 + 1;
                 let mut entity = GameEntity::test_default(id, "MTNK", "OWNER", 64, 64);
-                entity.elite_flash_frames = int(count);
+                entity.flashing.start(int(count));
                 sim.substrate.entities.insert(entity);
                 id
             })
@@ -267,7 +267,7 @@ fn script50_uses_the_existing_signed_flash_owner_and_original_countdown() {
         let counters = |sim: &Simulation| {
             members
                 .iter()
-                .map(|&id| sim.substrate.entities.get(id).unwrap().elite_flash_frames)
+                .map(|&id| sim.substrate.entities.get(id).unwrap().flashing.frames())
                 .collect::<Vec<_>>()
         };
         assert_eq!(
@@ -288,13 +288,7 @@ fn script50_uses_the_existing_signed_flash_owner_and_original_countdown() {
         for step in row["steps"].as_array().unwrap() {
             let active: Vec<_> = members
                 .iter()
-                .map(|&id| {
-                    sim.substrate
-                        .entities
-                        .get_mut(id)
-                        .unwrap()
-                        .tick_elite_flash()
-                })
+                .map(|&id| sim.substrate.entities.get_mut(id).unwrap().flashing.tick())
                 .collect();
             assert_eq!(
                 active,
@@ -452,7 +446,7 @@ fn action7_real_members_match_original_identity_rng_placement_and_cleanup() {
         for (member, native) in team.members.iter().zip(expected) {
             let entity = sim.substrate.entities.get(member.id).unwrap();
             assert_eq!(
-                entity.native_unique_id,
+                entity.native_unique_id(),
                 int(&native["native_id"]),
                 "{input}"
             );
@@ -462,12 +456,12 @@ fn action7_real_members_match_original_identity_rng_placement_and_cleanup() {
                 "{input}"
             );
             assert_eq!(
-                entity.lifecycle.in_limbo,
+                entity.lifecycle.in_limbo(),
                 int(&native["limbo"]) != 0,
                 "{input}"
             );
             assert_eq!(
-                entity.lifecycle.object_alive,
+                entity.lifecycle.object_alive(),
                 int(&native["alive"]) != 0,
                 "{input}"
             );
@@ -484,7 +478,8 @@ fn action7_real_members_match_original_identity_rng_placement_and_cleanup() {
             );
             assert_eq!(
                 entity
-                    .veterancy_raw
+                    .veterancy
+                    .raw()
                     .bits()
                     .to_le_bytes()
                     .iter()
@@ -512,8 +507,8 @@ fn action7_real_members_match_original_identity_rng_placement_and_cleanup() {
             assert_eq!(
                 format!(
                     "{:02x}{:02x}",
-                    entity.techno_ctor_random_word as u8,
-                    (entity.techno_ctor_random_word >> 8) as u8
+                    entity.techno_ctor_random_word() as u8,
+                    (entity.techno_ctor_random_word() >> 8) as u8
                 ),
                 constructed["phase"].as_str().unwrap(),
                 "{input}"
@@ -602,10 +597,14 @@ fn shared_leader_matches_original_script3_signed_ratings_and_live_joined_gates()
                     )
                     .unwrap();
                 let entity = sim.substrate.entities.get_mut(id).unwrap();
-                entity.native_unique_id = int(&state["native_id"]);
-                entity.lifecycle.object_alive = int(&state["alive"]) != 0;
-                entity.lifecycle.in_limbo = int(&state["limbo"]) != 0;
-                entity.health.current = int(&state["health"]);
+                entity.set_native_unique_id_for_test(int(&state["native_id"]));
+                entity
+                    .lifecycle
+                    .set_object_alive_for_test(int(&state["alive"]) != 0);
+                entity
+                    .lifecycle
+                    .set_in_limbo_for_test(int(&state["limbo"]) != 0);
+                entity.health.set_for_test(int(&state["health"]));
                 id
             })
             .collect();
@@ -630,7 +629,7 @@ fn shared_leader_matches_original_script3_signed_ratings_and_live_joined_gates()
         }
         .unwrap();
         assert_eq!(
-            sim.entities().get(leader).unwrap().native_unique_id,
+            sim.entities().get(leader).unwrap().native_unique_id(),
             int(&row["leader"]),
             "{input}"
         );
@@ -680,7 +679,7 @@ fn script3_real_members_match_original_outside_move_and_rng_continuation() {
         .zip(row["prior_members"].as_array().unwrap())
     {
         let entity = sim.entities().get(member.id).unwrap();
-        assert_eq!(entity.native_unique_id, int(&prior["native_id"]));
+        assert_eq!(entity.native_unique_id(), int(&prior["native_id"]));
         assert_eq!(
             sim.object_type(entity.type_ref(), &rules)
                 .unwrap()
@@ -740,7 +739,7 @@ fn script3_real_members_match_original_outside_move_and_rng_continuation() {
         .zip(row["members_after"].as_array().unwrap())
     {
         let entity = sim.entities().get(member.id).unwrap();
-        assert_eq!(entity.native_unique_id, int(&native["native_id"]));
+        assert_eq!(entity.native_unique_id(), int(&native["native_id"]));
         assert_eq!(entity.mission.current().raw(), int(&native["mission"]));
         assert_eq!(entity.mission.queued().raw(), int(&native["queued"]));
         assert_eq!(
@@ -849,7 +848,7 @@ fn action4_recruits_real_released_members_then_script50_and_cleanup_share_owners
     );
     for &id in &original_members {
         assert_eq!(
-            sim.entities().get(id).unwrap().elite_flash_frames,
+            sim.entities().get(id).unwrap().flashing.frames(),
             int(&native_flash["stored"][0])
         );
     }
@@ -860,7 +859,7 @@ fn action4_recruits_real_released_members_then_script50_and_cleanup_share_owners
     );
     for id in original_members {
         assert_eq!(sim.team_script_vm.team_for_member(id), None);
-        assert!(sim.entities().get(id).unwrap().lifecycle.object_alive);
+        assert!(sim.entities().get(id).unwrap().lifecycle.object_alive());
     }
     assert_eq!(
         [

@@ -114,7 +114,7 @@ fn assert_boarded(sim: &Simulation, ifv: u64, passenger: u64) {
         pax.passenger_role,
         PassengerRole::Inside { transport_id, open_topped: false } if transport_id == ifv
     ));
-    assert!(pax.lifecycle.in_limbo);
+    assert!(pax.lifecycle.in_limbo());
     assert!(!sim.live_object_order_snapshot().contains(&passenger));
 }
 
@@ -158,7 +158,7 @@ fn unload_at_clear_exit(sim: &mut Simulation, rules: &RuleSet, ifv: u64, passeng
     assert_eq!(cargo.total_size, 0);
     let pax = entity(sim, passenger);
     assert!(matches!(pax.passenger_role, PassengerRole::None));
-    assert!(!pax.lifecycle.in_limbo);
+    assert!(!pax.lifecycle.in_limbo());
     assert_eq!((pax.position.rx, pax.position.ry), exit);
     assert_eq!(
         sim.live_object_order_snapshot()
@@ -298,7 +298,6 @@ fn retail_chrono_remote_transport_enter_keeps_object_and_boards() {
                     entity_id: passenger,
                     target_rx: 12,
                     target_ry: 16,
-                    queue: false,
                 },
                 Some(rules)
             ));
@@ -352,7 +351,7 @@ fn retail_vehicle_enter_keeps_live_transport_target() {
         assert_eq!(cargo.passengers, [passenger], "{passenger_type}: cargo");
         assert_eq!(cargo.passenger_sizes, [size]);
         assert_eq!(cargo.total_size, size);
-        assert!(entity(&sim, passenger).lifecycle.in_limbo);
+        assert!(entity(&sim, passenger).lifecycle.in_limbo());
         assert!(!sim.live_object_order_snapshot().contains(&passenger));
     }
 }
@@ -446,7 +445,7 @@ fn retail_loaded_ifv_survives_transport_snapshot_unload_and_reentry() {
         Ok(())
     );
     assert_eq!(entity(&sim, ifv).passenger_role.inside_transport_id(), None);
-    assert!(!entity(&sim, ifv).lifecycle.in_limbo);
+    assert!(!entity(&sim, ifv).lifecycle.in_limbo());
     assert_eq!(
         serde_json::to_value(entity(&sim, ifv).passenger_role.cargo().unwrap()).unwrap(),
         initial_cargo
@@ -496,7 +495,6 @@ fn retail_replacement_move_cancels_pending_vehicle_boarding() {
             entity_id: passenger,
             target_rx: 16,
             target_ry: 17,
-            queue: false,
         },
         Some(rules)
     ));
@@ -511,7 +509,7 @@ fn retail_replacement_move_cancels_pending_vehicle_boarding() {
         entity(&sim, passenger).passenger_role,
         PassengerRole::None
     ));
-    assert!(!entity(&sim, passenger).lifecycle.in_limbo);
+    assert!(!entity(&sim, passenger).lifecycle.in_limbo());
 }
 
 #[test]

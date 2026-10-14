@@ -179,10 +179,10 @@ impl Simulation {
             .substrate
             .entities
             .get(id)
-            .is_some_and(|entity| received && !entity.lifecycle.in_limbo);
+            .is_some_and(|entity| received && !entity.lifecycle.in_limbo());
         if !survives {
             if let Some(entity) = self.substrate.entities.get_mut(id)
-                && entity.lifecycle.object_alive
+                && entity.lifecycle.object_alive()
                 && let Some(loco) = entity.locomotor.as_mut()
             {
                 loco.store_track_head(family, None);
@@ -266,7 +266,9 @@ impl Simulation {
 
     pub(super) fn track_survives(&self, id: u64) -> bool {
         self.substrate.entities.get(id).is_some_and(|entity| {
-            entity.lifecycle.object_alive && !entity.lifecycle.in_limbo && !entity.is_falling_down()
+            entity.lifecycle.object_alive()
+                && !entity.lifecycle.in_limbo()
+                && !entity.is_falling_down()
         })
     }
 
@@ -394,22 +396,6 @@ impl Simulation {
                 {
                     loco.store_track_destination(family, None);
                 }
-                // Retire only the completed order adapter before PerCell. The
-                // native terminal tail has no legacy finalizer/body-turn reset;
-                // a callback may install a new path that must survive this tail.
-                if let Some(entity) = self.substrate.entities.get_mut(id) {
-                    if reached {
-                        entity.movement_target = None;
-                    } else if entity.movement_target.is_some()
-                        && entity
-                            .navigation
-                            .path_replay
-                            .remaining_directions()
-                            .is_empty()
-                    {
-                        super::movement_commands::spend_track_route(entity);
-                    }
-                }
                 self.unit_per_cell_process(
                     id,
                     super::per_cell::PerCellReason::Arrival,
@@ -425,7 +411,7 @@ impl Simulation {
                     let entity = self.substrate.entities.get_mut(id).unwrap();
                     super::navcom::foot_stop_moving(entity);
                     entity.navigation.path_replay.clear_live_head();
-                    entity.navigation.pending_arrival_clear = false;
+                    entity.navigation.pending_destination_setter = false;
                     if entity.mission.current().known() == Some(MissionType::Move) {
                         let returns = self.unit_enter_idle_mode(id, rules, false, effects);
                         observe(self, id, TrackWorldEvent::Arrival);
@@ -434,12 +420,6 @@ impl Simulation {
                         }
                     }
                 }
-                if !reached
-                    && let Some(entity) = self.substrate.entities.get_mut(id)
-                    && entity.movement_target.is_none()
-                {
-                    entity.navigation.pending_arrival_clear = entity.navigation.nav_com.is_some();
-                }
                 if self.track_navigation_gate(id, rules, effects) {
                     return Ok(TrackPass::aborted(moved));
                 }
@@ -447,7 +427,7 @@ impl Simulation {
                     .substrate
                     .entities
                     .get(id)
-                    .is_some_and(|e| e.lifecycle.object_alive)
+                    .is_some_and(|e| e.lifecycle.object_alive())
                 {
                     return Ok(TrackPass::paid(moved));
                 }
@@ -512,7 +492,7 @@ impl Simulation {
                 .substrate
                 .entities
                 .get(id)
-                .is_some_and(|entity| entity.lifecycle.object_alive)
+                .is_some_and(|entity| entity.lifecycle.object_alive())
             {
                 return Ok(TrackPass::paid(moved));
             }
@@ -726,28 +706,31 @@ impl Simulation {
             &self.interner,
         );
         observe(self, id, TrackWorldEvent::SetCoords);
-        if crossing && !terminal {
-            // Crossing uses actual current cell; this predicate instead uses
-            // the previous transformed cached point (or current at cursor0).
-            let grid = self.path_grid.as_deref();
-            if let Some(entity) = self.substrate.entities.get_mut(id)
-                && let Some((source, destination)) = grid.and_then(|grid| {
-                    grid.cell(previous_track_cell.0, previous_track_cell.1)
-                        .zip(grid.cell(selected_cell.0, selected_cell.1))
-                })
-            {
-                use super::movement_bridge::{BridgeStateUpdate, BridgeTransition};
-                let update =
-                    match super::movement_bridge::compute_bridge_transition(source, destination) {
-                        BridgeTransition::Enter => BridgeStateUpdate::Set,
-                        BridgeTransition::Exit => BridgeStateUpdate::Clear,
-                        BridgeTransition::NoChange => BridgeStateUpdate::Unchanged,
-                    };
+        let grid = self.path_grid.as_deref();
+        if crossing && let Some(entity) = self.substrate.entities.get_mut(id) {
+            if !terminal {
+                // Crossing uses actual current cell; this predicate instead
+                // uses the previous transformed cached point (or current at
+                // cursor0). The resolver also stores the entered cell's level.
+                let update = super::movement_bridge::resolve_cell_transition_bridge_state(
+                    &mut entity.position,
+                    grid,
+                    previous_track_cell,
+                    selected_cell,
+                    entity.on_bridge,
+                );
                 super::movement_bridge::apply_bridge_layer_state(
                     &mut entity.locomotor,
                     &mut entity.on_bridge,
                     update,
                 );
+            } else if let Some(entered) =
+                grid.and_then(|grid| grid.cell(selected_cell.0, selected_cell.1))
+            {
+                // The terminal point skips the bridge predicate but still
+                // enters a new cell.
+                entity.position.z =
+                    super::movement_bridge::stored_level(entered.ground_level, entity.on_bridge);
             }
         }
         if terminal && let Some(entity) = self.substrate.entities.get_mut(id) {
@@ -860,7 +843,7 @@ impl Simulation {
         let family = self.substrate.entities.get(id).and_then(|entity| {
             // Foot4DB266..26E skips Apply0 when already in limbo. A second
             // conceal must not destructively clear a newer owner's raw claim.
-            if entity.lifecycle.in_limbo {
+            if entity.lifecycle.in_limbo() {
                 return None;
             }
             match entity.locomotor.as_ref()?.kind {
@@ -1019,8 +1002,8 @@ impl Simulation {
         let Some(entity) = self.substrate.entities.get_mut(id) else {
             return Ok(true);
         };
-        if !(picked && !entity.lifecycle.in_limbo) {
-            if entity.lifecycle.object_alive {
+        if !(picked && !entity.lifecycle.in_limbo()) {
+            if entity.lifecycle.object_alive() {
                 set_head(entity, family, None);
                 set_track_valid(entity, family, false);
             }
@@ -1120,61 +1103,19 @@ impl Simulation {
                     None
                 }
             });
-        // 4D838E..83CA: vt+0x480(queue[0], 0), then the queue shift. Drive
-        // and Ship finish the setter at their next Process entry
-        // (`complete_pending_order`); another receiver runs it here.
-        let track = entity.locomotor.as_ref().is_some_and(|loco| {
-            matches!(
-                loco.active_kind(),
-                crate::rules::locomotor_type::LocomotorKind::Drive
-                    | crate::rules::locomotor_type::LocomotorKind::Ship
-            )
-        });
-        let category = entity.category;
-        let setter_now = queued_cell.is_some_and(|(rx, ry)| {
-            !track
-                && rules.is_some_and(|rules| match category {
-                    EntityCategory::Unit => self.unit_setter_receiver(id, Some(rules)),
-                    EntityCategory::Infantry => {
-                        let target = crate::sim::components::NavTargetRef::cell(rx, ry);
-                        self.infantry_setter_receiver(id, rules)
-                            && self
-                                .infantry_destination_inputs_available(id, target, rules, registry)
-                    }
-                    _ => false,
-                })
-        });
-        let entity = self
-            .substrate
-            .entities
-            .get_mut(id)
-            .expect("same idle-mode actor");
-        if let Some(next) = queued_cell.filter(|_| !setter_now) {
-            super::navcom::set_destination_internal_cell(
-                entity,
-                next,
-                self.resolved_terrain.as_ref(),
-                self.session.binary_frame,
-            );
-            entity.navigation.nav_queue.remove(0);
-            entity.navigation.pending_arrival_clear = true;
-        }
-        if let (Some((rx, ry)), Some(rules)) = (queued_cell.filter(|_| setter_now), rules) {
+        // 4D838E..83CA: vt+0x480(queue[0], 0) through the one dispatcher,
+        // which keeps its own NavCom fallback for a receiver no class setter
+        // represents, then the queue shift.
+        if let Some((rx, ry)) = queued_cell {
             let target = crate::sim::components::NavTargetRef::cell(rx, ry);
-            if category == EntityCategory::Infantry {
-                // Infantry51AA40 does not read the queue-clear flag; its
-                // shared setter supplies the same receiver for mode0/1.
-                self.set_infantry_destination(id, target, rules, registry, effects)
-                    .expect("checked Infantry NavQueue destination inputs");
-            } else {
-                self.set_unit_destination(id, target, rules, false, effects);
+            if let Err(cause) =
+                self.assign_destination_keeping_queue(id, Some(target), rules, registry, effects)
+            {
+                log::debug!("Foot {id} NavQueue destination: {cause:?}");
             }
-            let entity = self
-                .substrate
-                .entities
-                .get_mut(id)
-                .expect("same idle-mode actor");
-            if !entity.navigation.nav_queue.is_empty() {
+            if let Some(entity) = self.substrate.entities.get_mut(id)
+                && !entity.navigation.nav_queue.is_empty()
+            {
                 entity.navigation.nav_queue.remove(0);
             }
         }
@@ -1187,7 +1128,7 @@ impl Simulation {
         // SlaveOwner, not Team (+5D4). The same-cell comparison calls
         // virtual+48 on both owners and truncates signed leptons /256.
         let archived = self.substrate.entities.get(id).and_then(|entity| {
-            if entity.category != EntityCategory::Infantry || entity.slave.owner().is_some() {
+            if entity.category() != EntityCategory::Infantry || entity.slave.owner().is_some() {
                 return None;
             }
             let target = entity.archive_target()?;
@@ -1229,7 +1170,7 @@ impl Simulation {
                 }
             };
             if let Err(cause) =
-                self.set_infantry_destination(id, destination, rules, registry, effects)
+                self.assign_infantry_destination(id, destination, rules, registry, effects)
             {
                 log::debug!("Infantry {id} idle Archive destination: {cause}");
             }
@@ -1276,7 +1217,7 @@ impl Simulation {
         let has_destination = entity.navigation.nav_com.is_some();
         let current = entity.mission.current().known();
         let effective = entity.mission.effective().known();
-        let category = entity.category;
+        let category = entity.category();
         let unit_type =
             rules.and_then(|rules| rules.object(self.interner.resolve(entity.type_ref())));
         let miner = unit_type.is_some_and(|object| object.harvester || object.weeder);
@@ -1371,7 +1312,7 @@ impl Simulation {
         let Some(entity) = self.substrate.entities.get(id) else {
             return false;
         };
-        if entity.navigation.nav_com.is_some() || entity.attack_target.is_some() {
+        if entity.navigation.nav_com.is_some() || entity.attack_target.target().is_some() {
             return false;
         }
         self.unit_enter_idle_mode(id, rules, false, effects)

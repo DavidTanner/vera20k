@@ -368,11 +368,21 @@ impl ScatterRecord {
 /// The represented ordinary orders of native MegaMission opcode `0x04`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MegaMissionOrder {
-    Move { target_x: i16, target_y: i16 },
-    AreaGuard { post: MegaMissionTarget },
+    Move {
+        target_x: i16,
+        target_y: i16,
+    },
+    /// Move with an object as its destination token, which the object
+    /// receiver `0x004D74E0` sends (`0x004D7C76`).
+    MoveToObject {
+        id: i32,
+    },
+    AreaGuard {
+        post: MegaMissionTarget,
+    },
 }
 
-/// A TargetClass token used by an ordinary Area Guard order.
+/// A TargetClass token used by an ordinary Move or Area Guard order.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MegaMissionTarget {
     Null,
@@ -438,6 +448,11 @@ impl MegaMissionRecord {
                     y: target_y,
                 },
             ),
+            MegaMissionOrder::MoveToObject { id } => (
+                MOVE_ACTION,
+                MegaMissionTarget::Null,
+                MegaMissionTarget::Object { id },
+            ),
             MegaMissionOrder::AreaGuard { post } => {
                 (AREA_GUARD_ACTION, post, MegaMissionTarget::Null)
             }
@@ -463,7 +478,8 @@ impl MegaMissionRecord {
     }
 
     /// Decode the represented ordinary Move/Area Guard forms. Planning,
-    /// attack-move and other token/action shapes remain outside this contract.
+    /// attack-move, a Move with no destination and other token/action shapes
+    /// remain outside this contract.
     pub fn decode(record: &CommandRecord) -> Option<Self> {
         if record.opcode() != MEGAMISSION_OPCODE || record.house_id() < 0 {
             return None;
@@ -509,6 +525,9 @@ impl MegaMissionRecord {
                     target_x: x,
                     target_y: y,
                 }
+            }
+            (MOVE_ACTION, MegaMissionTarget::Null, MegaMissionTarget::Object { id }) => {
+                MegaMissionOrder::MoveToObject { id }
             }
             (AREA_GUARD_ACTION, post, MegaMissionTarget::Null) => {
                 MegaMissionOrder::AreaGuard { post }
@@ -565,26 +584,32 @@ pub enum Command {
         entity_ids: Vec<u64>,
         additive: bool,
     },
-    /// Move one entity to a target cell.
-    /// Speed is resolved at dispatch time by `movement::order_speed`.
+    /// Move one entity to a target cell: the class setter (vt+0x480) takes
+    /// the cell.
     Move {
         entity_id: u64,
         target_rx: u16,
         target_ry: u16,
-        queue: bool,
     },
+    /// Move one entity onto an object, the destination a Move click over an
+    /// object keeps (`Simulation::object_move_click`): the class setter
+    /// (vt+0x480) takes the object.
+    MoveToObject { entity_id: u64, target_id: u64 },
     /// Stop movement/combat intent on one entity.
     Stop { entity_id: u64 },
     /// Attack an explicit target.
     Attack { attacker_id: u64, target_id: u64 },
     /// Force-attack a target (ignores friendship — Ctrl+click).
     ForceAttack { attacker_id: u64, target_id: u64 },
-    /// Attack-move toward a cell (logic can retarget along path).
+    /// Attack-move: the MEGAMISSION event with mission 29 that ClickedMission
+    /// (`0x006FFBE0`) promotes a Move or Attack click to. Its tokens are the
+    /// click's: an attack click's object as `target` (`0x004D76B1..0x004D76C1`),
+    /// a Move click's Cell or object as `destination` (`0x004D7C76`).
+    /// `Assign_Target_Command` stores them as MegaTarget and MegaDestination.
     AttackMove {
         entity_id: u64,
-        target_rx: u16,
-        target_ry: u16,
-        queue: bool,
+        target: Option<crate::sim::combat::TargetKind>,
+        destination: Option<crate::sim::combat::TargetKind>,
     },
     /// Area Guard with the first MegaMission token as its destination/post.
     /// A null post is retained until the Foot handler chooses its own cell.
@@ -753,9 +778,10 @@ impl CommandEnvelope {
 #[cfg(test)]
 mod tests {
     use super::{
-        COMMAND_RECORD_LEN, COMMAND_RECORD_PAYLOAD_LEN, CommandRecord, CommandRecordError,
-        EXIT_OPCODE, ExitRecord, MEGAMISSION_OPCODE, MegaMissionCellTokenError, MegaMissionOrder,
-        MegaMissionRecord, MegaMissionTarget, SELL_WALL_AT_CELL_OPCODE, SellWallAtCellRecord,
+        ABSTRACT_OBJECT_TARGET_KIND, COMMAND_RECORD_LEN, COMMAND_RECORD_PAYLOAD_LEN, CommandRecord,
+        CommandRecordError, EXIT_OPCODE, ExitRecord, MEGAMISSION_OPCODE, MOVE_ACTION,
+        MegaMissionCellTokenError, MegaMissionOrder, MegaMissionRecord, MegaMissionTarget,
+        NULL_TARGET_KIND, SELL_WALL_AT_CELL_OPCODE, SellWallAtCellRecord,
     };
 
     #[test]
@@ -985,6 +1011,33 @@ mod tests {
         let mut wrong_repeat = valid.clone();
         wrong_repeat.payload_mut()[17..21].copy_from_slice(&8_i32.to_le_bytes());
         assert_eq!(MegaMissionRecord::decode(&wrong_repeat), None);
+    }
+
+    /// The object receiver `0x004D74E0` sends Move with the object as its
+    /// destination token (`0x004D7C76`), which the constructor writes in the
+    /// slot a Move cell takes. A Move with no destination stays outside the
+    /// represented forms.
+    #[test]
+    fn megamission_move_to_object_carries_an_abstract_destination_token() {
+        let mut record = CommandRecord::decode_exact(&[0xcc; COMMAND_RECORD_LEN]).unwrap();
+        let typed = MegaMissionRecord {
+            house_id: 1,
+            frame: 9,
+            source_id: 7,
+            order: MegaMissionOrder::MoveToObject { id: 0x0102_0304 },
+        };
+        typed.write_into(&mut record).unwrap();
+        let bytes = record.as_bytes();
+        assert_eq!(bytes[12], MOVE_ACTION);
+        assert_eq!(&bytes[14..18], &0_i32.to_le_bytes());
+        assert_eq!(bytes[18], NULL_TARGET_KIND);
+        assert_eq!(&bytes[19..23], &0x0102_0304_i32.to_le_bytes());
+        assert_eq!(bytes[23], ABSTRACT_OBJECT_TARGET_KIND);
+        assert_eq!(MegaMissionRecord::decode(&record), Some(typed));
+
+        record.payload_mut()[12..16].copy_from_slice(&0_i32.to_le_bytes());
+        record.payload_mut()[16] = NULL_TARGET_KIND;
+        assert_eq!(MegaMissionRecord::decode(&record), None);
     }
 
     #[test]

@@ -68,6 +68,48 @@ fn spin_rate(draw: i32, spread: NativeF64Bits, floor: Option<NativeF64Bits>) -> 
     SimFixed::from_num(f32::from_bits(stored.bits()))
 }
 
+/// `FootClass+0x425`, the crash latch, and `+0x426`, the latch as the
+/// previous `FootClass::AI` saw it (whose rising edge plays the crash voice
+/// and sound, `0x004DACDD..0x004DADC2`). The constructor clears both
+/// (`0x006F2FF9`). A crashing object is alive (Object+90) with Health 0 (a
+/// dropped one keeps its Health) and falls under its locomotor until the
+/// impact.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct CrashLatch {
+    crashing: bool,
+    seen: bool,
+}
+
+impl CrashLatch {
+    /// `FootClass+0x425`: the object is crashing.
+    pub const fn is_crashing(self) -> bool {
+        self.crashing
+    }
+
+    /// `FootClass+0x426`: the latch as the previous `FootClass::AI` saw it.
+    pub const fn seen(self) -> bool {
+        self.seen
+    }
+
+    /// Raise the latch: `FootClass::Crash @ 0x004DEBB0` (`0x004DEC7F`,
+    /// [`Simulation::foot_crash`]) and a Magnetron dropping an airborne
+    /// object (`0x0070FF25`, `sim::locomotor_lift`).
+    pub(crate) fn raise(&mut self) {
+        self.crashing = true;
+    }
+
+    /// Lower the latch: a Jumpjet Descend touchdown (`0x0054CA12`).
+    pub(crate) fn lower(&mut self) {
+        self.crashing = false;
+    }
+
+    /// Install a fixture's latch.
+    #[cfg(test)]
+    pub(crate) fn set_crashing_for_test(&mut self, crashing: bool) {
+        self.crashing = crashing;
+    }
+}
+
 impl Simulation {
     /// `FootClass::Crash @ 0x004DEBB0`, the shared vtable `+0x3DC` body of
     /// Unit, Infantry and Aircraft. Returns false, and changes nothing, for an
@@ -102,8 +144,8 @@ impl Simulation {
         if current_fly_height(entity, self.resolved_terrain.as_ref()) <= 0 {
             return false;
         }
-        let category = entity.category;
-        if entity.health.current > 0 {
+        let category = entity.category();
+        if entity.health.current() > 0 {
             // `0x004DEC4C`: RecordKill(attacker) books the kill and the loss
             // for the killer's house (no attacker: the loss alone), then
             // `0x004DEC72` zeroes Health unless a Magnetron lifted the object
@@ -119,11 +161,11 @@ impl Simulation {
             if let Some(entity) = self.substrate.entities.get_mut(id)
                 && !entity.foot_locomotor_swap_active
             {
-                entity.health.current = 0;
+                entity.health.set(0);
             }
         }
         if let Some(entity) = self.substrate.entities.get_mut(id) {
-            entity.crashing = true;
+            entity.crash.raise();
         }
         crate::sim::radio::transmit_to_contact(
             self,
@@ -194,7 +236,7 @@ impl Simulation {
         let Some(entity) = self.substrate.entities.get(id) else {
             return false;
         };
-        if entity.health.current != 0 || current_fly_height(entity, terrain) == 0 {
+        if entity.health.current() != 0 || current_fly_height(entity, terrain) == 0 {
             return false;
         }
         let location = crate::sim::movement::ground_pose::object_location(entity, terrain);
@@ -230,12 +272,10 @@ impl Simulation {
             self.mark_entity_put(id, context);
             self.submit_entity_display(id, rules, None);
         }
-        let Some(entity) = self.substrate.entities.get_mut(id) else {
+        let Some(entity) = self.substrate.entities.get(id) else {
             return false;
         };
-        let height = current_fly_height(entity, self.resolved_terrain.as_ref());
-        crate::sim::movement::ground_pose::mirror_height(entity, height);
-        height <= 0
+        current_fly_height(entity, self.resolved_terrain.as_ref()) <= 0
     }
 
     /// The dead Fly's impact, `0x004CD7AA..0x004CD8A8` in the same function:
@@ -294,7 +334,7 @@ impl Simulation {
         let Some(entity) = self.substrate.entities.get(id) else {
             return false;
         };
-        debug_assert_eq!(entity.category, EntityCategory::Unit);
+        debug_assert_eq!(entity.category(), EntityCategory::Unit);
         let (crashable, balloon_hover) = self
             .object_type(entity.type_ref(), rules)
             .map_or((false, false), |object| {
@@ -373,7 +413,7 @@ impl Simulation {
         };
         let combat = &rules.combat_damage;
         let base = if combat.current_strength_damage {
-            entity.health.current
+            entity.health.current()
         } else {
             self.object_type(entity.type_ref(), rules)
                 .map_or(0, |object| object.strength)
@@ -497,10 +537,10 @@ impl Simulation {
         let Some(entity) = self.substrate.entities.get(id) else {
             return;
         };
-        if entity.crashing == entity.crashing_seen {
+        if entity.crash.crashing == entity.crash.seen {
             return;
         }
-        if entity.crashing {
+        if entity.crash.crashing {
             // Foot4DAD01 releases the shared handle even if its MoveSound
             // latch was already cleared by the preceding tail.
             self.sound_events
@@ -530,11 +570,11 @@ impl Simulation {
         if let Some(entity) = self.substrate.entities.get_mut(id) {
             // Falling crash edge4DADA9..4DADB7 leaves an active MoveSound's
             // shared handle alone; otherwise it releases the crash sound.
-            if !entity.crashing && !entity.move_sound.is_active() {
+            if !entity.crash.crashing && !entity.move_sound.is_active() {
                 self.sound_events
                     .push(super::SimSoundEvent::ObjectSoundReleased { owner: id });
             }
-            entity.crashing_seen = entity.crashing;
+            entity.crash.seen = entity.crash.crashing;
         }
     }
 
@@ -551,7 +591,7 @@ impl Simulation {
             return;
         };
         // `0x00414DAA`: an aircraft its own FootClass::AI removed never gets here.
-        if entity.category != EntityCategory::Aircraft || !entity.lifecycle.object_alive {
+        if entity.category() != EntityCategory::Aircraft || !entity.lifecycle.object_alive() {
             return;
         }
         let Some(object) = self.object_type(entity.type_ref(), rules) else {
@@ -566,7 +606,7 @@ impl Simulation {
         if !red || current_fly_height(entity, terrain) <= 0 {
             return;
         }
-        let threshold = if entity.health.current != 0 { 10 } else { 80 };
+        let threshold = if entity.health.current() != 0 { 10 } else { 80 };
         let location = crate::sim::movement::ground_pose::position_world_coord(&entity.position);
         if self.scenario_rng.next_range_i32_inclusive(0, 99) >= threshold {
             return;
@@ -639,7 +679,7 @@ impl Simulation {
     ) {
         let killer = attacker.and_then(|a| self.substrate.entities.get(a).map(|k| k.owner()));
         if let Some(entity) = self.substrate.entities.get_mut(victim) {
-            entity.health.current = 0;
+            entity.health.set(0);
         }
         self.record_the_kill(
             victim,

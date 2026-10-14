@@ -36,8 +36,6 @@ mod unit_unlimbo_tests;
 pub(crate) use sinking::SinkingState;
 pub mod edge_cell;
 mod gap_generator;
-mod ground_move;
-pub(crate) use ground_move::GroundMove;
 mod house_base;
 mod house_defeat;
 mod ion_blast;
@@ -64,6 +62,7 @@ mod lifecycle;
 mod load_object_lifecycle;
 mod logic_vector;
 mod move_cell_input;
+pub(crate) use move_cell_input::{CellActionQuery, MoveAction};
 mod move_sound;
 mod object_sound;
 mod turret_rotate_sound;
@@ -144,10 +143,11 @@ pub(crate) use lifecycle_tests::common_raw_terrain_cell as common_raw_test_terra
 #[cfg(test)]
 mod team_script_vm_tests;
 
+pub(crate) use crash::CrashLatch;
 pub(crate) use display_registry::entity_layer;
 pub(crate) use lifecycle::{
-    ConcealOutcome, LifecycleOutput, PlacementEvidence, RevealOutcome, RevealPosition,
-    RevealRequest, UninitContext,
+    ConcealOutcome, LifecycleOutput, ObjectLifecycle, PlacementEvidence, RevealOutcome,
+    RevealPosition, RevealRequest, UninitContext,
 };
 #[cfg(test)]
 pub(crate) use lifecycle::{LifecycleTestEvent, RevealFailure};
@@ -1206,6 +1206,9 @@ pub struct Simulation {
     /// Rebuilt from state on demand; never serialized or hashed.
     #[serde(skip)]
     pub(crate) movement_pass_cache: crate::sim::movement::movement_tick::MovementPassCache,
+    /// Batched path searches (`movement::path_batch`); `None`
+    /// searches in native order. Its registrations wait across a save.
+    pub(crate) path_batch: Option<crate::sim::movement::path_batch::PathBatch>,
     /// Retained native navigation base plane/raw movement rows plus the live
     /// derived hierarchy. ZoneGrid saves only its own retained base state;
     /// LoadContent67E8CD rebuilds hierarchy after bound Cell/object restoration.
@@ -1927,7 +1930,7 @@ impl Simulation {
                 // Unit's receiver retains a `Crashable=` type its Crash(0)
                 // latched (`0x00738475`) and any other type's sinking hull
                 // (`0x00738493`); their own AI terminal calls UnInit. A
-                // Magnetron's drop latches `crashing` too, and keeps nothing.
+                // Magnetron's drop raises the crash latch too, and keeps nothing.
                 if self
                     .substrate
                     .entities
@@ -1937,7 +1940,7 @@ impl Simulation {
                             .object_type(entity.type_ref(), rules)
                             .is_some_and(|object| object.crashable)
                         {
-                            entity.crashing
+                            entity.crash.is_crashing()
                         } else {
                             entity.sinking.is_active()
                         }
@@ -2343,7 +2346,7 @@ impl Simulation {
                 };
                 let Some(weapon_name) = crate::sim::combat::combat_weapon::primary_for_tier(
                     object_type,
-                    firer.veterancy(),
+                    firer.veterancy.rank(),
                 ) else {
                     break;
                 };
@@ -2395,8 +2398,8 @@ impl Simulation {
                                         |entity| {
                                             entity.is_alive()
                                                 && !entity.dying
-                                                && !entity.lifecycle.in_limbo
-                                                && entity.lifecycle.object_alive
+                                                && !entity.lifecycle.in_limbo()
+                                                && entity.lifecycle.object_alive()
                                         },
                                     );
                             if !eligible {
@@ -2726,7 +2729,7 @@ impl Simulation {
         overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
         frame_effects: FrameEffects<'_>,
     ) {
-        let Some(health) = self.substrate.entities.get(id).map(|e| e.health.current) else {
+        let Some(health) = self.substrate.entities.get(id).map(|e| e.health.current()) else {
             return;
         };
         let warhead = self.interner.intern(&rules.bridge_warheads.c4_name);
@@ -3312,6 +3315,7 @@ impl Simulation {
         let seed = session.seed;
         let mut out = Self {
             movement_pass_cache: Default::default(),
+            path_batch: None,
             interner: crate::sim::intern::StringInterner::new(),
             type_handles: crate::sim::type_handle_table::TypeHandleTable::default(),
             rule_handles: None,
@@ -3949,11 +3953,11 @@ impl Simulation {
                 );
                 let reveal = !entity.in_playfield
                     && member
-                    && entity.lifecycle.object_alive
-                    && !entity.lifecycle.in_limbo
+                    && entity.lifecycle.object_alive()
+                    && !entity.lifecycle.in_limbo()
                     && !entity.dying
-                    && entity.health.current > 0
-                    && entity.category != EntityCategory::Structure
+                    && entity.health.current() > 0
+                    && entity.category() != EntityCategory::Structure
                     && self
                         .houses
                         .get(&entity.owner())
@@ -3981,6 +3985,7 @@ impl Simulation {
                     entity,
                     &reveal_config,
                     height_grid.as_deref(),
+                    self.resolved_terrain.as_ref(),
                     sight_ability,
                     &self.interner,
                 );
@@ -4383,9 +4388,9 @@ impl Simulation {
     #[cfg(debug_assertions)]
     pub(crate) fn debug_assert_lifecycle_consistent(&self) {
         for entity in self.substrate.entities.values() {
-            if !entity.lifecycle.object_alive {
+            if !entity.lifecycle.object_alive() {
                 debug_assert!(
-                    entity.lifecycle.in_limbo,
+                    entity.lifecycle.in_limbo(),
                     "dead entity {} must have completed Conceal before alive clear",
                     entity.stable_id()
                 );
@@ -4417,7 +4422,7 @@ impl Simulation {
             }
             // A marked Foot sits where its Mark put it: the Mark owner's own
             // list decision, which the Ground answer makes rules-independent.
-            let listed = if entity.category == EntityCategory::Structure {
+            let listed = if entity.category() == EntityCategory::Structure {
                 if crate::sim::occupancy::cell_list_layer_for_entity(
                     entity,
                     self.resolved_terrain.as_ref(),
@@ -4711,7 +4716,7 @@ impl Simulation {
             .substrate
             .entities
             .get(stable_id)
-            .is_some_and(|entity| entity.building_actually_placed);
+            .is_some_and(|entity| entity.building_art.actually_placed());
         if !placed || (infantry == 0 && units == 0) {
             return;
         }
@@ -4728,7 +4733,7 @@ impl Simulation {
         rules: &RuleSet,
     ) -> Option<(InternedId, i32, i32)> {
         let entity = self.substrate.entities.get(stable_id)?;
-        if entity.category != EntityCategory::Structure {
+        if entity.category() != EntityCategory::Structure {
             return None;
         }
         let object = self.object_type(entity.type_ref(), rules)?;
@@ -4770,7 +4775,7 @@ impl Simulation {
             return;
         };
         let owner = entity.owner();
-        let structure = entity.category == EntityCategory::Structure;
+        let structure = entity.category() == EntityCategory::Structure;
         if let Some(house) = self.houses.get_mut(&owner) {
             let factors = house.cost_factors();
             house.tracking.removed_from_game(entity, &factors);
@@ -4854,10 +4859,10 @@ impl Simulation {
     /// gamemd-derived: `BuildingClass::Unlimbo @ 0x004411B6..0x00441223`.
     pub(crate) fn append_live_build_const(&mut self, stable_id: u64) {
         let Some(owner) = self.substrate.entities.get(stable_id).and_then(|entity| {
-            (entity.category == EntityCategory::Structure
+            (entity.category() == EntityCategory::Structure
                 && entity.build_const_eligible
-                && entity.lifecycle.object_alive
-                && !entity.lifecycle.in_limbo
+                && entity.lifecycle.object_alive()
+                && !entity.lifecycle.in_limbo()
                 && entity.lifecycle.cell_marked)
                 .then_some(entity.owner())
         }) else {
@@ -4934,7 +4939,7 @@ impl Simulation {
             self.substrate.entities.get(stable_id).map(|entity| {
                 (
                     entity.owner(),
-                    entity.category,
+                    entity.category(),
                     entity.spawn_manager.is_some(),
                     entity.build_const_eligible,
                 )
@@ -5028,11 +5033,8 @@ impl Simulation {
                     .is_some_and(|object| object.is_simple_deployer);
             let _ = self.assign_target_represented(stable_id, None, Some(rules), registry, effects);
             self.assign_null_destination(stable_id, Some(rules), None, effects);
-            if let Some(entity) = self.substrate.entities.get_mut(stable_id) {
-                entity.movement_target = None;
-                if !unit_deploying {
-                    entity.set_archive_target(None);
-                }
+            if !unit_deploying && let Some(entity) = self.substrate.entities.get_mut(stable_id) {
+                entity.set_archive_target(None);
             }
             if current != Some(MissionType::Selling) && !simple_deployer_unloading {
                 // `Queue_Mission(Guard, 1)`: the queue write, then Ready_To_Commence
@@ -5067,7 +5069,7 @@ impl Simulation {
             .substrate
             .entities
             .get(stable_id)
-            .is_some_and(|entity| !entity.lifecycle.in_limbo);
+            .is_some_and(|entity| !entity.lifecycle.in_limbo());
         if on_map {
             self.house_removed_from_game(stable_id, rules, effects);
         }
@@ -5351,13 +5353,13 @@ impl Simulation {
         let Some(entity) = self.substrate.entities.get(stable_id) else {
             return;
         };
-        let category = entity.category;
+        let category = entity.category();
         let current = entity.mission.current().known();
         let object = self.object_type(entity.type_ref(), rules);
         let factory_unloading = category == EntityCategory::Structure
             && current == Some(MissionType::Unload)
             && object.is_some_and(|object| object.weapons_factory);
-        let in_limbo = entity.lifecycle.in_limbo;
+        let in_limbo = entity.lifecycle.in_limbo();
         let now = self.session.binary_frame;
         let rescue = self.substrate.entities.get(stable_id).is_some_and(|e| {
             e.mission.current().known() == Some(MissionType::Rescue)
@@ -5386,9 +5388,6 @@ impl Simulation {
             return;
         }
         self.assign_null_destination(stable_id, Some(rules), None, effects);
-        if let Some(entity) = self.substrate.entities.get_mut(stable_id) {
-            entity.movement_target = None;
-        }
         let _ = self.assign_target_represented(stable_id, None, Some(rules), None, effects);
         enter_idle_mode(self, stable_id, rules, None, effects);
     }
@@ -5981,7 +5980,7 @@ impl Simulation {
                 let Some(entity) = self.substrate.entities.get(stable_id) else {
                     continue;
                 };
-                let coarse_candidate = !entity.lifecycle.in_limbo
+                let coarse_candidate = !entity.lifecycle.in_limbo()
                     && entity.lifecycle.cell_marked
                     && entity.mission.current() != selling
                     && entity.mission.queued() != selling
@@ -6095,9 +6094,8 @@ impl Simulation {
     }
 
     fn refresh_fog(&mut self, config: &vision::VisionConfig, rules: Option<&RuleSet>) {
-        // Recompute visibility in-place: clears FLAG_VISIBLE on existing grids
-        // (preserving FLAG_REVEALED) then re-reveals from entity positions.
-        // No allocation or merge_revealed_from pass needed.
+        // Recompute visibility in place: end last frame's sight (preserving
+        // FLAG_REVEALED) and reconcile each source's sight with its position.
         let path_grid = self.path_grid.as_deref();
         let height_grid = self.sight_height_grid(config);
 
@@ -6108,6 +6106,7 @@ impl Simulation {
             &self.house_alliances,
             config,
             height_grid.as_deref(),
+            self.resolved_terrain.as_ref(),
             &self.interner,
             rules,
         );
@@ -6180,7 +6179,7 @@ impl Simulation {
             .substrate
             .entities
             .get(stable_id)
-            .filter(|e| e.category == EntityCategory::Structure && !e.dying)
+            .filter(|e| e.category() == EntityCategory::Structure && !e.dying)
             .map(|e| (e.owner(), e.type_ref()))
         else {
             return;
@@ -6228,7 +6227,7 @@ impl Simulation {
                     != Some(crate::sim::mission::MissionType::Selling)
                 || entity.ai_frozen()
                 || !entity.is_ai_alive()
-                || entity.lifecycle.in_limbo
+                || entity.lifecycle.in_limbo()
             {
                 return;
             }

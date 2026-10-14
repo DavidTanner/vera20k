@@ -85,7 +85,7 @@ impl Fixture {
             .values()
             .find(|e| {
                 !e.dying
-                    && !e.lifecycle.in_limbo
+                    && !e.lifecycle.in_limbo()
                     && self.sim.interner.resolve(e.type_ref()) == "PLAIN"
             })
             .map(|e| (e.position.rx, e.position.ry))

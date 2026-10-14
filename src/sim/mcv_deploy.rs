@@ -120,7 +120,7 @@ pub(crate) fn hunt_deploys(sim: &Simulation, id: u64, rules: &RuleSet) -> bool {
     };
     deploys_into(sim, entity, rules).is_some_and(|yard| {
         yard.build_const_eligible
-            || entity.attack_target.is_some()
+            || entity.attack_target.target().is_some()
             || sim.owner_is_human(entity.owner())
     })
 }
@@ -267,7 +267,7 @@ pub(crate) fn guard_queues_unload(sim: &Simulation, id: u64, rules: &RuleSet) ->
 }
 
 pub(crate) fn is_mcv(sim: &Simulation, entity: &GameEntity, rules: &RuleSet) -> bool {
-    entity.category == EntityCategory::Unit
+    entity.category() == EntityCategory::Unit
         && sim
             .object_type(entity.type_ref(), rules)
             .is_some_and(|obj| {

@@ -401,7 +401,8 @@ mod map_wall_owner_candidate_tests {
     use super::*;
     use crate::map::entities::EntityCategory;
     use crate::rules::terrain_rules::TerrainClass;
-    use crate::sim::components::{BuildingUp, Health};
+    use crate::sim::combat::Health;
+    use crate::sim::components::BuildingUp;
     use crate::sim::game_entity::GameEntity;
     use crate::sim::overlay_grid::{MapWallOwnerCandidate, OverlayGrid};
     use crate::sim::power_system::PowerState;
@@ -433,7 +434,7 @@ mod map_wall_owner_candidate_tests {
             EntityCategory::Structure,
         );
         entity.foundation = foundation.to_string();
-        entity.lifecycle.object_alive = true;
+        entity.lifecycle.set_object_alive_for_test(true);
         entity.lifecycle.cell_marked = true;
         entity
     }
@@ -475,7 +476,7 @@ mod map_wall_owner_candidate_tests {
             &registry,
             &[gacnst_candidate, gaspot_candidate],
         );
-        assert_eq!(projected_grid.cell(12, 9).wall_owner, Some(gacnst.owner));
+        assert_eq!(projected_grid.cell(12, 9).wall_owner, Some(gacnst.owner()));
 
         let mut northwest_grid = OverlayGrid::new(15, 10);
         northwest_grid.place_overlay(12, 9, 0, 0);
@@ -497,7 +498,7 @@ mod map_wall_owner_candidate_tests {
         );
         assert_eq!(
             northwest_grid.cell(12, 9).wall_owner,
-            Some(gaspot.owner),
+            Some(gaspot.owner()),
             "the former north-west candidate coordinates select the wrong owner"
         );
     }
@@ -657,15 +658,15 @@ mod map_wall_owner_candidate_tests {
                     0,
                     0,
                     owner,
-                    Health { current: 100 },
+                    Health::new(100),
                     kind,
                     EntityCategory::Structure,
                     0,
                     0,
                     false,
                 );
-                lamp.lifecycle.object_alive = true;
-                lamp.lifecycle.in_limbo = false;
+                lamp.lifecycle.set_object_alive_for_test(true);
+                lamp.lifecycle.set_in_limbo_for_test(false);
                 lamp.lifecycle.cell_marked = true;
                 sim.entities_mut().insert(lamp);
                 sim.allocate_building_light(id, &rules);
@@ -1324,15 +1325,15 @@ mod map_wall_owner_candidate_tests {
             0,
             0,
             owner,
-            Health { current: 100 },
+            Health::new(100),
             type_ref,
             EntityCategory::Structure,
             0,
             0,
             false,
         );
-        lamp.lifecycle.object_alive = true;
-        lamp.lifecycle.in_limbo = false;
+        lamp.lifecycle.set_object_alive_for_test(true);
+        lamp.lifecycle.set_in_limbo_for_test(false);
         lamp.lifecycle.cell_marked = false;
         lamp.install_building_up(BuildingUp::completing_in_ticks(9, 0), 0);
         sim.entities_mut().insert(lamp);
@@ -2240,11 +2241,11 @@ impl MapLoadInitial {
                             && entity.position.ry == map_entity.cell_y
                             && simulation
                                 .interner
-                                .resolve(entity.type_ref)
+                                .resolve(entity.type_ref())
                                 .eq_ignore_ascii_case(&map_entity.type_id)
                     })
                     .expect("generated map entity reached Simulation")
-                    .techno_ctor_random_word;
+                    .techno_ctor_random_word();
                 (entity_index, expected, actual)
             })
             .collect();

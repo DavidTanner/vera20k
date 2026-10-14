@@ -19,8 +19,8 @@ use super::*;
 use crate::rules::ini_parser::IniFile;
 use crate::rules::locomotor_type::LocomotorKind;
 use crate::rules::ruleset::RuleSet;
+use crate::sim::components::NavTargetRef;
 use crate::sim::components::{DriveCoord, FootPathQueue, TrackProgress};
-use crate::sim::components::{MovementTarget, NavTargetRef};
 use crate::sim::game_entity::{BuildingGateRuntime, GameEntity};
 use crate::sim::intern::test_interner;
 use crate::sim::mission::MissionType;
@@ -51,10 +51,10 @@ fn chain_fixture(passive: bool) -> (Simulation, RuleSet, TrackInvocation) {
     ));
     let head = DriveCoord::cell(10, 9, 0);
     let mut mover = GameEntity::test_default(MOVER, "MTNK", "Americans", 10, 10);
-    mover.category = EntityCategory::Unit;
+    mover.set_category_for_test(EntityCategory::Unit);
     mover.locomotor = Some(LocomotorState::for_test_kind(LocomotorKind::Drive));
-    mover.lifecycle.object_alive = true;
-    mover.lifecycle.in_limbo = false;
+    mover.lifecycle.set_object_alive_for_test(true);
+    mover.lifecycle.set_in_limbo_for_test(false);
     mover.lifecycle.cell_marked = true;
     assert!(
         mover
@@ -105,15 +105,14 @@ fn chain_fixture(passive: bool) -> (Simulation, RuleSet, TrackInvocation) {
 
 fn add_blocker(sim: &mut Simulation, moving: bool) {
     let mut blocker = GameEntity::test_default(2, "MTNK", "Americans", CANDIDATE.0, CANDIDATE.1);
-    blocker.category = EntityCategory::Unit;
+    blocker.set_category_for_test(EntityCategory::Unit);
     blocker.locomotor = Some(LocomotorState::for_test_kind(LocomotorKind::Drive));
-    blocker.lifecycle.object_alive = true;
-    blocker.lifecycle.in_limbo = false;
+    blocker.lifecycle.set_object_alive_for_test(true);
+    blocker.lifecycle.set_in_limbo_for_test(false);
     blocker.lifecycle.cell_marked = true;
     if moving {
         // Unit Can_Enter_Cell's code2 body arm (0x73F86B) sees a NavCom and
         // retains Foot+6B6 while moving.
-        blocker.movement_target = Some(MovementTarget::default());
         blocker.navigation.nav_com = Some(NavTargetRef::cell(20, 9));
         assert!(
             blocker
@@ -163,8 +162,8 @@ fn production_chain_code3_opens_gate_without_consuming_the_queue() {
         EntityCategory::Structure,
     );
     gate.building_gate = Some(BuildingGateRuntime::default());
-    gate.lifecycle.object_alive = true;
-    gate.lifecycle.in_limbo = false;
+    gate.lifecycle.set_object_alive_for_test(true);
+    gate.lifecycle.set_in_limbo_for_test(false);
     gate.lifecycle.cell_marked = true;
     sim.substrate.entities.insert(gate);
     sim.interner = test_interner();
@@ -252,7 +251,7 @@ fn production_chain_clear_and_code2_share_admission_and_never_scatter_or_repath(
                 .substrate
                 .entities
                 .get(2)
-                .map(|e| serde_json::to_value(&e.movement_target).unwrap());
+                .map(|e| serde_json::to_value(&e.navigation).unwrap());
             let mut per_cell = 0;
             sim.run_track_points_observed(invocation, 8, Some(&rules), None, &mut |_, _, event| {
                 per_cell += usize::from(event == TrackWorldEvent::PerCell);
@@ -293,7 +292,7 @@ fn production_chain_clear_and_code2_share_admission_and_never_scatter_or_repath(
                 sim.substrate
                     .entities
                     .get(2)
-                    .map(|e| serde_json::to_value(&e.movement_target).unwrap()),
+                    .map(|e| serde_json::to_value(&e.navigation).unwrap()),
                 blocker_before
             );
             assert_eq!(
@@ -317,7 +316,7 @@ fn accepted_chain_per_cell_crush_finishes_lifecycle_in_list_order_before_continu
     // Two victims prove the saved list successor survives removal of the first.
     for id in [20, 10] {
         let mut victim = GameEntity::test_default(id, "E1", "Soviets", position.rx, position.ry);
-        victim.category = EntityCategory::Infantry;
+        victim.set_category_for_test(EntityCategory::Infantry);
         victim.mission_leaf = crate::sim::mission::leaf::MissionLeafState::for_entity_category(
             EntityCategory::Infantry,
         );
@@ -325,8 +324,8 @@ fn accepted_chain_per_cell_crush_finishes_lifecycle_in_list_order_before_continu
         victim.sub_cell = Some(0);
         victim.position = position;
         victim.crushable = true;
-        victim.lifecycle.object_alive = true;
-        victim.lifecycle.in_limbo = false;
+        victim.lifecycle.set_object_alive_for_test(true);
+        victim.lifecycle.set_in_limbo_for_test(false);
         victim.lifecycle.cell_marked = true;
         sim.substrate.entities.insert(victim);
     }
@@ -352,9 +351,9 @@ fn accepted_chain_per_cell_crush_finishes_lifecycle_in_list_order_before_continu
                     .entities
                     .get(id)
                     .expect("UnInit retains identity until drain");
-                assert!(!victim.lifecycle.object_alive);
+                assert!(!victim.lifecycle.object_alive());
                 assert!(!victim.lifecycle.cell_marked);
-                assert!(victim.lifecycle.in_limbo);
+                assert!(victim.lifecycle.in_limbo());
                 assert!(
                     !sim.substrate
                         .occupancy

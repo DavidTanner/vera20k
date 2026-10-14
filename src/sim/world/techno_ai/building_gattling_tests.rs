@@ -133,7 +133,7 @@ fn prepare(sim: &mut Simulation, id: u64, input: &Value) {
         int("latch", 0) == 1,
     );
     if state["veterancy"].as_f64().unwrap_or(0.0) >= 2.0 {
-        entity.set_veterancy_rank(RANK_ELITE_U16);
+        entity.veterancy.set_rank_for_test(RANK_ELITE_U16);
     }
     entity.last_fire_frame = int("last_fire_frame", -100);
     entity.turret_anim_frame = int("turret_count", 0) as i32;
@@ -340,7 +340,7 @@ fn gattling_attack_matches_the_original() {
             "{name} queue"
         );
         assert_eq!(
-            entity.attack_target.is_some(),
+            entity.attack_target.target().is_some(),
             row["target"].is_string(),
             "{name} target"
         );
@@ -444,7 +444,7 @@ fn a_retarget_after_the_visit_keeps_the_visits_shot() {
     );
     let entity = sim.substrate.entities.get(building).unwrap();
     assert_eq!(
-        entity.attack_target.as_ref().map(|attack| attack.target),
+        entity.attack_target.target(),
         Some(TargetKind::Entity(other))
     );
 }
@@ -563,7 +563,7 @@ fn gattling_idle_decay_matches_the_original() {
         let entity = sim.substrate.entities.get_mut(building).unwrap();
         entity.last_fire_frame = i64::from(FRAME) - since;
         if input["dead"] == true {
-            entity.health.current = 0;
+            entity.health.set_for_test(0);
         }
         let dead = row["ended"].as_u64().unwrap() == 0x0044_0573;
         assert_eq!(dead, input["dead"] == true, "{name}");
@@ -838,7 +838,7 @@ fn retail_dustbowl_gattling_cannon_spins_up_and_winds_down() {
         let entity = scenario.sim().substrate.entities.get(cannon).unwrap();
         (
             entity.mission.current().known(),
-            entity.attack_target.is_some(),
+            entity.attack_target.target().is_some(),
             entity.gattling.stage(),
             entity.gattling.value(),
         )
@@ -937,7 +937,6 @@ fn retail_dustbowl_gattling_cannon_spins_up_and_winds_down() {
                 entity_id: truck,
                 target_rx: x + 17,
                 target_ry: y,
-                queue: false,
             },
         )],
     );

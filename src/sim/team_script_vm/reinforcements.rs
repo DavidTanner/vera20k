@@ -176,9 +176,9 @@ impl Simulation {
                     .get_mut(member)
                     .expect("constructed member");
                 match metadata.veteran_level {
-                    0 => crate::sim::combat::veterancy::set_rookie(entity),
-                    2 => crate::sim::combat::veterancy::set_veteran(entity),
-                    3 => crate::sim::combat::veterancy::set_elite(entity),
+                    0 => entity.veterancy.set_rookie(),
+                    2 => entity.veterancy.set_veteran(),
+                    3 => entity.veterancy.set_elite(),
                     _ => {}
                 }
                 self.with_object_placement_scope(|sim| {
@@ -286,7 +286,7 @@ impl Simulation {
                 .substrate
                 .entities
                 .get(member)
-                .is_some_and(|member| member.category == EntityCategory::Aircraft);
+                .is_some_and(|member| member.category() == EntityCategory::Aircraft);
             let heading = if nearby {
                 0
             } else {

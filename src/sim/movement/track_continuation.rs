@@ -27,7 +27,6 @@ use crate::rules::ruleset::RuleSet;
 use crate::sim::components::NavTargetRef;
 use crate::sim::world::FrameEffects;
 use crate::sim::world::Simulation;
-use crate::util::fixed_math::SimFixed;
 
 impl Simulation {
     /// 0x4B0583..0x4B063B / 0x69FC93..0x69FCDA after Process_Track(0)
@@ -44,7 +43,7 @@ impl Simulation {
             return Ok(false);
         };
         // 4B0583..4B058C: a dead owner returns the Process.
-        if !entity.lifecycle.object_alive {
+        if !entity.lifecycle.object_alive() {
             return Ok(false);
         }
         // 4B0592: a selector still set keeps its track (common tail 4B078C).
@@ -56,7 +55,11 @@ impl Simulation {
         if selector.is_some_and(|selector| selector != -1) {
             return Ok(false);
         }
-        self.finish_deferred_track_order(id, rules, frame_effects);
+        // Rust bookkeeping: a class setter Rust deferred during this Process
+        // (a mission restore's `Assign_Destination(saved, 1)` from a
+        // callback) ran natively before these gates, so +34 and the path
+        // head already follow NavCom when they read them.
+        self.complete_pending_order(id, rules, None, frame_effects);
         let Some(entity) = self.substrate.entities.get(id) else {
             return Ok(false);
         };
@@ -71,7 +74,7 @@ impl Simulation {
             return Ok(false);
         }
         // 4B05B4..4B05CA: a Unit's +6D1 unload-active latch.
-        if entity.category == EntityCategory::Unit
+        if entity.category() == EntityCategory::Unit
             && entity
                 .miner
                 .as_ref()
@@ -82,7 +85,6 @@ impl Simulation {
         if family == TrackFamily::Drive {
             self.reaim_drive_infantry_navcom(id, rules)?;
         }
-        self.ensure_track_scheduling_adapter(id, rules);
         Ok(true)
     }
 
@@ -100,14 +102,14 @@ impl Simulation {
             return Ok(());
         };
         let target = entity.navigation.nav_com.filter(|target| {
-            entity.category == EntityCategory::Unit
+            entity.category() == EntityCategory::Unit
                 && match *target {
                     NavTargetRef::Cell { .. } => false,
                     NavTargetRef::Entity { id }
                     | NavTargetRef::Object { id }
                     | NavTargetRef::Building { id } => entities
                         .get(id)
-                        .is_some_and(|object| object.category == EntityCategory::Infantry),
+                        .is_some_and(|object| object.category() == EntityCategory::Infantry),
                 }
         });
         let Some(target) = target else {
@@ -125,54 +127,5 @@ impl Simulation {
             super::navcom::refresh_drive_destination_coord(entity, coord, terrain);
         }
         Ok(())
-    }
-
-    /// Rust bookkeeping, no native counterpart. A class setter that Rust
-    /// deferred (`pending_arrival_clear`: a mission restore's
-    /// `Assign_Destination(saved, 1)`, or a NavCom whose scheduling adapter a
-    /// stop or callback dropped) ran natively before this Process, so +34 and
-    /// the path head already follow NavCom when the gates read them. The
-    /// setter clears the path head, so the adapter's leftover route is
-    /// abandoned.
-    fn finish_deferred_track_order(
-        &mut self,
-        id: u64,
-        rules: Option<&RuleSet>,
-        frame_effects: FrameEffects<'_>,
-    ) {
-        let Some(actor) = self.substrate.entities.get_mut(id) else {
-            return;
-        };
-        if !actor.navigation.pending_arrival_clear {
-            return;
-        }
-        actor.movement_target = None;
-        self.complete_pending_order(id, rules, None, frame_effects);
-    }
-
-    /// Rust bookkeeping, no native counterpart: a +34 can outlive the
-    /// MovementTarget adapter without a deferred order: Force_Track writes +34
-    /// directly (0x4B0D3F), and a NavCom object's pointer expiry clears NavCom
-    /// but not +34 (0x4D9ABD). Process_Movement does not need the adapter (the
-    /// outer gates in `track_turn` admit a moving Drive/Ship); its readers
-    /// that treat it as "moving" do: `block_index`'s moving next cell and the
-    /// bunker install.
-    fn ensure_track_scheduling_adapter(&mut self, id: u64, rules: Option<&RuleSet>) {
-        let destination = self.substrate.entities.get(id).and_then(|entity| {
-            if entity.movement_target.is_some() {
-                return None;
-            }
-            let loco = entity.locomotor.as_ref()?;
-            loco.track_destination(TrackFamily::from_kind(loco.active_kind())?)
-        });
-        if destination.is_none() {
-            return;
-        }
-        let info = self.resolve_move_info(id, rules);
-        let Some(actor) = self.substrate.entities.get_mut(id) else {
-            return;
-        };
-        let speed = info.as_ref().map_or(SimFixed::lit("25"), |info| info.speed);
-        super::movement_commands::schedule_track_process(actor, speed);
     }
 }

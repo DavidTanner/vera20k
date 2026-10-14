@@ -238,9 +238,9 @@ fn retail_dustbowl_battle_fortress_riders_fire_from_its_ports() {
                     open_topped: true,
                 } if transport_id == bfrt
             ));
-            assert!(gi.lifecycle.in_limbo);
+            assert!(gi.lifecycle.in_limbo());
             assert_eq!(gi.mission.current().known(), Some(MissionType::Guard));
-            assert!(gi.attack_target.is_none());
+            assert!(gi.attack_target.target().is_none());
             // Native51A441..51A46E preserves the arrival subcell; a later
             // carrier SetLocation copies its coordinate through4DB88A/7104F0.
             assert_eq!(
@@ -293,9 +293,9 @@ fn retail_dustbowl_battle_fortress_riders_fire_from_its_ports() {
             break;
         };
         if first_volley.is_none() && !output.fire_events.is_empty() {
-            first_volley = Some((output.fire_events.len(), 200 - target.health.current));
+            first_volley = Some((output.fire_events.len(), 200 - target.health.current()));
         }
-        if target.health.current == 0 || !target.lifecycle.object_alive {
+        if target.health.current() == 0 || !target.lifecycle.object_alive() {
             break;
         }
     }
@@ -344,13 +344,22 @@ fn retail_dustbowl_battle_fortress_riders_fire_from_its_ports() {
         sim.substrate
             .entities
             .get(enemy)
-            .is_none_or(|target| !target.lifecycle.object_alive || target.health.current == 0),
+            .is_none_or(|target| !target.lifecycle.object_alive() || target.health.current() == 0),
         "the riders kill Tanya"
     );
     // The experience (`+0x150`), not yet a rank: Tanya's 1000 over the
     // Fortress's 2000 at `VeteranRatio=3` is a sixth of a rank.
-    let experience =
-        |id: u64| f32::from_bits(sim.substrate.entities.get(id).unwrap().veterancy_raw.bits());
+    let experience = |id: u64| {
+        f32::from_bits(
+            sim.substrate
+                .entities
+                .get(id)
+                .unwrap()
+                .veterancy
+                .raw()
+                .bits(),
+        )
+    };
     assert!(experience(bfrt) > 0.0, "the kill pays the Fortress");
     for &id in &gis {
         assert_eq!(experience(id), 0.0, "not the rider");
@@ -378,12 +387,7 @@ fn retail_dustbowl_battle_fortress_orders_reach_its_riders() {
         gis.iter()
             .map(|&id| {
                 let entities = &fortress.scenario.sim().substrate.entities;
-                entities
-                    .get(id)
-                    .unwrap()
-                    .attack_target
-                    .as_ref()
-                    .map(|attack| attack.target)
+                entities.get(id).unwrap().attack_target.target()
             })
             .collect()
     };
@@ -420,7 +424,7 @@ fn retail_dustbowl_battle_fortress_orders_reach_its_riders() {
             .entities
             .get(bfrt)
             .unwrap();
-        let moving = transport.movement_target.is_some();
+        let moving = crate::sim::movement::motion_query::is_moving(&transport) == Some(true);
         moved |= moving;
         passed_own_range |= moving && now < 1408;
         if moved && !moving {
@@ -457,8 +461,7 @@ fn retail_dustbowl_battle_fortress_orders_reach_its_riders() {
         gis.iter().all(|&id| {
             let gi = fortress.scenario.sim().substrate.entities.get(id).unwrap();
             gi.passively_acquired_target
-                && gi.attack_target.as_ref().map(|attack| attack.target)
-                    == Some(TargetKind::Entity(apocalypse))
+                && gi.attack_target.target() == Some(TargetKind::Entity(apocalypse))
         })
     };
     for _ in 0..120 {
@@ -479,7 +482,7 @@ fn retail_dustbowl_battle_fortress_orders_reach_its_riders() {
         .entities
         .get(bfrt)
         .unwrap();
-    assert!(transport.attack_target.is_none());
+    assert!(transport.attack_target.target().is_none());
 }
 
 /// A loaded Battle Fortress force-fired at the ground: the order hands the
@@ -499,12 +502,7 @@ fn retail_dustbowl_battle_fortress_riders_force_fire_at_the_ground() {
         gis.iter()
             .map(|&id| {
                 let entities = &fortress.scenario.sim().substrate.entities;
-                entities
-                    .get(id)
-                    .unwrap()
-                    .attack_target
-                    .as_ref()
-                    .map(|attack| attack.target)
+                entities.get(id).unwrap().attack_target.target()
             })
             .collect()
     };
@@ -621,7 +619,7 @@ fn retail_dustbowl_battle_fortress_rider_walks_in_and_stays_put() {
         let [rider, transport] =
             [gi, bfrt].map(|id| sim.substrate.entities.get(id).expect("object lives"));
         assert!(inside(&fortress), "frame {frame}: still inside");
-        assert!(rider.lifecycle.in_limbo, "frame {frame}: in limbo");
+        assert!(rider.lifecycle.in_limbo(), "frame {frame}: in limbo");
         assert_eq!(
             position_world_coord(&rider.position),
             arrival,
@@ -868,7 +866,7 @@ fn retail_battle_fortress_chrono_rider_freezes_releases_and_erases() {
             .get(target)
             .unwrap()
             .health
-            .current;
+            .current();
         let mut frozen = false;
         let mut stop_issued = false;
         let mut stop_observed = false;
@@ -908,7 +906,7 @@ fn retail_battle_fortress_chrono_rider_freezes_releases_and_erases() {
                     .get(target)
                     .unwrap();
                 assert!(!victim.ai_frozen());
-                assert_eq!(victim.health.current, original_health);
+                assert_eq!(victim.health.current(), original_health);
                 completed = true;
                 break;
             }
@@ -919,7 +917,7 @@ fn retail_battle_fortress_chrono_rider_freezes_releases_and_erases() {
                 assert!(!actor.is_warping_in());
                 let victim = sim.substrate.entities.get(target).unwrap();
                 assert!(victim.ai_frozen());
-                assert_eq!(victim.health.current, original_health);
+                assert_eq!(victim.health.current(), original_health);
                 frozen = true;
                 if !stop_issued {
                     pending = Some(order(
@@ -930,9 +928,9 @@ fn retail_battle_fortress_chrono_rider_freezes_releases_and_erases() {
                     ));
                     stop_issued = true;
                 }
-                if stop_issued && actor.attack_target.is_none() && !stop_observed {
+                if stop_issued && actor.attack_target.target().is_none() && !stop_observed {
                     assert_eq!(
-                        actor.attack_target.is_none(),
+                        actor.attack_target.target().is_none(),
                         native_stop["target_is_null"].as_bool().unwrap()
                     );
                     assert_eq!(
@@ -957,7 +955,6 @@ fn retail_battle_fortress_chrono_rider_freezes_releases_and_erases() {
                                 entity_id: fortress.bfrt,
                                 target_rx: x - 2,
                                 target_ry: y,
-                                queue: false,
                             },
                         ));
                         move_issued = true;
@@ -968,7 +965,7 @@ fn retail_battle_fortress_chrono_rider_freezes_releases_and_erases() {
                 .substrate
                 .entities
                 .get(target)
-                .is_none_or(|victim| !victim.lifecycle.object_alive)
+                .is_none_or(|victim| !victim.lifecycle.object_alive())
             {
                 assert!(
                     !release_by_moving,

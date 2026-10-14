@@ -89,7 +89,7 @@ impl Replay {
                 .get_mut(id)
                 .unwrap()
                 .health
-                .current = 1000;
+                .set_for_test(1000);
         }
         let before = &row["before"];
         let entity = scene.sim.substrate.entities.get_mut(scene.miner).unwrap();
@@ -106,8 +106,10 @@ impl Replay {
                 int(&before["dispatch_words"][2]),
             ),
         });
-        entity.lifecycle.object_alive = before["alive"] == 1;
-        entity.health.current = int(&before["health"]);
+        entity
+            .lifecycle
+            .set_object_alive_for_test(before["alive"] == 1);
+        entity.health.set_for_test(int(&before["health"]));
         // Foot+6B3 is the original constructor's 0: the corpus runs no
         // Unlimbo, whose Enter_Idle_Mode set it here.
         entity.mission_leaf.set_foot_idle_entry_latch(0);
@@ -217,8 +219,8 @@ impl Replay {
         );
         let target = e
             .attack_target
-            .as_ref()
-            .map(|t| match t.target {
+            .target()
+            .map(|t| match t {
                 TargetKind::Entity(id) if id == self.first => "0x200c2000",
                 TargetKind::Entity(id) if id == self.second => "0x200c2800",
                 other => panic!("{context}: unexpected Target {other:?}"),
@@ -243,7 +245,7 @@ impl Replay {
             "{context}: alive"
         );
         assert_eq!(
-            e.health.current,
+            e.health.current(),
             int(&native["health"]),
             "{context}: health"
         );
@@ -254,7 +256,7 @@ impl Replay {
             "{context}: target alive"
         );
         assert_eq!(
-            first.health.current,
+            first.health.current(),
             int(&native["target_health"]),
             "{context}: target health"
         );
@@ -324,7 +326,6 @@ impl Replay {
                                 entity_id: s.miner,
                                 target_rx,
                                 target_ry,
-                                queue: false,
                             }
                         }
                         other => panic!("{context}: command {other}"),
@@ -402,14 +403,14 @@ impl Replay {
                 };
                 if input["dead"] == true {
                     let e = s.sim.substrate.entities.get_mut(victim).unwrap();
-                    e.health.current = 0;
-                    e.lifecycle.object_alive = false;
+                    e.health.set_for_test(0);
+                    e.lifecycle.set_object_alive_for_test(false);
                 }
                 let e = s.sim.substrate.entities.get(victim).unwrap();
                 let (at, alive, health, owner) = (
                     (e.position.rx, e.position.ry),
                     e.is_object_alive(),
-                    e.health.current,
+                    e.health.current(),
                     e.owner(),
                 );
                 s.sim.notify_entity_pointer_expired(

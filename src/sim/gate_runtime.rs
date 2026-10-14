@@ -65,7 +65,7 @@ pub(crate) fn request_gate_open_for_cell(
         let Some(candidate) = sim.substrate.entities.get(candidate_id) else {
             continue;
         };
-        if candidate.category != EntityCategory::Structure
+        if candidate.category() != EntityCategory::Structure
             || !rules
                 .object(sim.interner.resolve(candidate.type_ref()))
                 .is_some_and(|obj| obj.gate)
@@ -231,7 +231,7 @@ mod tests {
     use super::*;
     use crate::map::resolved_terrain::test_flat_ground_grid;
     use crate::rules::ini_parser::IniFile;
-    use crate::sim::components::Health;
+    use crate::sim::combat::Health;
     use crate::sim::game_entity::GameEntity;
     use crate::sim::intern::test_interner;
     use crate::sim::mission::MissionDispatchTimer;
@@ -294,7 +294,7 @@ mod tests {
             0,
             0,
             owner,
-            Health { current: 1000 },
+            Health::new(1000),
             ty,
             EntityCategory::Structure,
             0,
@@ -336,7 +336,7 @@ mod tests {
             .set_building_ready_latch(input["ready"].as_u64().unwrap_or(0) as u8);
         // The native fixture supplies an already admitted cell-list object;
         // class construction/reveal is outside this comparison boundary.
-        gate.lifecycle.in_limbo = false;
+        gate.lifecycle.set_in_limbo_for_test(false);
         gate.lifecycle.cell_marked = true;
         gate.in_playfield = true;
         sim.substrate.entities.insert(gate);
@@ -350,7 +350,7 @@ mod tests {
                 0,
                 0,
                 owner,
-                Health { current: 1000 },
+                Health::new(1000),
                 mover_type,
                 EntityCategory::Unit,
                 0,
@@ -377,7 +377,7 @@ mod tests {
                 .get_mut(MOVER)
                 .unwrap()
                 .health
-                .current = input["blocker_health"].as_i64().unwrap_or(1000) as i32;
+                .set_for_test(input["blocker_health"].as_i64().unwrap_or(1000) as i32);
             sim.substrate.occupancy.add(
                 12,
                 12,

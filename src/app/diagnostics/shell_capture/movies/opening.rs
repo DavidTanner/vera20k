@@ -122,7 +122,7 @@ impl OpeningCapture {
                 OpeningTarget::Flash => sim
                     .entities()
                     .iter_sorted()
-                    .any(|(_, entity)| entity.is_active() && entity.elite_flash_frames & 2 != 0),
+                    .any(|(_, entity)| entity.is_active() && entity.flashing.flashed()),
                 OpeningTarget::Arrows => sim.anims().any(|(_, anim)| anim.no_effects()),
                 OpeningTarget::Unlocked => self.saw_unlock && !locked,
                 OpeningTarget::RestoreUnlocked => {
@@ -398,7 +398,7 @@ fn opening_observation(state: &AppState) -> Result<Value> {
     {
         let name = sim.interner.resolve(entity.type_ref()).to_owned();
         *active_types.entry(name.clone()).or_default() += 1;
-        if entity.elite_flash_frames & 2 != 0 {
+        if entity.flashing.flashed() {
             let cell = (entity.position.rx, entity.position.ry);
             flashing.push(json!({"id": entity.stable_id(), "type": name,
                 "cell": cell, "cell_shrouded": cell_shrouded(cell)}));

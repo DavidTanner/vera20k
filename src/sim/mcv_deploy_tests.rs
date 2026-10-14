@@ -74,7 +74,6 @@ fn finish(sim: &mut Simulation, rules: &RuleSet, id: u64) -> usize {
                 .and_then(|l| l.selected_drive_runtime())
                 .and_then(|r| r.retained())
                 .cloned(),
-            &e.movement_target,
             &e.body_facing,
             e.mcv_deploy_pending,
             &e.mission,
@@ -96,7 +95,7 @@ fn one_command_turns_and_converts_all_stock_mcv_types() {
                 .substrate
                 .entities
                 .values()
-                .find(|e| !e.dying && e.category == EntityCategory::Structure)
+                .find(|e| !e.dying && e.category() == EntityCategory::Structure)
                 .unwrap();
             assert_eq!((yard.position.rx, yard.position.ry), (19, 21));
         }
@@ -114,7 +113,7 @@ fn the_cell_the_mcv_stood_on_ends_as_a_yard_cell() {
         .substrate
         .entities
         .values()
-        .find(|e| !e.dying && e.category == EntityCategory::Structure)
+        .find(|e| !e.dying && e.category() == EntityCategory::Structure)
         .unwrap()
         .stable_id();
     let bits = |cell: (u16, u16)| {
@@ -147,7 +146,7 @@ fn a_deployed_yard_completes_its_buildup_after_the_conversion_frame() {
             .substrate
             .entities
             .values()
-            .find(|e| !e.dying && e.category == EntityCategory::Structure);
+            .find(|e| !e.dying && e.category() == EntityCategory::Structure);
         if let Some(yard) = yard {
             converted.get_or_insert(frame);
             if !yard.building_up() {
@@ -293,19 +292,14 @@ fn moving_mcv_finishes_committed_segment_then_deploys_once() {
             entity_id: id,
             target_rx: 30,
             target_ry: 22,
-            queue: false,
         }),
     );
     for _ in 0..8 {
         tick(&mut sim, &rules, None);
     }
-    assert!(
-        sim.substrate
-            .entities
-            .get(id)
-            .unwrap()
-            .movement_target
-            .is_some()
+    assert_eq!(
+        crate::sim::movement::motion_query::is_moving(sim.substrate.entities.get(id).unwrap()),
+        Some(true)
     );
     let position = sim.substrate.entities.get(id).unwrap().position;
     tick(&mut sim, &rules, Some(Command::DeployMcv { entity_id: id }));
@@ -315,7 +309,7 @@ fn moving_mcv_finishes_committed_segment_then_deploys_once() {
         .substrate
         .entities
         .values()
-        .find(|e| !e.dying && e.category == EntityCategory::Structure)
+        .find(|e| !e.dying && e.category() == EntityCategory::Structure)
         .unwrap();
     assert!(yard.position.rx < 29, "must abandon the old destination");
     assert!(
@@ -363,7 +357,6 @@ fn move_order_during_turn_prevents_conversion_at_the_old_site() {
             entity_id: id,
             target_rx: 40,
             target_ry: 22,
-            queue: false,
         }),
     );
     for _ in 0..10 {
@@ -777,7 +770,8 @@ fn with_no_site_a_computer_mcv_scatters_and_a_human_one_waits() {
             crate::sim::world::FrameEffects::default()
         ));
         let mcv = sim.substrate.entities.get(id).unwrap();
-        let scattered = mcv.movement_target.is_some() || mcv.navigation.nav_com.is_some();
+        let scattered = crate::sim::movement::motion_query::is_moving(&mcv) == Some(true)
+            || mcv.navigation.nav_com.is_some();
         assert_eq!(scattered, !human, "human={human}");
         // The Unit receiver's null arm draws nothing (0x00743A50).
         assert!(sim.scenario_rng.logical_state() == rng, "human={human}");
@@ -973,9 +967,9 @@ fn retail_dustbowl_the_computer_yard_places_its_planned_buildings() {
                 .values()
                 .filter(|e| {
                     !e.dying
-                        && !e.lifecycle.in_limbo
+                        && !e.lifecycle.in_limbo()
                         && e.owner() == owner
-                        && e.category == crate::map::entities::EntityCategory::Structure
+                        && e.category() == crate::map::entities::EntityCategory::Structure
                         && sim.interner.resolve(e.type_ref()) != "NACNST"
                 })
                 .map(|e| {
@@ -1050,9 +1044,9 @@ fn retail_dustbowl_the_computer_yard_places_a_base_defense() {
             .values()
             .filter(|e| {
                 !e.dying
-                    && !e.lifecycle.in_limbo
+                    && !e.lifecycle.in_limbo()
                     && e.owner() == owner
-                    && e.category == crate::map::entities::EntityCategory::Structure
+                    && e.category() == crate::map::entities::EntityCategory::Structure
             })
             .map(|e| {
                 (
@@ -1248,7 +1242,7 @@ fn retail_dustbowl_a_computer_without_its_yard_sells_off_and_hunts() {
         .entities
         .values()
         .find(|e| !e.dying && e.owner() == owner && sim.interner.resolve(e.type_ref()) == "NACNST")
-        .map(|e| (e.stable_id(), e.health.current))
+        .map(|e| (e.stable_id(), e.health.current()))
         .expect("the yard");
 
     // The yard goes, with no attacker (so no building attack is noted).
@@ -1306,7 +1300,7 @@ fn retail_dustbowl_a_computer_without_its_yard_sells_off_and_hunts() {
             sim.substrate
                 .entities
                 .get(id)
-                .is_some_and(|b| b.is_ai_alive() && !b.lifecycle.in_limbo)
+                .is_some_and(|b| b.is_ai_alive() && !b.lifecycle.in_limbo())
         })
         .collect();
     assert!(!left.is_empty(), "something to sell");

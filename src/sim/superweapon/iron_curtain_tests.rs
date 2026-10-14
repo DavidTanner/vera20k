@@ -120,7 +120,7 @@ fn curtain(sim: &Simulation, id: u64) -> Option<(i32, i32, InvulnKind)> {
 
 /// The paralysis timer's (start, duration) on `id`.
 fn paralysis(sim: &Simulation, id: u64) -> (i32, i32) {
-    let timer = &sim.substrate.entities.get(id).unwrap().paralysis_timer;
+    let timer = sim.substrate.entities.get(id).unwrap().parasite.paralysis();
     (timer.start_frame(), timer.duration())
 }
 
@@ -402,11 +402,7 @@ fn the_overrides_match_native() {
                 crate::sim::world::FrameEffects::default(),
             );
             assert_eq!(
-                sim.substrate
-                    .entities
-                    .get(victim)
-                    .unwrap()
-                    .parasite_eating_me,
+                sim.substrate.entities.get(victim).unwrap().parasite.eater(),
                 Some(drone)
             );
             drone
@@ -468,20 +464,16 @@ fn the_overrides_match_native() {
         }
         if let Some(drone) = drone.filter(|_| events(row, "exit_unit").next().is_some()) {
             let entity = sim.substrate.entities.get(drone).unwrap();
-            let suppression = entity.parasite.as_ref().unwrap().suppression();
+            let suppression = entity.parasite.class().unwrap().suppression();
             let timer = &row["parasite_timer"];
             assert_eq!(
                 (suppression.start_frame(), suppression.duration()),
                 (int(&timer[0]), int(&timer[1])),
                 "{row}"
             );
-            assert!(!entity.lifecycle.object_alive, "{row}");
+            assert!(!entity.lifecycle.object_alive(), "{row}");
             assert_eq!(
-                sim.substrate
-                    .entities
-                    .get(victim)
-                    .unwrap()
-                    .parasite_eating_me,
+                sim.substrate.entities.get(victim).unwrap().parasite.eater(),
                 None
             );
         }
@@ -608,7 +600,7 @@ fn curtained_infantry_die_and_announce_each_loss() {
     assert!(launched < radar && radar < first_loss);
     for id in [first, second] {
         let infantry = sim.substrate.entities.get(id).unwrap();
-        assert!(infantry.dying && infantry.health.current == 0);
+        assert!(infantry.dying && infantry.health.current() == 0);
         assert!(infantry.invulnerability.is_none());
     }
     assert!(!sim.substrate.entities.get(tank).unwrap().dying);
@@ -665,5 +657,5 @@ fn retail_iron_curtain_through_production_frames() {
         Some((launch_frame, 750, InvulnKind::IronCurtain))
     );
     let conscript = sim.substrate.entities.get(conscript).unwrap();
-    assert!(conscript.dying && conscript.health.current == 0);
+    assert!(conscript.dying && conscript.health.current() == 0);
 }

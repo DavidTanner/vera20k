@@ -22,8 +22,9 @@ use crate::app::input::{camera, entity_pick};
 use crate::app::types::{CategoryNavigationKind, TypeSelectInputState, TypeSelectOutcome};
 use crate::map::entities::EntityCategory;
 use crate::rules::{ini_parser::IniFile, ruleset::RuleSet};
+use crate::sim::combat::Health;
 use crate::sim::command::Command;
-use crate::sim::components::{DriveCoord, Health};
+use crate::sim::components::DriveCoord;
 use crate::sim::game_entity::{BunkerLink, GameEntity};
 use crate::sim::house_state::HouseState;
 use crate::sim::movement::ground_pose;
@@ -266,7 +267,7 @@ fn veterancy_navigation_keeps_shared_snapshot_without_pointer_expiry() {
         .get_mut(20)
         .unwrap()
         .lifecycle
-        .object_alive = false;
+        .set_object_alive_for_test(false);
     sim.entities_mut().get_mut(40).unwrap().selected = false;
 
     reconcile_selection_order_for_sim(&mut input, &sim, Some(&rules));
@@ -367,17 +368,17 @@ fn assert_navigation_boundary(
             "{label}: committed bit{id}"
         );
         assert_eq!(
-            entity.lifecycle.object_alive,
+            entity.lifecycle.object_alive(),
             actor["alive"].as_bool().unwrap(),
             "{label}: Alive{id}"
         );
         assert_eq!(
-            entity.lifecycle.in_limbo,
+            entity.lifecycle.in_limbo(),
             actor["limbo"].as_bool().unwrap(),
             "{label}: Limbo{id}"
         );
         assert_eq!(
-            u64::from(entity.veterancy_raw.bits()),
+            u64::from(entity.veterancy.raw().bits()),
             actor["veterancy_raw_bits"].as_u64().unwrap(),
             "{label}: raw experience{id}"
         );
@@ -585,7 +586,7 @@ fn replay_category_history(
         .map(|entity| {
             (
                 entity.stable_id(),
-                (entity.veterancy_rank_cache, entity.elite_flash_frames),
+                (entity.veterancy.rank_cache(), entity.flashing.frames()),
             )
         })
         .collect();
@@ -792,9 +793,10 @@ fn replay_category_history(
                 sim.entities_mut()
                     .get_mut(step["id"].as_u64().unwrap())
                     .unwrap()
-                    .veterancy_raw = crate::util::native_x87::NativeF32Bits::from_bits(
-                    step["bits"].as_u64().unwrap() as u32,
-                );
+                    .veterancy
+                    .set_raw_for_test(crate::util::native_x87::NativeF32Bits::from_bits(
+                        step["bits"].as_u64().unwrap() as u32,
+                    ));
             }
             "supply_actor_state" => {
                 let entity = sim
@@ -803,10 +805,14 @@ fn replay_category_history(
                     .unwrap();
                 for (field, value) in step["fields"].as_object().unwrap() {
                     match field.as_str() {
-                        "alive" => entity.lifecycle.object_alive = value.as_bool().unwrap(),
-                        "limbo" => entity.lifecycle.in_limbo = value.as_bool().unwrap(),
+                        "alive" => entity
+                            .lifecycle
+                            .set_object_alive_for_test(value.as_bool().unwrap()),
+                        "limbo" => entity
+                            .lifecycle
+                            .set_in_limbo_for_test(value.as_bool().unwrap()),
                         "selected" => entity.selected = value.as_bool().unwrap(),
-                        "health" => entity.health.current = value.as_i64().unwrap() as i32,
+                        "health" => entity.health.set_for_test(value.as_i64().unwrap() as i32),
                         other => panic!("unsupported declared actor-state writer {other}"),
                     }
                 }
@@ -852,12 +858,16 @@ fn replay_category_history(
                     &label,
                 );
                 let entity = sim.entities_mut().get_mut(id).unwrap();
-                entity.lifecycle.object_alive = step["actor_state"][id.to_string()]["alive"]
-                    .as_bool()
-                    .unwrap();
-                entity.lifecycle.in_limbo = step["actor_state"][id.to_string()]["limbo"]
-                    .as_bool()
-                    .unwrap();
+                entity.lifecycle.set_object_alive_for_test(
+                    step["actor_state"][id.to_string()]["alive"]
+                        .as_bool()
+                        .unwrap(),
+                );
+                entity.lifecycle.set_in_limbo_for_test(
+                    step["actor_state"][id.to_string()]["limbo"]
+                        .as_bool()
+                        .unwrap(),
+                );
             }
             "supply_selection_sources" => {
                 let map: Vec<u64> = serde_json::from_value(step["map_order"].clone()).unwrap();
@@ -917,7 +927,7 @@ fn replay_category_history(
         }
         for entity in sim.entities().values() {
             assert_eq!(
-                (entity.veterancy_rank_cache, entity.elite_flash_frames),
+                (entity.veterancy.rank_cache(), entity.flashing.frames()),
                 rank_cache[&entity.stable_id()],
                 "{label}: navigation samples raw without announcing/promoting {}",
                 entity.stable_id()
@@ -1050,14 +1060,18 @@ fn veterancy_navigation_samples_original_raw_rank_without_cached_rank_writes() {
         let (mut sim, rules) = fixture(&history.inputs, &[]);
         let id = history.inputs.actors[0].id;
         let entity = sim.entities_mut().get_mut(id).unwrap();
-        entity.veterancy_raw = crate::util::native_x87::NativeF32Bits::from_bits(
-            row["raw_bits"].as_u64().unwrap() as u32,
-        );
+        entity
+            .veterancy
+            .set_raw_for_test(crate::util::native_x87::NativeF32Bits::from_bits(
+                row["raw_bits"].as_u64().unwrap() as u32,
+            ));
         // The executed750030 leaf never reads Techno's announced-rank cache.
         // A deliberately stale valid value catches using it instead of raw.
-        entity.veterancy_rank_cache = ((row["rank"].as_u64().unwrap() + 1) % 3) as i8;
-        let cache = entity.veterancy_rank_cache;
-        let flash = entity.elite_flash_frames;
+        entity
+            .veterancy
+            .set_rank_cache_for_test(((row["rank"].as_u64().unwrap() + 1) % 3) as i8);
+        let cache = entity.veterancy.rank_cache();
+        let flash = entity.flashing.frames();
         let before_rng = sim.rng_state();
         assert_eq!(
             entity_navigation_category(&sim, &rules, id, CategoryNavigationKind::Veterancy),
@@ -1068,7 +1082,7 @@ fn veterancy_navigation_samples_original_raw_rank_without_cached_rank_writes() {
         assert_eq!(sim.rng_state(), before_rng, "{}: no RNG", row["id"]);
         let entity = sim.entities().get(id).unwrap();
         assert_eq!(
-            (entity.veterancy_rank_cache, entity.elite_flash_frames),
+            (entity.veterancy.rank_cache(), entity.flashing.frames()),
             (cache, flash),
             "{}: read-only raw rank",
             row["id"]
@@ -1105,8 +1119,12 @@ fn combatant_native_cleanup_boundaries_reconcile_without_resetting_map_scope() {
                 }
                 let boundary = &cleanup["actor_state"][actor.id.to_string()];
                 let entity = sim.entities_mut().get_mut(actor.id).unwrap();
-                entity.lifecycle.object_alive = boundary["alive"].as_bool().unwrap();
-                entity.lifecycle.in_limbo = boundary["limbo"].as_bool().unwrap();
+                entity
+                    .lifecycle
+                    .set_object_alive_for_test(boundary["alive"].as_bool().unwrap());
+                entity
+                    .lifecycle
+                    .set_in_limbo_for_test(boundary["limbo"].as_bool().unwrap());
                 entity.selected = boundary["selected"].as_bool().unwrap();
             }
             // A consumed input can leave a different committed selection
@@ -1216,7 +1234,7 @@ fn combatant_pending_transport_uses_selection_queue_and_keeps_native_cleanup_sco
         input.selection_order = history.selected.clone();
         input.selection_order_pending = true;
         let actor = sim.entities_mut().get_mut(20).unwrap();
-        actor.lifecycle.in_limbo = true;
+        actor.lifecycle.set_in_limbo_for_test(true);
         let owner = sim.session.current_house.unwrap();
         let command = if queued_selection {
             Command::Select {
@@ -1767,22 +1785,22 @@ fn fixture(inputs: &Inputs, selected: &[u64]) -> (Simulation, RuleSet) {
             0,
             0,
             owner,
-            Health {
-                current: actor.health,
-            },
+            Health::new(actor.health),
             type_ref,
             category,
             0,
             5,
             false,
         );
-        entity.lifecycle.object_alive = actor.alive;
-        entity.lifecycle.in_limbo = actor.limbo;
+        entity.lifecycle.set_object_alive_for_test(actor.alive);
+        entity.lifecycle.set_in_limbo_for_test(actor.limbo);
         entity.in_playfield = actor.in_playfield;
         entity.discovery.discovered_by_current_house = actor.discovered;
         entity.selected = selected.contains(&actor.id);
         if let Some(bits) = actor.veterancy_raw_bits {
-            entity.veterancy_raw = crate::util::native_x87::NativeF32Bits::from_bits(bits);
+            entity
+                .veterancy
+                .set_raw_for_test(crate::util::native_x87::NativeF32Bits::from_bits(bits));
         }
         entity.foot_locomotor_swap_active = actor.locomotor_swap;
         if actor.mission_only {
@@ -1811,15 +1829,15 @@ fn fixture(inputs: &Inputs, selected: &[u64]) -> (Simulation, RuleSet) {
                 0,
                 0,
                 owner,
-                Health { current: 100 },
+                Health::new(100),
                 building_type,
                 EntityCategory::Structure,
                 0,
                 0,
                 false,
             );
-            building.lifecycle.object_alive = true;
-            building.lifecycle.in_limbo = false;
+            building.lifecycle.set_object_alive_for_test(true);
+            building.lifecycle.set_in_limbo_for_test(false);
             sim.entities_mut().insert(building);
         }
         sim.entities_mut().insert(entity);

@@ -312,7 +312,7 @@ pub(crate) fn build_factory_rally_line_instances(
         };
         if !entity.selected
             || !entity.is_object_alive()
-            || entity.category != EntityCategory::Structure
+            || entity.category() != EntityCategory::Structure
         {
             continue;
         }
@@ -365,20 +365,20 @@ fn selected_action_line_for_entity(
     cells: Option<&NativeCellQuery<'_>>,
 ) -> Option<SelectedActionLine> {
     if !entity.selected
-        || entity.category == EntityCategory::Structure
+        || entity.category() == EntityCategory::Structure
         || !sim.house_is_human_player(entity.owner())
     {
         return None;
     }
     let project = |x, y, z| crate::util::lepton::absolute_leptons_to_screen(x, y, z).into();
-    if let Some(attack) = &entity.attack_target {
+    if let Some(attack) = entity.attack_target.target() {
         let rules = rules?;
         let start = crate::sim::combat::fire_coord::turret_pivot_coordinate(sim, rules, entity)?;
         let end = crate::sim::combat::aim_coord::led_target_coordinate(
             sim,
             rules,
             entity.stable_id(),
-            Some(attack.target),
+            Some(attack),
         );
         return Some(SelectedActionLine {
             // Foot4DC0C6/4DC0DF: +300 pivot and70BCB0's own TarCom+58.
@@ -567,8 +567,7 @@ mod tests {
     use crate::rules::house_colors::HouseColorIndex;
     use crate::rules::ini_parser::IniFile;
     use crate::rules::ruleset::RuleSet;
-    use crate::sim::combat::AttackTarget;
-    use crate::sim::components::MovementTarget;
+    use crate::sim::combat::TargetKind;
     use crate::sim::game_entity::GameEntity;
 
     #[test]
@@ -616,19 +615,16 @@ mod tests {
     fn sim_with_selected_unit_that_has_attack_and_move() -> Simulation {
         let mut sim = Simulation::new();
         let mut unit = GameEntity::test_default(1, "MTNK", "Americans", 10, 10);
-        unit.owner = sim.interner.intern("Americans");
-        unit.type_ref = sim.interner.intern("MTNK");
+        unit.set_owner_for_test(sim.interner.intern("Americans"));
+        unit.set_type_ref_for_test(sim.interner.intern("MTNK"));
         unit.selected = true;
         sim.session.game_mode_nonzero = true;
         sim.session.current_house = Some(unit.owner());
         unit.navigation.nav_com = Some(NavTargetRef::cell(25, 25));
-        unit.movement_target = Some(MovementTarget {
-            ..Default::default()
-        });
-        unit.attack_target = Some(AttackTarget::new(2));
+        unit.attack_target.set_for_test(Some(TargetKind::Entity(2)));
         let mut target = GameEntity::test_default(2, "HTNK", "Soviet", 14, 10);
-        target.owner = sim.interner.intern("Soviet");
-        target.type_ref = sim.interner.intern("HTNK");
+        target.set_owner_for_test(sim.interner.intern("Soviet"));
+        target.set_type_ref_for_test(sim.interner.intern("HTNK"));
         sim.entities_mut().insert(unit);
         sim.entities_mut().insert(target);
         sim
@@ -646,7 +642,7 @@ mod tests {
             0,
             0,
             owner,
-            crate::sim::components::Health { current: 1000 },
+            crate::sim::combat::Health::new(1000),
             factory_type,
             EntityCategory::Structure,
             0,
@@ -656,8 +652,8 @@ mod tests {
         factory.selected = true;
         factory.set_archive_target(Some(crate::sim::combat::TargetKind::Cell(16, 10)));
         let mut power = factory.clone();
-        power.stable_id = 11;
-        power.type_ref = power_type;
+        power.set_stable_id_for_test(11);
+        power.set_type_ref_for_test(power_type);
         power.position.rx = 12;
         power.set_archive_target(Some(crate::sim::combat::TargetKind::Cell(16, 10)));
         sim.entities_mut().insert(factory);

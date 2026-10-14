@@ -108,6 +108,8 @@ pub(crate) fn pick_any_target_stable_id(
     .map(|hover| hover.stable_id)
 }
 
+/// The object under the cursor that DetermineAction sees, for the cursor and
+/// the click, among those [`pick_admits_object`] admits.
 pub(crate) fn hover_target_at_point(
     sim: &crate::sim::world::Simulation,
     world_x: f32,
@@ -118,10 +120,15 @@ pub(crate) fn hover_target_at_point(
     height_map: &std::collections::BTreeMap<(u16, u16), u8>,
     bridge_cells: Option<&dyn TacticalBridgeLookup>,
 ) -> Option<HoverTargetKindWithId> {
-    let local_owner_id: InternedId = sim.interner.get(local_owner).unwrap_or_default();
+    let player = sim.interner.get(local_owner);
+    let local_owner_id: InternedId = player.unwrap_or_default();
+    let fog = (!ignore_visibility).then_some(&sim.fog);
     let mut best: Option<(u64, f32)> = None;
     for entity in sim.entities().values() {
-        let is_structure = entity.category == EntityCategory::Structure;
+        if !pick_admits_object(entity, fog, player) {
+            continue;
+        }
+        let is_structure = entity.category() == EntityCategory::Structure;
         let type_str = sim.interner.resolve(entity.type_ref());
         let owner_str = sim.interner.resolve(entity.owner());
         let (sx, sy) = if is_structure {
@@ -411,7 +418,7 @@ pub(crate) fn band_rect_contains_drawn_object(
         let Some(entity) = entities.get(*id) else {
             return false;
         };
-        if !entity.lifecycle.object_alive || entity.lifecycle.in_limbo {
+        if !entity.lifecycle.object_alive() || entity.lifecycle.in_limbo() {
             return false;
         }
         let (sx, sy) =
@@ -419,13 +426,47 @@ pub(crate) fn band_rect_contains_drawn_object(
         if !(sx >= min_x && sx <= max_x && sy >= min_y && sy <= max_y) {
             return false;
         }
-        if entity.category == EntityCategory::Structure {
+        if entity.category() == EntityCategory::Structure {
             // Bulk-registered, shroud or no shroud.
             return true;
         }
         let owner_str = interner.map_or("", |i| i.resolve(entity.owner()));
         is_drawn_for_local_owner(fog, local_owner, owner_str, entity, local_owner_id)
     })
+}
+
+/// Whether `Tactical::PickObjectAtScreenPoint @ 0x006DA380` considers a
+/// Techno under the cursor: alive and out of limbo, and, unless the player
+/// owns it (`+0x41A`), not cloaked (CloakState 2) or on a cell the player's
+/// sensors cover. `+0x41A` is the owned-by-the-local-player byte
+/// (`TechnoClass::PointerExpired @ 0x007077C0` clears it with `pOwner`), so
+/// an ally's cloaked object is not exempt. `DisplayClass::ProcessClickCoords`
+/// asks the cloak test again of the object it returns (`0x00692529..0x0069257F`),
+/// and that one object is what both DetermineAction and BandBox_LeftUp get
+/// (`ScrollClass::HandleMouseMessage`, `0x00693271` → `0x0069328B`). So an
+/// unsensed submerged submarine is no object to hover, click or select.
+///
+/// Without fog (sandbox full visibility) or a known player, only the first
+/// part applies. ProcessClickCoords also drops another house's object whose
+/// type sets `Invisible=` (`+0xC9A`, `0x0069256B..0x0069257F`), which no
+/// retail type sets; that test is not ported.
+pub(crate) fn pick_admits_object(
+    entity: &crate::sim::game_entity::GameEntity,
+    fog: Option<&FogState>,
+    player: Option<InternedId>,
+) -> bool {
+    if !entity.lifecycle.object_alive() || entity.lifecycle.in_limbo() {
+        return false;
+    }
+    let (Some(fog), Some(player)) = (fog, player) else {
+        return true;
+    };
+    entity.owner() == player
+        || !entity
+            .cloak
+            .as_ref()
+            .is_some_and(|cloak| cloak.is_fully_cloaked())
+        || fog.has_sensor_for_house(player, entity.position.rx, entity.position.ry)
 }
 
 /// Would the local player see this object drawn right now?
@@ -730,11 +771,11 @@ fn type_select_candidates(
             let entity = entities.get(*id)?;
             let owner = interner.map_or("", |i| i.resolve(entity.owner()));
             let type_id = interner.map_or("", |i| i.resolve(entity.type_ref()));
-            if !entity.lifecycle.object_alive
+            if !entity.lifecycle.object_alive()
                 || local_owner.is_some_and(|local| !owner.eq_ignore_ascii_case(local))
                 || !seeds.contains(&entity.type_ref())
                 || (screen_only
-                    && entity.category != EntityCategory::Structure
+                    && entity.category() != EntityCategory::Structure
                     && !is_drawn_for_local_owner(fog, local_owner, owner, entity, local_owner_id))
             {
                 return None;
@@ -742,7 +783,7 @@ fn type_select_candidates(
             let dynamic = selection_dynamic_prefix(entity, entities, rules, interner)
                 && type_is_selectable(type_id, rules)
                 && (!require_playfield_membership || entity.in_playfield);
-            let undeploying_building_fallback = entity.category == EntityCategory::Structure
+            let undeploying_building_fallback = entity.category() == EntityCategory::Structure
                 && rules
                     .and_then(|r| r.object(type_id))
                     .is_some_and(|object| object.undeploys_into.is_some());
@@ -906,7 +947,8 @@ pub(crate) fn compute_type_select_box_mutation_with_playfield(
         };
         let (sx, sy) =
             crate::app::presentation::instances::interpolated_screen_position_entity(entity);
-        if !entity.lifecycle.object_alive || sx < min_x || sx > max_x || sy < min_y || sy > max_y {
+        if !entity.lifecycle.object_alive() || sx < min_x || sx > max_x || sy < min_y || sy > max_y
+        {
             continue;
         }
         if !represented_types.contains(&entity.type_ref()) {
@@ -951,8 +993,8 @@ fn exact_type_group(
             let entity = entities.get(*id)?;
             let owner = interner.map_or("", |i| i.resolve(entity.owner()));
             let type_id = interner.map_or("", |i| i.resolve(entity.type_ref()));
-            if !entity.lifecycle.object_alive
-                || entity.lifecycle.in_limbo
+            if !entity.lifecycle.object_alive()
+                || entity.lifecycle.in_limbo()
                 || entity.type_ref() != type_ref
                 || local_owner.is_some_and(|local| !owner.eq_ignore_ascii_case(local))
                 || (selecting
@@ -1060,7 +1102,7 @@ pub(crate) fn selection_dynamic_prefix(
 ) -> bool {
     // BuildingClass answers false on the ordinary dynamic selection virtual.
     // TypeSelect owns the verified UndeploysInto fallback separately.
-    if entity.category == EntityCategory::Structure {
+    if entity.category() == EntityCategory::Structure {
         return false;
     }
     if entity.slave.owner().is_some() || entity.deactivated {
@@ -1091,10 +1133,10 @@ pub(crate) fn is_local_player_selectable_object(
     rules: Option<&RuleSet>,
     entity: &crate::sim::game_entity::GameEntity,
 ) -> bool {
-    entity.health.current > 0
-        && !entity.lifecycle.in_limbo
+    entity.health.current() > 0
+        && !entity.lifecycle.in_limbo()
         && entity.in_playfield
-        && entity.category != EntityCategory::Structure
+        && entity.category() != EntityCategory::Structure
         && entity.discovery.discovered_by_current_house
         && type_is_selectable(sim.interner.resolve(entity.type_ref()), rules)
         && sim.house_is_human_player(entity.owner())
@@ -1123,9 +1165,9 @@ fn building_covers_cell(
     ry: u16,
 ) -> bool {
     entities.values().any(|candidate| {
-        if candidate.category != EntityCategory::Structure
-            || candidate.lifecycle.in_limbo
-            || !candidate.lifecycle.object_alive
+        if candidate.category() != EntityCategory::Structure
+            || candidate.lifecycle.in_limbo()
+            || !candidate.lifecycle.object_alive()
         {
             return false;
         }
@@ -1204,33 +1246,12 @@ pub(crate) fn pick_entity_at_point(
         let Some(entity) = entities.get(stable_id) else {
             continue;
         };
-        if !entity.lifecycle.object_alive || entity.lifecycle.in_limbo {
+        if !pick_admits_object(entity, fog, local_owner_id) {
             continue;
         }
         let owner_str = interner.map_or("", |i| i.resolve(entity.owner()));
-        if entity.category != EntityCategory::Structure
+        if entity.category() != EntityCategory::Structure
             && !is_drawn_for_local_owner(fog, local_owner, owner_str, entity, local_owner_id)
-        {
-            continue;
-        }
-        // `Tactical::PickObjectAtScreenPoint @ 0x006DA380` admits a
-        // render-tracked object only when
-        //   `InLimbo == 0 && (+0x41A != 0 || CloakState != 2
-        //                     || SensorCountForHouse(itsCell, PlayerPtr->ArrayIndex))`.
-        // `+0x41A` is the owned-by-the-local-player byte — `TechnoClass::
-        // PointerExpired @ 0x007077C0` clears it together with `pOwner` — so
-        // being merely allied does NOT exempt a cloaked object. The same filter
-        // guards `DisplayClass::DetermineAction @ 0x00692610` and the
-        // object-name-under-cursor helper, which is why an unsensed submerged
-        // submarine cannot be moused over at all and no explicit attack order
-        // against it can be issued.
-        if let (Some(fog_state), Some(owner_id)) = (fog, local_owner_id)
-            && entity.owner() != owner_id
-            && entity
-                .cloak
-                .as_ref()
-                .is_some_and(|cloak| cloak.is_fully_cloaked())
-            && !fog_state.has_sensor_for_house(owner_id, entity.position.rx, entity.position.ry)
         {
             continue;
         }
@@ -1251,9 +1272,9 @@ pub(crate) fn pick_entity_at_point(
     // Cell/foundation occupancy is consulted only when the tracked-anchor pass
     // found nothing. Preserve encounter order when a malformed overlap exists.
     entities.values().find_map(|entity| {
-        if entity.category != EntityCategory::Structure
-            || !entity.lifecycle.object_alive
-            || entity.lifecycle.in_limbo
+        if entity.category() != EntityCategory::Structure
+            || !entity.lifecycle.object_alive()
+            || entity.lifecycle.in_limbo()
         {
             return None;
         }
@@ -1286,10 +1307,10 @@ fn static_selection_gate(
     rules: Option<&RuleSet>,
     require_playfield_membership: bool,
 ) -> bool {
-    entity.lifecycle.object_alive
+    entity.lifecycle.object_alive()
         // `0x006F32D3`: no Health — a crashing aircraft falls alive at 0.
-        && entity.health.current > 0
-        && !entity.lifecycle.in_limbo
+        && entity.health.current() > 0
+        && !entity.lifecycle.in_limbo()
         && !entity.is_warped_out()
         // The mouse/type caller's aggregate admission includes +0x3D5.
         // This helper is not the complete virtual+64; see its owner above.
@@ -1319,7 +1340,7 @@ fn is_local_band_candidate(
 mod tests {
     use super::*;
     use crate::rules::ini_parser::IniFile;
-    use crate::sim::components::Health;
+    use crate::sim::combat::Health;
     use crate::sim::game_entity::GameEntity;
     use crate::sim::intern::StringInterner;
 
@@ -1335,15 +1356,15 @@ mod tests {
             0,
             0,
             owner,
-            Health { current: 1000 },
+            Health::new(1000),
             type_ref,
             EntityCategory::Structure,
             0,
             5,
             false,
         );
-        building.lifecycle.object_alive = alive;
-        building.lifecycle.in_limbo = in_limbo;
+        building.lifecycle.set_object_alive_for_test(alive);
+        building.lifecycle.set_in_limbo_for_test(in_limbo);
         entities.insert(building);
         (entities, interner)
     }
@@ -1416,17 +1437,71 @@ mod tests {
             0,
             0,
             owner,
-            Health { current: 100 },
+            Health::new(100),
             type_ref,
             category,
             0,
             5,
             category == EntityCategory::Aircraft,
         );
-        entity.lifecycle.object_alive = true;
-        entity.lifecycle.in_limbo = false;
+        entity.lifecycle.set_object_alive_for_test(true);
+        entity.lifecycle.set_in_limbo_for_test(false);
         entity.selected = selected;
         entity
+    }
+
+    /// The cursor's picker admits only what `Tactical::PickObjectAtScreenPoint`
+    /// admits (`0x006DA380`, [`pick_admits_object`]), as the selection picker
+    /// does: another house's fully cloaked object only over a cell the
+    /// player's sensors cover, the player's own always, nothing in limbo.
+    #[test]
+    fn the_cursor_picker_skips_an_unsensed_cloaked_enemy() {
+        use crate::sim::world::Simulation;
+        let mut sim = Simulation::new();
+        sim.fog.width = 32;
+        sim.fog.height = 32;
+        let player = sim.interner.intern("Americans");
+        let enemy = sim.interner.intern("Russians");
+        let sub = sim.interner.intern("SUB");
+        let mut cloak = crate::sim::cloak_disguise::CloakRuntime::new(0);
+        cloak.state = 2;
+        for (id, owner, rx) in [(1, enemy, 10), (2, player, 20)] {
+            let mut entity = item83_entity(id, rx, 10, owner, sub, EntityCategory::Unit, false);
+            entity.cloak = Some(cloak);
+            sim.entities_mut().insert(entity);
+        }
+        let heights = std::collections::BTreeMap::new();
+        let hover = |sim: &Simulation, id: u64, ignore_visibility: bool| {
+            let (x, y) = crate::app::presentation::instances::interpolated_screen_position_entity(
+                sim.entities().get(id).unwrap(),
+            );
+            hover_target_at_point(
+                sim,
+                x,
+                y,
+                "Americans",
+                ignore_visibility,
+                None,
+                &heights,
+                None,
+            )
+            .map(|hover| hover.stable_id)
+        };
+        assert_eq!(hover(&sim, 1, false), None);
+        assert_eq!(hover(&sim, 2, false), Some(2));
+        assert_eq!(
+            hover(&sim, 1, true),
+            Some(1),
+            "full visibility asks no cloak test"
+        );
+        sim.fog.increment_sensor_at(player, 10, 10);
+        assert_eq!(hover(&sim, 1, false), Some(1));
+        sim.entities_mut()
+            .get_mut(1)
+            .unwrap()
+            .lifecycle
+            .set_in_limbo_for_test(true);
+        assert_eq!(hover(&sim, 1, true), None);
     }
 
     /// `CanBeSelectedNow`'s byte `+0x1C8` is the Robot-Tank-offline latch, not a
@@ -2004,7 +2079,7 @@ mod tests {
         let tank = sim.entities().get(1).unwrap();
         assert_eq!(tank.bunker_link.installed_in(), Some(2));
         assert_eq!(
-            tank.attack_target.as_ref().map(|attack| attack.target),
+            tank.attack_target.target(),
             Some(crate::sim::combat::TargetKind::Entity(3))
         );
         assert_eq!(sim.entities().get(2).unwrap().bunker_occupant, Some(1));
@@ -2059,7 +2134,7 @@ mod tests {
             "an earlier structure wins an equal global tracked-anchor score"
         );
 
-        entities.get_mut(2).unwrap().type_ref = noselect;
+        entities.get_mut(2).unwrap().set_type_ref_for_test(noselect);
         let rejected = compute_click_selection_snapshot(
             &entities,
             &[2, 1],
@@ -2084,8 +2159,8 @@ mod tests {
         );
 
         let nonlocal = entities.get_mut(2).unwrap();
-        nonlocal.type_ref = building_type;
-        nonlocal.owner = soviet;
+        nonlocal.set_type_ref_for_test(building_type);
+        nonlocal.set_owner_for_test(soviet);
         let nonlocal_click = compute_click_selection_snapshot(
             &entities,
             &[2, 1],
@@ -2195,7 +2270,7 @@ mod tests {
         assert_eq!(added.select, [2]);
 
         // Flip the clicked object to an enemy: the same gesture now drains.
-        entities.get_mut(2).unwrap().owner = soviets;
+        entities.get_mut(2).unwrap().set_owner_for_test(soviets);
         let drained = compute_click_selection_snapshot(
             &entities,
             &[2, 1],
@@ -2391,8 +2466,8 @@ mod tests {
     #[test]
     fn techno_playfield_stored_membership_gates_local_mobile_selection() {
         let mut entity = GameEntity::test_default(1, "MTNK", "Americans", 5, 5);
-        entity.lifecycle.object_alive = true;
-        entity.lifecycle.in_limbo = false;
+        entity.lifecycle.set_object_alive_for_test(true);
+        entity.lifecycle.set_in_limbo_for_test(false);
         entity.in_playfield = false;
         assert!(!static_selection_gate(&entity, "MTNK", None, true));
         entity.in_playfield = true;
@@ -2410,12 +2485,12 @@ mod tests {
     #[test]
     fn an_object_without_health_is_not_selectable() {
         let mut entity = GameEntity::test_default(1, "ORCA", "Americans", 5, 5);
-        entity.lifecycle.object_alive = true;
-        entity.lifecycle.in_limbo = false;
+        entity.lifecycle.set_object_alive_for_test(true);
+        entity.lifecycle.set_in_limbo_for_test(false);
         entity.in_playfield = true;
         assert!(static_selection_gate(&entity, "ORCA", None, true));
-        entity.health.current = 0;
-        entity.crashing = true;
+        entity.health.set_for_test(0);
+        entity.crash.set_crashing_for_test(true);
         assert!(!static_selection_gate(&entity, "ORCA", None, true));
     }
 }

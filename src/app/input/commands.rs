@@ -129,7 +129,7 @@ fn own_building_id(state: &AppState, stable_id: u64) -> Option<u64> {
         .map(|rt| &rt.simulation)?;
     let owner = preferred_local_owner(state)?;
     let entity = sim.entities().get(stable_id)?;
-    (entity.category == EntityCategory::Structure
+    (entity.category() == EntityCategory::Structure
         && sim
             .interner
             .resolve(entity.owner())
@@ -697,7 +697,7 @@ fn preferred_local_owner_for_sim(
     let mut structure_counts: HashMap<String, usize> = HashMap::new();
     for entity in sim.entities().values() {
         let owner_str = sim.interner.resolve(entity.owner());
-        if entity.category == EntityCategory::Structure && is_playable_house_name(owner_str) {
+        if entity.category() == EntityCategory::Structure && is_playable_house_name(owner_str) {
             *structure_counts.entry(owner_str.to_string()).or_insert(0) += 1;
         }
     }
@@ -852,68 +852,59 @@ pub(super) fn schedule_command_in_sim(
     Some(execute_tick)
 }
 
-/// A Cell-click destination and the Move semantics chosen by its producer.
-pub(crate) struct CellMoveGoal {
-    pub(crate) cell: (u16, u16),
-    pub(crate) queue: bool,
+/// Move-click producer for a click on a Cell. Each receiver resolves its own
+/// Cell ([`Simulation::cell_click_destination`]) before event encoding;
+/// synchronized/replay/internal Move payloads are already resolved. Original
+/// initialized GI and MTNK Shift0x10 still execute that resolver and emit
+/// ordinary MegaMission (111-byte Event)/Move2 -> class(Cell,1); neither
+/// appends a queued waypoint (Infantry51AA40, Unit741970). Native
+/// input/event/true-RET controls: walk_first_path.json `gi_reissue`.
+///
+/// [`Simulation::cell_click_destination`]: crate::sim::world::Simulation::cell_click_destination
+pub(crate) fn ordinary_cell_move_goal(
+    sim: &crate::sim::world::Simulation,
+    rules: &crate::rules::ruleset::RuleSet,
+    registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
+    viewer: InternedId,
+    entity_id: u64,
+    clicked: (u16, u16),
+    shift: bool,
+) -> Option<(u16, u16)> {
+    sim.cell_click_destination(viewer, entity_id, clicked, shift, rules, registry)
+        .unwrap_or_else(|cause| {
+            log::warn!("Cell click input: {cause}");
+            None
+        })
 }
 
-/// Cell-click producer only. The native4DE1D0 resolver precedes event
-/// encoding; synchronized/replay/internal Move payloads are already resolved.
-/// Original initialized GI and MTNK Shift0x10 still execute that resolver and
-/// emit ordinary MegaMission (111-byte Event)/Move2 -> class(Cell,1); neither
-/// appends a queued waypoint (Infantry51AA40, Unit741970).
-/// Native input/event/true-RET controls: walk_first_path.json `gi_reissue`.
-pub(crate) fn ordinary_cell_move_goal(
+/// Move-click producer for a click over an object: the object, or a Cell
+/// near it ([`Simulation::object_move_click`]).
+///
+/// [`Simulation::object_move_click`]: crate::sim::world::Simulation::object_move_click
+pub(crate) fn object_move_destination(
     sim: &crate::sim::world::Simulation,
     rules: &crate::rules::ruleset::RuleSet,
     viewer: InternedId,
     entity_id: u64,
-    clicked: (u16, u16),
-    native_ground_receiver: bool,
-    queued_input: bool,
-) -> Option<CellMoveGoal> {
-    if native_ground_receiver
-        && (!queued_input
-            || sim.infantry_setter_receiver(entity_id, rules)
-            || sim.drive_unit_setter_receiver(entity_id))
-        && let Some(result) = sim.ordinary_ground_foot_cell_input(viewer, entity_id, clicked, rules)
-    {
-        return match result {
-            Ok(cell) => cell.map(|cell| CellMoveGoal { cell, queue: false }),
-            Err(cause) => {
-                log::warn!("ordinary Foot cell input: {cause}");
-                None
-            }
-        };
-    }
-    //Existing compatibility adapter for other locomotors (Hover, Teleport,
-    //Jumpjet, Fly), high movers and attack-move/queued input. Their native
-    //caller contracts remain separate. A queued Teleport/high receiver may
-    //share class setter coverage but returns None from the ordinary Foot input
-    //owner above, so it retains this compatibility queue flag. Ship's caller
-    //migration remains separate (#687/#689).
-    let mut goal = clicked;
-    if let Some(grid) = sim.path_grid()
-        && !crate::app::match_runtime::sim_tick::is_any_layer_walkable(grid, goal.0, goal.1)
-        && let Some(nearest) =
-            crate::app::match_runtime::sim_tick::nearest_walkable_cell_layered(grid, goal, 12)
-    {
-        goal = nearest;
-    }
-    Some(CellMoveGoal {
-        cell: goal,
-        queue: queued_input,
-    })
+    target_id: u64,
+    action: crate::sim::world::MoveAction,
+    force_move_key: bool,
+) -> Option<crate::sim::combat::TargetKind> {
+    sim.object_move_click(viewer, entity_id, target_id, action, force_move_key, rules)
+        .unwrap_or_else(|cause| {
+            log::warn!("Move click over an object: {cause}");
+            None
+        })
 }
 
 /// Make ordinary local Move and AreaGuard bytes authoritative at issue time.
 ///
-/// Active YR routes a cell click through `ClickedAction` (`0x004D7D50`) to
+/// Active YR routes a cell click through `ClickedAction` (`0x004D7D50`), and a
+/// Move over an object through `0x004D74E0`, to
 /// `EventClass__BuildMegaMissionEnvelope` (`0x004C6860`). Guard key730D60
-/// reaches the same producer through QueueMegaMission6FFBE0. Queue-false Move
-/// and AreaGuard share this codec; queued/planning and other semantic commands
-/// pass through until their native record is established.
+/// reaches the same producer through QueueMegaMission6FFBE0. Move, to a Cell
+/// or an object, and AreaGuard share this codec; other semantic commands pass
+/// through until their native record is established.
 pub(crate) fn roundtrip_ordinary_local_megamission(
     sim: &crate::sim::world::Simulation,
     envelope: CommandEnvelope,
@@ -924,7 +915,7 @@ pub(crate) fn roundtrip_ordinary_local_megamission(
         payload,
     } = envelope;
     match payload {
-        Command::Move { queue: false, .. } | Command::Guard { .. } => {
+        Command::Move { .. } | Command::MoveToObject { .. } | Command::Guard { .. } => {
             let record = sim.encode_megamission_record(owner, &payload)?;
             SynchronizedCommand::opaque(record).decode_for_simulation(sim, execute_tick)
         }
@@ -969,8 +960,8 @@ mod tests {
 
     use crate::map::entities::EntityCategory;
     use crate::rules::ini_parser::IniFile;
+    use crate::sim::combat::Health;
     use crate::sim::command::{Command, CommandEnvelope};
-    use crate::sim::components::Health;
     use crate::sim::game_entity::GameEntity;
     use crate::sim::house_state::HouseState;
     use crate::sim::world::Simulation;
@@ -1248,14 +1239,14 @@ mod tests {
             0,
             0,
             local,
-            Health { current: 100 },
+            Health::new(100),
             type_ref,
             EntityCategory::Unit,
             0,
             5,
             false,
         );
-        entity.lifecycle.in_limbo = false;
+        entity.lifecycle.set_in_limbo_for_test(false);
         sim.substrate.entities.insert(entity);
 
         // A cell the Megamission record cannot hold shows the ordinary Move
@@ -1268,7 +1259,6 @@ mod tests {
                     entity_id: 42,
                     target_rx: u16::MAX,
                     target_ry: 12,
-                    queue: false,
                 },
             ),
             None
@@ -1283,7 +1273,6 @@ mod tests {
                     entity_id: 42,
                     target_rx: 34,
                     target_ry: 12,
-                    queue: false,
                 },
             ),
             Some(123)
@@ -1297,7 +1286,6 @@ mod tests {
                     entity_id: 42,
                     target_rx: 34,
                     target_ry: 12,
-                    queue: false,
                 }
             ),
             "an ordinary Move keeps its cell through its Megamission bytes"
@@ -1306,18 +1294,20 @@ mod tests {
         schedule_command_in_sim(
             &mut sim,
             "Local",
-            Command::Move {
+            Command::MoveToObject {
                 entity_id: 42,
-                target_rx: 35,
-                target_ry: 12,
-                queue: true,
+                target_id: 7,
             },
         )
         .unwrap();
-        assert!(matches!(
+        assert_eq!(
             sim.pending_command_snapshot()[1].payload,
-            Command::Move { queue: true, .. }
-        ));
+            Command::MoveToObject {
+                entity_id: 42,
+                target_id: 7,
+            },
+            "a Move onto an object keeps it through its Megamission bytes"
+        );
     }
 
     #[test]

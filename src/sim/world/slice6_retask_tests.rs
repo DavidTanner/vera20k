@@ -17,7 +17,7 @@ use super::*;
 use crate::map::entities::{EntityCategory, MapEntity};
 use crate::rules::ini_parser::IniFile;
 use crate::rules::ruleset::RuleSet;
-use crate::sim::combat::AttackTarget;
+use crate::sim::combat::TargetKind;
 use crate::sim::command::{Command, CommandEnvelope};
 use crate::sim::mission::mega_mission::MegaMission;
 use crate::sim::mission::{MissionId, MissionType};
@@ -331,7 +331,24 @@ fn unit(owner: &str, type_id: &str, cx: u16, cy: u16, cat: EntityCategory) -> Ma
 // Infantry Approach: the GI's Attack now walks him to a cell in M60 range of
 // the tank (pinned in the loop) instead of the tank's own cell, so his NavCom
 // and path change. Replay, retasking and all three RNG gates remain unchanged.
-const SLICE6_BASELINE_HASH: u64 = 0xC4B5_83A9_D807_77FD;
+// 2026-10-14: hash composition and coverage only. state_hash folds
+// through the pinned StateHasher instead of std's DefaultHasher (a
+// temporary control folding the finished replay through DefaultHasher
+// still gave the previous 0xC4B5_83A9_D807_77FD), fog grids and entities fold
+// as per-House and per-entity digests, cell grids and footprint lists
+// fold as packed byte records, and the edge cache also covers
+// uninitialized cells: code that writes no simulation state.
+// Snapshot349 drops the move-order adapter (`MovementTarget`, #689), whose
+// presence and speed stamp every entity's fold hashed. Hash composition
+// only: a control binary (main with a hash that skips only that fold)
+// gives this value in the same test, with every tripwire above green.
+// Control removed. Previous: 0xA729_2F39_E67E_51D9.
+// Snapshot350 drops the locomotor's altitude copy (#692), which every
+// locomotor's fold hashed. Hash composition only: a control binary (main
+// with a hash that skips only that fold) gives this value in the same
+// test, with every tripwire above green.
+// Control removed. Previous: 0xE3F1_10CD_1C40_81A1.
+const SLICE6_BASELINE_HASH: u64 = 0x7DBF_3798_6DCA_6E31;
 
 #[test]
 fn replay_hash_stable_through_slice6() {
@@ -373,16 +390,14 @@ fn replay_hash_stable_through_slice6() {
                 entity_id: 1,
                 target_rx: 10,
                 target_ry: 10,
-                queue: false,
             },
         ),
         (
             3,
             Command::AttackMove {
                 entity_id: 1,
-                target_rx: 15,
-                target_ry: 3,
-                queue: false,
+                target: None,
+                destination: Some(crate::sim::combat::TargetKind::Cell(15, 3)),
             },
         ),
         (
@@ -543,7 +558,7 @@ fn replay_hash_stable_through_slice6() {
                 "Stop clears the live path head"
             );
             assert!(
-                tank.attack_target.is_none(),
+                tank.attack_target.target().is_none(),
                 "Stop retires the previous attack"
             );
         }
@@ -592,7 +607,7 @@ fn replay_hash_stable_through_slice6() {
                 .get(id)
                 .expect("actor lives")
                 .health
-                .current,
+                .current(),
             health,
             "retask window must not turn into a combat/death fixture"
         );
@@ -650,8 +665,8 @@ fn slice6_move_command_retasks_via_mission_substrate_and_clears_state() {
     // Seed a conflicting prior order the Move must tear down.
     {
         let e = sim.substrate.entities.get_mut(1).expect("unit");
-        e.attack_target = Some(AttackTarget::new(2));
-        e.mega_mission = MegaMission::attack_move(Some((3, 3)));
+        e.attack_target.set_for_test(Some(TargetKind::Entity(2)));
+        e.mega_mission = MegaMission::attack_move(Some(crate::sim::combat::TargetKind::Cell(3, 3)));
     }
 
     let issued = sim.apply_command(
@@ -660,7 +675,6 @@ fn slice6_move_command_retasks_via_mission_substrate_and_clears_state() {
             entity_id: 1,
             target_rx: 10,
             target_ry: 10,
-            queue: false,
         },
         Some(&rules),
     );
@@ -673,7 +687,7 @@ fn slice6_move_command_retasks_via_mission_substrate_and_clears_state() {
         "the command queued Move through the exact authority (host promotes later)"
     );
     assert!(
-        e.attack_target.is_none(),
+        e.attack_target.target().is_none(),
         "Move tore down the attack target"
     );
     assert!(

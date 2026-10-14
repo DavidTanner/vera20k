@@ -85,7 +85,7 @@ fn relocating_owner(category: EntityCategory, type_name: &str, target: (u16, u16
         2,
         0,
         sim.intern("Americans"),
-        crate::sim::components::Health { current: 100 },
+        crate::sim::combat::Health::new(100),
         sim.intern(type_name),
         category,
         0,
@@ -321,7 +321,9 @@ fn the_warp_drops_attack_locks_on_its_owner() {
     let rules = rules(false);
     let mut sim = relocating_legionnaire((8, 9));
     let mut attacker = GameEntity::test_default(2, "CMON", "Russians", 4, 5);
-    attacker.attack_target = Some(crate::sim::combat::AttackTarget::new(1));
+    attacker
+        .attack_target
+        .set_for_test(Some(crate::sim::combat::TargetKind::Entity(1)));
     sim.substrate.entities.insert(attacker);
 
     sim.advance_live_object_turn(1, Some(&rules), techno_ai::ObjectAiCtx::default())
@@ -340,8 +342,50 @@ fn the_warp_drops_attack_locks_on_its_owner() {
             .get(2)
             .unwrap()
             .attack_target
+            .target()
             .is_none()
     );
+}
+
+/// The warp's first step is the shared detach sweep (`0x007193C7` ->
+/// `0x0070D4A0`): an attacker aiming at the owner restores its suspended
+/// mission and takes the class NULL setter, which also clears its
+/// passive-acquire flag.
+#[test]
+fn the_warp_restores_its_attackers_suspended_missions() {
+    use crate::sim::mission::state::MissionTestFixture;
+    use crate::sim::mission::{MissionDispatchTimer, MissionId, MissionType};
+
+    let rules = rules(false);
+    let mut sim = relocating_legionnaire((8, 9));
+    let mut attacker = GameEntity::test_default(2, "CMON", "Russians", 4, 5);
+    attacker
+        .attack_target
+        .set_for_test(Some(crate::sim::combat::TargetKind::Entity(1)));
+    attacker.passively_acquired_target = true;
+    attacker.mission.apply_test_fixture(MissionTestFixture {
+        current: MissionId::from_known(MissionType::Attack),
+        suspended: MissionId::from_known(MissionType::Guard),
+        queued: MissionId::NONE,
+        movement_bypass_latch: 0,
+        handler_state: 0,
+        mission_start_frame: 0,
+        ai_counter: 0,
+        dispatch_timer: MissionDispatchTimer::at_frame(0),
+    });
+    sim.substrate.entities.insert(attacker);
+
+    sim.advance_live_object_turn(1, Some(&rules), techno_ai::ObjectAiCtx::default())
+        .unwrap();
+
+    let attacker = sim.substrate.entities.get(2).unwrap();
+    assert!(attacker.attack_target.target().is_none());
+    assert!(!attacker.passively_acquired_target);
+    assert_eq!(
+        attacker.mission.current(),
+        MissionId::from_known(MissionType::Guard)
+    );
+    assert_eq!(attacker.mission.suspended(), MissionId::NONE);
 }
 
 /// A mission Restore represents `Assign_Destination(saved, 1)` by NavCom and
@@ -352,22 +396,22 @@ fn the_warp_drops_attack_locks_on_its_owner() {
 #[test]
 fn a_restored_destination_warps_at_the_teleport_process_entry() {
     use crate::sim::components::NavTargetRef;
-    use crate::sim::mission::concrete_effects::represented_assign_destination_mode_one;
+    use crate::sim::mission::concrete_effects::represented_assign_destination;
     let rules = rules(false);
     let mut sim = relocating_legionnaire((8, 9));
     install_destination_cells(&mut sim, &rules);
     let mover = sim.substrate.entities.get_mut(1).unwrap();
     mover.install_teleport_state_for_test(None);
-    represented_assign_destination_mode_one(mover, Some(NavTargetRef::cell(8, 9)));
-    mover.navigation.pending_arrival_clear = true;
+    represented_assign_destination(mover, Some(NavTargetRef::cell(8, 9)));
+    mover.navigation.pending_destination_setter = true;
 
     sim.advance_live_object_turn(1, Some(&rules), techno_ai::ObjectAiCtx::default())
         .unwrap();
 
     let mover = sim.substrate.entities.get(1).unwrap();
     assert_eq!((mover.position.rx, mover.position.ry), (8, 9));
-    assert!(!mover.navigation.pending_arrival_clear);
-    assert!(mover.movement_target.is_none());
+    assert!(!mover.navigation.pending_destination_setter);
+    assert!(crate::sim::movement::motion_query::is_moving(&mover) != Some(true));
 }
 
 /// Supplied Clear-overlay inputs exercise the production callback context,
@@ -465,7 +509,6 @@ fn restoration_callbacks_forward_overlay_inputs_before_any_destination_write() {
 /// which arms the warp, not a route no Process follows.
 #[test]
 fn a_ground_order_arms_the_warp() {
-    use crate::sim::world::GroundMove;
     let rules = rules(false);
     let mut sim = relocating_legionnaire((8, 9));
     install_destination_cells(&mut sim, &rules);
@@ -475,24 +518,16 @@ fn a_ground_order_arms_the_warp() {
         .unwrap()
         .install_teleport_state_for_test(None);
 
-    let accepted = sim.issue_ground_move(
-        GroundMove {
-            entity_id: 1,
-            target: (12, 7),
-            speed: crate::util::fixed_math::SimFixed::from_num(4),
-            queue: false,
-            speed_type: None,
-            owner_blocks: true,
-            object_destination: None,
-        },
+    sim.assign_destination_represented(
+        1,
+        Some(crate::sim::components::NavTargetRef::cell(12, 7)),
         Some(&rules),
         None,
         crate::sim::world::FrameEffects::default(),
-    );
+    )
+    .unwrap();
 
-    assert!(accepted);
     let mover = sim.substrate.entities.get(1).unwrap();
-    assert!(mover.movement_target.is_none());
     let warp = mover.teleport_state().expect("armed warp");
     assert_eq!(warp.target_cell().unwrap(), (12, 7));
 }

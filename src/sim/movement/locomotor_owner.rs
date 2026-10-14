@@ -148,8 +148,7 @@ fn end_piggyback(entity: &mut GameEntity) -> PiggybackEnd {
         .as_mut()
         .is_some_and(|locomotor| locomotor.end_piggyback());
     if restored {
-        // END transfers the controller without moving Object+9C. Restored
-        // altitude is controller state, not an addition to this exact XYZ.
+        // END transfers the controller without moving Object+9C.
         entity.position.exact_z_leptons = Some(physical.z);
     }
     PiggybackEnd {

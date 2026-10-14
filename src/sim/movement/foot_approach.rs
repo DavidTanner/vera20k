@@ -17,7 +17,7 @@ use crate::rules::object_type::Ability;
 use crate::rules::overlay_types::OverlayTypeRegistry;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::cell_rect::{self, CellRect, CellRectPassabilityContext};
-use crate::sim::combat::veterancy::{has_weapon_ability, rank_from_u16};
+use crate::sim::combat::veterancy::has_weapon_ability;
 use crate::sim::combat::{self, TargetKind, in_range};
 use crate::sim::components::{DriveCoord, NavTargetRef};
 use crate::sim::mission::MissionType;
@@ -112,15 +112,15 @@ impl Simulation {
     /// that crushes nothing. Every represented object is a Techno.
     fn approach_crush(&self, id: u64, rules: &RuleSet) -> Option<(ApproachCrush, u64)> {
         let actor = self.substrate.entities.get(id)?;
-        let TargetKind::Entity(target) = actor.attack_target.as_ref()?.target else {
+        let TargetKind::Entity(target) = actor.attack_target.target()? else {
             return None;
         };
-        if actor.category != EntityCategory::Unit || !self.substrate.entities.contains(target) {
+        if actor.category() != EntityCategory::Unit || !self.substrate.entities.contains(target) {
             return None;
         }
         let object = self.object_type(actor.type_ref(), rules)?;
         let crusher = object.crusher
-            || has_weapon_ability(rank_from_u16(actor.veterancy()), object, Ability::Crusher);
+            || has_weapon_ability(actor.veterancy.rank_kind(), object, Ability::Crusher);
         // Every Approach asks this; most units crush nothing.
         if !crusher && !object.omni_crusher {
             return None;
@@ -221,9 +221,9 @@ impl Simulation {
     /// rows.
     pub(crate) fn balloon_hover_approach(&self, id: u64, rules: &RuleSet) -> Option<NavTargetRef> {
         let actor = self.substrate.entities.get(id)?;
-        let target = actor.attack_target.as_ref()?.target;
+        let target = actor.attack_target.target()?;
         let object = self.object_type(actor.type_ref(), rules)?;
-        if actor.category != EntityCategory::Unit || !object.balloon_hover {
+        if actor.category() != EntityCategory::Unit || !object.balloon_hover {
             return None;
         }
         let (_, selected) = self.foot_target_weapon(actor, object, target, rules)?;
@@ -329,7 +329,7 @@ impl Simulation {
         let Some(actor) = self.substrate.entities.get(id) else {
             return false;
         };
-        let Some(target) = actor.attack_target.as_ref().map(|a| a.target) else {
+        let Some(target) = actor.attack_target.target() else {
             return false;
         };
         if !actor.infantry_deploy_doing() {
@@ -376,11 +376,11 @@ impl Simulation {
         let Some(actor) = self.substrate.entities.get(id) else {
             return false;
         };
-        let Some(target) = actor.attack_target.as_ref().map(|a| a.target) else {
+        let Some(target) = actor.attack_target.target() else {
             return false;
         };
         matches!(
-            actor.category,
+            actor.category(),
             EntityCategory::Unit | EntityCategory::Infantry
         ) && actor.locomotor.is_some()
             && !actor.infantry_deploy_doing()
@@ -434,7 +434,7 @@ impl Simulation {
         let Some(actor) = self.substrate.entities.get(id) else {
             return Ok(None);
         };
-        let Some(target) = actor.attack_target.as_ref().map(|a| a.target) else {
+        let Some(target) = actor.attack_target.target() else {
             return Ok(None);
         };
         // 4D56A1..56B1: a Magnetron holding its target (+2AC == TarCom)
@@ -509,7 +509,7 @@ impl Simulation {
             .get(&actor.owner())
             .is_none_or(|h| h.is_controlled_by_human(self.session.game_mode_nonzero));
         let may_approach = object.can_approach_target
-            && actor.drain_target.is_none()
+            && actor.drain.target().is_none()
             && actor.bunker_link.installed_in().is_none()
             && !actor.passenger_role.in_open_transport();
         if !can_fire
@@ -560,21 +560,14 @@ impl Simulation {
         // object) is taken (vt+0x480 with 0), leaves the queue and is the
         // answer.
         if let Some(entry) = actor.navigation.nav_queue.first().copied() {
-            if actor.category == EntityCategory::Unit {
-                self.set_unit_destination(id, entry, rules, false, frame_effects);
-            } else {
-                //4D5A64 passes flag0. Infantry51AA40 forwards the flag,
-                // but Foot4D94B0 never reads it; original ordinary CLEG
-                // Cell-setter flag0/1 controls have equal state and RNG.
-                self.assign_destination_represented(
-                    id,
-                    Some(entry),
-                    Some(rules),
-                    registry,
-                    frame_effects,
-                )
-                .map_err(|e| format!("Approach queued destination: {e}"))?;
-            }
+            self.assign_destination_keeping_queue(
+                id,
+                Some(entry),
+                Some(rules),
+                registry,
+                frame_effects,
+            )
+            .map_err(|e| format!("Approach queued destination: {e}"))?;
             let queue = &mut self
                 .substrate
                 .entities
@@ -631,7 +624,7 @@ impl Simulation {
                 .substrate
                 .entities
                 .get(id)
-                .filter(|t| t.category == EntityCategory::Structure)
+                .filter(|t| t.category() == EntityCategory::Structure)
                 .map(|t| {
                     let (width, height) =
                         crate::rules::foundation::foundation_dimensions(&t.foundation);
@@ -639,7 +632,7 @@ impl Simulation {
                 }),
             TargetKind::Cell(..) => None,
         };
-        let mut radius = approach_search_radius(range, actor.category, foundation);
+        let mut radius = approach_search_radius(range, actor.category(), foundation);
         let own = self.approach_nav_center(target_reference, &cells)?;
         let target_cell = ((own.x / 256) as i16, (own.y / 256) as i16);
         let source = super::ground_pose::position_world_coord(&actor.position);
@@ -650,10 +643,10 @@ impl Simulation {
         let target_bridge = match target {
             TargetKind::Cell(..) => cells.flags(identity.unwrap()) & 0x100 != 0,
             TargetKind::Entity(id) => self.substrate.entities.get(id).is_some_and(|target| {
-                target.category != EntityCategory::Structure && target.on_bridge
+                target.category() != EntityCategory::Structure && target.on_bridge
             }),
         };
-        let category = actor.category;
+        let category = actor.category();
         //4D5909..590D: a mover whose locomotor is Jumpjet flies there, so
         // it takes the first admitted candidate without either path-cost
         // test (4D6764 -> 4D689A). 4D5873 sets the same flag for an
@@ -1176,8 +1169,8 @@ impl Simulation {
         cells: &NativeCellQuery<'_>,
     ) -> Result<Option<(u16, u16)>, String> {
         use crate::sim::find_nearby_cell::{
-            NearbyAnchorGate, NearbyFootprint, NearbyQuery, PassabilityArgs,
-            find_nearby_passable_cell, map_owned_radius_cap,
+            NearbyFootprint, NearbyQuery, PassabilityArgs, find_nearby_passable_cell,
+            map_owned_radius_cap,
         };
         let actor = self
             .substrate
@@ -1226,7 +1219,6 @@ impl Simulation {
                     bridge_aware_zone: bridge_aware,
                 },
                 footprint: NearbyFootprint::SINGLE,
-                anchor_gate: NearbyAnchorGate::NativeHeightAware,
                 allow_bridge_cells: false,
                 check_height: true,
                 check_occupancy: false,

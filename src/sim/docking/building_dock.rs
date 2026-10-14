@@ -1036,11 +1036,13 @@ pub(crate) fn try_pending_entry(
             sim.session.binary_frame,
             &LiveReadyInputProvider { rules },
         );
-        sim.set_unit_destination(
+        // vt+0x480 of whichever Foot waits: an aircraft's pending entry is
+        // its own (`AircraftClass::Assign_Destination` sets it).
+        let _ = sim.assign_destination_represented(
             id,
-            crate::sim::components::NavTargetRef::Building { id: depot },
-            rules,
-            true,
+            Some(crate::sim::components::NavTargetRef::Building { id: depot }),
+            Some(rules),
+            None,
             frame_effects,
         );
         set_pending_entry(sim, id, None);
@@ -1119,16 +1121,7 @@ pub(crate) fn park_pending_entry(
         return false;
     };
     let cell = crate::sim::components::NavTargetRef::cell(x, y);
-    if sim
-        .substrate
-        .entities
-        .get(id)
-        .is_some_and(|actor| actor.category == crate::map::entities::EntityCategory::Aircraft)
-    {
-        sim.assign_aircraft_destination(id, Some(cell), rules, frame_effects);
-    } else {
-        sim.set_unit_destination(id, cell, rules, true, frame_effects);
-    }
+    let _ = sim.assign_destination_represented(id, Some(cell), Some(rules), None, frame_effects);
     let _ = sim.mission_queue_exact(
         id,
         MissionId::from_known(MissionType::Move),
@@ -1195,7 +1188,8 @@ fn idle_service_art(sim: &mut Simulation, rules: &RuleSet, depot: u64, clear_fir
     }
 }
 
-///44C397/44BE97: release through the Unit setter and Radio contact owners.
+///44C397/44BE97: release through the contact's class setter (vt+0x480) and
+/// the Radio contact owners.
 /// State1 clears ArchiveTarget unconditionally after a successful release;
 /// state2 clears it only in the AI archive arm. An unavailable exit holds the
 /// contact for a later dispatch. Foundation waiting #937 remains separate.
@@ -1249,7 +1243,13 @@ fn release_contact(
         sim.session.binary_frame,
         &LiveReadyInputProvider { rules },
     );
-    sim.set_unit_destination(unit, destination, rules, true, frame_effects);
+    let _ = sim.assign_destination_represented(
+        unit,
+        Some(destination),
+        Some(rules),
+        registry,
+        frame_effects,
+    );
     if (state1 || ai_archive.is_some())
         && let Some(contact) = sim.substrate.entities.get_mut(unit)
     {
@@ -1310,8 +1310,8 @@ pub(crate) fn mission_repair(
         // when neither service slot exists. Recreating them would reset their
         // stages and consume additional constructor RNG on every dispatch.
         if status != 1
-            || building.building_anim_slots[8].is_some()
-            || building.building_anim_slots[11].is_some()
+            || building.building_art.anim_slots()[8].is_some()
+            || building.building_art.anim_slots()[11].is_some()
         {
             idle_service_art(sim, rules, depot, status != 1);
         }
@@ -1319,7 +1319,7 @@ pub(crate) fn mission_repair(
         if status == 2 {
             building.mission.set_handler_state(1);
         }
-        if status == 0 || (status == 1 && building.building_anim_slots[18].is_none()) {
+        if status == 0 || (status == 1 && building.building_art.anim_slots()[18].is_none()) {
             // State0 Queue44C6EA preserves +6DD; only state1's no-contact
             // arm44C18E sets ready before asking Queue to commence Guard.
             if status == 1 {
@@ -1384,7 +1384,7 @@ pub(crate) fn mission_repair(
     }
     if status == 1 {
         // The ProductionAnim must finish before the first paid step.
-        if sim.substrate.entities.get(depot)?.building_anim_slots[8].is_some() {
+        if sim.substrate.entities.get(depot)?.building_art.anim_slots()[8].is_some() {
             return Some(1);
         }
         if distance_to_pad(sim, rules, depot, unit).is_some_and(|d| d < 200) {
@@ -1568,8 +1568,9 @@ mod tests {
     use super::*;
     use crate::map::entities::EntityCategory;
     use crate::rules::ini_parser::IniFile;
+    use crate::sim::combat::Health;
     use crate::sim::command::Command;
-    use crate::sim::components::{Health, NavTargetRef};
+    use crate::sim::components::NavTargetRef;
     use crate::sim::game_entity::GameEntity;
     use crate::sim::movement::locomotor::MovementLayer;
     use crate::sim::occupancy::CellListInsertion;
@@ -1635,7 +1636,7 @@ mod tests {
             .get_mut(1)
             .unwrap()
             .lifecycle
-            .in_limbo = true;
+            .set_in_limbo_for_test(true);
         (sim, rules)
     }
 
@@ -1866,12 +1867,12 @@ mod tests {
         let (mut sim, rules) = setup(1);
         let owner = sim.substrate.entities.get(1).unwrap().owner();
         let unit = sim.substrate.entities.get_mut(1).unwrap();
-        unit.health.current = 300;
+        unit.health.set_for_test(300);
         unit.estimated_health.reset(-20);
         let rng = sim.scenario_rng.state();
         assert_eq!(repair_request(&mut sim, &rules, 1), RadioResponse::Negatory);
         let unit = sim.substrate.entities.get(1).unwrap();
-        assert_eq!(unit.health.current, 300);
+        assert_eq!(unit.health.current(), 300);
         assert_eq!(unit.estimated_health.get(), -20);
         assert_eq!(sim.houses[&owner].economy.credits(), 10_000);
         assert_eq!(sim.houses[&owner].economy.spent_credits(), 0);
@@ -1891,7 +1892,7 @@ mod tests {
             crate::sim::world::FrameEffects::default()
         ));
         assert_eq!(repair_request(&mut sim, &rules, 1), RadioResponse::Negatory);
-        assert_eq!(sim.substrate.entities.get(1).unwrap().health.current, 100);
+        assert_eq!(sim.substrate.entities.get(1).unwrap().health.current(), 100);
         assert_eq!(sim.houses[&owner].economy.credits(), 10_000);
         assert_eq!(sim.houses[&owner].economy.spent_credits(), 0);
     }
@@ -1922,7 +1923,7 @@ mod tests {
             );
         }
         let unit = sim.substrate.entities.get(1).unwrap();
-        assert_eq!(unit.health.current, 100);
+        assert_eq!(unit.health.current(), 100);
         assert_eq!(unit.estimated_health.get(), estimate);
         assert_eq!(sim.houses[&owner].economy.credits(), 1);
         assert_eq!(sim.houses[&owner].economy.spent_credits(), 0);
@@ -1934,6 +1935,58 @@ mod tests {
     const DEPOT: u64 = 500;
     const DEPOT_RX: u16 = 10;
     const DEPOT_RY: u16 = 10;
+
+    /// MissionRepairAndProduce releases its contact through the contact's own
+    /// class setter (vt+0x480 at `0x0044C496`). The UnitRepair CAN_LOAD takes
+    /// aircraft as well as Units, and a released aircraft gets the Aircraft
+    /// setter (`0x0041AA80`) toward the exit cell.
+    #[test]
+    fn a_released_aircraft_takes_its_own_class_setter() {
+        let Some((rules_ini, art_ini)) = crate::rules::retail_ini_fixture::retail_rules_and_art()
+        else {
+            return;
+        };
+        let mut rules = RuleSet::from_ini_with_fixed_art_for_test(&rules_ini, &art_ini)
+            .expect("retail rules parse");
+        rules.install_art_data(crate::rules::art_data::ArtRegistry::from_ini(&art_ini));
+        let mut sim = Simulation::new();
+        crate::sim::arena_fixture::flat_ground(&mut sim, &rules);
+        let depot = sim
+            .spawn_object("GADEPT", "Americans", 10, 10, 0, &rules)
+            .expect("retail GADEPT");
+        let aircraft = sim
+            .spawn_object("ORCA", "Americans", 16, 16, 0, &rules)
+            .expect("retail ORCA");
+        sim.substrate
+            .entities
+            .get_mut(depot)
+            .unwrap()
+            .mark_live_contact_with(aircraft);
+        sim.substrate
+            .entities
+            .get_mut(aircraft)
+            .unwrap()
+            .mark_live_contact_with(depot);
+        let exit = building_dock_cell(&sim, depot, aircraft, (0, 0), &rules, None)
+            .expect("an exit cell for the aircraft");
+
+        release_contact(
+            &mut sim,
+            &rules,
+            depot,
+            aircraft,
+            false,
+            None,
+            crate::sim::world::FrameEffects::default(),
+        );
+
+        let released = sim.substrate.entities.get(aircraft).unwrap();
+        assert_eq!(
+            released.navigation.nav_com,
+            Some(NavTargetRef::cell(exit.0, exit.1))
+        );
+        assert!(!released.has_live_contact_with(depot));
+    }
 
     fn depot_rules() -> RuleSet {
         depot_rules_with_strength(300)
@@ -1999,14 +2052,14 @@ mod tests {
             0,
             0,
             owner_id,
-            Health { current: hp },
+            Health::new(hp),
             type_id,
             category,
             0,
             5,
             category == EntityCategory::Unit,
         );
-        ge.lifecycle.in_limbo = false;
+        ge.lifecycle.set_in_limbo_for_test(false);
         if category == EntityCategory::Unit {
             // A live Drive mover: the depot's class setter and the Process
             // corridor need its locomotor.
@@ -2105,7 +2158,7 @@ mod tests {
 
         assert_eq!(response, RadioResponse::Roger);
         let tank = sim.substrate.entities.get(1).unwrap();
-        assert_eq!(tank.health.current, 108);
+        assert_eq!(tank.health.current(), 108);
         let house = sim.houses.get(&owner).unwrap();
         assert_eq!(house.economy.credits(), 9_998);
         assert_eq!(house.economy.spent_credits(), 2);
@@ -2248,7 +2301,12 @@ mod tests {
         ] {
             let (mut sim, _) = setup(1);
             let rules = depot_rules_with_strength(strength);
-            sim.substrate.entities.get_mut(1).unwrap().health.current = hp;
+            sim.substrate
+                .entities
+                .get_mut(1)
+                .unwrap()
+                .health
+                .set_for_test(hp);
             let response = radio::transmit(
                 &mut sim,
                 DEPOT,
@@ -2271,12 +2329,12 @@ mod tests {
         let (mut sim, _) = setup(1);
         let rules = depot_rules_with_strength(i32::MAX);
         let unit = sim.substrate.entities.get_mut(1).unwrap();
-        unit.health.current = i32::MAX - 1;
+        unit.health.set_for_test(i32::MAX - 1);
         unit.estimated_health =
             crate::sim::estimated_health::EstimatedHealth::from_raw(i32::MAX - 2);
         assert_eq!(repair_request(&mut sim, &rules, 1), RadioResponse::Roger);
         let unit = sim.substrate.entities.get(1).unwrap();
-        assert_eq!(unit.health.current, i32::MIN + 6);
+        assert_eq!(unit.health.current(), i32::MIN + 6);
         assert_eq!(unit.estimated_health.get(), i32::MIN + 5);
     }
 
@@ -2291,18 +2349,18 @@ mod tests {
             .reset(-20);
         assert_eq!(repair_request(&mut sim, &rules, 1), RadioResponse::Roger);
         let unit = sim.substrate.entities.get(1).unwrap();
-        assert_eq!(unit.health.current, 108);
+        assert_eq!(unit.health.current(), 108);
         assert_eq!(unit.estimated_health.get(), -12);
 
         let unit = sim.substrate.entities.get_mut(1).unwrap();
-        unit.health.current = 299;
+        unit.health.set_for_test(299);
         unit.estimated_health.reset(-20);
         assert_eq!(
             repair_request(&mut sim, &rules, 1),
             RadioResponse::RepairComplete
         );
         let unit = sim.substrate.entities.get(1).unwrap();
-        assert_eq!(unit.health.current, 300);
+        assert_eq!(unit.health.current(), 300);
         assert_eq!(unit.estimated_health.get(), 300);
         sim.substrate
             .entities
@@ -2399,7 +2457,7 @@ mod tests {
                 .substrate
                 .entities
                 .get(id)
-                .is_some_and(|e| e.category == EntityCategory::Unit)
+                .is_some_and(|e| e.category() == EntityCategory::Unit)
             {
                 sim.process_ground_locomotor_one(
                     id,
@@ -2424,7 +2482,7 @@ mod tests {
                 sim.substrate
                     .entities
                     .get(id)
-                    .is_some_and(|e| e.category == EntityCategory::Unit)
+                    .is_some_and(|e| e.category() == EntityCategory::Unit)
             })
             .collect();
         for id in units {
@@ -2662,7 +2720,6 @@ mod tests {
             None,
             crate::sim::world::FrameEffects::default(),
         );
-        sim.substrate.entities.get_mut(1).unwrap().movement_target = None;
         for _ in 0..100 {
             tick_units(&mut sim, &rules);
             let unit = sim.substrate.entities.get(1).unwrap();
@@ -2712,7 +2769,7 @@ mod tests {
         }
         assert!(reached_pad && released);
         let e = sim.substrate.entities.get(1).unwrap();
-        assert_eq!(e.health.current, 300);
+        assert_eq!(e.health.current(), 300);
         assert!(!linked(&sim, 1));
         assert!(
             e.locomotor.as_ref().unwrap().powered,
@@ -2804,7 +2861,12 @@ mod tests {
         assert!(linked(&sim, 1));
         let nav = sim.substrate.entities.get(1).unwrap().navigation.nav_com;
         assert!(nav.is_some());
-        sim.substrate.entities.get_mut(1).unwrap().health.current = 300;
+        sim.substrate
+            .entities
+            .get_mut(1)
+            .unwrap()
+            .health
+            .set_for_test(300);
         let due = {
             let timer = sim
                 .substrate
@@ -2891,7 +2953,7 @@ mod tests {
                 sim.substrate
                     .entities
                     .get(id)
-                    .is_some_and(|e| e.category == EntityCategory::Unit)
+                    .is_some_and(|e| e.category() == EntityCategory::Unit)
             })
             .collect();
         let cfg = miner_cfg();
@@ -3040,7 +3102,7 @@ mod tests {
         assert!(released, "miner never released");
         assert!(writes >= 1, "at least the first HELLO dispatch");
         let e = sim.substrate.entities.get(MINER).unwrap();
-        assert_eq!(e.health.current, 600);
+        assert_eq!(e.health.current(), 600);
         assert!(e.miner.is_some(), "miner component survives the depot stay");
         assert!(!linked(&sim, MINER));
         assert_eq!(e.mission.queued().known(), Some(MissionType::Move));
@@ -3153,7 +3215,8 @@ mod tests {
             .entities
             .get(DEPOT)
             .unwrap()
-            .building_anim_slots;
+            .building_art
+            .anim_slots();
         assert_eq!((slots[3], slots[12]), (Some(active), Some(idle)));
         assert_eq!(sim.scenario_rng.state(), rng);
     }
@@ -3231,7 +3294,7 @@ mod tests {
             assert!(sim.register_live_object(id));
         }
         sim.advance_tick(&[], Some(&rules), None, None, 66);
-        assert_eq!(sim.substrate.entities.get(1).unwrap().health.current, 108);
+        assert_eq!(sim.substrate.entities.get(1).unwrap().health.current(), 108);
         assert_eq!(sim.houses[&owner].economy.credits(), 0);
         assert_eq!(sim.houses[&owner].economy.spent_credits(), 2);
         let factory = sim.production.factories.test_first_mut().unwrap();

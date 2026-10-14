@@ -171,7 +171,7 @@ fn two_paid_rocketeers(rally: Option<(u16, u16)>) {
         }
         for (index, product) in products.iter_mut().enumerate() {
             let entity = sim.substrate.entities.get(product.id).unwrap();
-            if entity.lifecycle.in_limbo {
+            if entity.lifecycle.in_limbo() {
                 continue;
             }
             let transmissions = pair_radio(&log, producer, product.id);

@@ -3,11 +3,11 @@
 use super::*;
 use crate::rules::ini_parser::IniFile;
 use crate::rules::locomotor_type::LocomotorKind;
-use crate::sim::components::{DriveCoord, MovementTarget};
+use crate::sim::components::DriveCoord;
 use crate::sim::game_entity::GameEntity;
 use crate::sim::movement::locomotor::LocomotorState;
 
-fn mirage(order: bool, destination: Option<DriveCoord>) -> (Simulation, RuleSet) {
+fn mirage(destination: Option<DriveCoord>) -> (Simulation, RuleSet) {
     let mut rules = RuleSet::from_ini(&IniFile::from_str(
         "[VehicleTypes]\n0=MGTK\n[MGTK]\nStrength=400\nSpeed=6\nCanDisguise=yes\nDisguiseWhenStill=yes\n",
     ))
@@ -16,7 +16,7 @@ fn mirage(order: bool, destination: Option<DriveCoord>) -> (Simulation, RuleSet)
     let mut sim = Simulation::new();
     sim.resolved_terrain = Some(crate::map::resolved_terrain::test_flat_ground_grid(16));
     let mut entity = GameEntity::test_default(1, "MGTK", "Americans", 5, 5);
-    entity.category = EntityCategory::Unit;
+    entity.set_category_for_test(EntityCategory::Unit);
     entity.locomotor = Some(LocomotorState::for_test_kind(LocomotorKind::Drive));
     assert!(
         entity
@@ -28,7 +28,6 @@ fn mirage(order: bool, destination: Option<DriveCoord>) -> (Simulation, RuleSet)
                     .with_destination_for_test(destination)
             ))
     );
-    entity.movement_target = order.then(MovementTarget::default);
     sim.substrate.entities.insert(entity);
     sim.interner = crate::sim::intern::test_interner();
     (sim, rules)
@@ -51,7 +50,7 @@ fn an_idle_retail_mirage_retains_its_disguise_without_another_scenario_draw() {
         return;
     };
     assert!(retail.rules.general.default_mirage_disguises.len() > 1);
-    let (mut sim, _) = mirage(false, None);
+    let (mut sim, _) = mirage(None);
     sim.session.binary_frame = 100;
     sim.update_unit_disguise(1, &retail.rules).unwrap();
     assert!(disguised(&sim));
@@ -74,7 +73,7 @@ fn an_idle_retail_mirage_hides_from_an_ordinary_enemy_observer() {
     let Some(retail) = crate::rules::retail_ini_fixture::retail_battle_rules() else {
         return;
     };
-    let (mut sim, _) = mirage(false, None);
+    let (mut sim, _) = mirage(None);
     let enemy = sim.interner.intern("Russians");
     sim.update_unit_disguise(1, &retail.rules).unwrap();
     let entity = sim.substrate.entities.get(1).unwrap();
@@ -87,24 +86,12 @@ fn an_idle_retail_mirage_hides_from_an_ordinary_enemy_observer() {
     ));
 }
 
-/// `UnitClass::UpdateDisguise @ 0x007468C0` asks the locomotor's Is_Moving
-/// (ILocomotion+0x10 at `0x007468F4`), which reads the Drive's own destination
-/// and head, not the owner's order. A Mirage holding an order its Drive has
-/// not taken up is still, so it takes a disguise. No production path is known
-/// to leave a Mirage in that state; this pins the owner's answer.
-#[test]
-fn a_mirage_whose_drive_has_not_started_its_order_disguises() {
-    let (mut sim, rules) = mirage(true, None);
-    sim.update_unit_disguise(1, &rules).unwrap();
-    assert!(disguised(&sim));
-}
-
 /// A Mirage whose Drive has a destination is moving, so UpdateDisguise takes
 /// its clear arm (Is_Moving at `0x0074693D`, then ClearDisguise at
 /// `0x00746AFF`) even without an order.
 #[test]
 fn a_disguised_mirage_whose_drive_has_a_destination_drops_its_disguise() {
-    let (mut sim, rules) = mirage(false, Some(DriveCoord::cell(9, 5, 0)));
+    let (mut sim, rules) = mirage(Some(DriveCoord::cell(9, 5, 0)));
     let tree = sim.interner.intern("TREE01");
     let entity = sim.substrate.entities.get_mut(1).expect("mirage");
     entity
@@ -140,7 +127,7 @@ fn whole_unit_fixture(
     use super::mission_handlers::foot_mission_oracle_tests::{
         SuppliedFootFixture, install_recorded_cell_coordinates, oracle, signed, xyz,
     };
-    use crate::sim::components::Health;
+    use crate::sim::combat::Health;
     use crate::sim::game_entity::InfantryRuntime;
     use crate::sim::mission::state::MissionTestFixture;
     use crate::sim::mission::{MissionDispatchTimer, MissionId, MissionTimer};
@@ -195,7 +182,7 @@ fn whole_unit_fixture(
             json!([position.x, position.y, position.z]),
             actors[role]["xyz"]
         );
-        assert_eq!(json!(entity.health.current), actors[role]["health"]);
+        assert_eq!(json!(entity.health.current()), actors[role]["health"]);
         if actors[role]["limbo"] != 0 {
             assert_eq!(
                 role, "candidate",
@@ -255,9 +242,7 @@ fn whole_unit_fixture(
                 0
             },
             owner,
-            Health {
-                current: signed(&before["health"]),
-            },
+            Health::new(signed(&before["health"])),
             type_ref,
             category,
             0,
@@ -268,8 +253,10 @@ fn whole_unit_fixture(
         entity.position.sub_x = SimFixed::from_num(x % 256);
         entity.position.sub_y = SimFixed::from_num(y % 256);
         entity.position.exact_z_leptons = Some(z);
-        entity.lifecycle.in_limbo = before["limbo"] != 0;
-        entity.lifecycle.object_alive = before["alive"] != 0;
+        entity.lifecycle.set_in_limbo_for_test(before["limbo"] != 0);
+        entity
+            .lifecycle
+            .set_object_alive_for_test(before["alive"] != 0);
         entity.lifecycle.cell_marked = before["limbo"] == 0;
         entity.in_playfield = before["limbo"] == 0;
         entity.locomotor = Some(LocomotorState::from_object_type(object, frame));
@@ -358,12 +345,12 @@ fn whole_unit_fixture(
         let id = pointers[roles[role].as_str().unwrap()];
         let entity = fixture.sim.substrate.entities.get(id).unwrap();
         assert_eq!(
-            entity.lifecycle.object_alive,
+            entity.lifecycle.object_alive(),
             before["alive"] != 0,
             "{role}: alive"
         );
         assert_eq!(
-            entity.lifecycle.in_limbo,
+            entity.lifecycle.in_limbo(),
             before["limbo"] != 0,
             "{role}: Limbo"
         );
@@ -414,17 +401,17 @@ fn assert_whole_unit_state(
     );
     let actor = fixture.sim.substrate.entities.get(fixture.actor).unwrap();
     assert_eq!(
-        json!(actor.health.current),
+        json!(actor.health.current()),
         row[boundary]["health"],
         "{name}: HP"
     );
     assert_eq!(
-        actor.lifecycle.object_alive,
+        actor.lifecycle.object_alive(),
         row[boundary]["alive"] != 0,
         "{name}: alive"
     );
     assert_eq!(
-        actor.lifecycle.in_limbo,
+        actor.lifecycle.in_limbo(),
         row[boundary]["limbo"] != 0,
         "{name}: Limbo"
     );

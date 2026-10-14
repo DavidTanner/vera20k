@@ -4,7 +4,7 @@ use crate::map::entities::EntityCategory;
 use crate::rules::locomotor_type::LocomotorKind;
 use crate::rules::{ini_parser::IniFile, ruleset::RuleSet};
 use crate::sim::movement::locomotor::{LocomotorState, MovementLayer};
-use crate::sim::{components::Health, game_entity::GameEntity, house_state::HouseState};
+use crate::sim::{combat::Health, game_entity::GameEntity, house_state::HouseState};
 
 fn fixture() -> (Simulation, RuleSet, InternedId, InternedId, InternedId) {
     let rules = RuleSet::from_ini(&IniFile::from_str(
@@ -46,20 +46,20 @@ fn insert(sim: &mut Simulation, id: u64, owner: InternedId, name: &str, x: u16, 
         0,
         0,
         owner,
-        Health { current: 100 },
+        Health::new(100),
         ty,
         kind,
         0,
         3,
         false,
     );
-    entity.lifecycle.in_limbo = false;
+    entity.lifecycle.set_in_limbo_for_test(false);
     entity.lifecycle.cell_marked = false;
     entity.in_playfield = true;
     if name == "SIGHT" {
         let mut loco = LocomotorState::for_test_kind(LocomotorKind::Jumpjet);
         loco.layer = MovementLayer::Air;
-        loco.altitude = crate::util::fixed_math::SimFixed::from_num(208);
+        entity.position.exact_z_leptons = Some(208);
 
         // The kernel target height is left unset on purpose: the corpus outcome
         // below holds only while the kernel is not holding the unit at 208.
@@ -132,7 +132,9 @@ fn gap_operational_original_gate_and_native_order_corpus() {
             continue;
         }
         let entity = sim.substrate.entities.get_mut(1).unwrap();
-        entity.health.current = i32::try_from(v["health"].as_i64().unwrap()).unwrap();
+        entity
+            .health
+            .set_for_test(i32::try_from(v["health"].as_i64().unwrap()).unwrap());
         entity
             .mission
             .apply_test_fixture(crate::sim::mission::state::MissionTestFixture {
@@ -182,9 +184,18 @@ pub(crate) fn gap_operational_power_loss_views() -> Vec<(
     power(&mut sim, &rules);
     sim.visit_building_operational(30, &rules, None, crate::sim::world::FrameEffects::default()); // second gap
     assert!(matches!(sim.reveal(10), RevealOutcome::Revealed { .. }));
+    // A Reveal without a map commits no exact Z (`unlimbo_z`); SetHeight puts
+    // the jumpjet back at 208, the high-flight threshold.
+    sim.set_object_height(
+        10,
+        208,
+        None,
+        None,
+        crate::sim::world::FrameEffects::default(),
+    );
     refresh(&mut sim, &rules); // real return, not a raw counter assignment
     damage(&mut sim, &rules, 40, 75);
-    assert_eq!(sim.substrate.entities.get(40).unwrap().health.current, 25);
+    assert_eq!(sim.substrate.entities.get(40).unwrap().health.current(), 25);
     power(&mut sim, &rules);
     sim.visit_building_operational(20, &rules, None, crate::sim::world::FrameEffects::default()); // remove first gap
     sim.fog.flush_pending_gap_conceal(120);

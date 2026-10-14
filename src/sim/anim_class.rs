@@ -2059,9 +2059,9 @@ impl Simulation {
         );
         self.substrate.entities.values().any(|entity| {
             if entity.owner() != viewer
-                || entity.category != crate::map::entities::EntityCategory::Structure
-                || !entity.lifecycle.object_alive
-                || entity.lifecycle.in_limbo
+                || entity.category() != crate::map::entities::EntityCategory::Structure
+                || !entity.lifecycle.object_alive()
+                || entity.lifecycle.in_limbo()
             {
                 return false;
             }
@@ -2085,11 +2085,11 @@ impl Simulation {
         let Some((current, type_ref, position, prior_state, category)) =
             self.substrate.entities.get(building_id).map(|entity| {
                 (
-                    entity.health.current,
+                    entity.health.current(),
                     entity.type_ref(),
                     entity.position,
                     entity.damage_fire_state_active,
-                    entity.category,
+                    entity.category(),
                 )
             })
         else {
@@ -2112,7 +2112,7 @@ impl Simulation {
         };
         // Building43FC39..43FC84: CanBeOccupied selects red versus yellow;
         // TEST AH,0x41 includes unordered, with no HP/Strength positivity gate.
-        let active = crate::sim::components::Health { current }.compare_ratio(maximum, ratio)
+        let active = crate::sim::combat::Health::new(current).compare_ratio(maximum, ratio)
             != crate::util::native_x87::MaskedX87Ordering::Greater;
         if active == prior_state {
             return;
@@ -3016,7 +3016,7 @@ mod tests {
     use crate::map::entities::EntityCategory;
     use crate::rules::art_data::ArtRegistry;
     use crate::rules::ini_parser::IniFile;
-    use crate::sim::components::Health;
+    use crate::sim::combat::Health;
     use crate::sim::game_entity::GameEntity;
 
     #[test]
@@ -3096,7 +3096,7 @@ mod tests {
             .get_mut(building_id)
             .unwrap()
             .health
-            .current = 50;
+            .set_for_test(50);
         sim.update_building_damage_fire(building_id, &rules);
         let ids = sim
             .entities()
@@ -3203,7 +3203,7 @@ mod tests {
                 0,
                 0,
                 owner_name,
-                Health { current: 100 },
+                Health::new(100),
                 type_ref,
                 EntityCategory::Unit,
                 0,
@@ -3384,7 +3384,7 @@ mod tests {
             0,
             0,
             owner,
-            Health { current: 100 },
+            Health::new(100),
             type_ref,
             EntityCategory::Structure,
             0,
@@ -3405,7 +3405,12 @@ mod tests {
                     damage_fire_fixture_with_strength(occupied, row.input.strength);
                 rules.general.condition_yellow = row.input.yellow();
                 rules.general.condition_red = row.input.red();
-                sim.substrate.entities.get_mut(id).unwrap().health.current = row.input.current;
+                sim.substrate
+                    .entities
+                    .get_mut(id)
+                    .unwrap()
+                    .health
+                    .set_for_test(row.input.current);
                 sim.update_building_damage_fire(id, &rules);
                 let building = sim.substrate.entities.get(id).unwrap();
                 let expected = if occupied {
@@ -3475,7 +3480,7 @@ mod tests {
                 0,
                 0,
                 owner,
-                Health { current: 100 },
+                Health::new(100),
                 type_ref,
                 EntityCategory::Unit,
                 0,
@@ -3521,8 +3526,8 @@ mod tests {
         let mut sim = Simulation::new();
         let owner_id = 100;
         let mut entity = GameEntity::test_default(owner_id, "UNIT", "Americans", 10, 10);
-        entity.owner = sim.interner.intern("Americans");
-        entity.type_ref = sim.interner.intern("UNIT");
+        entity.set_owner_for_test(sim.interner.intern("Americans"));
+        entity.set_type_ref_for_test(sim.interner.intern("UNIT"));
         sim.substrate.entities.insert(entity);
         let type_id = sim.interner.intern("DEPLOY");
         let id = sim
@@ -4627,7 +4632,7 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec![[landed_at.x, landed_at.y, landed_at.z]]
         );
-        let health = sim.substrate.entities.get(tank).unwrap().health.current;
+        let health = sim.substrate.entities.get(tank).unwrap().health.current();
         assert!(
             (280..300).contains(&health),
             "HE splash of 20 at most, got {health}"
@@ -4918,7 +4923,7 @@ mod tests {
             .get_mut(building_id)
             .unwrap()
             .health
-            .current = 50;
+            .set_for_test(50);
         sim.update_building_damage_fire(building_id, &rules);
         let anim_id = sim
             .substrate
@@ -5011,7 +5016,7 @@ mod tests {
             .get_mut(building_id)
             .unwrap()
             .health
-            .current = 50;
+            .set_for_test(50);
         sim.update_building_damage_fire(building_id, &rules);
         let anim_id = sim
             .substrate
@@ -5107,7 +5112,7 @@ mod tests {
             .get_mut(building_id)
             .unwrap()
             .health
-            .current = 50;
+            .set_for_test(50);
         sim.update_building_damage_fire(building_id, &rules);
         let anim_id = sim
             .substrate
@@ -5144,7 +5149,7 @@ mod tests {
             .get_mut(building_id)
             .unwrap()
             .health
-            .current = 50;
+            .set_for_test(50);
         let mut expected_rng = sim.scenario_rng.clone();
         let start_type = expected_rng.next_range_u32_inclusive(0, 2) as usize;
         let type_names = ["FIRE01", "FIRE02", "FIRE03"];
@@ -5233,7 +5238,7 @@ mod tests {
             .get_mut(building_id)
             .unwrap()
             .health
-            .current = 50;
+            .set_for_test(50);
         sim.update_building_damage_fire(building_id, &rules);
         let rng_after_spawn = sim.scenario_rng.logical_state();
         let ids = sim
@@ -5259,7 +5264,7 @@ mod tests {
             .get_mut(building_id)
             .unwrap()
             .health
-            .current = 51;
+            .set_for_test(51);
         sim.update_building_damage_fire(building_id, &rules);
         let building = sim.substrate.entities.get(building_id).unwrap();
         assert!(!building.damage_fire_state_active);
@@ -5276,7 +5281,7 @@ mod tests {
             .get_mut(building_id)
             .unwrap()
             .health
-            .current = 50;
+            .set_for_test(50);
         let rng_before = sim.scenario_rng.logical_state();
 
         sim.update_building_damage_fire(building_id, &rules);
@@ -5315,7 +5320,7 @@ mod tests {
             .unwrap();
         let building = sim.substrate.entities.get_mut(building_id).unwrap();
         building.damage_fire_anim_ids[0] = Some(occupied_id);
-        building.health.current = 50;
+        building.health.set_for_test(50);
         let mut expected_rng = sim.scenario_rng.clone();
         let _ = expected_rng.next_range_u32_inclusive(0, 2);
 
@@ -5343,7 +5348,7 @@ mod tests {
             .get_mut(building_id)
             .unwrap()
             .health
-            .current = 50;
+            .set_for_test(50);
         sim.update_building_damage_fire(building_id, &rules);
         sim.sound_events.clear();
         sim.substrate
@@ -5351,7 +5356,7 @@ mod tests {
             .get_mut(building_id)
             .unwrap()
             .health
-            .current = 100;
+            .set_for_test(100);
 
         sim.update_building_damage_fire(building_id, &rules);
         sim.update_building_damage_fire(building_id, &rules);
@@ -5376,7 +5381,7 @@ mod tests {
             .get_mut(building_id)
             .unwrap()
             .health
-            .current = 26;
+            .set_for_test(26);
         sim.update_building_damage_fire(building_id, &rules);
         assert!(
             !sim.substrate
@@ -5390,7 +5395,7 @@ mod tests {
             .get_mut(building_id)
             .unwrap()
             .health
-            .current = 25;
+            .set_for_test(25);
         sim.update_building_damage_fire(building_id, &rules);
         assert!(
             sim.substrate
@@ -5409,7 +5414,7 @@ mod tests {
             .get_mut(building_id)
             .unwrap()
             .health
-            .current = 50;
+            .set_for_test(50);
         sim.update_building_damage_fire(building_id, &rules);
         let anim_id = sim
             .substrate
@@ -5438,7 +5443,7 @@ mod tests {
             .get_mut(building_id)
             .unwrap()
             .health
-            .current = 50;
+            .set_for_test(50);
         sim.update_building_damage_fire(building_id, &rules);
         assert!(sim.substrate.pending_delete.is_empty());
         // Native in-scenario load restarts Scenario RNG from Seed0; isolate

@@ -50,12 +50,12 @@ pub(crate) fn led_target_coordinate(
     // for Building447AC0, the live Object5F65A0 coordinate for other Techno.
     let target_coords = ground_pose::object_get_coords(target, world.resolved_terrain.as_ref());
     let target_coord = ProjectileCoord::new(target_coords.x, target_coords.y, target_coords.z);
-    if target.category != EntityCategory::Unit || motion_query::is_moving(target) != Some(true) {
+    if target.category() != EntityCategory::Unit || motion_query::is_moving(target) != Some(true) {
         return target_coord;
     }
 
     // 70BD44..70BD74 samples the live Foot getter, Object::Distance, then
-    // GetCurrentWeapon. A cached MovementTarget speed is not the authority.
+    // GetCurrentWeapon.
     let target_type = rules.object(world.interner.resolve(target.type_ref()));
     let target_speed = owner_current_speed(
         target,

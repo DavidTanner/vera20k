@@ -69,7 +69,7 @@ fn first_process_publishes_raw_head_and_matching_progress_for_drive_and_ship() {
         entity.position.z = 1; // Deliberately differs from the retained raw Z.
         entity.position.exact_z_leptons = Some(initial.z);
         entity.body_facing.snap(0x4000, 0);
-        entity.lifecycle.in_limbo = false;
+        entity.lifecycle.set_in_limbo_for_test(false);
         entity.lifecycle.cell_marked = true;
         let rules =
             crate::rules::ruleset::RuleSet::from_ini(&crate::rules::ini_parser::IniFile::from_str(
@@ -79,19 +79,13 @@ fn first_process_publishes_raw_head_and_matching_progress_for_drive_and_ship() {
         let mut sim = crate::sim::world::Simulation::new();
         sim.interner = crate::sim::intern::test_interner();
         let grid = crate::sim::arena_fixture::flat_ground(&mut sim, &rules);
-        let entities = &mut sim.substrate.entities;
-        entities.insert(entity);
-        assert!(crate::sim::movement::issue_move_command(
-            entities,
-            &grid,
+        sim.substrate.entities.insert(entity);
+        assert!(sim.set_unit_destination(
             1,
-            (11, 8),
-            SimFixed::from_num(0),
-            false,
-            None,
-            None,
-            None,
-            crate::sim::movement::DestinationTiming::new(0, 60),
+            crate::sim::components::NavTargetRef::cell(11, 8),
+            &rules,
+            true,
+            crate::sim::world::FrameEffects::default(),
         ));
         assert!(committed_track_head(sim.substrate.entities.get(1).unwrap()).is_none());
         sim.substrate.occupancy =
@@ -312,7 +306,7 @@ fn production_process_admission_uses_valid_selector_independently_of_head() {
             for selector in [-1, 0] {
                 for nonnull_head in [false, true] {
                     let mut entity = GameEntity::test_default(1, "MTNK", "Americans", 8, 8);
-                    entity.lifecycle.in_limbo = false;
+                    entity.lifecycle.set_in_limbo_for_test(false);
                     entity.lifecycle.cell_marked = true;
                     entity.locomotor = Some(LocomotorState::for_test_kind(kind));
                     entity.drive_accelerates = false;

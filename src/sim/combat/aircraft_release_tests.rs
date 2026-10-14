@@ -42,7 +42,7 @@ fn fixture(input: &Value) -> (Simulation, RuleSet) {
     .unwrap();
     let mut sim = Simulation::with_seed(0);
     let mut entity = GameEntity::test_default(1, "ORCA", "Americans", 10, 10);
-    entity.category = EntityCategory::Aircraft;
+    entity.set_category_for_test(EntityCategory::Aircraft);
     entity.mission_leaf = MissionLeafState::aircraft_raw_for_test(0, 1, false);
     entity
         .mission
@@ -58,10 +58,14 @@ fn fixture(input: &Value) -> (Simulation, RuleSet) {
         });
     entity.aircraft_ammo = Some(AircraftAmmo::new(2));
     entity.aircraft_ammo.as_mut().unwrap().current = input["ammo"].as_i64().unwrap_or(2) as i32;
-    entity.set_veterancy_rank((input["veterancy"].as_u64().unwrap_or(0) * 100) as u16);
+    entity
+        .veterancy
+        .set_rank_for_test((input["veterancy"].as_u64().unwrap_or(0) * 100) as u16);
     entity.body_facing = FacingClass::new(0, 5);
     entity.barrel_facing = Some(FacingClass::new(0, 5));
-    entity.attack_target = Some(AttackTarget::for_cell(10, 9));
+    entity
+        .attack_target
+        .set_for_test(Some(TargetKind::Cell(10, 9)));
     entity.locomotor = Some(LocomotorState::from_object_type(
         rules.object("ORCA").unwrap(),
         0,
@@ -84,9 +88,9 @@ fn fixture(input: &Value) -> (Simulation, RuleSet) {
             off_108: 60,
         });
         let mut infantry = GameEntity::test_default(2, "E1", "Americans", 10, 10);
-        infantry.owner = sim.interner.intern("Americans");
-        infantry.type_ref = sim.interner.intern("E1");
-        infantry.category = EntityCategory::Infantry;
+        infantry.set_owner_for_test(sim.interner.intern("Americans"));
+        infantry.set_type_ref_for_test(sim.interner.intern("E1"));
+        infantry.set_category_for_test(EntityCategory::Infantry);
         infantry.is_voxel = false;
         infantry.sub_cell = Some(2);
         infantry.passenger_role = crate::sim::passenger::PassengerRole::Inside {
@@ -372,7 +376,12 @@ fn a_strafer_drops_five_bombs_on_one_pass() {
 #[test]
 fn a_fighter_out_of_range_cycles_back_to_its_search() {
     let (mut sim, rules) = fixture(&serde_json::json!({"burst": 1, "fighter": true}));
-    sim.substrate.entities.get_mut(1).unwrap().attack_target = Some(AttackTarget::for_cell(10, 60));
+    sim.substrate
+        .entities
+        .get_mut(1)
+        .unwrap()
+        .attack_target
+        .set_for_test(Some(TargetKind::Cell(10, 60)));
     assert!(
         dispatch(&mut sim, &rules)
             .consequences
@@ -532,7 +541,7 @@ fn a_kamikaze_missile_is_removed_after_its_shot() {
     let result = dispatch(&mut sim, &rules);
     assert_eq!(result.consequences.fire_events().len(), 1, "it fires");
     let missile = sim.substrate.entities.get(1).unwrap();
-    assert!(!missile.lifecycle.object_alive, "UnInit");
+    assert!(!missile.lifecycle.object_alive(), "UnInit");
     assert!(sim.substrate.pending_delete.contains_object(&1));
 }
 

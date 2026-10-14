@@ -241,8 +241,12 @@ fn a_computer_infiltrator_or_occupier_holding_a_building_takes_capture() {
             let target = spawn(&mut sim, &rules, building, building_owner, 16, 10);
             let actor = spawn(&mut sim, &rules, kind, owner, 10, 10);
             // The Target alone, without the setter's own destination arm.
-            sim.substrate.entities.get_mut(actor).unwrap().attack_target =
-                Some(crate::sim::combat::AttackTarget::new(target));
+            sim.substrate
+                .entities
+                .get_mut(actor)
+                .unwrap()
+                .attack_target
+                .set_for_test(Some(crate::sim::combat::TargetKind::Entity(target)));
             assign(&mut sim, actor, mission);
 
             sim.object_ai_visit_one(actor, Some(&rules), ObjectAiCtx::default());
@@ -275,8 +279,12 @@ fn a_computer_spy_holding_a_dying_building_keeps_its_mission() {
         let target = spawn(&mut sim, &rules, "NAPOWR", "Americans", 16, 10);
         let actor = spawn(&mut sim, &rules, "SPY", "Russians", 10, 10);
         sim.substrate.entities.get_mut(target).unwrap().dying = true;
-        sim.substrate.entities.get_mut(actor).unwrap().attack_target =
-            Some(crate::sim::combat::AttackTarget::new(target));
+        sim.substrate
+            .entities
+            .get_mut(actor)
+            .unwrap()
+            .attack_target
+            .set_for_test(Some(crate::sim::combat::TargetKind::Entity(target)));
         assign(&mut sim, actor, mission);
 
         sim.object_ai_visit_one(actor, Some(&rules), ObjectAiCtx::default());
@@ -306,8 +314,12 @@ fn a_deployed_computer_infantryman_hunting_without_a_target_undeploys() {
             // A dying Target, which the native detach has already cleared.
             let victim = spawn(&mut sim, &rules, "GI", "Americans", 14, 10);
             sim.substrate.entities.get_mut(victim).unwrap().dying = true;
-            sim.substrate.entities.get_mut(actor).unwrap().attack_target =
-                Some(crate::sim::combat::AttackTarget::new(victim));
+            sim.substrate
+                .entities
+                .get_mut(actor)
+                .unwrap()
+                .attack_target
+                .set_for_test(Some(crate::sim::combat::TargetKind::Entity(victim)));
         }
         assign(&mut sim, actor, MissionType::Hunt);
 
@@ -319,7 +331,7 @@ fn a_deployed_computer_infantryman_hunting_without_a_target_undeploys() {
         if undeploys {
             assert_eq!(doing, DO_UNDEPLOY, "{case}");
             assert_eq!(entity.mission.dispatch_timer().delay(), 1, "{case}");
-            assert!(entity.attack_target.is_none(), "{case}");
+            assert!(entity.attack_target.target().is_none(), "{case}");
         } else {
             assert_ne!(doing, DO_UNDEPLOY, "{case}");
         }

@@ -161,7 +161,7 @@ pub(crate) fn blocker_plane_source(
     rules: Option<&crate::rules::ruleset::RuleSet>,
     retained_foot: bool,
 ) -> Option<BlockerPlaneSource> {
-    if retained_foot && entity.category != EntityCategory::Structure {
+    if retained_foot && entity.category() != EntityCategory::Structure {
         return None;
     }
     // Dying corpses are off the occupancy grid: don't let them inflate the
@@ -175,7 +175,7 @@ pub(crate) fn blocker_plane_source(
         return None;
     }
     let pos = (entity.position.rx, entity.position.ry);
-    if entity.category == EntityCategory::Structure {
+    if entity.category() == EntityCategory::Structure {
         let size = rules
             .and_then(|r| r.object(interner.resolve(entity.type_ref())))
             .map(|obj| crate::rules::foundation::foundation_dimensions(&obj.foundation))
@@ -602,7 +602,7 @@ impl CrushTarget {
     /// Read the crush inputs off a live entity at a known sim frame.
     pub fn from_entity(entity: &GameEntity, current_frame: u32) -> Self {
         Self {
-            category: entity.category,
+            category: entity.category(),
             crushable: entity.crushable,
             deploy_crush_immune: deploy_crush_immune(entity),
             omni_crush_resistant: entity.omni_crush_resistant,
@@ -617,7 +617,7 @@ impl CrushTarget {
     /// legality only. See [`IRON_CURTAIN_UNAVAILABLE`].
     fn from_entity_without_frame(entity: &GameEntity) -> Self {
         Self {
-            category: entity.category,
+            category: entity.category(),
             crushable: entity.crushable,
             deploy_crush_immune: deploy_crush_immune(entity),
             omni_crush_resistant: entity.omni_crush_resistant,
@@ -898,24 +898,6 @@ pub const POST_SCATTER_WAIT_FRAMES: i32 = 10;
 // the original scatters the man's OWN cell on arrival rather than the
 // destination cell of a blocked step.
 
-/// Normal speed shared by blocked-cell and damage-triggered displacement.
-pub(super) fn scatter_movement_speed(
-    entity: &GameEntity,
-    rules: Option<&crate::rules::ruleset::RuleSet>,
-    interner: &crate::sim::intern::StringInterner,
-    houses: &std::collections::BTreeMap<
-        crate::sim::intern::InternedId,
-        crate::sim::house_state::HouseState,
-    >,
-) -> SimFixed {
-    // Scatter installs a destination; the walking process still calls
-    // InfantryClass::GetCurrentSpeed (0x00521D80), delegating to
-    // FootClass::GetCurrentSpeed (0x004DB1A0), so it stamps an ordinary Move's
-    // speed.
-    let obj = rules.and_then(|r| r.object(interner.resolve(entity.type_ref())));
-    super::order_speed(entity, obj, rules, houses)
-}
-
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -1089,7 +1071,7 @@ mod tests {
 
     fn infantry(id: u64, rx: u16, ry: u16, sub: u8) -> GameEntity {
         let mut e = GameEntity::test_default(id, "E1", "Allies", rx, ry);
-        e.category = EntityCategory::Infantry;
+        e.set_category_for_test(EntityCategory::Infantry);
         e.mission_leaf = crate::sim::mission::leaf::MissionLeafState::for_entity_category(
             EntityCategory::Infantry,
         );
@@ -1100,7 +1082,7 @@ mod tests {
 
     fn vehicle(id: u64, rx: u16, ry: u16) -> GameEntity {
         let mut e = GameEntity::test_default(id, "MTNK", "Allies", rx, ry);
-        e.category = EntityCategory::Unit;
+        e.set_category_for_test(EntityCategory::Unit);
         e.crushable = false;
         e
     }
@@ -1123,7 +1105,7 @@ mod tests {
         let mut entities = EntityStore::new();
         let mut blocker = vehicle(1, 2, 2);
         blocker.on_bridge = true;
-        blocker.lifecycle.in_limbo = false;
+        blocker.lifecycle.set_in_limbo_for_test(false);
         blocker.lifecycle.cell_marked = true;
         entities.insert(blocker);
         let interner = crate::sim::intern::StringInterner::new();
@@ -1193,7 +1175,7 @@ mod tests {
     fn blocker_neighbor_counts_building_uses_expanded_foundation_rectangle_once() {
         let mut entities = EntityStore::new();
         let mut building = structure(1, 2, 2);
-        building.lifecycle.in_limbo = false;
+        building.lifecycle.set_in_limbo_for_test(false);
         building.lifecycle.cell_marked = true;
         entities.insert(building);
         let interner = crate::sim::intern::StringInterner::new();
@@ -1326,20 +1308,13 @@ mod tests {
     }
 
     #[test]
-    fn gsi_04_15_detached_tube_mover_is_absent_from_both_blocker_snapshots() {
+    fn gsi_04_15_detached_tube_mover_is_absent_from_the_blocker_plane() {
         let mut entities = EntityStore::new();
         let mut mover = GameEntity::test_default(7, "MTNK", "Americans", 2, 2);
-        mover.lifecycle.in_limbo = false;
+        mover.lifecycle.set_in_limbo_for_test(false);
         mover.lifecycle.cell_marked = false;
         entities.insert(mover);
         let interner = crate::sim::intern::test_interner();
-        let alliances = crate::map::houses::HouseAllianceMap::new();
-
-        let (ground, dynamic) = super::super::block_index::build_owner_block_set(
-            &entities, None, "Russians", &alliances, &interner, None,
-        );
-        assert!(ground.is_empty());
-        assert!(!dynamic.contains_any(&(2, 2)));
 
         let counts = build_blocker_neighbor_counts_with_overlays(
             &entities, 5, 5, None, None, &interner, None,
@@ -1491,7 +1466,7 @@ mod tests {
         crusher.regular_crusher = true;
         entities.insert(crusher);
         let mut victim = GameEntity::test_default(2, "E1", "Soviet", 5, 5);
-        victim.category = EntityCategory::Infantry;
+        victim.set_category_for_test(EntityCategory::Infantry);
         victim.crushable = true;
         entities.insert(victim);
         let interner = crate::sim::intern::test_interner();
@@ -1545,7 +1520,7 @@ mod tests {
         crusher.regular_crusher = true;
         entities.insert(crusher);
         let mut victim = GameEntity::test_default(2, "E1", "Soviet", 5, 5);
-        victim.category = EntityCategory::Infantry;
+        victim.set_category_for_test(EntityCategory::Infantry);
         victim.crushable = true;
         victim.infantry = Some(InfantryRuntime {
             is_prone: true,
@@ -1578,13 +1553,13 @@ mod tests {
         crusher.regular_crusher = true;
         entities.insert(crusher);
         let mut gi = GameEntity::test_default(2, "E1", "Soviet", 5, 5);
-        gi.category = EntityCategory::Infantry;
+        gi.set_category_for_test(EntityCategory::Infantry);
         gi.crushable = true;
         gi.deployed_crushable = true;
         gi.set_infantry_deploy_crush_immunity(0);
         entities.insert(gi);
         let mut ggi = GameEntity::test_default(3, "GGI", "Soviet", 5, 5);
-        ggi.category = EntityCategory::Infantry;
+        ggi.set_category_for_test(EntityCategory::Infantry);
         ggi.crushable = true;
         ggi.deployed_crushable = false;
         ggi.set_infantry_deploy_crush_immunity(1);
@@ -1612,7 +1587,7 @@ mod tests {
         crusher.regular_crusher = true;
         entities.insert(crusher);
         let mut victim = GameEntity::test_default(2, "E1", "Soviet", 5, 5);
-        victim.category = EntityCategory::Infantry;
+        victim.set_category_for_test(EntityCategory::Infantry);
         victim.crushable = true;
         victim.invulnerability = Some(
             crate::sim::superweapon::invulnerability::InvulnerabilityState::new(
@@ -1817,37 +1792,6 @@ mod tests {
             fixture.enemy(),
         );
         assert_eq!(victims, vec![1]);
-    }
-
-    // -- scatter speed --
-
-    #[test]
-    fn damage_scatter_uses_the_same_normal_type_speed() {
-        let rules = scatter_rules(true);
-        let mut civilian = infantry(1, 5, 5, 2);
-        let interner = crate::sim::intern::test_interner();
-        civilian.locomotor = Some(
-            crate::sim::movement::locomotor::LocomotorState::from_object_type(
-                rules.object("E1").unwrap(),
-                0,
-            ),
-        );
-        assert_eq!(
-            scatter_movement_speed(
-                &civilian,
-                Some(&rules),
-                &interner,
-                &std::collections::BTreeMap::new(),
-            ),
-            crate::util::fixed_math::ra2_speed_to_leptons_per_second(4)
-        );
-    }
-
-    fn scatter_rules(fraidycat: bool) -> crate::rules::ruleset::RuleSet {
-        let ini = crate::rules::ini_parser::IniFile::from_str(&format!(
-            "[InfantryTypes]\n0=E1\n[VehicleTypes]\n0=MTNK\n[E1]\nSpeed=4\nFraidycat={fraidycat}\n[MTNK]\nSpeed=6\n[Move]\nRate=.016\n[Sleep]\nScatter=no\n"
-        ));
-        crate::rules::ruleset::RuleSet::from_ini(&ini).unwrap()
     }
 
     // -- quadrant detection tests --
@@ -2141,7 +2085,7 @@ mod tests {
         ry: u16,
     ) -> GameEntity {
         let mut victim = infantry(1, rx, ry, 2);
-        victim.type_ref = interner.intern("E1");
+        victim.set_type_ref_for_test(interner.intern("E1"));
         victim
     }
 

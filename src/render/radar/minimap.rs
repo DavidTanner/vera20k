@@ -500,10 +500,10 @@ impl MinimapRenderer {
                 let Some(entity) = entities.get(stable_id) else {
                     continue;
                 };
-                if entity.category != EntityCategory::Structure {
+                if entity.category() != EntityCategory::Structure {
                     continue;
                 }
-                if !entity.lifecycle.object_alive || entity.lifecycle.in_limbo {
+                if !entity.lifecycle.object_alive() || entity.lifecycle.in_limbo() {
                     continue;
                 }
                 let update = build_radar_object_update(

@@ -48,7 +48,7 @@ impl Simulation {
             .substrate
             .entities
             .get(id)
-            .map(|entity| entity.category)
+            .map(|entity| entity.category())
         {
             Some(EntityCategory::Unit) => {
                 self.unit_per_cell_process(id, reason, rules, registry, effects);
@@ -84,7 +84,7 @@ impl Simulation {
             }
             let contact = unit.radio_contacts.slot(0)?;
             let building = self.substrate.entities.get(contact)?;
-            if building.category != EntityCategory::Structure { return None; }
+            if building.category() != EntityCategory::Structure { return None; }
             let at = super::ground_pose::object_get_coords(unit, self.resolved_terrain.as_ref());
             let cell = ((at.x /256) as u16, (at.y /256) as u16);
             let dock = super::building_dock_cell(&self.substrate.entities, contact, Some(id),
@@ -269,7 +269,7 @@ impl Simulation {
                 }
                 let owner = self.substrate.entities.get(id).map(|entity| entity.owner());
                 if let Some(entity) = self.substrate.entities.get_mut(victim) {
-                    entity.health.current = 0;
+                    entity.health.set(0);
                 }
                 self.record_the_kill(
                     victim,
@@ -365,7 +365,7 @@ impl Simulation {
         if !at_destination
             && contact
                 .and_then(|contact| self.substrate.entities.get(contact))
-                .filter(|contact| contact.category == EntityCategory::Structure)
+                .filter(|contact| contact.category() == EntityCategory::Structure)
                 .and_then(|contact| self.object_type(contact.type_ref(), rules))
                 .is_some_and(|object| object.weapons_factory)
             && self.substrate.occupancy.first_building_on_layer(
@@ -430,7 +430,7 @@ impl Simulation {
         }
         let producer = contact
             .and_then(|contact| self.substrate.entities.get(contact))
-            .filter(|contact| contact.category == EntityCategory::Structure);
+            .filter(|contact| contact.category() == EntityCategory::Structure);
         let human = self
             .houses
             .get(&unit.owner())
@@ -530,7 +530,7 @@ impl Simulation {
                     .get(target_transport_id)
                     .is_some_and(|target| {
                         matches!(
-                            target.category,
+                            target.category(),
                             EntityCategory::Unit | EntityCategory::Aircraft
                         )
                     })
@@ -653,7 +653,7 @@ impl Simulation {
             self.substrate
                 .entities
                 .get(building)
-                .is_some_and(|entity| entity.category == EntityCategory::Structure)
+                .is_some_and(|entity| entity.category() == EntityCategory::Structure)
         }) else {
             return Ok(false);
         };
@@ -680,7 +680,7 @@ impl Simulation {
         self.substrate
             .entities
             .get(id)
-            .is_some_and(|entity| entity.lifecycle.object_alive)
+            .is_some_and(|entity| entity.lifecycle.object_alive())
     }
 
     /// `FootClass::Per_Cell_Process @ 0x004D85D0` for reason 2, ending in the
@@ -765,7 +765,7 @@ impl Simulation {
             .substrate
             .entities
             .get(id)
-            .map(|entity| entity.category)
+            .map(|entity| entity.category())
         else {
             return;
         };
@@ -778,7 +778,7 @@ impl Simulation {
             }
             EntityCategory::Infantry => {
                 // With no head and no destination left, the next Walk
-                // Process takes its idle tail and retires the adapter.
+                // Process takes its idle tail.
                 self.set_infantry_null_destination(id, Some(rules), registry, effects);
             }
             _ => {}

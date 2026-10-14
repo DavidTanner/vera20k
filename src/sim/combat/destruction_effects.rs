@@ -330,7 +330,7 @@ impl Simulation {
         // `Explosion=` entry; the pick has been drawn already.
         let explodes = object.explodes
             || super::veterancy::has_weapon_ability(
-                super::veterancy::rank_of(entity.veterancy_raw),
+                entity.veterancy.rank_kind(),
                 object,
                 Ability::Explodes,
             );
@@ -406,7 +406,7 @@ impl Simulation {
         let Some(entity) = self.substrate.entities.get(building_id) else {
             return;
         };
-        if entity.category != EntityCategory::Structure {
+        if entity.category() != EntityCategory::Structure {
             return;
         }
         let Some(object) = self.object_type(entity.type_ref(), rules) else {

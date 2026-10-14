@@ -6,7 +6,7 @@ use crate::util::fixed_math::SimFixed;
 fn fixture(family: TrackFamily, budget: i32) -> (Simulation, TrackInvocation, i32) {
     let mut sim = Simulation::new();
     let mut entity = GameEntity::test_default(1, "MTNK", "Americans", 10, 10);
-    entity.category = EntityCategory::Unit;
+    entity.set_category_for_test(EntityCategory::Unit);
     entity.locomotor = Some(super::super::locomotor::LocomotorState::for_test_kind(
         if family == TrackFamily::Drive {
             crate::rules::locomotor_type::LocomotorKind::Drive
@@ -14,8 +14,8 @@ fn fixture(family: TrackFamily, budget: i32) -> (Simulation, TrackInvocation, i3
             crate::rules::locomotor_type::LocomotorKind::Ship
         },
     ));
-    entity.lifecycle.object_alive = true;
-    entity.lifecycle.in_limbo = false;
+    entity.lifecycle.set_object_alive_for_test(true);
+    entity.lifecycle.set_in_limbo_for_test(false);
     entity.lifecycle.cell_marked = true;
     let head = DriveCoord {
         x: 10 * 256 + 128,
@@ -275,7 +275,7 @@ fn terminal_queries_retained_target_after_clearing_own_head_before_per_cell() {
         state.cursor = super::super::drive_track::raw_track_points(1).len() as i32;
         assert!(loco.store_track_progress(family, state));
         let mut target = GameEntity::test_default(2, "E1", "Americans", 20, 20);
-        target.category = EntityCategory::Infantry;
+        target.set_category_for_test(EntityCategory::Infantry);
         target.locomotor = Some(LocomotorState::for_test_kind(LocomotorKind::Walk));
         target
             .locomotor
@@ -393,7 +393,7 @@ fn production_host_lifecycle_exit_does_not_store_call_local_residual() {
                 .get_mut(id)
                 .unwrap()
                 .lifecycle
-                .object_alive = false;
+                .set_object_alive_for_test(false);
         }
     });
     let state = progress(sim.substrate.entities.get(1).unwrap(), TrackFamily::Drive).unwrap();
@@ -476,7 +476,7 @@ fn nonterminal_limbo_and_falling_do_not_add_an_early_survival_gate() {
         sim.run_track_points_observed(invocation, budget, None, None, &mut |sim, id, event| {
             if event == TrackWorldEvent::SetCoords {
                 let entity = sim.substrate.entities.get_mut(id).unwrap();
-                entity.lifecycle.in_limbo = true;
+                entity.lifecycle.set_in_limbo_for_test(true);
                 entity.set_falling_down_for_test(true);
             }
         });
@@ -524,7 +524,7 @@ fn terminal_per_cell_limbo_keeps_retained_residual_and_navcom() {
                 assert!(entity.navigation.nav_com.is_some());
                 assert_eq!(head(entity, family), DriveCoord { x: 0, y: 0, z: 0 });
                 assert!(!valid(entity, family));
-                entity.lifecycle.in_limbo = true;
+                entity.lifecycle.set_in_limbo_for_test(true);
             }
         });
         let entity = sim.substrate.entities.get(1).unwrap();
@@ -684,7 +684,7 @@ fn accepted_chain_preserves_call_budget_and_reloads_callback_queue_once() {
                         .foot_speed
                         .set_speed_fraction(SimFixed::from_num(0.25));
                     if retire_in_callback {
-                        entity.lifecycle.in_limbo = true;
+                        entity.lifecycle.set_in_limbo_for_test(true);
                     }
                 }
             },
@@ -945,7 +945,7 @@ fn repeated_foot_limbo_does_not_clear_a_new_raw_head_claim() {
         let supplied = head(sim.substrate.entities.get(1).unwrap(), family);
         sim.track_apply_occupation(1, family, true);
         sim.techno_limbo(1);
-        assert!(sim.substrate.entities.get(1).unwrap().lifecycle.in_limbo);
+        assert!(sim.substrate.entities.get(1).unwrap().lifecycle.in_limbo());
         let at = cell(supplied);
         assert_eq!(
             sim.substrate.raw_cell_occupation.ground_bits(at.0, at.1) & 0x20,
@@ -966,9 +966,12 @@ fn repeated_foot_limbo_does_not_clear_a_new_raw_head_claim() {
     }
 }
 
+/// The terminal retires its completed head before the PerCell callback, and
+/// a new order the callback installs (NavCom and Foot+5E0 words) survives the
+/// tail; nothing is owed to a later Process.
 #[test]
-fn terminal_retires_only_completed_adapter_before_callback() {
-    use crate::sim::components::{MovementTarget, NavTargetRef};
+fn terminal_retires_the_head_before_callback_and_keeps_a_new_order() {
+    use crate::sim::components::NavTargetRef;
     for retarget in [false, true] {
         let (mut sim, invocation, budget) = fixture(TrackFamily::Drive, 15);
         let entity = sim.substrate.entities.get_mut(1).unwrap();
@@ -985,20 +988,14 @@ fn terminal_retires_only_completed_adapter_before_callback() {
                 progress
             ));
         };
-        entity.movement_target = Some(MovementTarget {
-            ..Default::default()
-        });
-        // A stopped committed segment has no NavCom, but its completed path
+        // A stopped committed segment has no NavCom, but its completed head
         // must still retire before callbacks begin a deployment body turn.
         sim.run_track_points_observed(invocation, budget, None, None, &mut |sim, id, event| {
             if event == TrackWorldEvent::PerCell {
                 let entity = sim.substrate.entities.get_mut(id).unwrap();
-                assert!(entity.movement_target.is_none());
+                assert!(crate::sim::movement::track_head::committed_track_head(entity).is_none());
                 if retarget {
                     entity.navigation.nav_com = Some(NavTargetRef::cell(12, 9));
-                    entity.movement_target = Some(MovementTarget {
-                        ..Default::default()
-                    });
                     // The callback's new route: Foot+5E0 words from (10,9).
                     entity.navigation.path_replay =
                         crate::sim::movement::fixture_path_replay(&[(10, 9), (11, 9), (12, 9)]);
@@ -1006,8 +1003,16 @@ fn terminal_retires_only_completed_adapter_before_callback() {
             }
         });
         let entity = sim.substrate.entities.get(1).unwrap();
-        assert_eq!(entity.movement_target.is_some(), retarget);
-        assert!(!entity.navigation.pending_arrival_clear);
+        assert_eq!(entity.navigation.nav_com.is_some(), retarget);
+        assert_eq!(
+            entity
+                .navigation
+                .path_replay
+                .remaining_directions()
+                .is_empty(),
+            !retarget
+        );
+        assert!(!entity.navigation.pending_destination_setter);
     }
 }
 
@@ -1095,8 +1100,8 @@ fn factory_per_cell_fixture(
         dispatch_timer: MissionDispatchTimer::from_raw(3, 90),
     };
     let unit = sim.substrate.entities.get_mut(1).unwrap();
-    unit.type_ref = type_ref;
-    unit.owner = owner;
+    unit.set_type_ref_for_test(type_ref);
+    unit.set_owner_for_test(owner);
     unit.mission.apply_test_fixture(guard);
     assert!(unit.locomotor.as_mut().unwrap().store_track_head(
         crate::sim::movement::track_process::TrackFamily::Drive,
@@ -1118,12 +1123,12 @@ fn factory_per_cell_fixture(
         10,
         EntityCategory::Structure,
     );
-    producer.type_ref = sim.intern("GAWEAP");
-    producer.owner = owner;
+    producer.set_type_ref_for_test(sim.intern("GAWEAP"));
+    producer.set_owner_for_test(owner);
     producer.foundation = "1x1".into();
     producer.on_bridge = producer_on_bridge;
-    producer.lifecycle.object_alive = true;
-    producer.lifecycle.in_limbo = false;
+    producer.lifecycle.set_object_alive_for_test(true);
+    producer.lifecycle.set_in_limbo_for_test(false);
     producer.lifecycle.cell_marked = true;
     producer.mission.apply_test_fixture(guard);
     sim.substrate.entities.insert(producer);
@@ -1632,13 +1637,15 @@ fn per_cell_factory_harvester_queue_uses_live_readiness_and_preserves_miner_stat
 
 #[test]
 fn idle_receiver_cancels_burst_through_the_shared_target_setter() {
-    use crate::sim::combat::{AttackTarget, TargetKind};
+    use crate::sim::combat::TargetKind;
     use crate::sim::components::NavTargetRef;
     for family in [TrackFamily::Drive, TrackFamily::Ship] {
         for has_destination in [false, true] {
             let (mut sim, _, _) = fixture(family, 0);
             let entity = sim.substrate.entities.get_mut(1).unwrap();
-            entity.attack_target = Some(AttackTarget::for_cell(12, 10));
+            entity
+                .attack_target
+                .set_for_test(Some(TargetKind::Cell(12, 10)));
             entity.passively_acquired_target = true;
             entity.weapon_burst.complete_shot(2);
             entity.navigation.nav_com = has_destination.then(|| NavTargetRef::cell(12, 10));
@@ -1647,7 +1654,7 @@ fn idle_receiver_cancels_burst_through_the_shared_target_setter() {
             assert_eq!(entity.weapon_burst.index(), i32::from(has_destination));
             assert_eq!(entity.passively_acquired_target, has_destination);
             assert_eq!(
-                entity.attack_target.as_ref().map(|target| target.target),
+                entity.attack_target.target(),
                 has_destination.then_some(TargetKind::Cell(12, 10)),
             );
             assert_eq!(
@@ -1672,7 +1679,7 @@ fn native_depot_arrival_uses_the_original_terminal_handoff() {
     use crate::rules::art_data::ArtRegistry;
     use crate::rules::ini_parser::IniFile;
     use crate::rules::native_processing::{RulesLayerKind, RulesLayerStack};
-    use crate::sim::combat::{AttackTarget, TargetKind};
+    use crate::sim::combat::TargetKind;
     use crate::sim::components::NavTargetRef;
     use crate::sim::estimated_health::EstimatedHealth;
     use crate::sim::mission::MissionDispatchTimer;
@@ -1742,7 +1749,7 @@ fn native_depot_arrival_uses_the_original_terminal_handoff() {
         json!({
             "frame": sim.session.binary_frame,
             "unit_coordinate": [at.x,at.y,at.z],
-            "health": unit.health.current,
+            "health": unit.health.current(),
             "estimate": unit.estimated_health.get(),
             "balance": house.economy.credits(),
             "spent": house.economy.spent_credits(),
@@ -1950,13 +1957,14 @@ fn native_depot_arrival_uses_the_original_terminal_handoff() {
         unit.position.sub_x = SimFixed::from_num(coordinate.x % 256);
         unit.position.sub_y = SimFixed::from_num(coordinate.y % 256);
         unit.position.exact_z_leptons = Some(coordinate.z);
-        unit.health.current = integer(&before["health"]);
+        unit.health.set_for_test(integer(&before["health"]));
         unit.estimated_health = EstimatedHealth::from_raw(integer(&before["estimate"]));
         unit.navigation.nav_com = before["unit_nav"]
             .is_string()
             .then_some(NavTargetRef::Building { id: depot });
         unit.navigation.nav_com_aux = None;
-        unit.attack_target = other.map(AttackTarget::new);
+        unit.attack_target
+            .set_for_test(other.map(TargetKind::Entity));
         let destination = &before["locomotor_destination"];
         let destination = DriveCoord {
             x: integer(&destination[0]),
@@ -2110,8 +2118,7 @@ fn native_depot_arrival_uses_the_original_terminal_handoff() {
                 .get(tank)
                 .unwrap()
                 .attack_target
-                .as_ref()
-                .map(|target| target.target),
+                .target(),
             (row["supplied_after"]["target"] == "other")
                 .then(|| TargetKind::Entity(other.unwrap())),
             "{context}: retained target"
@@ -2132,8 +2139,8 @@ fn idle_base_fixture(category: EntityCategory) -> Simulation {
     // Original fixture end=none, +687=0 and no planning/Archive work. No
     // active controller or class tail is supplied by this comparison.
     actor.locomotor = None;
-    actor.lifecycle.object_alive = true;
-    actor.lifecycle.in_limbo = false;
+    actor.lifecycle.set_object_alive_for_test(true);
+    actor.lifecycle.set_in_limbo_for_test(false);
     actor.lifecycle.cell_marked = false;
     sim.substrate.entities.insert(actor);
     sim.substrate.next_stable_object_id = 2;
@@ -2340,7 +2347,7 @@ fn inherited_foot_idle_latch_roundtrips_and_hashes_for_every_foot_category() {
         let bytes = GameSnapshot::save(&sim, 0, 0, "foot-idle-entry-latch", 0);
         let mut restored = GameSnapshot::load(&bytes).unwrap().sim;
         let actor = restored.substrate.entities.get(1).unwrap();
-        assert_eq!(actor.category, category);
+        assert_eq!(actor.category(), category);
         assert_eq!(actor.mission_leaf.foot_idle_entry_latch(), 1);
         assert_eq!(restored.state_hash(), entered_hash);
         let rng = restored.rng_state();

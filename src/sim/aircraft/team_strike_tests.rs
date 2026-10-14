@@ -130,8 +130,7 @@ fn retail_harrier_team_strikes_the_enemy_miner_and_goes_home() {
                 .get(harrier)
                 .expect("Harrier survives");
             let ammo = entity.aircraft_ammo.as_ref().expect("Harrier ammo");
-            seen.took_miner |= entity.attack_target.as_ref().map(|attack| attack.target)
-                == Some(TargetKind::Entity(miner));
+            seen.took_miner |= entity.attack_target.target() == Some(TargetKind::Entity(miner));
             seen.fired |= ammo.current < ammo.max;
             seen.entered |= seen.fired && mission(sim, harrier) == Some(MissionType::Enter);
             let linked = entity.radio_contacts.contains(airfield);
@@ -149,7 +148,11 @@ fn retail_harrier_team_strikes_the_enemy_miner_and_goes_home() {
         }
     }
     let sim = &runtime.simulation;
-    let miner_health = sim.substrate.entities.get(miner).map(|e| e.health.current);
+    let miner_health = sim
+        .substrate
+        .entities
+        .get(miner)
+        .map(|e| e.health.current());
     assert!(
         miner_health.is_some_and(|health| health < 1000),
         "the strikes hurt the miner: {miner_health:?}"

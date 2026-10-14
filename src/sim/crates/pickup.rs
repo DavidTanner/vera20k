@@ -240,7 +240,7 @@ fn multiplayer_eligible_slot(
         // `0x00481CDE`: an actor already sped up, or an Aircraft.
         POWERUP_SPEED => {
             actor.foot_speed.crate_multiplier() == NativeF64Bits::ONE
-                && actor.category != EntityCategory::Aircraft
+                && actor.category() != EntityCategory::Aircraft
         }
         // `0x00481D0B`: an actor already boosted, or unarmed (`Is_Armed`).
         POWERUP_FIREPOWER => {
@@ -253,7 +253,7 @@ fn multiplayer_eligible_slot(
         // one already elite.
         POWERUP_VETERAN => {
             object.is_some_and(|object| object.trainable)
-                && !crate::sim::combat::veterancy::raw_is_elite(actor.veterancy_raw)
+                && !crate::sim::combat::veterancy::raw_is_elite(actor.veterancy.raw())
         }
         _ => true,
     };

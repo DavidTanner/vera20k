@@ -461,7 +461,7 @@ fn a_refinery_destroyed_mid_unload_hands_the_miner_to_harvest() {
         "NowDead clears pending500 even though it names another building",
     );
     let building = s.sim.substrate.entities.get(refinery).unwrap();
-    assert!(!building.lifecycle.object_alive && !building.lifecycle.cell_marked);
+    assert!(!building.lifecycle.object_alive() && !building.lifecycle.cell_marked);
     let trace = &s.sim.lifecycle_test_events_for_test()[trace_start..];
     let expiry = trace
         .iter()

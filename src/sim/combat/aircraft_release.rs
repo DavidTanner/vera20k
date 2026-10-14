@@ -27,7 +27,7 @@ fn live_shot<'r>(
 ) -> Option<(i32, Option<AdmittedFire<'r>>)> {
     let entity = world.substrate.entities.get(id)?;
     let obj = rules.object(world.interner.resolve(entity.type_ref()))?;
-    let target = entity.attack_target.as_ref().map(|attack| attack.target);
+    let target = entity.attack_target.target();
     let target_facts = match target {
         Some(TargetKind::Entity(id)) => world.substrate.entities.get(id).and_then(|target| {
             let obj = rules.object(world.interner.resolve(target.type_ref()))?;
@@ -67,7 +67,7 @@ fn live_shot<'r>(
             .substrate
             .entities
             .get(id)
-            .filter(|target| !target.lifecycle.in_limbo)
+            .filter(|target| !target.lifecycle.in_limbo())
             .map(|target| (target_coords(target), target.type_ref())),
         Some(TargetKind::Cell(rx, ry)) => Some((cell_center_coords(rx, ry), entity.type_ref())),
         None => None,
@@ -110,19 +110,19 @@ pub(super) fn visit(
         return;
     };
     let entity = world.substrate.entities.get(id).unwrap();
-    let weapon0 = combat_weapon::primary_for_tier(obj, entity.veterancy())
+    let weapon0 = combat_weapon::primary_for_tier(obj, entity.veterancy.rank())
         .and_then(|name| rules.weapon(name));
     let facts = StrikeFacts {
         state,
         target: crate::sim::combat::target_present(
-            entity.attack_target.as_ref(),
+            entity.attack_target.target(),
             &world.substrate.entities,
         ),
         ammo: entity
             .aircraft_ammo
             .as_ref()
             .map_or(-1, |ammo| ammo.current),
-        strafe: combat_weapon::aircraft_strafes(rules, obj, entity.veterancy()),
+        strafe: combat_weapon::aircraft_strafes(rules, obj, entity.veterancy.rank()),
         fighter: obj.fighter,
         curley_shuffle: rules.general.curley_shuffle,
         weapon0_rof: weapon0.map_or(0, |weapon| weapon.rof),
@@ -178,8 +178,7 @@ impl CombatStrike<'_, '_, '_> {
             .substrate
             .entities
             .get(self.id())
-            .and_then(|entity| entity.attack_target.as_ref())
-            .map(|attack| attack.target)
+            .and_then(|entity| entity.attack_target.target())
     }
 
     /// `vt+0x2E4` SelectWeapon(Target) with the live target, and the question
@@ -375,7 +374,7 @@ impl FireAtHost for AircraftFireAt<'_, '_, '_, '_> {
     fn weapon0_speed(&mut self) -> i32 {
         let strike = &*self.strike;
         self.entity()
-            .and_then(|entity| combat_weapon::primary_for_tier(strike.obj, entity.veterancy()))
+            .and_then(|entity| combat_weapon::primary_for_tier(strike.obj, entity.veterancy.rank()))
             .and_then(|name| strike.rules.weapon(name))
             .map_or(0, |weapon| weapon.speed)
     }

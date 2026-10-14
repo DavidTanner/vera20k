@@ -23,9 +23,8 @@ use crate::sim::movement::locomotor::MovementLayer;
 use crate::sim::pathfinding::zone_map::{ZONE_INVALID, ZoneGrid};
 use crate::sim::radio::{self, RadioMessage, RadioPayload, RadioResponse};
 use crate::sim::world::FrameEffects;
-use crate::sim::world::{GroundMove, Simulation};
+use crate::sim::world::Simulation;
 use crate::util::direction_tables::CELL_DELTAS;
-use crate::util::fixed_math::SimFixed;
 
 use crate::sim::debug_event_log::DebugEventKind;
 use crate::sim::intern::InternedId;
@@ -64,7 +63,7 @@ fn return_exceeds_too_far_threshold(
 ) -> Option<bool> {
     let miner = sim.substrate.entities.get(miner_sid)?;
     let refinery = sim.substrate.entities.get(refinery_sid)?;
-    if refinery.dying || refinery.health.current == 0 {
+    if refinery.dying || refinery.health.current() == 0 {
         return None;
     }
 
@@ -102,6 +101,7 @@ mod gsi_04_03b_tests {
     use crate::rules::locomotor_type::LocomotorKind;
     use crate::sim::game_entity::GameEntity;
     use crate::sim::movement::locomotor::LocomotorState;
+    use crate::util::fixed_math::SimFixed;
 
     /// Mission_Harvest state 2 measures to `BuildingClass::GetCoords @
     /// 0x00447AC0` = the foundation centre. For a 4x3 refinery that is
@@ -120,7 +120,7 @@ mod gsi_04_03b_tests {
             10,
             EntityCategory::Structure,
         );
-        refinery.type_ref = refinery_type;
+        refinery.set_type_ref_for_test(refinery_type);
         // Construction stamps the type's `Foundation=4x3`.
         refinery.foundation = "4x3".to_string();
         sim.substrate.entities.insert(refinery);
@@ -129,7 +129,7 @@ mod gsi_04_03b_tests {
         // distance is 4.5 cells (x = 4224 vs centre 3072, dy = 0; within 5)
         // -> native keeps the narrow result.
         let mut east = GameEntity::test_default(1, "HARV", "Allies", 16, 11);
-        east.type_ref = harv_type;
+        east.set_type_ref_for_test(harv_type);
         sim.substrate.entities.insert(east);
         assert_eq!(
             return_exceeds_too_far_threshold(&sim, 1, 2, 5),
@@ -140,7 +140,7 @@ mod gsi_04_03b_tests {
         // West of the building: NW distance is sqrt(17) cells (near), centre
         // distance is sqrt(30.25) cells (beyond 5) -> native falls to wide.
         let mut west = GameEntity::test_default(3, "HARV", "Allies", 6, 11);
-        west.type_ref = harv_type;
+        west.set_type_ref_for_test(harv_type);
         sim.substrate.entities.insert(west);
         assert_eq!(
             return_exceeds_too_far_threshold(&sim, 3, 2, 5),
@@ -218,13 +218,12 @@ mod gsi_04_03b_tests {
 
         let miner = sim.substrate.entities.get_mut(1).unwrap();
         miner.on_bridge = false;
-        let mut locomotor = LocomotorState::for_test_kind(LocomotorKind::Fly);
-        locomotor.altitude = SimFixed::from_num(300);
-        miner.locomotor = Some(locomotor);
+        miner.locomotor = Some(LocomotorState::for_test_kind(LocomotorKind::Fly));
+        sim.set_object_height_unmarked(1, 300);
         assert_eq!(
             return_exceeds_too_far_threshold(&sim, 1, 2, 1),
             Some(true),
-            "locomotor altitude contributes to raw object-coordinate Z"
+            "the object's height contributes to its coordinate Z"
         );
     }
 
@@ -268,8 +267,8 @@ mod gsi_04_03b_tests {
         let type_ref = sim.interner.intern("HARV");
         for (entity_id, rx, facing) in [(1, 1, 0x40u8), (2, 3, 0xC0)] {
             let mut miner = GameEntity::test_default(entity_id, "HARV", "AMERICANS", rx, 2);
-            miner.owner = owner;
-            miner.type_ref = type_ref;
+            miner.set_owner_for_test(owner);
+            miner.set_type_ref_for_test(type_ref);
             miner.body_facing.snap(u16::from(facing) << 8, 0);
             miner.locomotor = Some(LocomotorState::for_test_kind(LocomotorKind::Drive));
             miner
@@ -285,12 +284,11 @@ mod gsi_04_03b_tests {
         }
 
         let shared_head = (2, 2);
-        issue_move_if_idle(
+        assign_miner_cell_destination(
             &mut sim,
-            None,
+            &rules,
             1,
             shared_head,
-            SimFixed::from_num(128),
             None,
             crate::sim::world::FrameEffects::default(),
         );
@@ -331,12 +329,11 @@ mod gsi_04_03b_tests {
             2,
         ));
 
-        issue_move_if_idle(
+        assign_miner_cell_destination(
             &mut sim,
-            None,
+            &rules,
             2,
             shared_head,
-            SimFixed::from_num(128),
             None,
             crate::sim::world::FrameEffects::default(),
         );
@@ -400,7 +397,6 @@ pub(super) struct MinerSnapshot {
     pub(super) type_id: InternedId,
     pub(super) rx: u16,
     pub(super) ry: u16,
-    pub(super) speed: SimFixed,
     pub(super) miner: Miner,
     /// FSM cursor working copy — decoded from `MissionCom::handler_state` at
     /// dispatch entry, committed back through it at dispatch commit.
@@ -414,11 +410,7 @@ pub(super) struct MinerSnapshot {
 
 /// Build the dispatch snapshot for one live, non-dying, non-slave miner.
 /// Returns `None` when the object is not a dispatchable miner.
-pub(super) fn build_miner_snapshot(
-    sim: &Simulation,
-    rules: &RuleSet,
-    id: u64,
-) -> Option<MinerSnapshot> {
+pub(super) fn build_miner_snapshot(sim: &Simulation, id: u64) -> Option<MinerSnapshot> {
     let entity = sim.substrate.entities.get(id)?;
     // A Dying miner corpse (sold/captured this tick, awaiting the end-of-tick
     // drain) must not move, harvest, or deposit.
@@ -431,10 +423,6 @@ pub(super) fn build_miner_snapshot(
         return None;
     }
     let miner = entity.miner.as_ref()?;
-    // The miner's drive loop asks the same getter every mover does, so a
-    // `FASTER` miner takes the multiply here.
-    let obj = sim.object_type(entity.type_ref(), rules);
-    let speed: SimFixed = crate::sim::movement::order_speed(entity, obj, Some(rules), &sim.houses);
     let cursor = MinerState::from_cursor(entity.mission.handler_state());
     debug_assert!(
         cursor.is_some(),
@@ -448,7 +436,6 @@ pub(super) fn build_miner_snapshot(
         type_id: entity.type_ref(),
         rx: entity.position.rx,
         ry: entity.position.ry,
-        speed,
         miner: miner.clone(),
         state: cursor.unwrap_or(MinerState::SearchOre),
         dispatch_delay: DISPATCH_NEXT_FRAME,
@@ -511,7 +498,7 @@ pub(crate) fn unit_ai_clear_harvesting(sim: &mut Simulation, id: u64) {
         return;
     };
     if entity.dying
-        || entity.category != EntityCategory::Unit
+        || entity.category() != EntityCategory::Unit
         || native_mission_is_harvest(entity)
         || !entity.miner.as_ref().is_some_and(|miner| miner.harvesting)
     {
@@ -756,8 +743,7 @@ fn assign_archive_destination(
     frame_effects: FrameEffects<'_>,
 ) {
     if let crate::sim::combat::TargetKind::Cell(x, y) = archive {
-        let _ =
-            issue_stock_miner_drive_move(sim, rules, id, (x, y), overlay_registry, frame_effects);
+        assign_miner_cell_destination(sim, rules, id, (x, y), overlay_registry, frame_effects);
     }
 }
 
@@ -862,7 +848,7 @@ pub(crate) fn harvest_ore_tick_for_test(
     overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     id: u64,
 ) -> bool {
-    let mut snap = build_miner_snapshot(sim, rules, id).expect("a dispatchable miner");
+    let mut snap = build_miner_snapshot(sim, id).expect("a dispatchable miner");
     let config = MinerConfig::from_rules(rules);
     let ok = harvest_ore_tick(sim, rules, &config, overlay_registry, &mut snap);
     if let Some(entity) = sim.substrate.entities.get_mut(id) {
@@ -998,7 +984,9 @@ fn handle_return(
             .entities
             .get(bay)
             .filter(|entity| {
-                !entity.dying && entity.health.current != 0 && entity.radio_contacts.has_free_or(id)
+                !entity.dying
+                    && entity.health.current() != 0
+                    && entity.radio_contacts.has_free_or(id)
             })
             .map(|_| bay),
         None => find_docking_bay(sim, rules, snap.entity_id, false, false, frame_effects),
@@ -1071,7 +1059,7 @@ const STAGING_MIN_CELLS: i32 = 3;
 fn refinery_staging_cell(sim: &Simulation, rules: &RuleSet, bay: u64) -> Option<(u16, u16)> {
     use crate::rules::locomotor_type::SpeedType;
     use crate::sim::find_nearby_cell::{
-        NearbyAnchorGate, NearbyFootprint, NearbyQuery, PassabilityArgs, find_nearby_passable_cell,
+        NearbyFootprint, NearbyQuery, PassabilityArgs, find_nearby_passable_cell,
         map_owned_radius_cap,
     };
     let building = sim.substrate.entities.get(bay)?;
@@ -1099,7 +1087,6 @@ fn refinery_staging_cell(sim: &Simulation, rules: &RuleSet, bay: u64) -> Option<
                 bridge_aware_zone: false,
             },
             footprint: NearbyFootprint::SINGLE,
-            anchor_gate: NearbyAnchorGate::NativeHeightAware,
             allow_bridge_cells: true,
             check_height: false,
             check_occupancy: false,
@@ -1207,12 +1194,11 @@ fn handle_going_to_idle(
             .techno_nearby_location(snap.entity_id, Some(refinery_sid), rules)
             .and_then(|(x, y)| Some((u16::try_from(x).ok()?, u16::try_from(y).ok()?)))
     {
-        issue_move_if_idle(
+        assign_miner_cell_destination(
             sim,
-            Some(rules),
+            rules,
             snap.entity_id,
             exit,
-            snap.speed,
             overlay_registry,
             frame_effects,
         );
@@ -1264,7 +1250,7 @@ fn refinery_building_in_cell(sim: &Simulation, rules: &RuleSet, cell: (u16, u16)
     let occupancy = sim.substrate.occupancy.get(cell.0, cell.1)?;
     occupancy.blockers(MovementLayer::Ground).find(|&sid| {
         sim.substrate.entities.get(sid).is_some_and(|entity| {
-            entity.category == EntityCategory::Structure
+            entity.category() == EntityCategory::Structure
                 && !entity.dying
                 && sim
                     .object_type(entity.type_ref(), rules)
@@ -1460,7 +1446,7 @@ fn scan_docking_type(
                 .as_ref()
                 .map(|loc| loc.movement_zone)
                 .unwrap_or(MovementZone::Normal),
-            entity.category == EntityCategory::Aircraft,
+            entity.category() == EntityCategory::Aircraft,
         )
     };
     // `0x004DEE9B..0x004DEEAC`: a type of which the house tracks no
@@ -1485,12 +1471,12 @@ fn scan_docking_type(
             continue;
         };
         let e_type = sim.interner.resolve(entity.type_ref());
-        if !e_type.eq_ignore_ascii_case(dock_type) || entity.lifecycle.in_limbo {
+        if !e_type.eq_ignore_ascii_case(dock_type) || entity.lifecycle.in_limbo() {
             continue;
         }
         // gamemd removes a dead building from the house list through
         // Limbo; VERA keeps the entity through its death animation.
-        if entity.dying || entity.health.current == 0 {
+        if entity.dying || entity.health.current() == 0 {
             continue;
         }
         if !wide && !entity.radio_contacts.has_free_or(requester) {
@@ -1625,73 +1611,16 @@ fn neighbour_reachable(
     false
 }
 
-/// Hand a selected stock-miner destination to the normal Drive command authority.
-pub(crate) fn issue_stock_miner_drive_move(
+/// A miner's `vt+0x480(cell, 1)` through the class setter: Search_For_Tiberium
+/// (`0x004DD086`) and Mission_Harvest state 4's `Set_Destination`. For a Unit
+/// that is `0x741970`, which returns on an unchanged NavCom and whose
+/// Teleporter arm gives a Chrono Miner out of radio contact a Drive. The
+/// setter is void; a cell outside the path grid is not ordered.
+pub(crate) fn assign_miner_cell_destination(
     sim: &mut Simulation,
     rules: &RuleSet,
     entity_id: u64,
     target: (u16, u16),
-    overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
-    frame_effects: FrameEffects<'_>,
-) -> bool {
-    let Some(grid) = sim.path_grid() else {
-        return false;
-    };
-    if target.0 >= grid.width() || target.1 >= grid.height() {
-        return false;
-    }
-    // Search_For_Tiberium's vt+0x480(cell, 1) (`0x004DD086`): the Unit setter,
-    // whose Teleporter arm gives a Chrono Miner out of radio contact a Drive.
-    if sim.unit_setter_receiver(entity_id, Some(rules)) {
-        return sim.set_unit_destination(
-            entity_id,
-            crate::sim::components::NavTargetRef::cell(target.0, target.1),
-            rules,
-            true,
-            frame_effects,
-        );
-    }
-    let Some(info) = sim.resolve_move_info(entity_id, Some(rules)) else {
-        return false;
-    };
-
-    let issued = sim.issue_ground_move(
-        GroundMove {
-            entity_id,
-            target,
-            speed: info.speed,
-            queue: false,
-            speed_type: Some(info.speed_type),
-            owner_blocks: false,
-            object_destination: None,
-        },
-        Some(rules),
-        overlay_registry,
-        frame_effects,
-    );
-    if !issued {
-        return false;
-    }
-
-    true
-}
-
-/// Issue a move command only if the entity's retained destination is not
-/// already this cell: the Unit setter for its receivers (Mission_Harvest
-/// state 4's `Set_Destination`), the generic command otherwise.
-///
-/// The destination is the NavCom the setter publishes: a Drive/Ship order
-/// accepts without a route (the first Process requests it) and keeps NavCom
-/// through the Foot+64C retry ladder, so the gate must not read the route.
-/// A Find_Path redirect (code 6 FNPC, code 7) or the command-time redirect
-/// of the remaining adapter locomotors publishes a different cell, and the
-/// next call re-issues the original target.
-pub(crate) fn issue_move_if_idle(
-    sim: &mut Simulation,
-    rules: Option<&RuleSet>,
-    entity_id: u64,
-    target: (u16, u16),
-    speed: SimFixed,
     overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     frame_effects: FrameEffects<'_>,
 ) {
@@ -1701,40 +1630,16 @@ pub(crate) fn issue_move_if_idle(
     if target.0 >= grid.width() || target.1 >= grid.height() {
         return;
     }
-    // The Unit setter (`0x741970`) holds the same unchanged-NavCom return.
-    if let Some(rules) = rules
-        && sim.unit_setter_receiver(entity_id, Some(rules))
-    {
-        sim.set_unit_destination(
-            entity_id,
-            crate::sim::components::NavTargetRef::cell(target.0, target.1),
-            rules,
-            true,
-            frame_effects,
-        );
-        return;
-    }
-    let already = sim.substrate.entities.get(entity_id).is_some_and(|e| {
-        e.navigation.nav_com
-            == Some(crate::sim::components::NavTargetRef::cell(
-                target.0, target.1,
-            ))
-    });
-    if !already {
-        let _ = sim.issue_ground_move(
-            GroundMove {
-                entity_id,
-                target,
-                speed,
-                queue: false,
-                speed_type: None,
-                owner_blocks: false,
-                object_destination: None,
-            },
-            rules,
-            overlay_registry,
-            frame_effects,
-        );
+    if let Err(cause) = sim.assign_destination_represented(
+        entity_id,
+        Some(crate::sim::components::NavTargetRef::cell(
+            target.0, target.1,
+        )),
+        Some(rules),
+        overlay_registry,
+        frame_effects,
+    ) {
+        log::warn!("Miner destination {entity_id}: {cause}");
     }
 }
 
@@ -1783,9 +1688,9 @@ pub(crate) fn counts_as_purifier(
     // its deposit bonus until the end-of-tick drain; a limbo'd one already
     // took the native Limbo `DEC`.
     !e.dying
-        && !e.lifecycle.in_limbo
+        && !e.lifecycle.in_limbo()
         && !e.building_up()
-        && e.category == EntityCategory::Structure
+        && e.category() == EntityCategory::Structure
         && sim
             .object_type(e.type_ref(), rules)
             .is_some_and(|obj| obj.ore_purifier)
@@ -1827,7 +1732,7 @@ pub(crate) fn effective_purifier_count(
 mod harvest_scan_dispatch_tests {
     use super::*;
     use crate::rules::ini_parser::IniFile;
-    use crate::sim::components::Health;
+    use crate::sim::combat::Health;
     use crate::sim::game_entity::GameEntity;
     use crate::sim::miner::MinerKind;
     use crate::sim::mission::MissionType;
@@ -1895,14 +1800,14 @@ mod harvest_scan_dispatch_tests {
             0,
             0,
             owner,
-            Health { current: 900 },
+            Health::new(900),
             type_ref,
             EntityCategory::Structure,
             0,
             5,
             false,
         );
-        ge.lifecycle.in_limbo = false;
+        ge.lifecycle.set_in_limbo_for_test(false);
         // Construction stamps the type's `Foundation=4x3`.
         ge.foundation = "4x3".to_string();
         sim.substrate.entities.insert(ge);
@@ -1944,7 +1849,7 @@ mod harvest_scan_dispatch_tests {
             0,
             0,
             owner,
-            Health { current: 600 },
+            Health::new(600),
             type_ref,
             EntityCategory::Unit,
             0,
@@ -1953,7 +1858,7 @@ mod harvest_scan_dispatch_tests {
         );
         // This prepared Harvest scene represents an Unlimboed actor; the
         // player re-order check takes native actor admission before retasking.
-        ge.lifecycle.in_limbo = false;
+        ge.lifecycle.set_in_limbo_for_test(false);
         ge.locomotor = Some(
             crate::sim::movement::locomotor::LocomotorState::for_test_kind(
                 crate::rules::locomotor_type::LocomotorKind::Drive,
@@ -2027,7 +1932,7 @@ mod harvest_scan_dispatch_tests {
             Some(crate::sim::components::NavTargetRef::cell(10, 14))
         );
         assert!(
-            entity.movement_target.is_some(),
+            crate::sim::movement::motion_query::is_moving(&entity) == Some(true),
             "gamemd sets the destination inside the scan dispatch"
         );
         assert_ne!(
@@ -2059,7 +1964,10 @@ mod harvest_scan_dispatch_tests {
         tick_miners(&mut sim, &rules, &config);
 
         let entity = sim.substrate.entities.get(MINER_ID).expect("miner");
-        assert!(entity.movement_target.is_none(), "nothing to drive to");
+        assert!(
+            crate::sim::movement::motion_query::is_moving(&entity) != Some(true),
+            "nothing to drive to"
+        );
         assert_eq!(
             sim.rng_state().scenario,
             scenario_before,
@@ -2091,7 +1999,10 @@ mod harvest_scan_dispatch_tests {
             entity.navigation.nav_com, None,
             "no whole-map fallback target"
         );
-        assert!(entity.movement_target.is_none(), "no cross-map drive");
+        assert!(
+            crate::sim::movement::motion_query::is_moving(&entity) != Some(true),
+            "no cross-map drive"
+        );
         assert_eq!(entity.mission.dispatch_timer().delay(), NO_ORE_DELAY);
         assert_eq!(
             sim.rng_state().scenario,
@@ -2142,7 +2053,7 @@ mod harvest_scan_dispatch_tests {
         );
         assert_eq!(entity.navigation.nav_com, None);
         assert!(
-            entity.movement_target.is_none(),
+            crate::sim::movement::motion_query::is_moving(&entity) != Some(true),
             "not on a refinery cell: no exit drive"
         );
         assert_ne!(
@@ -2164,7 +2075,7 @@ mod harvest_scan_dispatch_tests {
         let entity = sim.substrate.entities.get(MINER_ID).expect("miner");
         assert_eq!(entity.mission.current().known(), Some(MissionType::Guard));
         assert_eq!(entity.navigation.nav_com, None);
-        assert!(entity.movement_target.is_none());
+        assert!(crate::sim::movement::motion_query::is_moving(&entity) != Some(true));
         assert!(
             sim.houses[&owner].harvester_no_ore,
             "no clearing writer exists for House+0x242"
@@ -2456,14 +2367,14 @@ mod harvest_scan_dispatch_tests {
             0,
             0,
             owner,
-            Health { current: 300 },
+            Health::new(300),
             type_ref,
             EntityCategory::Unit,
             0,
             5,
             true,
         );
-        ge.lifecycle.in_limbo = false;
+        ge.lifecycle.set_in_limbo_for_test(false);
         sim.substrate.entities.insert(ge);
         assert!(
             crate::sim::miner::miner_dock::test_support::dock_test_hello(
@@ -2531,7 +2442,7 @@ mod harvest_scan_dispatch_tests {
         let entity = sim.substrate.entities.get(MINER_ID).expect("miner");
         assert_eq!(entity.miner_state(), Some(MinerState::ReturnToRefinery));
         assert!(
-            entity.movement_target.is_none(),
+            crate::sim::movement::motion_query::is_moving(&entity) != Some(true),
             "`CMP EAX,0x300; JG` not taken"
         );
 

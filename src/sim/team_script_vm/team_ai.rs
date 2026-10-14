@@ -58,9 +58,9 @@ const RELAXED_STRAY_ACTIONS: [i32; 2] = [0x35, 0x36];
 /// active (`+0x90`), with Health (`+0x6C`), out of limbo (`+0x81`;
 /// the shared ScenarioInit/placement scope admits limbo members).
 pub(super) fn member_is_live(entity: &GameEntity, placement_scope_active: bool) -> bool {
-    entity.lifecycle.object_alive
-        && entity.health.current != 0
-        && (placement_scope_active || !entity.lifecycle.in_limbo)
+    entity.lifecycle.object_alive()
+        && entity.health.current() != 0
+        && (placement_scope_active || !entity.lifecycle.in_limbo())
 }
 
 /// A live member that has joined up (`+0x689`) or is an aircraft, which
@@ -71,7 +71,7 @@ pub(super) fn member_is_live_joined(
     placement_scope_active: bool,
 ) -> bool {
     member_is_live(entity, placement_scope_active)
-        && (initiated || entity.category == EntityCategory::Aircraft)
+        && (initiated || entity.category() == EntityCategory::Aircraft)
 }
 
 /// A member as `Calc_Center` weighs it.
@@ -427,8 +427,12 @@ impl Simulation {
     fn guard_slower_weight(&self, entity: &GameEntity, rules: &RuleSet) -> bool {
         self.object_type(entity.type_ref(), rules)
             .is_some_and(|object| {
-                crate::sim::combat::combat_weapon::weapon_for_index(object, entity.veterancy(), 0)
-                    .is_none()
+                crate::sim::combat::combat_weapon::weapon_for_index(
+                    object,
+                    entity.veterancy.rank(),
+                    0,
+                )
+                .is_none()
                     || object.tech_level == -1
                     || object.deploys_into.is_some()
                     || object.speed <= 13
@@ -491,7 +495,7 @@ impl Simulation {
             let Some(entity) = self.substrate.entities.get(member.id) else {
                 continue;
             };
-            if !entity.lifecycle.object_alive {
+            if !entity.lifecycle.object_alive() {
                 continue;
             }
             self.team_member_join_up(team_id, member.id, rules, registry, frame_effects);
@@ -505,7 +509,7 @@ impl Simulation {
             let stray = self.team_stray(team_id, rules);
             let mission = entity.mission.effective().known();
             let area_guarding_target =
-                mission == Some(MissionType::AreaGuard) && entity.attack_target.is_some();
+                mission == Some(MissionType::AreaGuard) && entity.attack_target.target().is_some();
             if self.team_member_distance(entity, zone) > stray && !area_guarding_target {
                 if entity.navigation.nav_com.is_some() {
                     continue;
@@ -600,10 +604,14 @@ impl Simulation {
             let armed = self
                 .object_type(head.type_ref(), rules)
                 .and_then(|object| {
-                    crate::sim::combat::combat_weapon::weapon_for_index(object, head.veterancy(), 0)
+                    crate::sim::combat::combat_weapon::weapon_for_index(
+                        object,
+                        head.veterancy.rank(),
+                        0,
+                    )
                 })
                 .is_some();
-            if head.category == EntityCategory::Aircraft
+            if head.category() == EntityCategory::Aircraft
                 || !armed
                 || team.focus == Some(TeamTarget::Object(source))
             {
@@ -787,9 +795,8 @@ mod tests {
         let mut sim = crate::sim::world::Simulation::new();
         let mut member =
             crate::sim::game_entity::GameEntity::test_default(1, "HOVER", "Americans", 4, 4);
-        let mut locomotor = LocomotorState::for_test_kind(LocomotorKind::Hover);
-        locomotor.altitude = crate::util::fixed_math::SimFixed::from_num(120);
-        member.locomotor = Some(locomotor);
+        member.locomotor = Some(LocomotorState::for_test_kind(LocomotorKind::Hover));
+        member.position.exact_z_leptons = Some(120);
         sim.substrate.entities.insert(member);
         let member = sim.substrate.entities.get(1).expect("member");
         // The cell target is (4, 4)'s centre at its floor, straight below, so

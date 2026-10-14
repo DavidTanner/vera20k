@@ -127,7 +127,7 @@ fn retail_shrapnel_engineer_repairs_authored_water_gap() {
             approach_snapshot = Some(save_scene(&scene, "Shrapnel Engineer approaching hut"));
         }
         let actor = scene.sim().entities().get(engineer);
-        if actor.is_none_or(|entity| !entity.lifecycle.object_alive) {
+        if actor.is_none_or(|entity| !entity.lifecycle.object_alive()) {
             consumed = true;
             eprintln!("SHRAPNEL_ENGINEER consumed after {} frames", frame + 1);
             break;
@@ -220,7 +220,6 @@ fn cross_repaired_road(scene: &mut HeadlessScenario) {
             entity_id: fv,
             target_rx: 115,
             target_ry: 63,
-            queue: false,
         },
     );
     let mut crossed_gap = false;
@@ -242,7 +241,9 @@ fn cross_repaired_road(scene: &mut HeadlessScenario) {
         );
         assert!(actor.low_bridge_tube_state.is_none());
         crossed_gap |= (114..=116).contains(&actor.position.rx) && actor.position.ry == 59;
-        if (actor.position.rx, actor.position.ry) == (115, 63) && actor.movement_target.is_none() {
+        if (actor.position.rx, actor.position.ry) == (115, 63)
+            && crate::sim::movement::motion_query::is_moving(&actor) != Some(true)
+        {
             assert!(crossed_gap, "the FV must physically cross the repaired row");
             assert_eq!(actor.position.exact_z_leptons, Some(208));
             assert!(
@@ -446,7 +447,6 @@ fn retail_shrapnel_repair_reaches_moving_water_neighbor() {
                     .unwrap(),
                 target_ry: u16::try_from(head_input["destination_cell"][1].as_u64().unwrap())
                     .unwrap(),
-                queue: false,
             })
         } else {
             None
@@ -548,7 +548,7 @@ fn retail_shrapnel_repair_reaches_moving_water_neighbor() {
                     head_process["marked"]
                 );
                 assert_eq!(
-                    actor.health.current,
+                    actor.health.current(),
                     native["initial"]["health"].as_i64().unwrap() as i32
                 );
             }
@@ -743,11 +743,11 @@ fn assert_retained_naval_ship(
     use crate::sim::world::display_layers::DisplayLayer;
     let actor = sim.entities().get(id).unwrap();
     assert_eq!(
-        actor.health.current,
+        actor.health.current(),
         native["health"].as_i64().unwrap() as i32
     );
-    assert_eq!(actor.lifecycle.object_alive, native["alive"] == 1);
-    assert_eq!(actor.lifecycle.in_limbo, native["limbo"] == 1);
+    assert_eq!(actor.lifecycle.object_alive(), native["alive"] == 1);
+    assert_eq!(actor.lifecycle.in_limbo(), native["limbo"] == 1);
     assert_eq!(actor.lifecycle.cell_marked, native["marked"] == 1);
     assert_eq!(actor.sinking.is_active(), native["sinking"] == 1);
     assert_eq!(actor.in_logic_vector, native["logic_registered"] == 1);

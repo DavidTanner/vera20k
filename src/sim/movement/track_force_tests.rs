@@ -99,8 +99,8 @@ fn mirrored_state(entity: &GameEntity) -> Value {
         "track_valid": u8::from(valid),
         "target_fraction_bits": format!("{:016x}", target.to_num::<f64>().to_bits()),
         "applied_fraction_bits": format!("{:016x}", entity.foot_speed.applied_fraction().to_num::<f64>().to_bits()),
-        "owner_limbo": u8::from(entity.lifecycle.in_limbo),
-        "owner_alive": u8::from(entity.lifecycle.object_alive),
+        "owner_limbo": u8::from(entity.lifecycle.in_limbo()),
+        "owner_alive": u8::from(entity.lifecycle.object_alive()),
     })
 }
 
@@ -139,9 +139,9 @@ fn fixture(case: &Value) -> Simulation {
     let before = &case["before"];
     let input = &case["input"];
     let mut entity = GameEntity::test_default(UNIT, "MTNK", "Americans", 9, 10);
-    entity.owner = sim.intern("Americans");
-    entity.type_ref = sim.intern("MTNK");
-    entity.category = EntityCategory::Unit;
+    entity.set_owner_for_test(sim.intern("Americans"));
+    entity.set_type_ref_for_test(sim.intern("MTNK"));
+    entity.set_category_for_test(EntityCategory::Unit);
     entity.locomotor = Some(super::super::locomotor::LocomotorState::for_test_kind(
         if is_ship(case) {
             LocomotorKind::Ship
@@ -151,8 +151,12 @@ fn fixture(case: &Value) -> Simulation {
     ));
     // These are separate native bytes. In particular, dead-but-present owners
     // must not acquire a new success-path gate from health or LogicVector.
-    entity.lifecycle.object_alive = integer(&before["owner_alive"]) != 0;
-    entity.lifecycle.in_limbo = integer(&before["owner_limbo"]) != 0;
+    entity
+        .lifecycle
+        .set_object_alive_for_test(integer(&before["owner_alive"]) != 0);
+    entity
+        .lifecycle
+        .set_in_limbo_for_test(integer(&before["owner_limbo"]) != 0);
     entity.lifecycle.cell_marked = false;
     entity.foot_occupation_enabled = input["occupation_enabled"].as_bool().unwrap_or(false);
     entity
@@ -333,8 +337,12 @@ fn supplied_post_crate_continuations_reload_life_head_and_valid_like_native() {
                     mirrored_state(entity),
                     stage(case, "head_published_before_map_query").unwrap()["state"]
                 );
-                entity.lifecycle.object_alive = effect["alive"].as_bool().unwrap();
-                entity.lifecycle.in_limbo = effect["limbo"].as_bool().unwrap();
+                entity
+                    .lifecycle
+                    .set_object_alive_for_test(effect["alive"].as_bool().unwrap());
+                entity
+                    .lifecycle
+                    .set_in_limbo_for_test(effect["limbo"].as_bool().unwrap());
                 let drive = entity.locomotor.as_mut().unwrap();
                 assert!(drive.store_track_head(
                     crate::sim::movement::track_process::TrackFamily::Drive,
@@ -445,8 +453,8 @@ fn bunker_dispatch_matches_separate_native_force_then_owner_speed_write() {
             10,
             EntityCategory::Structure,
         );
-        building.owner = sim.intern("Americans");
-        building.type_ref = sim.intern("NATBNK");
+        building.set_owner_for_test(sim.intern("Americans"));
+        building.set_type_ref_for_test(sim.intern("NATBNK"));
         crate::sim::movement::ground_pose::put_location(&mut building.position, supplied(case));
         building.bunker_runtime = Some(BunkerRuntime {
             state: BunkerState::TurnToBuilding,

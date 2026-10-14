@@ -999,7 +999,22 @@ use crate::sim::world::Simulation;
 // the existing Rules registry retains WindDirection across passes. The
 // superseded animation counter is removed; native cadence uses UID/EC.
 // Old records cannot resume these scalar authorities.
-const SNAPSHOT_VERSION: u32 = 345;
+// 345 -> 346: pending Move and AttackMove commands drop the unread queue flag,
+// and a Move onto an object is a new Command variant; both change the bincode
+// schema.
+// 346 -> 347: a pending AttackMove carries the event's target and destination
+// tokens, and MegaDestination may name an object.
+// 347 -> 348: the Simulation retains whether it batches code-2 re-path
+// searches and the Foots waiting for the next frame's batch.
+// 348 -> 349: the move-order adapter (`MovementTarget`) is gone (#689); Foot's
+// NavCom and the locomotor own every order. Version 348 records carry it.
+// 349 -> 350: each waiting Foot names the request it repeats, no-queue or
+// code-2 ladder.
+// 350 -> 351: a Building's animation art fields move into one record
+// (`BuildingArt`), which changes the entity's field order.
+// 351 -> 352: the locomotor's altitude mirror is gone (#692); an object's
+// height is its Location Z. Version 351 records carry it.
+const SNAPSHOT_VERSION: u32 = 352;
 
 const SNAPSHOT_PRODUCT_MAGIC: [u8; 8] = *b"VERA20K\0";
 const SNAPSHOT_ENVELOPE_VERSION: u32 = 1;
@@ -1861,14 +1876,15 @@ fn restore_object_references(
     for (owner_id, entity) in sim.substrate.entities.iter_sorted() {
         // Diagnostic slots0..20 are Building+55C, slots21..28 are +5C8.
         for (slot, anim_id) in entity
-            .building_anim_slots
+            .building_art
+            .anim_slots()
             .iter()
             .chain(entity.damage_fire_anim_ids.iter())
             .enumerate()
         {
             let Some(anim_id) = *anim_id else { continue };
             let slot = slot as u8;
-            if entity.category != crate::map::entities::EntityCategory::Structure {
+            if entity.category() != crate::map::entities::EntityCategory::Structure {
                 return Err(SnapshotRestoreError::InvalidBuildingAnimSlotOwner { owner_id, slot });
             }
             if !anim_ids.contains(&anim_id) {
@@ -1986,9 +2002,7 @@ fn restore_object_references(
             )?;
         }
 
-        if let Some(TargetKind::Entity(target_id)) =
-            entity.attack_target.as_ref().map(|target| target.target)
-        {
+        if let Some(TargetKind::Entity(target_id)) = entity.attack_target.target() {
             require_resolved_reference(
                 entity_ids.contains(&target_id),
                 "EntityStore",
@@ -2399,18 +2413,18 @@ impl Simulation {
         let terminal_logic_members: std::collections::BTreeSet<_> =
             self.substrate.logic.snapshot().into_iter().collect();
         for (object_id, entity) in self.substrate.entities.iter_sorted() {
-            let infantry = entity.category == crate::map::entities::EntityCategory::Infantry;
+            let infantry = entity.category() == crate::map::entities::EntityCategory::Infantry;
             if (entity.infantry_terminal.is_some()
                 && (!infantry
                     || !entity.dying
-                    || !entity.lifecycle.object_alive
-                    || (!entity.lifecycle.in_limbo
+                    || !entity.lifecycle.object_alive()
+                    || (!entity.lifecycle.in_limbo()
                         && !terminal_logic_members.contains(&object_id))))
                 || entity.infantry_terminal
                     == Some(crate::sim::world::InfantryTerminal::AwaitingConsequences)
                 || (infantry
                     && entity.dying
-                    && entity.lifecycle.object_alive
+                    && entity.lifecycle.object_alive()
                     && entity.infantry_terminal.is_none())
             {
                 return Err(SnapshotRestoreError::InvalidInfantryTerminalState { object_id });
@@ -2587,13 +2601,8 @@ impl Simulation {
         let frame = self.session.binary_frame;
         for id in self.substrate.entities.keys_sorted() {
             self.restore_move_sound_state_after_load(id);
-            if let Some(parasite) = self
-                .substrate
-                .entities
-                .get_mut(id)
-                .and_then(|entity| entity.parasite.as_deref_mut())
-            {
-                parasite.restart_timers_after_load(frame);
+            if let Some(entity) = self.substrate.entities.get_mut(id) {
+                entity.parasite.restart_timers_after_load(frame);
             }
         }
         self.rebuild_logic_membership();
@@ -2887,7 +2896,7 @@ mod tests {
         use crate::rules::ini_parser::IniFile;
         use crate::rules::overlay_types::OverlayTypeRegistry;
         use crate::rules::ruleset::RuleSet;
-        use crate::sim::components::Health;
+        use crate::sim::combat::Health;
         use crate::sim::game_entity::GameEntity;
         use crate::sim::movement::locomotor::MovementLayer;
         use crate::sim::ore_growth::{OreGrowthConfig, OreGrowthState};
@@ -2976,14 +2985,14 @@ mod tests {
                 0,
                 0,
                 owner,
-                Health { current: 100 },
+                Health::new(100),
                 type_ref,
                 EntityCategory::Unit,
                 0,
                 5,
                 true,
             );
-            entity.lifecycle.in_limbo = false;
+            entity.lifecycle.set_in_limbo_for_test(false);
             entity.in_logic_vector = true;
             entity.on_bridge = on_bridge;
             sim.substrate.entities.insert(entity);
@@ -4382,7 +4391,14 @@ mod tests {
         // 342 -> 343: the complete Object fall state.
         // 343 -> 344: retained deploy-voice suppression and bound voice slots.
         // 344 -> 345: Smoke scalars and individual Particle AIR identities.
-        assert_eq!(super::SNAPSHOT_VERSION, 345);
+        // 345 -> 346: Move commands without the queue flag, and MoveToObject.
+        // 346 -> 347: AttackMove tokens and an object MegaDestination.
+        // 347 -> 348: the batched re-path setting and its waiting Foots.
+        // 348 -> 349: no move-order adapter (`MovementTarget`).
+        // 349 -> 350: the request each waiting Foot repeats.
+        // 350 -> 351: the Building's animation art in one record.
+        // 351 -> 352: no locomotor altitude copy; height is the Location Z.
+        assert_eq!(super::SNAPSHOT_VERSION, 352);
     }
 
     #[test]
@@ -4392,9 +4408,9 @@ mod tests {
             assert_eq!(sim.allocate_stable_id(), 1);
             let mut entity =
                 crate::sim::game_entity::GameEntity::test_default(1, "SIGNED", "Americans", 0, 0);
-            entity.type_ref = sim.intern("SIGNED");
-            entity.owner = sim.intern("Americans");
-            entity.health.current = actual;
+            entity.set_type_ref_for_test(sim.intern("SIGNED"));
+            entity.set_owner_for_test(sim.intern("Americans"));
+            entity.health.set_for_test(actual);
             entity.estimated_health =
                 crate::sim::estimated_health::EstimatedHealth::from_raw(estimated);
             sim.substrate.entities.insert(entity);
@@ -4411,7 +4427,7 @@ mod tests {
                 .expect("restore signed health");
             let entity = restored.substrate.entities.get(1).unwrap();
             assert_eq!(
-                (entity.health.current, entity.estimated_health.get()),
+                (entity.health.current(), entity.estimated_health.get()),
                 (actual, estimated)
             );
             assert_eq!(restored.state_hash(), before);
@@ -4421,7 +4437,7 @@ mod tests {
                 .get_mut(1)
                 .unwrap()
                 .health
-                .current = actual.wrapping_add(1);
+                .set_for_test(actual.wrapping_add(1));
             assert_ne!(restored.state_hash(), before);
             restored
                 .substrate
@@ -4429,7 +4445,7 @@ mod tests {
                 .get_mut(1)
                 .unwrap()
                 .health
-                .current = actual;
+                .set_for_test(actual);
             restored
                 .substrate
                 .entities
@@ -4550,10 +4566,10 @@ mod tests {
         ] {
             let mut sim = Simulation::new();
             let mut entity = GameEntity::test_default(1, "E1", "Americans", 5, 5);
-            entity.category = category;
+            entity.set_category_for_test(category);
             entity.dying = dying;
-            entity.lifecycle.object_alive = object_alive;
-            entity.lifecycle.in_limbo = in_limbo;
+            entity.lifecycle.set_object_alive_for_test(object_alive);
+            entity.lifecycle.set_in_limbo_for_test(in_limbo);
             entity.infantry_terminal = terminal;
             sim.substrate.entities.insert(entity);
             let bytes = GameSnapshot::save(&sim, 0, 0, "test_map", 0);
@@ -4648,9 +4664,9 @@ mod tests {
         let mut sim = Simulation::with_seed(0);
         sim.session.binary_frame = 51;
         let mut entity = GameEntity::test_default(1, "SLOPE", "Americans", 0, 0);
-        entity.owner = sim.intern("Americans");
-        entity.type_ref = sim.intern("SLOPE");
-        entity.category = EntityCategory::Unit;
+        entity.set_owner_for_test(sim.intern("Americans"));
+        entity.set_type_ref_for_test(sim.intern("SLOPE"));
+        entity.set_category_for_test(EntityCategory::Unit);
         let mut locomotor = LocomotorState::for_test_kind_at_frame(LocomotorKind::Drive, 40);
         let drive = locomotor.active_slope_transition_mut().unwrap();
         drive.snap(2, 40);
@@ -4769,7 +4785,7 @@ mod tests {
         let mut sim = Simulation::new();
         let mut entity =
             crate::sim::game_entity::GameEntity::test_default(1, "UP1", "Americans", 4, 5);
-        entity.techno_ctor_random_word = 0xA55A;
+        entity.set_techno_ctor_random_word_for_test(0xA55A);
         entity.structure_upgrade_link = Some(crate::sim::game_entity::StructureUpgradeLink {
             parent_stable_id: 77,
             slot: 2,
@@ -4785,7 +4801,7 @@ mod tests {
         let restored = GameSnapshot::load(&bytes).unwrap().sim;
         let restored_entity = restored.substrate.entities.get(1).unwrap();
         assert_eq!(restored.scenario_rng.logical_state(), source_rng);
-        assert_eq!(restored_entity.techno_ctor_random_word, 0xA55A);
+        assert_eq!(restored_entity.techno_ctor_random_word(), 0xA55A);
         assert_eq!(
             restored_entity.structure_upgrade_link,
             Some(crate::sim::game_entity::StructureUpgradeLink {
@@ -4796,12 +4812,8 @@ mod tests {
         assert_eq!(restored.state_hash(), source_hash);
 
         let mut changed_word = GameSnapshot::load(&bytes).unwrap().sim;
-        changed_word
-            .substrate
-            .entities
-            .get_mut(1)
-            .unwrap()
-            .techno_ctor_random_word ^= 1;
+        let entity = changed_word.substrate.entities.get_mut(1).unwrap();
+        entity.set_techno_ctor_random_word_for_test(entity.techno_ctor_random_word() ^ 1);
         assert_ne!(changed_word.state_hash(), source_hash);
 
         let mut changed_link = restored;
@@ -4823,7 +4835,7 @@ mod tests {
         let mut sim = Simulation::new();
         let mut parent =
             crate::sim::game_entity::GameEntity::test_default(1, "SMIN", "Americans", 4, 5);
-        parent.techno_ctor_random_word = 0x1111;
+        parent.set_techno_ctor_random_word_for_test(0x1111);
         let slav = sim.intern("SLAV");
         parent.slave_manager = Some(SlaveManager::new(slav, [Some(2), Some(3)], 500, 25, 7));
         sim.substrate.entities.insert(parent);
@@ -4835,7 +4847,7 @@ mod tests {
                 4,
                 5,
             );
-            slave.techno_ctor_random_word = word;
+            slave.set_techno_ctor_random_word_for_test(word);
             // Slave 3 carries one level of gems.
             let cargo = (stable_id == 3)
                 .then_some(crate::sim::miner::CargoBale {
@@ -4860,7 +4872,7 @@ mod tests {
         );
         for (stable_id, word) in [(2, 0x2222), (3, 0x3333)] {
             let slave = restored.substrate.entities.get(stable_id).unwrap();
-            assert_eq!(slave.techno_ctor_random_word, word);
+            assert_eq!(slave.techno_ctor_random_word(), word);
             assert_eq!(slave.slave.owner(), Some(1));
         }
         assert_eq!(
@@ -4988,7 +5000,7 @@ mod tests {
             0,
             0,
             owner,
-            crate::sim::components::Health { current: 1000 },
+            crate::sim::combat::Health::new(1000),
             type_ref,
             crate::map::entities::EntityCategory::Structure,
             0,
@@ -5090,7 +5102,7 @@ mod tests {
             0,
             0,
             owner,
-            crate::sim::components::Health { current: 750 },
+            crate::sim::combat::Health::new(750),
             type_ref,
             crate::map::entities::EntityCategory::Structure,
             0,
@@ -5341,7 +5353,7 @@ mod tests {
     #[test]
     fn wave_active_inactive_dummy_links_roundtrip_with_identical_hash() {
         use crate::map::entities::EntityCategory;
-        use crate::sim::components::Health;
+        use crate::sim::combat::Health;
         use crate::sim::game_entity::GameEntity;
         use crate::sim::projectile::ProjectileCoord;
         use crate::sim::wave::{Wave, WaveRecordedCell, WaveUpdateContext};
@@ -5362,7 +5374,7 @@ mod tests {
                 0,
                 0,
                 owner,
-                Health { current: 200 },
+                Health::new(200),
                 type_ref,
                 EntityCategory::Unit,
                 0,
@@ -5486,7 +5498,8 @@ mod tests {
                         .entities
                         .get_mut(owner)
                         .unwrap()
-                        .building_anim_slots[3] = Some(target);
+                        .building_art
+                        .anim_slots_mut_for_test()[3] = Some(target);
                     SnapshotRestoreError::MissingBuildingSlotAnim {
                         owner_id: owner,
                         slot: 3,
@@ -5494,8 +5507,11 @@ mod tests {
                     }
                 }
                 2 => {
-                    sim.substrate.entities.get_mut(owner).unwrap().category =
-                        crate::map::entities::EntityCategory::Unit;
+                    sim.substrate
+                        .entities
+                        .get_mut(owner)
+                        .unwrap()
+                        .set_category_for_test(crate::map::entities::EntityCategory::Unit);
                     SnapshotRestoreError::InvalidBuildingAnimSlotOwner {
                         owner_id: owner,
                         slot: 3,
@@ -5506,7 +5522,8 @@ mod tests {
                         .entities
                         .get_mut(owner)
                         .unwrap()
-                        .building_anim_slots[4] = Some(anim);
+                        .building_art
+                        .anim_slots_mut_for_test()[4] = Some(anim);
                     SnapshotRestoreError::DuplicateBuildingSlotAnim {
                         anim_id: anim,
                         first_owner: owner,
@@ -5518,7 +5535,7 @@ mod tests {
                 4 => {
                     let second = sim.allocate_stable_id();
                     let mut entity = sim.substrate.entities.get(owner).unwrap().clone();
-                    entity.stable_id = second;
+                    entity.set_stable_id_for_test(second);
                     sim.substrate.entities.insert(entity);
                     SnapshotRestoreError::DuplicateBuildingSlotAnim {
                         anim_id: anim,
@@ -5556,9 +5573,9 @@ mod tests {
                 }
                 _ => {
                     let entity = sim.substrate.entities.get_mut(owner).unwrap();
-                    entity.building_anim_slots[3] = None;
+                    entity.building_art.anim_slots_mut_for_test()[3] = None;
                     entity.damage_fire_anim_ids[0] = Some(anim);
-                    entity.category = crate::map::entities::EntityCategory::Unit;
+                    entity.set_category_for_test(crate::map::entities::EntityCategory::Unit);
                     SnapshotRestoreError::InvalidBuildingAnimSlotOwner {
                         owner_id: owner,
                         slot: 21,
@@ -5592,7 +5609,7 @@ mod tests {
         // Anim UnInit4255B0 broadcasts before deferred physical deletion;
         // Building451B40 clears slot3 immediately but retains Anim+118.
         assert_eq!(
-            sim.entities().get(owner).unwrap().building_anim_slots[3],
+            sim.entities().get(owner).unwrap().building_art.anim_slots()[3],
             None
         );
         assert!(sim.anim(anim).unwrap().building_slot.is_none());
@@ -5625,16 +5642,16 @@ mod tests {
             .current_frame = 17;
         sim.substrate.anims.get_mut(anim).unwrap().runtime.paused = true;
         let building = sim.substrate.entities.get_mut(id).unwrap();
-        building.building_anim_effect_replay[16] = true;
+        building.building_art.anim_effect_replay_mut_for_test()[16] = true;
         building.building_last_operational = true;
-        building.building_stuff_enabled = false;
-        building.building_storage.amounts = [
+        building.building_art.set_stuff_enabled_for_test(false);
+        building.building_art.storage_mut_for_test().amounts = [
             crate::util::native_x87::NativeF32Bits::from_bits(0x7fc01234),
             crate::util::native_x87::NativeF32Bits::NEGATIVE_ZERO,
             crate::util::native_x87::NativeF32Bits::ONE,
             crate::util::native_x87::NativeF32Bits::from_bits(0xbf800000),
         ];
-        building.building_storage.refinery_tier = -17;
+        building.building_art.storage_mut_for_test().refinery_tier = -17;
         assert_ne!(sim.scenario_rng.logical_state(), load_rng);
         let bytes = GameSnapshot::save(&sim, 1, 2, "building-anim.map", 0);
         // Native Scenario load consumes the saved RNG bytes, then reseeds zero.
@@ -5650,7 +5667,12 @@ mod tests {
         restored.restore_after_snapshot_load().unwrap();
         assert_eq!(restored.scenario_rng.logical_state(), load_rng);
         assert_eq!(
-            restored.entities().get(id).unwrap().building_anim_slots[3],
+            restored
+                .entities()
+                .get(id)
+                .unwrap()
+                .building_art
+                .anim_slots()[3],
             Some(anim)
         );
         assert!(
@@ -5658,7 +5680,8 @@ mod tests {
                 .entities()
                 .get(id)
                 .unwrap()
-                .building_damage_state_active
+                .building_art
+                .damage_state_active()
         );
         assert_eq!(restored.anim(anim).unwrap().runtime.current_frame, 17);
         assert!(restored.anim(anim).unwrap().runtime.paused);
@@ -5667,7 +5690,8 @@ mod tests {
                 .entities()
                 .get(id)
                 .unwrap()
-                .building_anim_effect_replay[16]
+                .building_art
+                .anim_effect_replay()[16]
         );
         assert!(
             restored
@@ -5676,10 +5700,17 @@ mod tests {
                 .unwrap()
                 .building_last_operational
         );
-        assert!(!restored.entities().get(id).unwrap().building_stuff_enabled);
+        assert!(
+            !restored
+                .entities()
+                .get(id)
+                .unwrap()
+                .building_art
+                .stuff_enabled()
+        );
         assert_eq!(
-            restored.entities().get(id).unwrap().building_storage,
-            sim.entities().get(id).unwrap().building_storage
+            restored.entities().get(id).unwrap().building_art.storage(),
+            sim.entities().get(id).unwrap().building_art.storage()
         );
         assert_eq!(restored.anim(anim).unwrap().building_slot, Some((id, 3)));
         assert_eq!(restored.state_hash(), expected);
@@ -5689,7 +5720,8 @@ mod tests {
     fn gsi_13_06_body_frame_counter_roundtrips_and_changes_hash() {
         use crate::map::entities::EntityCategory;
         use crate::rules::locomotor_type::LocomotorKind;
-        use crate::sim::components::{DriveCoord, Health};
+        use crate::sim::combat::Health;
+        use crate::sim::components::DriveCoord;
         use crate::sim::game_entity::GameEntity;
         use crate::sim::movement::ShipLocomotionRuntime;
         use crate::sim::movement::locomotor::LocomotorState;
@@ -5707,7 +5739,7 @@ mod tests {
                 0,
                 0,
                 owner,
-                Health { current: 100 },
+                Health::new(100),
                 type_ref,
                 EntityCategory::Unit,
                 0,
@@ -5776,8 +5808,8 @@ mod tests {
     #[test]
     fn gsi_05_10_pending_building_fire_roundtrips_and_changes_hash() {
         use crate::map::entities::EntityCategory;
+        use crate::sim::combat::Health;
         use crate::sim::combat::combat_weapon::WeaponSlot;
-        use crate::sim::components::Health;
         use crate::sim::game_entity::{DelayedFire, GameEntity, PendingBuildingFire};
         use crate::sim::projectile::ProjectileCoord;
 
@@ -5792,7 +5824,7 @@ mod tests {
                 0,
                 0,
                 owner,
-                Health { current: 600 },
+                Health::new(600),
                 type_ref,
                 EntityCategory::Structure,
                 0,
@@ -6151,7 +6183,7 @@ mod tests {
         let mut sim = Simulation::new();
         let entity_id = sim.allocate_stable_id();
         let mut entity = GameEntity::test_default(entity_id, "MTNK", "Americans", 5, 7);
-        entity.lifecycle.in_limbo = false;
+        entity.lifecycle.set_in_limbo_for_test(false);
         entity.lifecycle.cell_marked = false;
         entity.in_logic_vector = true;
         entity.position.z = 3;
@@ -6627,7 +6659,7 @@ mod tests {
     #[test]
     fn foot_air_distinct_native_caches_roundtrip_and_continue_notifications() {
         use crate::map::entities::EntityCategory;
-        use crate::sim::components::Health;
+        use crate::sim::combat::Health;
         use crate::sim::game_entity::GameEntity;
 
         let mut sim = Simulation::with_seed(0);
@@ -6643,7 +6675,7 @@ mod tests {
             0,
             0,
             owner,
-            Health { current: 100 },
+            Health::new(100),
             type_ref,
             EntityCategory::Unit,
             0,
@@ -6737,7 +6769,7 @@ mod tests {
     #[test]
     fn foot_air_retired_cached_slot_survives_restore_until_physical_destruction() {
         use crate::map::entities::EntityCategory;
-        use crate::sim::components::Health;
+        use crate::sim::combat::Health;
         use crate::sim::game_entity::GameEntity;
 
         let mut sim = Simulation::with_seed(0);
@@ -6754,7 +6786,7 @@ mod tests {
                 0,
                 0,
                 owner,
-                Health { current: 100 },
+                Health::new(100),
                 type_ref,
                 EntityCategory::Unit,
                 0,
@@ -6780,8 +6812,8 @@ mod tests {
             .restore_after_snapshot_load()
             .expect("restore retired Foot before drain");
         let actor = restored.substrate.entities.get(1).unwrap();
-        assert!(!actor.lifecycle.object_alive);
-        assert!(actor.lifecycle.in_limbo);
+        assert!(!actor.lifecycle.object_alive());
+        assert!(actor.lifecycle.in_limbo());
         assert_eq!(actor.air_tracker_cell(), (0, 0));
         assert_eq!(actor.air_slot_cell(), (10, 10));
         assert_eq!(restored.substrate.air_slots.holder(10, 10), Some(1));
@@ -6807,7 +6839,7 @@ mod tests {
     fn cell_fog_sensor_and_cloak_state_roundtrips_with_hash() {
         use crate::map::entities::EntityCategory;
         use crate::sim::cloak_disguise::CloakRuntime;
-        use crate::sim::components::Health;
+        use crate::sim::combat::Health;
         use crate::sim::game_entity::GameEntity;
         use crate::sim::sensor_lifecycle::SensorDeposit;
 
@@ -6833,7 +6865,7 @@ mod tests {
             0,
             0,
             source_owner,
-            Health { current: 600 },
+            Health::new(600),
             type_ref,
             EntityCategory::Unit,
             0,
@@ -7030,7 +7062,7 @@ mod tests {
             4,
             crate::map::entities::EntityCategory::Structure,
         );
-        building.owner = owner;
+        building.set_owner_for_test(owner);
         building.base_reservation_spacing = Some(-3);
         sim.substrate.entities.insert(building);
         let mut reservation_terrain = flat_terrain(4, 5);
@@ -7139,8 +7171,8 @@ mod tests {
         let type_ref = sim.interner.intern("MTNK");
         let entity_id = sim.allocate_stable_id();
         let mut entity = GameEntity::test_default(entity_id, "MTNK", "AMERICANS", 2, 2);
-        entity.owner = owner;
-        entity.type_ref = type_ref;
+        entity.set_owner_for_test(owner);
+        entity.set_type_ref_for_test(type_ref);
         entity.locomotor = Some(LocomotorState::for_test_kind(LocomotorKind::Drive));
         sim.substrate.entities.insert(entity);
         sim.add_entity_occupancy(entity_id);
@@ -7356,8 +7388,8 @@ mod tests {
 
         let entity_id = sim.allocate_stable_id();
         let mut entity = GameEntity::test_default(entity_id, "MTNK", "AMERICANS", 5, 6);
-        entity.owner = owner;
-        entity.type_ref = type_ref;
+        entity.set_owner_for_test(owner);
+        entity.set_type_ref_for_test(type_ref);
         entity.pending_c4_detonation = Some(crate::sim::components::PendingC4Detonation {
             timer: crate::sim::timer::CdTimer::from_raw(-1, 0),
             source_entity_id: Some(999),
@@ -8177,8 +8209,8 @@ mod tests {
         sim.interner.intern("VMove");
         let entity_id = sim.allocate_stable_id();
         let mut entity = GameEntity::test_default(entity_id, "TEST", "AMERICANS", 7, 9);
-        entity.owner = owner;
-        entity.type_ref = type_ref;
+        entity.set_owner_for_test(owner);
+        entity.set_type_ref_for_test(type_ref);
         entity.move_sound = crate::sim::world::MoveSoundState::from_raw_for_test(true, 2);
         sim.substrate.entities.insert(entity);
 
@@ -8282,7 +8314,7 @@ mod tests {
     #[test]
     fn entity_construction_frame_round_trips_as_dispatch_start() {
         use crate::map::entities::EntityCategory;
-        use crate::sim::components::Health;
+        use crate::sim::combat::Health;
         use crate::sim::game_entity::GameEntity;
 
         let mut sim = Simulation::new();
@@ -8295,7 +8327,7 @@ mod tests {
             0,
             0,
             owner,
-            Health { current: 100 },
+            Health::new(100),
             type_ref,
             EntityCategory::Unit,
             0,
@@ -8345,16 +8377,18 @@ mod tests {
         assert_eq!(loaded.sim.state_hash(), expected_hash);
     }
 
-    /// `AttackTarget::for_cell` survives serialize → deserialize as the same
+    /// A cell TarCom survives serialize → deserialize as the same
     /// `TargetKind::Cell` variant (regression for SNAPSHOT_VERSION 4 → 5).
     #[test]
     fn cell_attack_target_round_trips_through_snapshot() {
-        use crate::sim::combat::{AttackTarget, TargetKind};
+        use crate::sim::combat::TargetKind;
         use crate::sim::game_entity::GameEntity;
 
         let mut sim = Simulation::new();
         let mut entity = GameEntity::test_default(1, "MTNK", "Americans", 5, 5);
-        entity.attack_target = Some(AttackTarget::for_cell(50, 50));
+        entity
+            .attack_target
+            .set_for_test(Some(TargetKind::Cell(50, 50)));
         sim.substrate.entities.insert(entity);
 
         let bytes = GameSnapshot::save(&sim, 0, 0, "test_map", 0);
@@ -8366,9 +8400,9 @@ mod tests {
             .get(1)
             .expect("entity should be restored")
             .attack_target
-            .as_ref()
+            .target()
             .expect("attack_target should be restored");
-        assert!(matches!(restored.target, TargetKind::Cell(50, 50)));
+        assert!(matches!(restored, TargetKind::Cell(50, 50)));
     }
 
     /// Reveal registers at the tail; a stored-but-unrevealed (limbo) object is
@@ -8453,8 +8487,8 @@ mod tests {
 
         let mut sim = Simulation::new();
         let mut entity = GameEntity::test_default(7, "MTNK", "Americans", 5, 5);
-        entity.lifecycle.object_alive = false;
-        entity.lifecycle.in_limbo = true;
+        entity.lifecycle.set_object_alive_for_test(false);
+        entity.lifecycle.set_in_limbo_for_test(true);
         entity.lifecycle.cell_marked = false;
         entity.in_logic_vector = false;
         entity.dying = true;
@@ -8473,8 +8507,8 @@ mod tests {
         let restored = GameSnapshot::load(&bytes).expect("load should succeed").sim;
         let restored_entity = restored.substrate.entities.get(7).expect("entity restored");
 
-        assert!(!restored_entity.lifecycle.object_alive);
-        assert!(restored_entity.lifecycle.in_limbo);
+        assert!(!restored_entity.lifecycle.object_alive());
+        assert!(restored_entity.lifecycle.in_limbo());
         assert!(!restored_entity.lifecycle.cell_marked);
         assert!(!restored_entity.in_logic_vector);
         assert!(restored_entity.dying);
@@ -8493,7 +8527,7 @@ mod tests {
 
         let mut sim = Simulation::new();
         let mut off_cell_member = GameEntity::test_default(1, "MTNK", "Americans", 5, 5);
-        off_cell_member.lifecycle.in_limbo = false;
+        off_cell_member.lifecycle.set_in_limbo_for_test(false);
         off_cell_member.lifecycle.cell_marked = false;
         sim.substrate.entities.insert(off_cell_member);
         sim.substrate
@@ -8502,7 +8536,7 @@ mod tests {
             .expect("logic fixture append");
 
         let mut marked_non_member = GameEntity::test_default(2, "MTNK", "Americans", 6, 6);
-        marked_non_member.lifecycle.in_limbo = false;
+        marked_non_member.lifecycle.set_in_limbo_for_test(false);
         marked_non_member.lifecycle.cell_marked = true;
         sim.substrate.entities.insert(marked_non_member);
 
@@ -8512,7 +8546,7 @@ mod tests {
 
         let member = restored.substrate.entities.get(1).expect("member restored");
         assert!(member.in_logic_vector);
-        assert!(!member.lifecycle.in_limbo);
+        assert!(!member.lifecycle.in_limbo());
         assert!(!member.lifecycle.cell_marked);
 
         let non_member = restored
@@ -8521,7 +8555,7 @@ mod tests {
             .get(2)
             .expect("non-member restored");
         assert!(!non_member.in_logic_vector);
-        assert!(!non_member.lifecycle.in_limbo);
+        assert!(!non_member.lifecycle.in_limbo());
         assert!(non_member.lifecycle.cell_marked);
     }
 
@@ -8590,19 +8624,19 @@ mod tests {
             5,
             EntityCategory::Structure,
         );
-        structure.owner = owner;
+        structure.set_owner_for_test(owner);
         sim.substrate.entities.insert(structure);
         sim.add_entity_occupancy(100);
 
         let mut older_mobile = GameEntity::test_default(50, "MTNK", "Americans", 5, 5);
-        older_mobile.owner = owner;
-        older_mobile.category = EntityCategory::Unit;
+        older_mobile.set_owner_for_test(owner);
+        older_mobile.set_category_for_test(EntityCategory::Unit);
         sim.substrate.entities.insert(older_mobile);
         sim.add_entity_occupancy(50);
 
         let mut newer_mobile = GameEntity::test_default(10, "HTNK", "Americans", 5, 5);
-        newer_mobile.owner = owner;
-        newer_mobile.category = EntityCategory::Unit;
+        newer_mobile.set_owner_for_test(owner);
+        newer_mobile.set_category_for_test(EntityCategory::Unit);
         sim.substrate.entities.insert(newer_mobile);
         sim.add_entity_occupancy(10);
 
@@ -8913,8 +8947,8 @@ mod tests {
             (2, "E1", EntityCategory::Infantry, 3, 2),
         ] {
             let mut entity = GameEntity::test_default(stable_id, type_id, "Americans", rx, ry);
-            entity.owner = owner;
-            entity.category = category;
+            entity.set_owner_for_test(owner);
+            entity.set_category_for_test(category);
             if category == EntityCategory::Infantry {
                 entity.sub_cell = Some(2);
             }
@@ -8988,13 +9022,13 @@ mod tests {
         let mut ge = GameEntity::test_default(1, "MTNK", "Americans", 5, 5);
         // `place_spawned` resolves the owner against `sim.interner`; re-intern so
         // the id is valid there (test_default uses the thread-local test interner).
-        ge.owner = sim.interner.intern("Americans");
+        ge.set_owner_for_test(sim.interner.intern("Americans"));
         let (id, outcome) = sim.unlimbo(ge);
         assert!(matches!(outcome, RevealOutcome::Revealed { .. }));
 
         let e = sim.substrate.entities.get(id).expect("entity in store");
         assert!(e.in_logic_vector, "must be in the active order");
-        assert!(!e.lifecycle.in_limbo);
+        assert!(!e.lifecycle.in_limbo());
         assert!(e.lifecycle.cell_marked);
         assert_eq!(sim.live_object_order_snapshot(), vec![id]);
         assert!(
@@ -9014,12 +9048,12 @@ mod tests {
         let mut ge = GameEntity::test_default(2, "E1", "Americans", 6, 6);
         // `place_spawned` resolves the owner against `sim.interner`; re-intern so
         // the id is valid there (test_default uses the thread-local test interner).
-        ge.owner = sim.interner.intern("Americans");
+        ge.set_owner_for_test(sim.interner.intern("Americans"));
         let id = sim.create_limbo(ge);
 
         let e = sim.substrate.entities.get(id).expect("entity in store");
         assert!(!e.in_logic_vector, "limbo object is not an active member");
-        assert!(e.lifecycle.in_limbo);
+        assert!(e.lifecycle.in_limbo());
         assert!(!e.lifecycle.cell_marked);
         assert!(sim.live_object_order_snapshot().is_empty());
         assert!(
@@ -9035,7 +9069,7 @@ mod tests {
         let mut sim = Simulation::new();
         let owner = sim.interner.intern("Americans");
         let mut ge = GameEntity::test_default(2, "MTNK", "Americans", 4, 4);
-        ge.owner = owner;
+        ge.set_owner_for_test(owner);
         sim.substrate.entities.insert(ge);
         sim.reveal(2);
         sim.uninit(2);
@@ -9053,7 +9087,7 @@ mod tests {
         let mut sim = Simulation::new();
         let owner = sim.interner.intern("Americans");
         let mut ge = GameEntity::test_default(3, "MTNK", "Americans", 6, 6);
-        ge.owner = owner;
+        ge.set_owner_for_test(owner);
         sim.substrate.entities.insert(ge);
         sim.reveal(3);
         sim.despawn_entity(3);
@@ -9073,7 +9107,7 @@ mod tests {
         let owner = sim.interner.intern("Americans");
         for id in [1u64, 2, 3] {
             let mut ge = GameEntity::test_default(id, "MTNK", "Americans", 5, 5);
-            ge.owner = owner;
+            ge.set_owner_for_test(owner);
             sim.substrate.entities.insert(ge);
             sim.reveal(id);
         }
@@ -9237,8 +9271,8 @@ mod tests {
         for _ in 0..3 {
             let id = sim.allocate_stable_id();
             let mut entity = GameEntity::test_default(id, "E1", "Americans", 5, 5);
-            entity.category = EntityCategory::Infantry;
-            entity.lifecycle.in_limbo = false;
+            entity.set_category_for_test(EntityCategory::Infantry);
+            entity.lifecycle.set_in_limbo_for_test(false);
             sim.substrate.entities.insert(entity);
             sim.add_entity_occupancy(id);
         }

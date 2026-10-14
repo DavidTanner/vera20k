@@ -226,7 +226,7 @@ fn retail_concrete_collapse_rechecks_an_incoming_drive_head() {
         )
         .expect("native fixture Road resident");
     let entity = sim.substrate.entities.get_mut(tank).unwrap();
-    assert_eq!(entity.health.current, 300);
+    assert_eq!(entity.health.current(), 300);
     // Supplied retained head matches native north_head_center. Normal spawn
     // owns placement/type/locomotor; this fixture does not claim path production.
     {
@@ -260,7 +260,7 @@ fn retail_concrete_collapse_rechecks_an_incoming_drive_head() {
         )
     );
     assert_eq!(
-        sim.substrate.entities.get(tank).unwrap().health.current,
+        sim.substrate.entities.get(tank).unwrap().health.current(),
         300
     );
     assert_eq!(
@@ -493,7 +493,7 @@ fn retail_force_fire_collapses_concrete_then_engineer_rebuilds_it() {
     let source = scene.sim().entities().get(tank).unwrap();
     assert!(source.is_alive());
     assert!(
-        source.attack_target.is_none(),
+        source.attack_target.target().is_none(),
         "native70D4A0 detaches the collapsed Cell target immediately"
     );
     let mut guarding = false;

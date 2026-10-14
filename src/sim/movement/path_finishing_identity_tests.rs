@@ -4,6 +4,7 @@
 use super::*;
 use crate::sim::pathfinding::{SearchEntryCandidate, SearchEntryQuery};
 use serde_json::Value;
+use std::collections::BTreeSet;
 
 fn coord(value: &Value) -> (i16, i16) {
     (
@@ -101,9 +102,6 @@ fn production_finisher_forwards_native_real_and_mutable_dummy_receipts() {
                     is_infantry: false,
                     speed_type: None,
                 },
-                ground_blocks: None,
-                bridge_blocks: None,
-                entity_blocks: None,
                 markers: None,
             };
             let cell = Cell::Native(candidate);

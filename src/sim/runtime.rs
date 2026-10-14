@@ -491,7 +491,7 @@ mod tests {
                 .values()
                 .next()
                 .expect("projected MTNK")
-                .techno_ctor_random_word,
+                .techno_ctor_random_word(),
             0xA55A
         );
     }
@@ -1124,7 +1124,7 @@ pub(crate) fn map_wall_owner_candidate_from_building(
         world_z: coords.z,
         foundation_width,
         foundation_height,
-        object_alive: entity.lifecycle.object_alive,
+        object_alive: entity.lifecycle.object_alive(),
         cell_marked: entity.lifecycle.cell_marked,
         house_wall_owner,
     }
@@ -1168,7 +1168,7 @@ pub(crate) fn finalize_constructed_scenario(
             .substrate
             .entities
             .values()
-            .filter(|entity| entity.category == crate::map::entities::EntityCategory::Structure)
+            .filter(|entity| entity.category() == crate::map::entities::EntityCategory::Structure)
             .map(|entity| {
                 let country = sim
                     .houses

@@ -53,11 +53,12 @@
 //!   and `MovementZone=CrusherAll`, and admits a `Crushable=` one only to a
 //!   crusher or CrusherAll. Native answers 4 or 5 to a mover whose primary
 //!   warhead can shoot the wall, and 4 to a crusher on an allied crushable
-//!   wall. Trigger: an order-time route search (`MoverPathFacts::from_entity`
-//!   residual) to a goal reachable only through a wall the mover's warhead
-//!   hits. Effect: the order is redirected or refused where retail accepts it.
-//!   Frequency: rare; Drive, Ship, Hover, Walk and Teleport orders and
-//!   Jumpjet cell orders accept without that search.
+//!   wall. No route search reads this arm: every order takes its class setter,
+//!   and Find_Path asks the live receiver. Its remaining caller is the move
+//!   cursor's per-cell probe (`app::input::cursor`), which shows No-Move for
+//!   any answer above 1, so a shootable wall reads the same. Trigger: a
+//!   crusher hovering an allied crushable wall. Effect: the cursor shows Move
+//!   where native shows No-Move. Frequency: rare. Risk: the cursor only.
 //! - **`MovementRestrictedTo=`** (`UnitTypeClass+0xDFC`, Unit only): when set,
 //!   the cell's land type must equal it. LandType 10 (Tunnel) is exempt from the
 //!   equality test but carries its own rule — `g_IsometricTileTypeClass_Array`
@@ -433,27 +434,6 @@ pub(crate) fn speed_type_allows_cell(cell: &ResolvedTerrainCell, speed_type: Spe
         .is_none_or(|cost| cost > 0)
 }
 
-/// Layer selections used by Can_Enter_Cell-style checks.
-///
-/// The common case uses one layer for all phases. Bridge traversal may select
-/// the bridge object list while the post-traversal occupancy bits remain ground.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct CanEnterLayerContext {
-    pub terrain_layer: MovementLayer,
-    pub object_list_layer: MovementLayer,
-    pub occupancy_bits_layer: MovementLayer,
-}
-
-impl CanEnterLayerContext {
-    pub fn single(layer: MovementLayer) -> Self {
-        Self {
-            terrain_layer: layer,
-            object_list_layer: layer,
-            occupancy_bits_layer: layer,
-        }
-    }
-}
-
 /// Vehicle-only building entry branch that may reach the live row helper.
 ///
 /// InfantryClass::Can_Enter_Cell does not use the radio/contact or
@@ -562,19 +542,12 @@ pub(crate) fn unit_tail_is_crushable_by(
     mover_considers_target_allied: bool,
     current_frame: u32,
 ) -> bool {
-    debug_assert_eq!(unit.category, EntityCategory::Unit);
+    debug_assert_eq!(unit.category(), EntityCategory::Unit);
     let target = bump_crush::CrushTarget::from_entity(unit, current_frame);
     // Live Unit entities carry Techno abstract flag1. Deploy crush immunity
     // is written only by Infantry deploy; it is always clear on this subset.
     !mover_considers_target_allied
         && bump_crush::object_is_crushable_by(capability.omni_crusher, target)
-}
-
-/// An object's native coordinate triple in leptons: cell origin plus sub-cell
-/// offset, and the exact Z when the mover retains one, else the level height.
-pub(crate) fn entity_world_leptons(entity: &GameEntity) -> [i32; 3] {
-    let coord = crate::sim::movement::ground_pose::position_world_coord(&entity.position);
-    [coord.x, coord.y, coord.z]
 }
 
 // ---------------------------------------------------------------------------
@@ -732,11 +705,8 @@ mod tests {
                 (0, 4),
                 (6, 4),
                 None,
-                None,
                 Some(MovementZone::Normal),
                 Some(&terrain),
-                None,
-                0,
                 mover_is_crusher,
                 false,
             )

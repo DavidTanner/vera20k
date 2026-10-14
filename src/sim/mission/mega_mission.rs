@@ -12,7 +12,8 @@
 //! - `Enter_Idle_Mode` asks `RefreshMegaMission` (vt+0x4D0) whether to resume
 //!   the order ([`Simulation::foot_refresh_mega_mission`]);
 //! - pointer expiry turns an expiring MegaTarget into a destination at its
-//!   cell ([`MegaMission::pointer_expired`]).
+//!   cell and drops an expiring MegaDestination
+//!   ([`MegaMission::pointer_expired`]).
 //!
 //! Every Foot class (Infantry, Unit, Aircraft) holds the Foot bodies in these
 //! slots; a Building holds TechnoClass's stubs (`0x0070F000..0x0070F110`),
@@ -20,7 +21,6 @@
 
 use crate::rules::ruleset::RuleSet;
 use crate::sim::combat::TargetKind;
-use crate::sim::components::NavTargetRef;
 use crate::sim::mission::authority::{EntityReadyInputProvider, LiveReadyInputProvider};
 use crate::sim::mission::{MissionId, MissionType};
 use crate::sim::world::{FrameEffects, ObjectAiCtx, Simulation};
@@ -36,8 +36,9 @@ pub(crate) struct MegaMission {
     /// HaveMegaMission (vt+0x4AC, `0x004DF1C0`) and MegaMissionIsAttackMove
     /// (vt+0x4C4, `0x004DF310`) answer alike.
     attack_move: bool,
-    /// MegaDestination: the ordered cell, or the cell a MegaTarget expired on.
-    destination: Option<(u16, u16)>,
+    /// MegaDestination: the ordered Cell or object, or the Cell a MegaTarget
+    /// expired on.
+    destination: Option<TargetKind>,
     /// MegaTarget: the ordered target.
     target: Option<TargetKind>,
     /// HaveAttackMoveTarget: Arrival_Target_Handler's scan found the target
@@ -49,7 +50,7 @@ impl MegaMission {
     /// An attack-move that has found nothing yet, with this MegaDestination
     /// and no MegaTarget.
     #[cfg(test)]
-    pub(crate) fn attack_move(destination: Option<(u16, u16)>) -> Self {
+    pub(crate) fn attack_move(destination: Option<TargetKind>) -> Self {
         Self::for_test(true, destination, None, false)
     }
 
@@ -57,7 +58,7 @@ impl MegaMission {
     #[cfg(test)]
     pub(crate) fn for_test(
         attack_move: bool,
-        destination: Option<(u16, u16)>,
+        destination: Option<TargetKind>,
         target: Option<TargetKind>,
         have_attack_move_target: bool,
     ) -> Self {
@@ -76,7 +77,7 @@ impl MegaMission {
 
     /// MegaDestination.
     #[cfg(test)]
-    pub(crate) fn destination(&self) -> Option<(u16, u16)> {
+    pub(crate) fn destination(&self) -> Option<TargetKind> {
         self.destination
     }
 
@@ -85,14 +86,23 @@ impl MegaMission {
         self.target == Some(TargetKind::Entity(id))
     }
 
+    /// Whether the MegaTarget or the MegaDestination is this object, which
+    /// [`Self::pointer_expired`] then changes.
+    pub(crate) fn references(&self, id: u64) -> bool {
+        self.targets(id) || self.destination == Some(TargetKind::Entity(id))
+    }
+
     /// `FootClass::PointerExpired @ 0x004D9AC9..0x004D9B43`: an expiring
     /// MegaTarget becomes a MegaDestination at the cell of its coordinate
-    /// (vt+0x48) and is dropped; an expiring MegaDestination is dropped.
-    /// MegaDestination is always a cell here, which never expires.
+    /// (vt+0x48) and is dropped; then an expiring MegaDestination is dropped
+    /// (`0x004D9B35..0x004D9B3D`).
     pub(crate) fn pointer_expired(&mut self, expired: u64, expired_cell: Option<(u16, u16)>) {
         if self.targets(expired) {
-            self.destination = expired_cell;
+            self.destination = expired_cell.map(|(rx, ry)| TargetKind::Cell(rx, ry));
             self.target = None;
+        }
+        if self.destination == Some(TargetKind::Entity(expired)) {
+            self.destination = None;
         }
     }
 }
@@ -130,6 +140,11 @@ impl Simulation {
     ///   the other field keeps its value. With neither it runs
     ///   Clear_All_TarCom and answers 29 (`0x004DF12A..0x004DF186`).
     ///
+    /// A token decides by its tag (`0x004DF0F7..0x004DF108`), and the field
+    /// takes what it resolves to (TargetClass `0x006E6E20`,
+    /// [`Simulation::resolve_event_token`]): an object deleted before the
+    /// event runs still answers Move or Attack, with a NULL field.
+    ///
     /// A Building's slot (`0x0070F000`) answers the event mission and stores
     /// nothing.
     pub(crate) fn foot_assign_target_command(
@@ -137,11 +152,11 @@ impl Simulation {
         id: u64,
         mission: MissionType,
         target: Option<TargetKind>,
-        destination: Option<(u16, u16)>,
+        destination: Option<TargetKind>,
         rules: Option<&RuleSet>,
     ) -> MissionType {
         let foot = self.substrate.entities.get(id).is_some_and(|entity| {
-            entity.category != crate::map::entities::EntityCategory::Structure
+            entity.category() != crate::map::entities::EntityCategory::Structure
         });
         if !foot {
             return mission;
@@ -157,6 +172,8 @@ impl Simulation {
                 MissionType::Move
             };
         }
+        let resolved_target = self.resolve_event_token(target);
+        let resolved_destination = self.resolve_event_token(destination);
         let Some(entity) = self.substrate.entities.get_mut(id) else {
             return mission;
         };
@@ -164,11 +181,11 @@ impl Simulation {
         mega.have_attack_move_target = false;
         mega.attack_move = true;
         if destination.is_some() {
-            mega.destination = destination;
+            mega.destination = resolved_destination;
             return MissionType::Move;
         }
         if target.is_some() {
-            mega.target = target;
+            mega.target = resolved_target;
             return MissionType::Attack;
         }
         self.foot_clear_all_tarcom(id);
@@ -204,16 +221,16 @@ impl Simulation {
             target,
             ..
         } = entity.mega_mission;
-        if let Some((rx, ry)) = destination {
+        if let Some(destination) = destination {
             self.foot_queue_mission_now(id, MissionType::Move, rules);
             if let Err(cause) = self.assign_destination_represented(
                 id,
-                Some(NavTargetRef::cell(rx, ry)),
+                Some(destination.into()),
                 rules,
                 registry,
                 effects,
             ) {
-                log::debug!("attack-move {id} resumes to ({rx}, {ry}): {cause}");
+                log::debug!("attack-move {id} resumes to {destination:?}: {cause}");
             }
             return true;
         }
@@ -280,7 +297,7 @@ impl Simulation {
             return;
         };
         let mega = entity.mega_mission;
-        let tarcom = entity.attack_target.as_ref().map(|attack| attack.target);
+        let tarcom = entity.attack_target.target();
         let in_reach = |sim: &Self, target| {
             sim.foot_in_auxiliary_search_range(id, target, rules, ctx.overlay_registry)
         };
@@ -289,7 +306,13 @@ impl Simulation {
                 if in_reach(self, tarcom) {
                     return;
                 }
-                self.substrate.entities.get_mut(id).unwrap().attack_target = None;
+                // `0x004DF3D3`.
+                self.substrate
+                    .entities
+                    .get_mut(id)
+                    .unwrap()
+                    .attack_target
+                    .set(None);
             }
             None
         } else {
@@ -298,7 +321,13 @@ impl Simulation {
             {
                 return;
             }
-            self.substrate.entities.get_mut(id).unwrap().attack_target = None;
+            // `0x004DF46A`.
+            self.substrate
+                .entities
+                .get_mut(id)
+                .unwrap()
+                .attack_target
+                .set(None);
             Some(mega.target)
         };
         let found = crate::sim::world::retaliate_and_scan(
@@ -313,8 +342,8 @@ impl Simulation {
             if let Some(target) = fallback
                 && let Some(entity) = self.substrate.entities.get_mut(id)
             {
-                entity.attack_target =
-                    target.map(|target| crate::sim::combat::AttackTarget { target });
+                // `0x004DF4A5`.
+                entity.attack_target.set(target);
             }
             return;
         }

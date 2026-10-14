@@ -7,7 +7,7 @@ use crate::map::resolved_terrain::{ResolvedTerrainCell, ResolvedTerrainGrid};
 use crate::rules::ini_parser::IniFile;
 use crate::rules::object_type::ObjectCategory;
 use crate::rules::ruleset::RuleSet;
-use crate::sim::components::Health;
+use crate::sim::combat::Health;
 use crate::sim::miner::ResourceType;
 use crate::sim::occupancy::CellListInsertion;
 use crate::sim::pathfinding::PathGrid;
@@ -535,17 +535,17 @@ pub(super) fn spawn_structure(
         0,
         0,
         owner_id,
-        Health { current: 1000 },
+        Health::new(1000),
         type_id_interned,
         crate::map::entities::EntityCategory::Structure,
         0,
         5,
         false,
     );
-    ge.lifecycle.in_limbo = false;
+    ge.lifecycle.set_in_limbo_for_test(false);
     ge.in_playfield = true;
     ge.finish_building_construction_for_test();
-    ge.building_actually_placed = true;
+    ge.building_art.set_actually_placed_for_test(true);
     ge.tracking_facts = crate::sim::house_tracking::TrackingFacts::of(
         crate::map::entities::EntityCategory::Structure,
         rules.object(type_id),
@@ -952,15 +952,15 @@ fn mixed_land_and_naval_factories_bind_independent_vehicle_and_ship_slots() {
         .entities
         .values()
         .find(|entity| {
-            entity.owner == americans
+            entity.owner() == americans
                 && sim
                     .interner
-                    .resolve(entity.type_ref)
+                    .resolve(entity.type_ref())
                     .eq_ignore_ascii_case("DEST")
         })
         .expect("GAYARD delivered DEST through naval FNPC/Unlimbo");
     assert_eq!((destroyer.position.rx, destroyer.position.ry), (22, 22));
-    assert!(destroyer.lifecycle.cell_marked && !destroyer.lifecycle.in_limbo);
+    assert!(destroyer.lifecycle.cell_marked && !destroyer.lifecycle.in_limbo());
     assert_eq!(
         sim.production
             .primary_factory(americans, ProductionCategory::Ship)
@@ -1019,9 +1019,9 @@ fn naval_delivery_nonzero_canenter_refunds_without_trying_second_producer() {
     super::initialize_factory_primary(&mut sim, 2, &rules);
     let mut blocker =
         crate::sim::game_entity::GameEntity::test_default(50, "DEST", "Soviet", 12, 12);
-    blocker.category = crate::map::entities::EntityCategory::Unit;
-    blocker.owner = sim.interner.intern("Soviet");
-    blocker.type_ref = sim.interner.intern("DEST");
+    blocker.set_category_for_test(crate::map::entities::EntityCategory::Unit);
+    blocker.set_owner_for_test(sim.interner.intern("Soviet"));
+    blocker.set_type_ref_for_test(sim.interner.intern("DEST"));
     sim.substrate.entities.insert(blocker);
     sim.substrate.occupancy.add(
         12,
@@ -1077,9 +1077,9 @@ fn naval_delivery_nonzero_canenter_refunds_without_trying_second_producer() {
             .values()
             .filter(|entity| {
                 sim.interner
-                    .resolve(entity.type_ref)
+                    .resolve(entity.type_ref())
                     .eq_ignore_ascii_case("DEST")
-                    && entity.owner == americans
+                    && entity.owner() == americans
             })
             .count(),
         0,
@@ -1182,7 +1182,7 @@ fn naval_empty_fnpc_refunds_then_a_fresh_successor_records_delivery_once() {
     assert_eq!(factory.progress, 0);
     assert!(factory.queue.is_empty());
     let object = sim.substrate.entities.get(successor).unwrap();
-    assert!(object.lifecycle.in_limbo && !object.lifecycle.cell_marked);
+    assert!(object.lifecycle.in_limbo() && !object.lifecycle.cell_marked);
     super::lifecycle_tests::assert_constructor_words(&sim, successor, &mut expected);
     assert_eq!(sim.substrate.entities.len(), entity_count);
     assert_eq!(sim.owned_object_counts(americans).1, owned_units);
@@ -1222,7 +1222,7 @@ fn naval_empty_fnpc_refunds_then_a_fresh_successor_records_delivery_once() {
         &mut sim, &rules, None
     ));
     let delivered = sim.substrate.entities.get(successor).unwrap();
-    assert!(delivered.lifecycle.cell_marked && !delivered.lifecycle.in_limbo);
+    assert!(delivered.lifecycle.cell_marked && !delivered.lifecycle.in_limbo());
     assert_eq!(
         sim.houses[&americans].stats.built(),
         1,
@@ -1289,10 +1289,10 @@ fn naval_delivery_success_uses_producer_rally_then_move_and_recentres() {
         .entities
         .values()
         .find(|entity| {
-            entity.owner == americans
+            entity.owner() == americans
                 && sim
                     .interner
-                    .resolve(entity.type_ref)
+                    .resolve(entity.type_ref())
                     .eq_ignore_ascii_case("DEST")
         })
         .expect("naval Unit delivered");
@@ -1393,10 +1393,10 @@ fn naval_rally_destination_and_move_survive_without_path_grid() {
         .entities
         .values()
         .find(|entity| {
-            entity.owner == americans
+            entity.owner() == americans
                 && sim
                     .interner
-                    .resolve(entity.type_ref)
+                    .resolve(entity.type_ref())
                     .eq_ignore_ascii_case("DEST")
         })
         .expect("rally fast path delivers without a PathGrid");
@@ -1411,8 +1411,12 @@ fn naval_rally_destination_and_move_survive_without_path_grid() {
         "Queue_Mission(Move, 0) is not gated by PathGrid availability"
     );
     assert!(
-        produced.movement_target.is_none(),
-        "no-grid delivery has no immediate A* execution path"
+        produced
+            .navigation
+            .path_replay
+            .remaining_directions()
+            .is_empty(),
+        "the class setter searches no route; the Ship's first Process does"
     );
 }
 
@@ -1469,10 +1473,10 @@ fn naval_rally_destination_and_move_survive_beyond_the_path_grid() {
         .entities
         .values()
         .find(|entity| {
-            entity.owner == americans
+            entity.owner() == americans
                 && sim
                     .interner
-                    .resolve(entity.type_ref)
+                    .resolve(entity.type_ref())
                     .eq_ignore_ascii_case("DEST")
         })
         .expect("naval Unit delivers toward a rally beyond the path grid");
@@ -1488,7 +1492,10 @@ fn naval_rally_destination_and_move_survive_beyond_the_path_grid() {
         "ExitObject queues the native deferred Move mission"
     );
     // Unit741970 -> Ship69F450 installs no route; the first Process asks.
-    assert!(produced.movement_target.is_some(), "scheduled Process");
+    assert!(
+        crate::sim::movement::motion_query::is_moving(&produced) == Some(true),
+        "scheduled Process"
+    );
     assert!(
         produced
             .navigation

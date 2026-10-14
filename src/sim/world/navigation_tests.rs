@@ -163,8 +163,8 @@ fn recalc_keeps_marked_structure_over_partial_terrain_occupation_and_bridge_deck
     sim.install_resolved_terrain_for_new_map(terrain);
     let mut structure =
         crate::sim::game_entity::GameEntity::test_default(47, "YARD", "Americans", 6, 6);
-    structure.category = EntityCategory::Structure;
-    structure.type_ref = sim.interner.intern("YARD");
+    structure.set_category_for_test(EntityCategory::Structure);
+    structure.set_type_ref_for_test(sim.interner.intern("YARD"));
     structure.lifecycle.cell_marked = true;
     structure.dying = true; // Dying still owns its marked footprint.
     sim.substrate.entities.insert(structure);
@@ -244,14 +244,14 @@ fn assert_retained_roles(sim: &Simulation, parent_id: u64, upgrade_id: u64, held
             .cell_marked
     );
     let upgrade = sim.substrate.entities.get(upgrade_id).unwrap();
-    assert!(!upgrade.lifecycle.in_limbo && !upgrade.lifecycle.cell_marked);
+    assert!(!upgrade.lifecycle.in_limbo() && !upgrade.lifecycle.cell_marked);
     assert!(
         upgrade
             .structure_upgrade_link
             .is_some_and(|link| link.parent_stable_id == parent_id)
     );
     let held = sim.substrate.entities.get(held_id).unwrap();
-    assert!(held.lifecycle.in_limbo && !held.lifecycle.cell_marked);
+    assert!(held.lifecycle.in_limbo() && !held.lifecycle.cell_marked);
     assert_eq!(
         sim.production
             .factories
@@ -303,7 +303,7 @@ fn held_factory_and_attached_upgrade_stay_off_navigation_through_frame_and_resto
         .values()
         .find(|entity| entity.structure_upgrade_link.is_some())
         .unwrap();
-    assert!(!upgrade.lifecycle.in_limbo && !upgrade.lifecycle.cell_marked);
+    assert!(!upgrade.lifecycle.in_limbo() && !upgrade.lifecycle.cell_marked);
     let upgrade_id = upgrade.stable_id();
     assert!(enqueue_by_type(
         &mut sim,
@@ -323,7 +323,7 @@ fn held_factory_and_attached_upgrade_stay_off_navigation_through_frame_and_resto
         .entity_id
         .unwrap();
     let held = sim.substrate.entities.get(held_id).unwrap();
-    assert!(held.lifecycle.in_limbo && !held.lifecycle.cell_marked);
+    assert!(held.lifecycle.in_limbo() && !held.lifecycle.cell_marked);
     assert_eq!((held.position.rx, held.position.ry), (0, 0));
 
     assert!(sim.rebuild_dynamic_navigation(&rules));
@@ -368,7 +368,7 @@ fn held_factory_and_attached_upgrade_stay_off_navigation_through_frame_and_resto
             .get(held_id)
             .unwrap()
             .lifecycle
-            .in_limbo
+            .in_limbo()
     );
     assert_only_marked_foundation(&restored);
     assert_retained_roles(&restored, parent_id, upgrade_id, held_id);
@@ -418,8 +418,8 @@ fn structure_changes_publish_footprint_cells_without_rebuilding_zones() {
 
     let mut structure =
         crate::sim::game_entity::GameEntity::test_default(9, "YARD", "Americans", 6, 6);
-    structure.category = EntityCategory::Structure;
-    structure.type_ref = sim.interner.intern("YARD");
+    structure.set_category_for_test(EntityCategory::Structure);
+    structure.set_type_ref_for_test(sim.interner.intern("YARD"));
     structure.lifecycle.cell_marked = true;
     sim.substrate.entities.insert(structure);
     assert!(
@@ -469,7 +469,7 @@ fn structure_mark_publishes_presence_and_preserves_other_marked_blockers() {
             6,
             EntityCategory::Structure,
         );
-        structure.type_ref = sim.interner.intern("YARD");
+        structure.set_type_ref_for_test(sim.interner.intern("YARD"));
         structure.foundation = rules.object("YARD").unwrap().foundation.clone();
         sim.substrate.entities.insert(structure);
         assert!(sim.mark_entity_put(id, context));

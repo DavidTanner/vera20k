@@ -11,8 +11,9 @@ use super::{EngineerBuildingAction, SimSoundEvent, Simulation, entry_test_fixtur
 use crate::map::entities::EntityCategory;
 use crate::rules::overlay_types::OverlayTypeRegistry;
 use crate::rules::{ini_parser::IniFile, ruleset::RuleSet};
+use crate::sim::combat::Health;
 use crate::sim::command::Command;
-use crate::sim::components::{DriveCoord, Health, NavTargetRef};
+use crate::sim::components::{DriveCoord, NavTargetRef};
 use crate::sim::game_entity::GameEntity;
 use crate::sim::house_state::{HouseState, MatchStatistics};
 use crate::sim::intern::InternedId;
@@ -232,7 +233,7 @@ impl Fixture {
             let entity = sim.substrate.entities.get_mut(building).unwrap();
             entity.finish_building_construction_for_test();
             ground_pose::put_location(&mut entity.position, coord(&before["position"]));
-            entity.health.current = int(&before["actual_hp"]);
+            entity.health.set_for_test(int(&before["actual_hp"]));
             entity.estimated_health.reset(int(&before["estimated_hp"]));
             entity.repairing = before["paid_repair"] == 1;
             entity.sample_building_health_for_power();
@@ -337,15 +338,15 @@ impl Fixture {
                 0,
                 0,
                 other_owner,
-                Health { current: 374 },
+                Health::new(374),
                 type_ref,
                 EntityCategory::Structure,
                 0,
                 5,
                 false,
             );
-            entity.lifecycle.object_alive = true;
-            entity.lifecycle.in_limbo = false;
+            entity.lifecycle.set_object_alive_for_test(true);
+            entity.lifecycle.set_in_limbo_for_test(false);
             sim.substrate.entities.insert(entity);
             sim.substrate.occupancy.remove(10, 10, building);
             for id in [other, building] {
@@ -407,7 +408,7 @@ impl Fixture {
     fn assert_building(&self, native: &Value, boundary: &str) {
         let entity = self.sim.substrate.entities.get(self.building).unwrap();
         assert_eq!(
-            entity.health.current,
+            entity.health.current(),
             int(&native["actual_hp"]),
             "{boundary}: actual HP"
         );
@@ -427,7 +428,7 @@ impl Fixture {
             "{boundary}: paid repair"
         );
         assert_eq!(
-            entity.building_damage_state_active,
+            entity.building_art.damage_state_active(),
             native["damaged_mode"] == 1,
             "{boundary}: damage mode"
         );
@@ -474,7 +475,7 @@ impl Fixture {
         for slot in native["slots"].as_array().unwrap() {
             let anim = self
                 .sim
-                .anim(entity.building_anim_slots[3].unwrap())
+                .anim(entity.building_art.anim_slots()[3].unwrap())
                 .unwrap();
             assert_eq!(
                 self.sim.resolve(anim.type_id),
@@ -615,17 +616,17 @@ impl Fixture {
         let entity = self.sim.substrate.entities.get(id).unwrap();
         let expected = &native["engineer"];
         assert_eq!(
-            entity.health.current,
+            entity.health.current(),
             int(&expected["actual_hp"]),
             "{boundary}: Engineer HP"
         );
         assert_eq!(
-            entity.lifecycle.object_alive,
+            entity.lifecycle.object_alive(),
             expected["alive"] == 1,
             "{boundary}: Engineer alive"
         );
         assert_eq!(
-            entity.lifecycle.in_limbo,
+            entity.lifecycle.in_limbo(),
             expected["limbo"] == 1,
             "{boundary}: Engineer limbo"
         );
@@ -640,7 +641,7 @@ impl Fixture {
             "{boundary}: Logic membership"
         );
         assert_eq!(
-            entity.native_unique_id,
+            entity.native_unique_id(),
             int(&expected["uid"]),
             "{boundary}: retained UID"
         );
@@ -746,7 +747,7 @@ fn original_half_threshold_and_friendly_repair_object_actions() {
             .get_mut(fixture.building)
             .unwrap()
             .health
-            .current = int(&row["actual_hp"]);
+            .set_for_test(int(&row["actual_hp"]));
         let before = fixture.sim.state_hash();
         let expected = match int(&row["action"]) {
             9 => EngineerBuildingAction::Capture,
@@ -895,7 +896,7 @@ fn original_nine_routes_ten_walk_arrivals_repair_capture_and_deferred_cleanup() 
                     .substrate
                     .entities
                     .values()
-                    .any(|entity| entity.native_unique_id == uid),
+                    .any(|entity| entity.native_unique_id() == uid),
                 survives_uid,
                 "{name}/{index}: implicit UID roster"
             );

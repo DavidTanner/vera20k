@@ -51,7 +51,7 @@ fn shared_null_destination_matches_original_gate_and_timer_boundaries() {
         let mut e = actor(input);
         let aircraft = input["entry"] == "aircraft";
         if aircraft {
-            e.category = crate::map::entities::EntityCategory::Aircraft;
+            e.set_category_for_test(crate::map::entities::EntityCategory::Aircraft);
         }
         let current = input["mission"].as_i64().unwrap() as i32;
         e.mission.apply_test_fixture(MissionTestFixture {
@@ -64,8 +64,9 @@ fn shared_null_destination_matches_original_gate_and_timer_boundaries() {
             ai_counter: 0,
             dispatch_timer: MissionDispatchTimer::at_frame(0),
         });
-        e.attack_target =
-            (input["target"] == true).then(|| crate::sim::combat::AttackTarget::for_cell(11, 10));
+        e.attack_target.set_for_test(
+            (input["target"] == true).then(|| crate::sim::combat::TargetKind::Cell(11, 10)),
+        );
         e.navigation.nav_com = (input["nav"] != false).then(|| NavTargetRef::cell(11, 10));
         e.foot_locomotor_swap_active = input["swap"] == true;
         if input["bunker"] == true {
@@ -170,7 +171,7 @@ fn terrain(bridge: bool) -> ResolvedTerrainGrid {
 
 fn actor(input: &Value) -> GameEntity {
     let mut e = GameEntity::test_default(1, "MOVER", "Americans", 10, 10);
-    e.category = crate::map::entities::EntityCategory::Unit;
+    e.set_category_for_test(crate::map::entities::EntityCategory::Unit);
     e.position.sub_x = SimFixed::from_num(128);
     e.position.sub_y = SimFixed::from_num(128);
     let kind = if input["family"] == "drive" {
@@ -255,7 +256,7 @@ fn destination_fixture(
     crate::rules::ruleset::RuleSet,
 ) {
     let mut entity = actor(input);
-    entity.lifecycle.in_limbo = false;
+    entity.lifecycle.set_in_limbo_for_test(false);
     let mut sim = crate::sim::world::Simulation::new();
     sim.interner = crate::sim::intern::test_interner();
     sim.session.binary_frame = 100;
@@ -378,7 +379,6 @@ fn command_move_destinations_match_native_unit_setter() {
                 entity_id: 1,
                 target_rx: 11,
                 target_ry: 10,
-                queue: false,
             },
             Some(&rules),
         ));
@@ -394,13 +394,12 @@ fn command_move_destinations_match_native_unit_setter() {
 
 /// Original rank setters750090/7500B0 -> Unit741970(cell,1) -> the live
 /// Drive4B0F20/Ship6A05F0 speed prefix, from track_speed_native.order_histories.
-/// A repeated destination preserves the old VERA order-speed stamp; the
-/// production prefix reads the promoted rank anyway. The forced-repeat
-/// control reaches the Foot tail again. No paid points or promotion AI are
-/// claimed by this comparison: the native and Rust prefixes stop at budget.
+/// A repeated destination returns before any write; the production prefix
+/// reads the promoted rank anyway. The forced-repeat control reaches the Foot
+/// tail again. No paid points or promotion AI are claimed by this comparison:
+/// the native and Rust prefixes stop at budget.
 #[test]
-fn repeated_move_orders_keep_the_stamp_but_sample_live_native_speed() {
-    use crate::sim::combat::veterancy;
+fn repeated_move_orders_sample_live_native_speed() {
     use crate::sim::movement::track_process::TrackFamily;
     use crate::util::fixed_math::SIM_ONE;
 
@@ -450,7 +449,6 @@ fn repeated_move_orders_keep_the_stamp_but_sample_live_native_speed() {
         loco.store_track_progress(family, progress);
         loco.store_track_valid(family, true);
         loco.store_track_target_fraction(family, SIM_ONE);
-        let initial_stamp = SimFixed::from_num(input["raw"].as_i64().unwrap() * 15);
         let rng_before = [
             sim.main_rng.state(),
             sim.scenario_rng.state(),
@@ -461,36 +459,26 @@ fn repeated_move_orders_keep_the_stamp_but_sample_live_native_speed() {
             let entity = sim.substrate.entities.get_mut(1).unwrap();
             match step["rank"].as_u64().unwrap() {
                 0 => {}
-                1 => veterancy::set_veteran(entity),
-                2 => veterancy::set_elite(entity),
+                1 => entity.veterancy.set_veteran(),
+                2 => entity.veterancy.set_elite(),
                 rank => panic!("unexpected native rank {rank}"),
             }
             entity.setter_force_reassign = step["forced"] == true;
-            let retained_before = serde_json::to_value((
-                &entity.navigation,
-                &entity.locomotor,
-                &entity.movement_target,
-            ))
-            .unwrap();
+            let retained_before =
+                serde_json::to_value((&entity.navigation, &entity.locomotor)).unwrap();
             assert!(sim.apply_command(
                 "Americans",
                 &crate::sim::command::Command::Move {
                     entity_id: 1,
                     target_rx: 11,
                     target_ry: 10,
-                    queue: false,
                 },
                 Some(&rules),
             ));
             let entity = sim.substrate.entities.get(1).unwrap();
             if step["setter_objects_unchanged"] == true {
                 assert_eq!(
-                    serde_json::to_value((
-                        &entity.navigation,
-                        &entity.locomotor,
-                        &entity.movement_target,
-                    ))
-                    .unwrap(),
+                    serde_json::to_value((&entity.navigation, &entity.locomotor)).unwrap(),
                     retained_before,
                     "the native same-NavCom setter returns before any write: {step}",
                 );
@@ -505,7 +493,7 @@ fn repeated_move_orders_keep_the_stamp_but_sample_live_native_speed() {
             let path = &entity.navigation.path_runtime;
             assert_eq!(
                 json!({
-                    "rank_bits": format!("{:08x}", entity.veterancy_raw.bits()),
+                    "rank_bits": format!("{:08x}", entity.veterancy.raw().bits()),
                     "destination": [destination.x, destination.y, destination.z],
                     "head": [head.x, head.y, head.z],
                     "nav": nav,
@@ -526,15 +514,6 @@ fn repeated_move_orders_keep_the_stamp_but_sample_live_native_speed() {
                 sim.current_speed_for_test(1, &rules),
                 native_speed,
                 "{step}"
-            );
-            assert_eq!(
-                entity.movement_target.as_ref().unwrap().speed,
-                if step["forced"] == true {
-                    SimFixed::from_num(native_speed * 15)
-                } else {
-                    initial_stamp
-                },
-                "only an accepted new/forced destination refreshes the adapter: {step}",
             );
             let speed = super::super::track_speed::advance(
                 sim.substrate.entities.get_mut(1).unwrap(),
@@ -594,7 +573,6 @@ fn command_move_matches_native_action_line_destination_inputs() {
                 entity_id: 1,
                 target_rx: 11,
                 target_ry: 10,
-                queue: false,
             },
             Some(&rules),
         ));
@@ -645,133 +623,6 @@ fn command_move_matches_native_action_line_destination_inputs() {
         checked += 1;
     }
     assert_eq!(checked, 7);
-}
-
-/// Unit741A80..741A9C returns before any write for the same NavCom without
-/// Techno+1F8. Replay the original supplied-prior Drive row through the
-/// production ground-order boundary, which must reach that class guard rather
-/// than composing the accepted Foot/Move_To suffix again. This is a setter
-/// boundary comparison, not a stock MTNK input or whole movement history.
-#[test]
-fn ground_orders_preserve_the_native_unit_same_destination_noop() {
-    use crate::sim::world::{GroundMove, Simulation};
-
-    // The native guard returns before type tuning is read. The registry only
-    // supplies the represented Unit identity required by class preflight.
-    let rules = crate::rules::ruleset::RuleSet::from_ini(
-        &crate::rules::ini_parser::IniFile::from_str("[VehicleTypes]\n0=MOVER\n[MOVER]\n"),
-    )
-    .unwrap();
-    let mut checked = 0;
-    for row in corpus() {
-        let input = &row["input"];
-        if input["entry"] != "unit"
-            || input["family"] != "drive"
-            || input["same_nav"] != true
-            || input["force_reassign"] == true
-            || input["null"] == true
-        {
-            continue;
-        }
-        checked += 1;
-        for published_grid in [true, false] {
-            let mut sim = Simulation::new();
-            sim.session.binary_frame = 100;
-            let mut e = actor(input);
-            e.navigation.nav_com = Some(NavTargetRef::cell(11, 10));
-            sim.interner = crate::sim::intern::test_interner();
-            sim.substrate.entities.insert(e);
-            sim.install_resolved_terrain_for_new_map(terrain(false));
-            if published_grid {
-                sim.install_fixture_path_grid(Some(&crate::sim::pathfinding::PathGrid::new(
-                    32, 32,
-                )));
-            }
-            let rng = sim.rng_state();
-            assert!(sim.issue_ground_move(
-                GroundMove {
-                    entity_id: 1,
-                    target: (11, 10),
-                    speed: SimFixed::from_num(768),
-                    queue: false,
-                    speed_type: None,
-                    owner_blocks: true,
-                    object_destination: None,
-                },
-                Some(&rules),
-                None,
-                crate::sim::world::FrameEffects::default(),
-            ));
-            compare(sim.substrate.entities.get(1).unwrap(), &row);
-            assert_eq!(sim.rng_state(), rng);
-        }
-    }
-    assert_eq!(checked, 1);
-}
-
-#[test]
-fn ordinary_track_orders_match_native_without_an_eager_path_or_power_change() {
-    let mut checked = 0;
-    for row in corpus() {
-        let input = &row["input"];
-        if input["entry"] != "unit"
-            || input.get("same_nav").is_some()
-            || input.get("skip_move").is_some()
-        {
-            continue;
-        }
-        checked += 1;
-        let terrain = terrain(input["bridge"] == true);
-        for blocked in [false, true] {
-            let mut entities = EntityStore::new();
-            entities.insert(actor(input));
-            let mut grid = crate::sim::pathfinding::PathGrid::new(32, 32);
-            if blocked {
-                // A wall surrounding the requested cell is irrelevant until
-                // Process; its accepted NavCom must not be redirected/refused.
-                for y in 0..32 {
-                    grid.set_blocked(11, y, true);
-                }
-            }
-            assert!(
-                super::super::movement_commands::issue_move_command_with_layered(
-                    &mut entities,
-                    &grid,
-                    1,
-                    (11, 10),
-                    SimFixed::from_num(768),
-                    false,
-                    None,
-                    None,
-                    Some(&terrain),
-                    None,
-                    None,
-                    None,
-                    None,
-                    None,
-                    super::super::DestinationTiming::new(100, 22),
-                )
-            );
-            let entity = entities.get(1).unwrap();
-            compare(entity, &row);
-            let restored: GameEntity =
-                serde_json::from_value(serde_json::to_value(entity).unwrap()).unwrap();
-            compare(&restored, &row);
-            assert!(entity.movement_target.is_some());
-            assert_eq!(
-                crate::sim::movement::movement_goal_cell(entity),
-                Some((11, 10))
-            );
-            assert!(
-                entity
-                    .navigation
-                    .path_replay
-                    .remaining_directions()
-                    .is_empty()
-            );
-        }
-    }
-    assert_eq!(checked, 24);
 }
 
 #[test]
@@ -1005,7 +856,7 @@ fn destination_receipt_actor(
     before: &Value,
 ) -> GameEntity {
     use crate::map::entities::EntityCategory;
-    use crate::sim::components::Health;
+    use crate::sim::combat::Health;
     use crate::sim::mission::state::MissionTestFixture;
     use crate::sim::mission::{MissionDispatchTimer, MissionId};
 
@@ -1027,9 +878,7 @@ fn destination_receipt_actor(
         level,
         0,
         owner,
-        Health {
-            current: object.strength,
-        },
+        Health::new(object.strength),
         sim.interner.intern(family),
         if family == "E1" {
             EntityCategory::Infantry
@@ -1040,7 +889,7 @@ fn destination_receipt_actor(
         0,
         family != "E1",
     );
-    actor.lifecycle.in_limbo = false;
+    actor.lifecycle.set_in_limbo_for_test(false);
     actor.position.sub_x = SimFixed::from_num(xyz.x % 256);
     actor.position.sub_y = SimFixed::from_num(xyz.y % 256);
     actor.position.exact_z_leptons = Some(xyz.z);
@@ -1196,7 +1045,7 @@ fn noncell_foot_destinations_match_original_anytown_class_calls() {
                 crate::sim::world::FrameEffects::default(),
             )
         } else {
-            sim.set_infantry_destination(
+            sim.assign_infantry_destination(
                 1,
                 requested,
                 &rules,

@@ -8,7 +8,7 @@ use std::collections::BTreeMap;
 use crate::map::entities::EntityCategory;
 use crate::rules::object_type::Ability;
 use crate::rules::ruleset::RuleSet;
-use crate::sim::combat::veterancy::{has_weapon_ability, rank_of};
+use crate::sim::combat::veterancy::has_weapon_ability;
 use crate::sim::intern::InternedId;
 use crate::sim::vision::FogState;
 
@@ -44,9 +44,9 @@ fn radar_fog_cell_from_leptons(x: i32, y: i32) -> Option<(u16, u16)> {
 }
 
 fn enemy_sensed_prefilter(entity: &crate::sim::game_entity::GameEntity) -> bool {
-    if entity.category == EntityCategory::Structure {
+    if entity.category() == EntityCategory::Structure {
         true
-    } else if entity.category == EntityCategory::Aircraft {
+    } else if entity.category() == EntityCategory::Aircraft {
         entity
             .aircraft_ammo
             .as_ref()
@@ -301,7 +301,7 @@ pub(super) fn build_radar_object_update(
         // TechnoClass+0x4A0 passes clamp=0 to FUN_006557F0.
         |surface| surface.world_to_surface_pixel(raw_x, raw_y, false),
     );
-    let foundation = (entity.category == EntityCategory::Structure)
+    let foundation = (entity.category() == EntityCategory::Structure)
         .then(|| parse_foundation_size(&entity.foundation));
     let owner_is_human_player = local_owner.is_none_or(|local_owner| {
         radar_owner_is_human_player(entity.owner(), local_owner, houses, game_mode_nonzero)
@@ -352,7 +352,7 @@ pub(super) fn build_radar_object_update(
     let cloak_state = entity.cloak.as_ref().map_or(0, |cloak| cloak.state);
     let veteran_radar_invisible = object.is_some_and(|object| {
         has_weapon_ability(
-            rank_of(entity.veterancy_raw),
+            entity.veterancy.rank_kind(),
             object,
             Ability::RadarInvisible,
         )
@@ -360,7 +360,7 @@ pub(super) fn build_radar_object_update(
     let visibility = if foundation.is_some() {
         RadarRegistrationVisibilityFacts::Building(RadarBuildingVisibilityFacts {
             type_invisible: effective_type_invisible,
-            in_limbo: entity.lifecycle.in_limbo,
+            in_limbo: entity.lifecycle.in_limbo(),
             owner_is_human_player,
             fresh_in_playfield,
             both_corners_shrouded,
@@ -376,8 +376,8 @@ pub(super) fn build_radar_object_update(
         RadarRegistrationVisibilityFacts::Mobile(RadarMobileVisibilityFacts {
             type_invisible: effective_type_invisible,
             sinking: entity.sinking.is_active(),
-            object_alive: entity.lifecycle.object_alive,
-            in_limbo: entity.lifecycle.in_limbo,
+            object_alive: entity.lifecycle.object_alive(),
+            in_limbo: entity.lifecycle.in_limbo(),
             owner_is_human_player,
             fresh_in_playfield,
             shrouded,
@@ -462,7 +462,7 @@ mod tests {
         });
         assert!(!enemy_sensed_prefilter(&entity));
 
-        entity.category = EntityCategory::Aircraft;
+        entity.set_category_for_test(EntityCategory::Aircraft);
         entity.low_bridge_tube_state = None;
         entity.aircraft_ammo = Some(AircraftAmmo::new(3));
         assert!(!enemy_sensed_prefilter(&entity));
@@ -472,7 +472,7 @@ mod tests {
             "Ammo=-1 keeps the signed byte negative"
         );
 
-        entity.category = EntityCategory::Structure;
+        entity.set_category_for_test(EntityCategory::Structure);
         entity.aircraft_ammo = Some(AircraftAmmo::new(3));
         assert!(
             enemy_sensed_prefilter(&entity),
@@ -484,7 +484,7 @@ mod tests {
     fn enemy_sensed_source_uses_raw_building_anchor_not_visibility_center() {
         let mut entity =
             crate::sim::game_entity::GameEntity::test_default(1, "BLDG", "Enemy", 4, 5);
-        entity.category = EntityCategory::Structure;
+        entity.set_category_for_test(EntityCategory::Structure);
         entity.foundation = "3x2".to_string();
         let raw = crate::sim::movement::ground_pose::position_world_xy(&entity.position);
         let visibility = crate::sim::movement::ground_pose::object_center_xy(&entity);
@@ -541,10 +541,10 @@ mod tests {
         let id = sim.allocate_stable_id();
         let mut entity =
             crate::sim::game_entity::GameEntity::test_default(id, "TEST", "Americans", 4, 5);
-        entity.type_ref = sim.interner.intern("TEST");
-        entity.owner = sim.interner.intern("Americans");
-        entity.category = EntityCategory::Unit;
-        entity.lifecycle.in_limbo = false;
+        entity.set_type_ref_for_test(sim.interner.intern("TEST"));
+        entity.set_owner_for_test(sim.interner.intern("Americans"));
+        entity.set_category_for_test(EntityCategory::Unit);
+        entity.lifecycle.set_in_limbo_for_test(false);
         sim.substrate.entities.insert(entity);
         let update = |sim: &crate::sim::world::Simulation| {
             build_radar_object_update(
@@ -565,7 +565,7 @@ mod tests {
         tracker.update_object(update(&sim), false);
         assert!(tracker.is_registered(id));
         sim.begin_ship_sinking(id, &rules, crate::sim::world::FrameEffects::default());
-        assert!(sim.entities().get(id).unwrap().lifecycle.object_alive);
+        assert!(sim.entities().get(id).unwrap().lifecycle.object_alive());
         tracker.update_object(update(&sim), false);
         assert!(
             !tracker.is_registered(id),
@@ -881,7 +881,7 @@ mod tests {
         let mut fog = FogState::default();
         fog.mark_visible_for_owner(local, 5, 5);
         let mut entity = crate::sim::game_entity::GameEntity::test_default(1, "DOT", "Enemy", 5, 5);
-        entity.lifecycle.in_limbo = false;
+        entity.lifecycle.set_in_limbo_for_test(false);
         let update = build_radar_object_update(
             &entity,
             &houses,

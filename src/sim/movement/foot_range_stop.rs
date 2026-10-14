@@ -41,14 +41,14 @@ impl Simulation {
             return false;
         };
         let reached = (|| {
-            let target = actor.attack_target.as_ref()?.target;
+            let target = actor.attack_target.target()?;
             let actor_type = self.object_type(actor.type_ref(), rules)?;
             let (index, selected) = self.foot_target_weapon(actor, actor_type, target, rules)?;
             let TargetKind::Entity(target_id) = target else {
                 return None;
             };
             let target_entity = self.substrate.entities.get(target_id)?;
-            if target_entity.category == EntityCategory::Structure {
+            if target_entity.category() == EntityCategory::Structure {
                 return None;
             }
             // Foot+4F0 ->4D9FF0->41BDD0->5F65A0 returns actual owner XYZ,

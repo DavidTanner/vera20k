@@ -350,7 +350,9 @@ fn dress(mut s: Scene, input: &Value) -> Scene {
     // Refinery state.
     {
         let building = s.sim.substrate.entities.get_mut(refinery).unwrap();
-        building.health.current = input["refinery_health"].as_i64().unwrap_or(900) as i32;
+        building
+            .health
+            .set_for_test(input["refinery_health"].as_i64().unwrap_or(900) as i32);
         if input["online"] == false {
             building.temporal = crate::sim::temporal::TemporalState::warped_by_for_test(other);
         }
@@ -360,10 +362,10 @@ fn dress(mut s: Scene, input: &Value) -> Scene {
         // A live animation in the slot (the oracle's nonzero pointer); no
         // stock refinery art defines these, so the handles are placeholders.
         if input["production_anim"].as_u64().is_some_and(|a| a != 0) {
-            building.building_anim_slots[8] = Some(u64::MAX - 8);
+            building.building_art.anim_slots_mut_for_test()[8] = Some(u64::MAX - 8);
         }
         if input["special_anim"].as_u64().is_some_and(|a| a != 0) {
-            building.building_anim_slots[10] = Some(u64::MAX - 10);
+            building.building_art.anim_slots_mut_for_test()[10] = Some(u64::MAX - 10);
         }
     }
     if input["west_building"] == false {

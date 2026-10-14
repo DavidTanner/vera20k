@@ -237,10 +237,12 @@ fn native_blowup_all_corpus() {
                 let id = 100 + n as u64;
                 let mut entity =
                     GameEntity::test_default(id, "TANK", &owner_name, 10 + n as u16, 10);
-                entity.owner = owner;
-                entity.type_ref = sim.interner.intern("TANK");
-                entity.category = EntityCategory::Unit;
-                entity.health.current = object["health"].as_i64().unwrap_or(100) as i32;
+                entity.set_owner_for_test(owner);
+                entity.set_type_ref_for_test(sim.interner.intern("TANK"));
+                entity.set_category_for_test(EntityCategory::Unit);
+                entity
+                    .health
+                    .set_for_test(object["health"].as_i64().unwrap_or(100) as i32);
                 sim.substrate.entities.insert(entity);
                 id
             })
@@ -289,7 +291,7 @@ fn native_blowup_all_corpus() {
         }
         let health_before: Vec<i32> = ids
             .iter()
-            .map(|&id| sim.substrate.entities.get(id).unwrap().health.current)
+            .map(|&id| sim.substrate.entities.get(id).unwrap().health.current())
             .collect();
         let blown = houses[input["house"].as_u64().unwrap() as usize];
         let c4 = sim.interner.intern("Super");
@@ -346,7 +348,7 @@ fn native_blowup_all_corpus() {
             let entity = sim.substrate.entities.get(id).unwrap();
             let hit = native_victims.contains(&n);
             assert_eq!(
-                entity.health.current == 0,
+                entity.health.current() == 0,
                 hit || health_before[n] == 0,
                 "{name}: obj{n} dies"
             );
@@ -431,7 +433,7 @@ fn losing_the_last_building_blows_up_the_army_next_frame() {
         sim.substrate
             .entities
             .get(tank)
-            .is_none_or(|entity| entity.health.current == 0),
+            .is_none_or(|entity| entity.health.current() == 0),
         "the army is blown up"
     );
     assert_eq!(

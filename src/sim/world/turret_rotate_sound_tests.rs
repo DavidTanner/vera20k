@@ -756,6 +756,7 @@ fn a_retail_grand_cannons_mission_aim_starts_and_releases_the_retail_cue() {
             .get(id)
             .unwrap()
             .attack_target
+            .target()
             .is_some(),
         "the building admits the in-range target"
     );

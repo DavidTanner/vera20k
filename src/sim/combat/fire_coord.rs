@@ -78,7 +78,7 @@ pub(crate) fn effect_z_adjust(
     source: &GameEntity,
     from: ProjectileCoord,
 ) -> i32 {
-    if source.category != EntityCategory::Structure {
+    if source.category() != EntityCategory::Structure {
         return 0;
     }
     let location =
@@ -121,7 +121,7 @@ impl FireSource {
     pub(crate) fn of_entity(entity: &crate::sim::game_entity::GameEntity) -> Self {
         Self {
             stable_id: entity.stable_id(),
-            category: entity.category,
+            category: entity.category(),
             rx: entity.position.rx,
             ry: entity.position.ry,
             sub_x: entity.position.sub_x,
@@ -130,9 +130,9 @@ impl FireSource {
             exact_z_leptons: entity.position.exact_z_leptons,
             hull_facing: entity.body_facing,
             barrel_facing: entity.barrel_facing,
-            veterancy: entity.veterancy(),
+            veterancy: entity.veterancy.rank(),
             garrison_fire_index: None,
-            tar_com: entity.attack_target.as_ref().map(|attack| attack.target),
+            tar_com: entity.attack_target.target(),
         }
     }
 }

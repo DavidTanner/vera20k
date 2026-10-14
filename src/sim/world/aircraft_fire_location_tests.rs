@@ -30,7 +30,7 @@ fn insert(
         0,
         0,
         owner,
-        crate::sim::components::Health { current: 100 },
+        crate::sim::combat::Health::new(100),
         kind,
         category,
         0,
@@ -40,8 +40,8 @@ fn insert(
     entity.position.sub_x = SimFixed::from_num(point[0] % 256);
     entity.position.sub_y = SimFixed::from_num(point[1] % 256);
     entity.position.exact_z_leptons = Some(point[2]);
-    entity.lifecycle.object_alive = marked;
-    entity.lifecycle.in_limbo = false;
+    entity.lifecycle.set_object_alive_for_test(marked);
+    entity.lifecycle.set_in_limbo_for_test(false);
     sim.substrate.entities.insert(entity);
     sim.substrate.next_stable_object_id = sim.substrate.next_stable_object_id.max(id + 1);
 }
@@ -178,7 +178,9 @@ fn fixture(input: &Value) -> (Simulation, RuleSet) {
             .nav_com = Some(NavTargetRef::Entity { id: 3 });
     }
     let owner = sim.substrate.entities.get_mut(1).unwrap();
-    owner.set_veterancy_rank((input["veterancy"].as_u64().unwrap_or(0) * 100) as u16);
+    owner
+        .veterancy
+        .set_rank_for_test((input["veterancy"].as_u64().unwrap_or(0) * 100) as u16);
     if input["flag_3d4"].as_bool().unwrap_or(false) {
         owner.mark_mission_only();
     }
@@ -220,7 +222,8 @@ fn fixture(input: &Value) -> (Simulation, RuleSet) {
                 input["reservation_marked"].as_bool().unwrap_or(true),
             );
             let e = sim.substrate.entities.get_mut(id).unwrap();
-            e.lifecycle.in_limbo = input["reservation_limbo"].as_bool().unwrap_or(false);
+            e.lifecycle
+                .set_in_limbo_for_test(input["reservation_limbo"].as_bool().unwrap_or(false));
             e.navigation.nav_com = Some(NavTargetRef::cell(
                 cell[0].as_u64().unwrap() as u16,
                 cell[1].as_u64().unwrap() as u16,
@@ -239,8 +242,9 @@ fn fixture(input: &Value) -> (Simulation, RuleSet) {
             true,
         );
         let e = sim.substrate.entities.get_mut(id).unwrap();
-        e.lifecycle.in_limbo = true;
-        e.set_veterancy_rank((passenger["veterancy"].as_u64().unwrap_or(0) * 100) as u16);
+        e.lifecycle.set_in_limbo_for_test(true);
+        e.veterancy
+            .set_rank_for_test((passenger["veterancy"].as_u64().unwrap_or(0) * 100) as u16);
         e.set_gunner_selection_for_test(passenger["current"].as_i64().unwrap_or(0) as i32, -1);
         cargo.board_forced(id, 1);
     }
@@ -323,8 +327,10 @@ pub(super) fn reengagement_fixture(input: &Value) -> (Simulation, RuleSet) {
             dispatch_timer: MissionDispatchTimer::at_frame(100),
         });
     entity.mission_leaf = MissionLeafState::aircraft_raw_for_test(1, 1, false);
-    entity.attack_target = (!input["null_target"].as_bool().unwrap_or(false))
-        .then(|| crate::sim::combat::AttackTarget::new(2));
+    entity.attack_target.set_for_test(
+        (!input["null_target"].as_bool().unwrap_or(false))
+            .then(|| crate::sim::combat::TargetKind::Entity(2)),
+    );
     let mut ammo = AircraftAmmo::new(2);
     ammo.current = input["ammo"].as_i64().unwrap_or(2) as i32;
     if input["pending"].as_bool().unwrap_or(false) {
@@ -444,7 +450,7 @@ fn aircraft_reengagement_reserves_in_logic_order_and_ignores_inactive_objects() 
         let (mut sim, rules) = reengagement_fixture(&base["input"]);
         for id in [7, 9] {
             let mut other = sim.substrate.entities.get(1).unwrap().clone();
-            other.stable_id = id;
+            other.set_stable_id_for_test(id);
             sim.substrate.entities.insert(other);
         }
         sim.substrate.next_stable_object_id = 10;

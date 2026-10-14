@@ -406,7 +406,7 @@ pub fn can_enter_transport(
             sim.path_grid(),
         );
     }
-    if transport.category == EntityCategory::Unit {
+    if transport.category() == EntityCategory::Unit {
         // Infantry51ED10 asks the actor's alliance before issuing the radio;
         // Unit7375AD then independently asks the receiver's alliance.
         return crate::sim::combat::combat_weapon::is_ally_by_object(
@@ -425,9 +425,9 @@ pub fn can_enter_transport(
     // existing admission; their separate receiver mechanisms are outside this
     // mobile Unit chain.
     if passenger.owner() != transport.owner()
-        || (transport.category == EntityCategory::Structure && !transport.building_online())
-        || passenger.parasite_eating_me.is_some()
-        || (transport.category != EntityCategory::Aircraft
+        || (transport.category() == EntityCategory::Structure && !transport.building_online())
+        || passenger.parasite.eater().is_some()
+        || (transport.category() != EntityCategory::Aircraft
             && passenger
                 .capture_manager
                 .as_ref()
@@ -486,7 +486,7 @@ pub fn can_dock_occupier_garrison(
         return false;
     }
     if is_at_or_below_red_hp(
-        building.health.current,
+        building.health.current(),
         building_obj.strength,
         rules.general.condition_red,
     ) {
@@ -510,7 +510,7 @@ pub(crate) fn building_can_be_occupied_by(
     else {
         return false;
     };
-    if infantry.category != EntityCategory::Infantry {
+    if infantry.category() != EntityCategory::Infantry {
         return false;
     }
     can_dock_occupier_garrison(
@@ -590,7 +590,7 @@ fn passenger_stands_on_garrison(passenger_cell: (u16, u16), building: &GameEntit
 /// Unit74029F..740375 does not require an empty passenger hold.
 pub(crate) fn begin_boarding(foot: &mut GameEntity, target: u64) {
     if matches!(
-        foot.category,
+        foot.category(),
         EntityCategory::Infantry | EntityCategory::Unit
     ) {
         foot.passenger_role.set_boarding(target);
@@ -700,7 +700,7 @@ pub(crate) fn process_boarding_passenger(
         .substrate
         .entities
         .get(transport_id)
-        .filter(|target| target.category == EntityCategory::Structure)
+        .filter(|target| target.category() == EntityCategory::Structure)
         .and_then(|target| sim.object_type(target.type_ref(), rules))
         .is_some_and(|object| object.can_be_occupied)
     {
@@ -720,7 +720,7 @@ pub(crate) fn process_boarding_passenger(
         .substrate
         .entities
         .get(transport_id)
-        .is_some_and(|transport| transport.category != EntityCategory::Structure)
+        .is_some_and(|transport| transport.category() != EntityCategory::Structure)
     {
         let passenger = sim.substrate.entities.get(pax_id).unwrap();
         let matches_destination = crate::sim::movement::nav_targets_same_receiver(
@@ -743,7 +743,7 @@ pub(crate) fn process_boarding_passenger(
         if !entering {
             return BoardingOutcome::Waiting;
         }
-        if visit == BoardingVisit::LegacyPhase && passenger.category == EntityCategory::Infantry {
+        if visit == BoardingVisit::LegacyPhase && passenger.category() == EntityCategory::Infantry {
             return BoardingOutcome::Waiting;
         }
     }
@@ -753,7 +753,7 @@ pub(crate) fn process_boarding_passenger(
         None => return BoardingOutcome::Waiting,
     };
     let arrived = match sim.substrate.entities.get(transport_id) {
-        Some(e) if e.category == EntityCategory::Structure => {
+        Some(e) if e.category() == EntityCategory::Structure => {
             passenger_stands_on_garrison((pax_rx, pax_ry), e)
         }
         Some(e) => {
@@ -789,7 +789,7 @@ pub(crate) fn process_boarding_passenger(
         .substrate
         .entities
         .get(transport_id)
-        .is_some_and(|target| target.category == EntityCategory::Unit)
+        .is_some_and(|target| target.category() == EntityCategory::Unit)
     {
         // Infantry51A3ED transmits0F before attachment. Unit737430's
         // receiver owns current cargo, house and cell admission; a queued
@@ -845,7 +845,7 @@ pub(crate) fn process_boarding_passenger(
                 rules
                     .object(sim.interner.resolve(transport.type_ref()))
                     .and_then(|object| {
-                        (transport.category == EntityCategory::Structure
+                        (transport.category() == EntityCategory::Structure
                             && object.extra_power > 0
                             && (object.infantry_absorb || object.unit_absorb))
                             .then_some(transport.owner())
@@ -878,9 +878,9 @@ pub(crate) fn process_boarding_passenger(
             .substrate
             .entities
             .get(transport_id)
-            .is_some_and(|transport| transport.category == EntityCategory::Structure);
+            .is_some_and(|transport| transport.category() == EntityCategory::Structure);
         if let Some(pax) = sim.substrate.entities.get_mut(pax_id)
-            && !(building_arm && pax.category == EntityCategory::Infantry)
+            && !(building_arm && pax.category() == EntityCategory::Infantry)
         {
             pax.on_bridge = false;
         }
@@ -906,13 +906,14 @@ pub(crate) fn process_boarding_passenger(
         }
 
         if let Some(pax) = sim.substrate.entities.get_mut(pax_id) {
+            // Boarding keeps the passenger's TarCom and passive flag:
+            // PerCellProcess's transport and building arms (Infantry
+            // `0x0051A3FC..0x0051A47E` and `0x0051A27F..0x0051A39D`, Unit
+            // `0x0073A28A..0x0073A31C` and `0x0073A6E8..0x0073A793`) write
+            // neither, nor does Limbo. A closed transport's rider has no AI
+            // turn to act on it; an open-topped one reaches the setter below.
             pax.passenger_role
                 .set_inside_transport(transport_id, transport_open_topped);
-            pax.movement_target = None;
-            if !transport_open_topped {
-                pax.attack_target = None;
-                pax.passively_acquired_target = false;
-            }
         }
         if transport_open_topped {
             // `SetInOpenTransport @ 0x00710470` (Infantry `0x0051A45E`, Unit
@@ -967,9 +968,7 @@ pub(crate) fn process_boarding_passenger(
 /// RESIDUALS: the `Assaulter=` arm (`0x00522A09..0x00522A45`: the
 /// building's occupants are killed, and the assaulter drops its destination
 /// and scatters) is not represented; no retail infantry is an assaulter.
-/// VERA's passenger also drops its target (native Limbo keeps TarCom) and
-/// its movement and order state; an ejected occupant starts without a
-/// target.
+/// VERA's passenger also drops its movement and order state.
 pub(crate) fn add_garrison_occupant(
     sim: &mut Simulation,
     rules: &RuleSet,
@@ -1015,10 +1014,8 @@ pub(crate) fn add_garrison_occupant(
         return false;
     };
     if let Some(pax) = sim.substrate.entities.get_mut(pax_id) {
+        // Admission and Limbo keep the occupant's TarCom and passive flag.
         pax.passenger_role.set_inside_transport(building_id, false);
-        pax.movement_target = None;
-        pax.attack_target = None;
-        pax.passively_acquired_target = false;
     }
     sim.refresh_spatial_threat(building_id, rules, None);
     if count == 1 {
@@ -1047,7 +1044,7 @@ fn receive_gunner(sim: &mut Simulation, rules: &RuleSet, transport_id: u64, pax_
         return;
     };
     // Aircraft/Foot bind this virtual slot to the 4DE750 stub.
-    if transport.category != crate::map::entities::EntityCategory::Unit || !object.gunner {
+    if transport.category() != crate::map::entities::EntityCategory::Unit || !object.gunner {
         return;
     }
     let Some(passenger) = sim.substrate.entities.get(pax_id) else {
@@ -1076,7 +1073,7 @@ fn remove_gunner(sim: &mut Simulation, rules: &RuleSet, transport_id: u64, pax_i
         return;
     };
     // Aircraft/Foot bind this virtual slot to the 4DE760 stub.
-    if transport.category != crate::map::entities::EntityCategory::Unit || !object.gunner {
+    if transport.category() != crate::map::entities::EntityCategory::Unit || !object.gunner {
         return;
     }
     if let Some(pax_id) = pax_id {
@@ -1176,7 +1173,7 @@ fn is_at_or_below_red_hp(current: i32, strength: i32, condition_red: f64) -> boo
     use crate::util::native_x87::MaskedX87Ordering::{Equal, Less, Unordered};
     current > 0
         && matches!(
-            crate::sim::components::Health { current }.compare_ratio(strength, condition_red),
+            crate::sim::combat::Health::new(current).compare_ratio(strength, condition_red),
             Less | Equal | Unordered
         )
 }
@@ -1198,14 +1195,14 @@ pub(crate) fn reconcile_civilian_garrison_owner_for_building(
     let Some(object) = sim.object_type(building.type_ref(), rules) else {
         return false;
     };
-    if building.category != EntityCategory::Structure
+    if building.category() != EntityCategory::Structure
         || !object.can_be_occupied
         || object.tech_level != -1
     {
         return false;
     }
     if is_at_or_below_red_hp(
-        building.health.current,
+        building.health.current(),
         object.strength,
         rules.general.condition_red,
     ) {
@@ -1477,12 +1474,12 @@ ConditionYellow=50%
             EntityCategory::Structure,
         );
         ge.mission_leaf =
-            crate::sim::mission::leaf::MissionLeafState::for_entity_category(ge.category);
-        ge.owner = owner_id;
-        ge.type_ref = type_id;
+            crate::sim::mission::leaf::MissionLeafState::for_entity_category(ge.category());
+        ge.set_owner_for_test(owner_id);
+        ge.set_type_ref_for_test(type_id);
         let obj = rules.object(type_ref).expect("type exists");
         ge.foundation = obj.foundation.clone();
-        ge.health.current = obj.strength;
+        ge.health.set_for_test(obj.strength);
         ge.estimated_health = crate::sim::estimated_health::EstimatedHealth::from_raw(obj.strength);
         ge.passenger_role = PassengerRole::Transport {
             cargo: PassengerCargo::new(obj.max_number_occupants, 1),
@@ -1520,9 +1517,9 @@ ConditionYellow=50%
         let type_id = sim.interner.intern(type_ref);
         let obj = rules.object(type_ref).expect("transport type exists");
         let mut entity = GameEntity::test_default(stable_id, type_ref, owner_str, rx, ry);
-        entity.owner = owner_id;
-        entity.type_ref = type_id;
-        entity.category = EntityCategory::Unit;
+        entity.set_owner_for_test(owner_id);
+        entity.set_type_ref_for_test(type_id);
+        entity.set_category_for_test(EntityCategory::Unit);
         entity.passenger_role = PassengerRole::Transport {
             cargo: PassengerCargo::new(obj.passengers.max(0) as u32, obj.size_limit),
         };
@@ -1560,11 +1557,11 @@ ConditionYellow=50%
         let owner_id = sim.interner.intern(owner_str);
         let type_id = sim.interner.intern(type_ref);
         let mut ge = GameEntity::test_default(stable_id, type_ref, owner_str, rx, ry);
-        ge.owner = owner_id;
-        ge.type_ref = type_id;
-        ge.category = EntityCategory::Infantry;
+        ge.set_owner_for_test(owner_id);
+        ge.set_type_ref_for_test(type_id);
+        ge.set_category_for_test(EntityCategory::Infantry);
         ge.mission_leaf =
-            crate::sim::mission::leaf::MissionLeafState::for_entity_category(ge.category);
+            crate::sim::mission::leaf::MissionLeafState::for_entity_category(ge.category());
         let capture = sim
             .substrate
             .entities
@@ -1620,7 +1617,7 @@ ConditionYellow=50%
         sim.substrate
             .entities
             .get(entity_id)
-            .map(|entity| sim.interner.resolve(entity.owner).to_string())
+            .map(|entity| sim.interner.resolve(entity.owner()).to_string())
             .expect("entity exists")
     }
 
@@ -1637,8 +1634,8 @@ ConditionYellow=50%
         for (id, name) in [(1, "OUTER"), (2, "INNER")] {
             let type_ref = sim.intern(name);
             let mut entity = GameEntity::test_default(id, name, "Americans", 10, 10);
-            entity.owner = owner;
-            entity.type_ref = type_ref;
+            entity.set_owner_for_test(owner);
+            entity.set_type_ref_for_test(type_ref);
             let object = rules.object(name).unwrap();
             entity.passenger_role = PassengerRole::Transport {
                 cargo: PassengerCargo::new(object.passengers as u32, object.size_limit),
@@ -1658,9 +1655,9 @@ ConditionYellow=50%
         inner.passenger_role.set_inside_transport(1, false);
         let type_ref = sim.intern("E1");
         let mut rider = GameEntity::test_default(3, "E1", "Americans", 10, 10);
-        rider.type_ref = type_ref;
-        rider.owner = owner;
-        rider.category = EntityCategory::Infantry;
+        rider.set_type_ref_for_test(type_ref);
+        rider.set_owner_for_test(owner);
+        rider.set_category_for_test(EntityCategory::Infantry);
         rider.passenger_role.set_inside_transport(2, false);
         sim.substrate.entities.insert(rider);
         let result = depart_cargo_head(
@@ -1748,7 +1745,7 @@ ConditionYellow=50%
             ConcealOutcome::Concealed
         );
         let entity = sim.substrate.entities.get(rider).unwrap();
-        assert!(entity.attack_target.is_none());
+        assert!(entity.attack_target.target().is_none());
         assert_eq!(entity.passenger_role.inside_transport(), Some((hull, true)));
         assert!(
             entity.in_logic_vector,
@@ -1784,6 +1781,7 @@ ConditionYellow=50%
                 .get(rider)
                 .unwrap()
                 .attack_target
+                .target()
                 .is_some(),
             "repeated Limbo skips the native first-live target clear"
         );
@@ -2139,7 +2137,7 @@ ConditionYellow=50%
             .entities
             .get_mut(bldg)
             .expect("garrison exists")
-            .category = EntityCategory::Structure;
+            .set_category_for_test(EntityCategory::Structure);
         let mut neutral_house = HouseState::new(neutral, 2, None, false, 0, 10);
         neutral_house.multiplay_passive = true;
         neutral_house.tracking.set_buildings_for_test(1);
@@ -2193,7 +2191,7 @@ ConditionYellow=50%
         let pax = place_inside_garrison(&mut sim, &rules, bldg, "E1", "Americans");
 
         if let Some(building) = sim.substrate.entities.get_mut(bldg) {
-            building.health.current = 100;
+            building.health.set_for_test(100);
             if let Some(cargo) = building.passenger_role.cargo_mut() {
                 cargo.garrison_fire_index = 3;
             }
@@ -2272,8 +2270,8 @@ ConditionYellow=50%
             "boarded passenger leaves the active order"
         );
         let passenger = sim.substrate.entities.get(pax).unwrap();
-        assert!(passenger.lifecycle.object_alive);
-        assert!(passenger.lifecycle.in_limbo);
+        assert!(passenger.lifecycle.object_alive());
+        assert!(passenger.lifecycle.in_limbo());
         assert!(!passenger.lifecycle.cell_marked);
         assert!(!passenger.in_logic_vector);
         assert!(
@@ -2323,9 +2321,9 @@ ConditionYellow=50%
         let owner = sim.interner.intern("Americans");
         let type_ref = sim.interner.intern("E1");
         let mut tail_entity = GameEntity::test_default(tail, "E1", "Americans", 20, 20);
-        tail_entity.owner = owner;
-        tail_entity.type_ref = type_ref;
-        tail_entity.category = EntityCategory::Infantry;
+        tail_entity.set_owner_for_test(owner);
+        tail_entity.set_type_ref_for_test(type_ref);
+        tail_entity.set_category_for_test(EntityCategory::Infantry);
         sim.substrate.entities.insert(tail_entity);
         assert!(matches!(sim.reveal(tail), RevealOutcome::Revealed { .. }));
         assert_eq!(
@@ -2344,7 +2342,7 @@ ConditionYellow=50%
             passenger_entity.passenger_role,
             PassengerRole::Inside { transport_id, .. } if transport_id == transport
         ));
-        assert!(passenger_entity.lifecycle.in_limbo);
+        assert!(passenger_entity.lifecycle.in_limbo());
         assert!(!passenger_entity.lifecycle.cell_marked);
         assert!(passenger_entity.in_logic_vector);
         assert_eq!(
@@ -2381,7 +2379,7 @@ ConditionYellow=50%
             let rider =
                 spawn_entering_infantry(&mut sim, &rules, "E1", "Americans", transport, 10, 10);
             let entity = sim.substrate.entities.get_mut(rider).unwrap();
-            entity.category = category;
+            entity.set_category_for_test(category);
             entity.on_bridge = true;
             tick_entry_arrival(&mut sim, &rules);
             let entity = sim.substrate.entities.get(rider).unwrap();
@@ -2426,7 +2424,7 @@ ConditionYellow=50%
         );
 
         if let Some(building) = sim.substrate.entities.get_mut(bldg) {
-            building.health.current = 100;
+            building.health.set_for_test(100);
             if let Some(cargo) = building.passenger_role.cargo_mut() {
                 cargo.garrison_fire_index = 3;
             }
@@ -2464,7 +2462,7 @@ ConditionYellow=50%
         assert!(!sim.live_object_order_snapshot().contains(&pax));
 
         if let Some(building) = sim.substrate.entities.get_mut(bldg) {
-            building.health.current = 100;
+            building.health.set_for_test(100);
             if let Some(cargo) = building.passenger_role.cargo_mut() {
                 cargo.garrison_fire_index = 3;
             }
@@ -2503,7 +2501,7 @@ ConditionYellow=50%
                 .entities
                 .get_mut(bldg)
                 .expect("building exists");
-            building.health.current = 100;
+            building.health.set_for_test(100);
         }
 
         assert!(
@@ -2771,8 +2769,12 @@ ConditionYellow=50%
         let passenger =
             spawn_entering_infantry(&mut sim, &rules, "E1", "Americans", transport, 10, 10);
         let actor = sim.substrate.entities.get_mut(passenger).unwrap();
-        actor.health.current = row["input"]["health"].as_i64().unwrap() as i32;
-        actor.attack_target = Some(crate::sim::combat::AttackTarget::new(transport));
+        actor
+            .health
+            .set_for_test(row["input"]["health"].as_i64().unwrap() as i32);
+        actor
+            .attack_target
+            .set_for_test(Some(crate::sim::combat::TargetKind::Entity(transport)));
         actor
             .mission_leaf
             .set_foot_firing_sequence(row["before"]["firing_latch"].as_u64().unwrap() as u8);
@@ -2785,7 +2787,7 @@ ConditionYellow=50%
             PassengerRole::Inside { transport_id, open_topped: true }
                 if transport_id == transport
         ));
-        assert!(actor.attack_target.is_none());
+        assert!(actor.attack_target.target().is_none());
         // Original51B20E clears68D on a changed live target before any Doing
         // admission. Limbo51DF10 has already forced Ready during boarding;
         // therefore only this independent native latch output is transported
@@ -2927,8 +2929,8 @@ ConditionYellow=50%
         //repair/power and before any later object's visit.
         assert_eq!(owner_name(&sim, bldg), "Neutral");
         let unloaded = sim.substrate.entities.get(pax).unwrap();
-        assert!(unloaded.lifecycle.object_alive);
-        assert!(!unloaded.lifecycle.in_limbo);
+        assert!(unloaded.lifecycle.object_alive());
+        assert!(!unloaded.lifecycle.in_limbo());
         assert!(unloaded.lifecycle.cell_marked);
         assert!(unloaded.in_logic_vector);
 
@@ -2954,7 +2956,7 @@ ConditionYellow=50%
             .substrate
             .entities
             .get(bldg)
-            .map(|t| sim.interner.resolve(t.owner).to_string())
+            .map(|t| sim.interner.resolve(t.owner()).to_string())
             .expect("building exists");
         assert_eq!(
             bldg_owner_str, "Neutral",
@@ -3027,8 +3029,8 @@ ConditionYellow=50%
         let owner_id = sim.interner.intern("Americans");
         let type_id = sim.interner.intern("IFV");
         let mut bldg = GameEntity::test_default(bldg_id, "IFV", "Americans", 10, 10);
-        bldg.owner = owner_id;
-        bldg.type_ref = type_id;
+        bldg.set_owner_for_test(owner_id);
+        bldg.set_type_ref_for_test(type_id);
         bldg.passenger_role = PassengerRole::Transport {
             cargo: PassengerCargo::new(5, 0),
         };
@@ -3064,11 +3066,11 @@ ConditionYellow=50%
         let owner_id = sim.interner.intern(owner_str);
         let type_id = sim.interner.intern(type_ref);
         let mut ge = GameEntity::test_default(stable_id, type_ref, owner_str, 0, 0);
-        ge.owner = owner_id;
-        ge.type_ref = type_id;
-        ge.category = EntityCategory::Infantry;
+        ge.set_owner_for_test(owner_id);
+        ge.set_type_ref_for_test(type_id);
+        ge.set_category_for_test(EntityCategory::Infantry);
         ge.mission_leaf =
-            crate::sim::mission::leaf::MissionLeafState::for_entity_category(ge.category);
+            crate::sim::mission::leaf::MissionLeafState::for_entity_category(ge.category());
         ge.passenger_role = PassengerRole::Inside {
             transport_id: building_id,
             open_topped: false,
@@ -3085,8 +3087,8 @@ ConditionYellow=50%
         // threat-refresh tail. The building helper already constructs the
         // Structure mission receiver; direct-cargo fixtures keep that class.
         if let Some(bldg) = sim.substrate.entities.get_mut(building_id) {
-            bldg.owner = owner_id;
-            bldg.category = crate::map::entities::EntityCategory::Structure;
+            bldg.set_owner_for_test(owner_id);
+            bldg.set_category_for_test(crate::map::entities::EntityCategory::Structure);
         }
         sim.refresh_spatial_threat(building_id, rules, None);
         stable_id
@@ -3105,13 +3107,13 @@ ConditionYellow=50%
                 .expect("building present");
             let cargo = bldg.passenger_role.cargo().expect("cargo present");
             let obj = rules
-                .object(sim.interner.resolve(bldg.type_ref))
+                .object(sim.interner.resolve(bldg.type_ref()))
                 .expect("type exists");
             let (foundation_w, foundation_h) =
                 crate::rules::foundation::foundation_dimensions(&obj.foundation);
             crate::sim::passenger::garrison_eject::DestroyedGarrisonBuilding {
                 building_id,
-                owner: bldg.owner,
+                owner: bldg.owner(),
                 rx: bldg.position.rx,
                 ry: bldg.position.ry,
                 z: bldg.position.z,
@@ -3157,7 +3159,7 @@ ConditionYellow=50%
             assert!(!pax.dying, "occupant {pid} should not be dying");
             assert!(matches!(pax.passenger_role, PassengerRole::None));
             assert_eq!(
-                sim.interner.resolve(pax.owner),
+                sim.interner.resolve(pax.owner()),
                 "Allied",
                 "occupant {pid} should retain garrisoning owner"
             );
@@ -3194,9 +3196,9 @@ ConditionYellow=50%
         ] {
             let blocker_id = sim.allocate_stable_id();
             let mut blocker = GameEntity::test_default(blocker_id, "E1", "Allied", bx, by);
-            blocker.category = EntityCategory::Infantry;
-            blocker.owner = owner_id;
-            blocker.type_ref = sim.interner.intern("E1");
+            blocker.set_category_for_test(EntityCategory::Infantry);
+            blocker.set_owner_for_test(owner_id);
+            blocker.set_type_ref_for_test(sim.interner.intern("E1"));
             blocker.sub_cell = Some(2);
             (blocker.position.sub_x, blocker.position.sub_y) =
                 lepton::subcell_lepton_offset(Some(2));

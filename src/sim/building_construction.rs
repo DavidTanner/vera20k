@@ -344,7 +344,7 @@ pub(crate) mod native_route {
             "{context}: queued BState"
         );
         assert_eq!(
-            entity.building_actually_placed,
+            entity.building_art.actually_placed(),
             frame["grand_opening"].as_bool().unwrap(),
             "{context}: opening is visible to the next object"
         );
@@ -358,7 +358,7 @@ pub(crate) mod native_route {
             frame["stage"].as_i64().unwrap(),
             "{context}: stage"
         );
-        entity.building_actually_placed
+        entity.building_art.actually_placed()
     }
 }
 
@@ -366,7 +366,7 @@ pub(crate) mod native_route {
 mod tests {
     use super::*;
     use crate::map::entities::EntityCategory;
-    use crate::sim::components::Health;
+    use crate::sim::combat::Health;
     use crate::sim::game_entity::GameEntity;
     use crate::sim::intern::test_intern;
     use serde_json::Value;
@@ -400,7 +400,7 @@ mod tests {
             0,
             0,
             test_intern("OracleOwner"),
-            Health { current: 100 },
+            Health::new(100),
             test_intern("OracleBuilding"),
             EntityCategory::Structure,
             0,

@@ -21,7 +21,6 @@ pub mod jumpjet_flight;
 
 use crate::sim::components::DriveCoord;
 use crate::sim::world::Simulation;
-use crate::util::fixed_math::{SIM_ZERO, SimFixed};
 use crate::util::lepton::lepton_to_cell_packed;
 use jumpjet_flight::{FlightOwnerKind, STATE_ASCEND, STATE_DESCEND};
 
@@ -498,7 +497,6 @@ impl WorldOrderHost<'_> {
                 raw_occupation: Some(&self.sim.substrate.raw_cell_occupation),
                 passability,
                 footprint: NearbyFootprint::SINGLE,
-                anchor_gate: NearbyAnchorGate::NativeHeightAware,
                 allow_bridge_cells,
                 check_height: false,
                 check_occupancy: false,
@@ -528,7 +526,7 @@ impl JumpjetOrderHost for WorldOrderHost<'_> {
         self.sim.object_raw_receiver_at(self.id, destination, false);
     }
     fn owner_kind(&self) -> FlightOwnerKind {
-        FlightOwnerKind::of(self.owner().category)
+        FlightOwnerKind::of(self.owner().category())
     }
     fn balloon_hover(&self) -> bool {
         self.owner().locomotor.as_ref().unwrap().balloon_hover
@@ -639,7 +637,7 @@ impl Simulation {
         let Some(entity) = self.substrate.entities.get(id) else {
             return;
         };
-        if entity.lifecycle.in_limbo {
+        if entity.lifecycle.in_limbo() {
             return;
         }
         let eligible = entity.locomotor.as_ref().is_some_and(|locomotor| {
@@ -788,7 +786,7 @@ impl Simulation {
         registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
         frame_effects: FrameEffects<'_>,
     ) -> bool {
-        let Some(health) = self.substrate.entities.get(id).map(|e| e.health.current) else {
+        let Some(health) = self.substrate.entities.get(id).map(|e| e.health.current()) else {
             return true;
         };
         if health <= 0 {
@@ -811,135 +809,6 @@ impl Simulation {
         true
     }
 
-    /// The speed stamp an order attaches with its adapter: the running
-    /// order's, else the owner's move speed.
-    pub(crate) fn jumpjet_order_speed(
-        &self,
-        id: u64,
-        rules: Option<&crate::rules::ruleset::RuleSet>,
-    ) -> SimFixed {
-        self.substrate
-            .entities
-            .get(id)
-            .and_then(|entity| entity.movement_target.as_ref().map(|target| target.speed))
-            .or_else(|| self.resolve_move_info(id, rules).map(|info| info.speed))
-            .unwrap_or(SIM_ZERO)
-    }
-
-    /// The movement adapter for an order the locomotor accepted: attached
-    /// while its moving byte is set, with the order's speed stamp. The goal
-    /// stays with the locomotor destination and Foot's NavCom. The orders do
-    /// not reconstruct Foot timers or retries; their accepted-destination
-    /// caller publishes Foot's tail.
-    pub(crate) fn publish_jumpjet_order_adapter(&mut self, id: u64, speed: SimFixed) {
-        use crate::sim::components::MovementTarget;
-        let Some(entity) = self.substrate.entities.get_mut(id) else {
-            return;
-        };
-        if entity
-            .locomotor
-            .as_ref()
-            .and_then(|locomotor| locomotor.jumpjet_runtime())
-            .is_some_and(|runtime| runtime.moving)
-        {
-            entity.movement_target = Some(MovementTarget { speed });
-        }
-    }
-
-    /// An air order to a cell. A Jumpjet Unit or Infantry takes its class
-    /// setter ([`Self::jumpjet_destination`]); other fliers continue through
-    /// their established motion adapter.
-    pub(crate) fn issue_air_cell_destination(
-        &mut self,
-        id: u64,
-        target: (u16, u16),
-        speed: SimFixed,
-        rules: Option<&crate::rules::ruleset::RuleSet>,
-        registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
-        frame_effects: FrameEffects<'_>,
-    ) -> bool {
-        if let Some(accepted) = self.jumpjet_destination(
-            id,
-            crate::sim::components::NavTargetRef::cell(target.0, target.1),
-            speed,
-            rules,
-            registry,
-            frame_effects,
-        ) {
-            return accepted;
-        }
-        let Some(entity) = self.substrate.entities.get(id) else {
-            return false;
-        };
-        let is_fly = entity
-            .locomotor
-            .as_ref()
-            .and_then(|l| l.fly_runtime())
-            .is_some();
-        let coordinate = if is_fly {
-            super::navcom::target_cell_coord(
-                target.0,
-                target.1,
-                self.resolved_terrain
-                    .as_ref()
-                    .map(crate::map::resolved_terrain::NativeCellQuery::canonical)
-                    .as_ref(),
-            )
-        } else {
-            DriveCoord::cell(target.0, target.1, 0)
-        };
-        self.move_air_coordinate(
-            id,
-            coordinate,
-            Some(super::DestinationTiming::from_rules(
-                self.session.binary_frame,
-                rules,
-            )),
-            rules,
-        )
-    }
-
-    /// The class setter `vt+0x480(target, 1)` of a Jumpjet Unit or Infantry,
-    /// whichever route gave the order: Unit `0x00741970`
-    /// ([`Self::set_unit_destination`]) or Infantry `0x0051AA40`
-    /// ([`Self::assign_infantry_destination`]). Both end in Foot's setter and
-    /// the Jumpjet `Move_To`. `None` when `id` is not a Jumpjet Unit or
-    /// Infantry; `Some(false)` without rules.
-    pub(crate) fn jumpjet_destination(
-        &mut self,
-        id: u64,
-        requested: crate::sim::components::NavTargetRef,
-        speed: SimFixed,
-        rules: Option<&crate::rules::ruleset::RuleSet>,
-        registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
-        frame_effects: FrameEffects<'_>,
-    ) -> Option<bool> {
-        use crate::map::entities::EntityCategory;
-        let entity = self.substrate.entities.get(id)?;
-        let category = entity.category;
-        let jumpjet = matches!(category, EntityCategory::Infantry | EntityCategory::Unit)
-            && entity
-                .locomotor
-                .as_ref()
-                .and_then(|l| l.jumpjet_runtime())
-                .is_some();
-        if !jumpjet {
-            return None;
-        }
-        let Some(rules) = rules else {
-            return Some(false);
-        };
-        Some(if category == EntityCategory::Unit {
-            self.set_unit_destination(id, requested, rules, true, frame_effects)
-        } else {
-            self.assign_infantry_destination(id, requested, speed, rules, registry, frame_effects)
-                .unwrap_or_else(|cause| {
-                    log::debug!("Jumpjet infantry {id} destination: {cause}");
-                    false
-                })
-        })
-    }
-
     /// Foot's setter (`0x004D94B0`) after the Infantry setter's prelude, for a
     /// Jumpjet infantryman whose admission (`begin_foot_destination`) passed:
     /// the NavCom at `0x004D9510`, then the Jumpjet `Move_To` at `0x004D965D`
@@ -951,7 +820,6 @@ impl Simulation {
         &mut self,
         id: u64,
         requested: crate::sim::components::NavTargetRef,
-        speed: SimFixed,
         rules: &crate::rules::ruleset::RuleSet,
     ) -> bool {
         let Some(terrain) = self.resolved_terrain.as_ref() else {
@@ -975,7 +843,6 @@ impl Simulation {
         if self.jumpjet_move_to(id, input, Some(rules)).is_none() {
             return false;
         }
-        self.publish_jumpjet_order_adapter(id, speed);
         if let Some(entity) = self.substrate.entities.get_mut(id) {
             // Infantry51B1D2 returns through Foot4D96C2 after the locomotor's
             // Move_To; the Move_To inside Stop cannot own this.

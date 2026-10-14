@@ -7,7 +7,6 @@
 //!
 //! sim/ only — never render/ui/audio/net.
 use crate::map::entities::EntityCategory;
-use crate::rules::locomotor_type::SpeedType;
 use crate::rules::overlay_types::OverlayTypeRegistry;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::docking::bunker_install::{BunkerRuntime, BunkerState};
@@ -16,8 +15,8 @@ use crate::sim::mission::authority::{EntityReadyInputProvider, LiveReadyInputPro
 use crate::sim::mission::{MissionId, MissionType};
 use crate::sim::movement::ground_pose::object_get_coords;
 use crate::sim::radio::{RadioMessage, RadioPayload, RadioResponse, transmit};
-use crate::sim::world::{FrameEffects, GroundMove, SimSoundEvent, Simulation};
-use crate::util::fixed_math::{SIM_ONE, ra2_speed_to_leptons_per_second};
+use crate::sim::world::{FrameEffects, SimSoundEvent, Simulation};
+use crate::util::fixed_math::SIM_ONE;
 
 /// Exit-search ring limit for the normal release (mirrors the refinery exit).
 const BUNKER_EXIT_SEARCH_MAX_RADIUS: i32 = 16;
@@ -45,7 +44,7 @@ pub fn can_auto_deploy_here(sim: &Simulation, unit_id: u64, rules: &RuleSet) -> 
         && obj.has_turret
         && crate::sim::combat::combat_weapon::is_armed(unit, obj)
         && obj.speed_type != crate::rules::locomotor_type::SpeedType::Hover
-        && unit.parasite_eating_me.is_none()
+        && unit.parasite.eater().is_none()
 }
 
 /// VERA's tank bunker entry adapter, in place of the native route: the
@@ -91,36 +90,22 @@ pub(crate) fn begin_entry(
     if let Some(unit) = sim.substrate.entities.get_mut(unit_id) {
         unit.bunker_link = BunkerLink::Approaching(bunker_id);
     }
-    // Issue an approach move toward the bunker cell (mirror EnterTransport).
+    // The approach to the bunker's cell, through the Unit's class setter.
     let bunker_cell = sim
         .substrate
         .entities
         .get(bunker_id)
         .map(|bunker| (bunker.position.rx, bunker.position.ry));
-    if let Some((brx, bry)) = bunker_cell {
-        let info = sim.resolve_move_info(unit_id, Some(rules));
-        let speed = info
-            .as_ref()
-            .map(|info| info.speed)
-            .unwrap_or(ra2_speed_to_leptons_per_second(4));
-        let speed_type = info
-            .as_ref()
-            .map(|info| info.speed_type)
-            .unwrap_or(SpeedType::Track);
-        sim.issue_ground_move(
-            GroundMove {
-                entity_id: unit_id,
-                target: (brx, bry),
-                speed,
-                queue: false,
-                speed_type: Some(speed_type),
-                owner_blocks: true,
-                object_destination: None,
-            },
+    if let Some((brx, bry)) = bunker_cell
+        && let Err(cause) = sim.assign_destination_represented(
+            unit_id,
+            Some(crate::sim::components::NavTargetRef::cell(brx, bry)),
             Some(rules),
             registry,
             effects,
-        );
+        )
+    {
+        log::warn!("Bunker approach {unit_id}: {cause}");
     }
     true
 }
@@ -135,7 +120,7 @@ pub fn install_bunker_link(sim: &mut Simulation, building_id: u64, unit_id: u64,
         .substrate
         .entities
         .get(unit_id)
-        .is_some_and(|unit| unit.category == EntityCategory::Unit)
+        .is_some_and(|unit| unit.category() == EntityCategory::Unit)
         || sim.substrate.entities.get(building_id).is_none()
     {
         return;
@@ -316,7 +301,7 @@ fn is_release_unit(sim: &Simulation, unit_id: u64) -> bool {
     sim.substrate
         .entities
         .get(unit_id)
-        .is_some_and(|unit| unit.category == EntityCategory::Unit)
+        .is_some_and(|unit| unit.category() == EntityCategory::Unit)
 }
 
 /// `rules` feeds the forced head's crate pickup (`Force_Track` 0x4B0D1B);
@@ -525,7 +510,7 @@ pub(crate) fn emit_bunker_wall_anim(
         return;
     };
     let damaged = at_or_below_condition_yellow(
-        b.health.current,
+        b.health.current(),
         object.strength,
         rules.general.condition_yellow,
     );
@@ -542,7 +527,7 @@ pub(crate) fn emit_bunker_wall_anim(
 fn at_or_below_condition_yellow(current: i32, strength: i32, condition_yellow: f64) -> bool {
     use crate::util::native_x87::MaskedX87Ordering::{Equal, Less, Unordered};
     matches!(
-        crate::sim::components::Health { current }.compare_ratio(strength, condition_yellow),
+        crate::sim::combat::Health::new(current).compare_ratio(strength, condition_yellow),
         Less | Equal | Unordered
     )
 }
@@ -552,7 +537,7 @@ mod tests {
     use super::*;
     use crate::map::entities::EntityCategory;
     use crate::rules::ini_parser::IniFile;
-    use crate::sim::components::Health;
+    use crate::sim::combat::Health;
     use crate::sim::docking::bunker_install::BunkerRuntime;
     use crate::sim::game_entity::GameEntity;
     use crate::sim::mission::MissionId;
@@ -586,7 +571,7 @@ mod tests {
             0,
             0,
             owner_id,
-            Health { current: 1000 },
+            Health::new(1000),
             type_id,
             EntityCategory::Structure,
             0,
@@ -608,7 +593,12 @@ mod tests {
             rules.general.condition_yellow = row.input.yellow();
             let mut sim = Simulation::new();
             spawn_bunker(&mut sim, 1, "A");
-            sim.substrate.entities.get_mut(1).unwrap().health.current = row.input.current;
+            sim.substrate
+                .entities
+                .get_mut(1)
+                .unwrap()
+                .health
+                .set_for_test(row.input.current);
             for up in [false, true] {
                 emit_bunker_wall_anim(&mut sim, 1, up, &rules);
                 let event = sim.bunker_wall_events.last().unwrap();
@@ -630,7 +620,7 @@ mod tests {
             0,
             0,
             owner_id,
-            Health { current: 400 },
+            Health::new(400),
             type_id,
             EntityCategory::Unit,
             0,
@@ -687,7 +677,8 @@ mod tests {
                     .entities
                     .get_mut(id)
                     .unwrap()
-                    .parasite_eating_me = Some(99);
+                    .parasite
+                    .set_eater_for_test(Some(99));
             }
             assert_eq!(
                 can_auto_deploy_here(&sim, id, &rules),
@@ -718,8 +709,8 @@ mod tests {
         let unit = sim.substrate.entities.get(1).unwrap();
         assert_eq!(unit.bunker_link, BunkerLink::Installed(2));
         assert!(unit.in_logic_vector, "install leaves the unit active");
-        assert!(unit.lifecycle.object_alive);
-        assert!(!unit.lifecycle.in_limbo);
+        assert!(unit.lifecycle.object_alive());
+        assert!(!unit.lifecycle.in_limbo());
         assert!(unit.lifecycle.cell_marked);
         assert!(!unit.selected);
         assert_eq!(
@@ -783,8 +774,8 @@ mod tests {
         let unit = sim.substrate.entities.get(1).unwrap();
         assert_eq!(unit.bunker_link, BunkerLink::None);
         assert!(unit.in_logic_vector, "unit revealed");
-        assert!(unit.lifecycle.object_alive);
-        assert!(!unit.lifecycle.in_limbo);
+        assert!(unit.lifecycle.object_alive());
+        assert!(!unit.lifecycle.in_limbo());
         assert!(unit.lifecycle.cell_marked);
         assert_eq!((unit.position.rx, unit.position.ry), (12, 12));
         // The existing exit-search adapter supplies NavCom; Force moves later.
@@ -818,8 +809,8 @@ mod tests {
         let unit = sim.substrate.entities.get(1).unwrap();
         assert_eq!(unit.bunker_link, BunkerLink::None);
         assert!(unit.in_logic_vector, "unit remains active");
-        assert!(unit.lifecycle.object_alive);
-        assert!(!unit.lifecycle.in_limbo);
+        assert!(unit.lifecycle.object_alive());
+        assert!(!unit.lifecycle.in_limbo());
         assert!(unit.lifecycle.cell_marked);
         assert_eq!((unit.position.rx, unit.position.ry), (12, 12));
         assert_eq!(unit.body_facing.destination(), 0);
@@ -853,8 +844,8 @@ mod tests {
         let unit = sim.substrate.entities.get(1).unwrap();
         assert_eq!(unit.bunker_link, BunkerLink::None);
         assert!(unit.in_logic_vector, "clear preserves live membership");
-        assert!(unit.lifecycle.object_alive);
-        assert!(!unit.lifecycle.in_limbo);
+        assert!(unit.lifecycle.object_alive());
+        assert!(!unit.lifecycle.in_limbo());
         assert!(unit.lifecycle.cell_marked);
         assert_eq!(
             (unit.position.rx, unit.position.ry),
@@ -948,7 +939,12 @@ mod tests {
         let mut sim = installed_sim();
         sim.bunker_wall_events.clear();
         // Between native ConditionRed25% and ConditionYellow50%: walls use yellow.
-        sim.substrate.entities.get_mut(2).unwrap().health.current = 400;
+        sim.substrate
+            .entities
+            .get_mut(2)
+            .unwrap()
+            .health
+            .set_for_test(400);
         release_normal(
             &mut sim,
             2,
