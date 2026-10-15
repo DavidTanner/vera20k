@@ -201,8 +201,9 @@ impl MatchSession {
     /// On frame 0 `Queue_AI_Multiplayer` stores the value (`0x006476A5`), then
     /// takes `0x006476B1 -> 0x00647825` and zeroes all 256 slots
     /// (`0x00647879`), so frame 0's own slot ends at 0. The same reset also
-    /// runs while `[0x00A8B8B8]` is set; that flag belongs to the network
-    /// timing service of a later stage and VERA has no writer for it yet.
+    /// runs while `[0x00A8B8B8]` (Session +0x680) is set. That is a one-shot
+    /// load/rejoin flag, cleared after the first player wait, that also skips
+    /// scenario start and reseeding; VERA has no writer for it.
     pub(crate) fn record_frame_checksum(&mut self, frame: u32, checksum: u32) {
         self.checksum_history.record(frame, checksum);
         if frame == 0 {
