@@ -903,7 +903,7 @@ fn produced_infantry_retains_its_barracks_rally_until_exit_handoff() {
         let command = crate::sim::command::Command::SetRally {
             rx: rally.0,
             ry: rally.1,
-            producer_ids: vec![factory],
+            producer_id: factory,
         };
         assert!(sim.apply_command("Americans", &command, Some(&rules)));
     }
@@ -952,7 +952,7 @@ fn a_captured_factory_loses_its_rally_point() {
     let command = crate::sim::command::Command::SetRally {
         rx: 40,
         ry: 12,
-        producer_ids: vec![1],
+        producer_id: 1,
     };
     assert!(sim.apply_command("Americans", &command, Some(&rules)));
     assert_eq!(

@@ -1347,7 +1347,7 @@ pub struct ObjectType {
     pub open_transport_weapon: i32,
 
     /// Whether this infantry can toggle into a deploy-fire stance (DeployFire=yes
-    /// in rules.ini). Only deploy-fire types respond to `Command::ToggleInfantryDeploy`.
+    /// in rules.ini). Only deploy-fire types are offered the Deploy key or a self-click Unload.
     /// Stock YR sets this on GI (E1), GuardianGI (GGI), and a handful of others.
     pub deploy_fire: bool,
 

@@ -30,9 +30,9 @@ fn boarded_ifv(rules: &RuleSet, passenger_type: &str) -> (Simulation, u64, u64) 
         .unwrap();
     assert!(sim.apply_command(
         OWNER,
-        &Command::EnterTransport {
-            passenger_id: engineer,
-            transport_id: ifv,
+        &Command::Enter {
+            entity_id: engineer,
+            destination_id: ifv
         },
         Some(rules)
     ));
@@ -97,7 +97,7 @@ fn repair_click(sim: &Simulation, rules: &RuleSet, ifv: u64, tank: u64) -> Comma
     assert_eq!(dispatch.receivers, [ifv].into_iter().collect());
     assert_eq!(dispatch.commands.len(), 1);
     assert!(
-        matches!(dispatch.commands[0], Command::ForceAttack { attacker_id, target_id }
+        matches!(dispatch.commands[0], Command::Attack { attacker_id, target_id }
         if attacker_id == ifv && target_id == tank)
     );
     assert_eq!(
@@ -342,7 +342,7 @@ fn retail_repair_click_preserves_native_modifier_and_target_controls() {
         if !native_orders.is_empty() {
             assert_eq!(native_orders[0]["mission"], 1);
             assert!(
-                matches!(dispatch.commands[0], Command::ForceAttack { .. }),
+                matches!(dispatch.commands[0], Command::Attack { .. }),
                 "{name}"
             );
         }
@@ -423,18 +423,9 @@ fn retail_repair_click_preserves_native_modifier_and_target_controls() {
         "the actor's one-way alliance is the native query"
     );
     let empty = sim.spawn_object("FV", OWNER, 20, 20, 64, rules).unwrap();
+    // An unloaded IFV's click names no repair action, so it sends no Attack
+    // on the friend; Execute itself never tests the houses' relation.
     assert_eq!(sim.unit_repair_action(empty, tank, owner, rules), None);
-    assert!(
-        !sim.apply_command(
-            OWNER,
-            &Command::Attack {
-                attacker_id: empty,
-                target_id: tank
-            },
-            Some(rules)
-        ),
-        "ordinary weapons still cannot order a friendly Attack"
-    );
     let (sim, gi_ifv, tank) = boarded_ifv(rules, "E1");
     assert_eq!(
         sim.unit_repair_action(

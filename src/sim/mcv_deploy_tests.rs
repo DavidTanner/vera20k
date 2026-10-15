@@ -87,7 +87,7 @@ fn one_command_turns_and_converts_all_stock_mcv_types() {
     for kind in ["AMCV", "SMCV", "PCV"] {
         for facing in [0, 32, 64, 127, 128, 192, 255] {
             let (mut sim, rules, id) = fixture(kind, facing, 5, 4);
-            let accepted = tick(&mut sim, &rules, Some(Command::DeployMcv { entity_id: id }));
+            let accepted = tick(&mut sim, &rules, Some(Command::Deploy { entity_id: id }));
             assert!(!accepted.spawned_entities, "acceptance is not conversion");
             assert_eq!(yards(&sim), 0);
             assert_eq!(finish(&mut sim, &rules, id), 1, "one conversion receipt");
@@ -107,7 +107,7 @@ fn one_command_turns_and_converts_all_stock_mcv_types() {
 #[test]
 fn the_cell_the_mcv_stood_on_ends_as_a_yard_cell() {
     let (mut sim, rules, id) = fixture("AMCV", 128, 5, 4);
-    tick(&mut sim, &rules, Some(Command::DeployMcv { entity_id: id }));
+    tick(&mut sim, &rules, Some(Command::Deploy { entity_id: id }));
     finish(&mut sim, &rules, id);
     let yard = sim
         .substrate
@@ -136,7 +136,7 @@ fn the_cell_the_mcv_stood_on_ends_as_a_yard_cell() {
 fn a_deployed_yard_completes_its_buildup_after_the_conversion_frame() {
     let (mut sim, mut rules, id) = fixture("SMCV", 0, 5, 4);
     rules.set_buildup_control_for_test("YARD", [0, 29, 1]);
-    tick(&mut sim, &rules, Some(Command::DeployMcv { entity_id: id }));
+    tick(&mut sim, &rules, Some(Command::Deploy { entity_id: id }));
     let mut converted = None;
     let mut completed = None;
     for _ in 0..200 {
@@ -163,10 +163,10 @@ fn a_deployed_yard_completes_its_buildup_after_the_conversion_frame() {
 fn duplicate_orders_do_not_restart_the_turn_and_zero_rot_still_completes() {
     for rot in [0, 1, 5, 10] {
         let (mut sim, rules, id) = fixture("AMCV", 64, rot, 6);
-        tick(&mut sim, &rules, Some(Command::DeployMcv { entity_id: id }));
+        tick(&mut sim, &rules, Some(Command::Deploy { entity_id: id }));
         let mut receipts = 0;
         for _ in 0..160 {
-            let out = tick(&mut sim, &rules, Some(Command::DeployMcv { entity_id: id }));
+            let out = tick(&mut sim, &rules, Some(Command::Deploy { entity_id: id }));
             receipts += usize::from(out.spawned_entities);
             if yards(&sim) == 1 {
                 break;
@@ -178,7 +178,7 @@ fn duplicate_orders_do_not_restart_the_turn_and_zero_rot_still_completes() {
 #[test]
 fn turn_completion_converts_before_the_next_mission_retry() {
     let (mut sim, rules, id) = fixture("AMCV", 64, 10, 4);
-    tick(&mut sim, &rules, Some(Command::DeployMcv { entity_id: id }));
+    tick(&mut sim, &rules, Some(Command::Deploy { entity_id: id }));
     tick(&mut sim, &rules, None);
     let e = sim.substrate.entities.get(id).unwrap();
     assert!(e.mcv_deploy_pending);
@@ -200,12 +200,12 @@ fn turn_completion_converts_before_the_next_mission_retry() {
 #[test]
 fn native_stop_retains_pending_deployment_and_death_cannot_spawn_a_yard() {
     let (mut sim, rules, id) = fixture("AMCV", 64, 5, 4);
-    tick(&mut sim, &rules, Some(Command::DeployMcv { entity_id: id }));
+    tick(&mut sim, &rules, Some(Command::Deploy { entity_id: id }));
     tick(&mut sim, &rules, None);
     tick(&mut sim, &rules, Some(Command::Stop { entity_id: id }));
     assert_eq!(finish(&mut sim, &rules, id), 1);
     let (mut sim, rules, id) = fixture("AMCV", 64, 5, 4);
-    tick(&mut sim, &rules, Some(Command::DeployMcv { entity_id: id }));
+    tick(&mut sim, &rules, Some(Command::Deploy { entity_id: id }));
     tick(&mut sim, &rules, None);
     sim.uninit_with_rules(id, &rules);
     for _ in 0..50 {
@@ -216,7 +216,7 @@ fn native_stop_retains_pending_deployment_and_death_cannot_spawn_a_yard() {
 #[test]
 fn pending_turn_roundtrips_through_save_and_hashes_its_latches() {
     let (mut sim, rules, id) = fixture("AMCV", 0, 5, 4);
-    tick(&mut sim, &rules, Some(Command::DeployMcv { entity_id: id }));
+    tick(&mut sim, &rules, Some(Command::Deploy { entity_id: id }));
     tick(&mut sim, &rules, None);
     let hash = sim.state_hash();
     sim.substrate
@@ -302,7 +302,7 @@ fn moving_mcv_finishes_committed_segment_then_deploys_once() {
         Some(true)
     );
     let position = sim.substrate.entities.get(id).unwrap().position;
-    tick(&mut sim, &rules, Some(Command::DeployMcv { entity_id: id }));
+    tick(&mut sim, &rules, Some(Command::Deploy { entity_id: id }));
     assert_eq!(yards(&sim), 0);
     assert_eq!(finish(&mut sim, &rules, id), 1);
     let yard = sim
@@ -320,7 +320,7 @@ fn moving_mcv_finishes_committed_segment_then_deploys_once() {
 #[test]
 fn placement_is_rechecked_on_turn_completion() {
     let (mut sim, rules, id) = fixture("AMCV", 64, 5, 4);
-    tick(&mut sim, &rules, Some(Command::DeployMcv { entity_id: id }));
+    tick(&mut sim, &rules, Some(Command::Deploy { entity_id: id }));
     tick(&mut sim, &rules, None);
     // A structure arrives after the initial attempt has already accepted the turn.
     let blocker = sim
@@ -348,7 +348,7 @@ fn move_order_during_turn_prevents_conversion_at_the_old_site() {
     sim.path_grid = Some(std::sync::Arc::new(crate::sim::pathfinding::PathGrid::new(
         64, 64,
     )));
-    tick(&mut sim, &rules, Some(Command::DeployMcv { entity_id: id }));
+    tick(&mut sim, &rules, Some(Command::Deploy { entity_id: id }));
     tick(&mut sim, &rules, None);
     tick(
         &mut sim,
@@ -408,7 +408,7 @@ fn conversion_receipt_rebuilds_navigation_in_the_conversion_frame() {
     sim.resolved_terrain = Some(crate::sim::deploy_tests::mcv_deploy_terrain_with(|_| {}));
     assert!(sim.rebuild_dynamic_navigation(&rules));
     assert!(sim.path_grid.as_ref().unwrap().is_walkable(19, 21));
-    let accepted = tick(&mut sim, &rules, Some(Command::DeployMcv { entity_id: id }));
+    let accepted = tick(&mut sim, &rules, Some(Command::Deploy { entity_id: id }));
     assert!(!accepted.spawned_entities);
     assert!(sim.path_grid.as_ref().unwrap().is_walkable(19, 21));
     for _ in 0..50 {
@@ -438,7 +438,7 @@ fn retail_mcv_and_target_rules_deploy_with_one_command() {
             let id = sim
                 .spawn_object(kind, "Americans", 20, 22, facing, &rules)
                 .unwrap();
-            tick(&mut sim, &rules, Some(Command::DeployMcv { entity_id: id }));
+            tick(&mut sim, &rules, Some(Command::Deploy { entity_id: id }));
             let mut converted = false;
             for _ in 0..140 {
                 let result = tick(&mut sim, &rules, None);
@@ -593,11 +593,11 @@ fn mcv_deploy_sound_occurs_once_with_conversion_at_the_source_cell() {
     use crate::sim::world::SimSoundEvent;
     for facing in [64, 128] {
         let (mut sim, rules, id) = fixture_with_sound("AMCV", facing, 5, 4, Some("PlaceBuilding"));
-        tick(&mut sim, &rules, Some(Command::DeployMcv { entity_id: id }));
+        tick(&mut sim, &rules, Some(Command::Deploy { entity_id: id }));
         let mut sounds = 0;
         for _ in 0..50 {
             // Repeated D while waiting must not repeat the conversion cue.
-            let command = (yards(&sim) == 0).then_some(Command::DeployMcv { entity_id: id });
+            let command = (yards(&sim) == 0).then_some(Command::Deploy { entity_id: id });
             sim.sound_events.clear();
             let result = tick(&mut sim, &rules, command);
             let cues: Vec<_> = sim
@@ -628,7 +628,7 @@ fn blocked_or_unconfigured_mcv_deploy_does_not_emit_deploy_sound() {
     for blocked in [false, true] {
         let (mut sim, rules, id) =
             fixture_with_sound("AMCV", 64, 5, 4, blocked.then_some("PlaceBuilding"));
-        tick(&mut sim, &rules, Some(Command::DeployMcv { entity_id: id }));
+        tick(&mut sim, &rules, Some(Command::Deploy { entity_id: id }));
         tick(&mut sim, &rules, None);
         if blocked {
             sim.spawn_object("YARD", "Americans", 19, 21, 0, &rules)

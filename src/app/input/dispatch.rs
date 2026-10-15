@@ -2692,9 +2692,9 @@ fn queue_area_guard_orders(
     sounds
 }
 
-/// Deploy or undeploy selected entities. KeyD toggles:
-/// - Selected unit with `DeploysInto` or `IsSimpleDeployer` → `Command::DeployMcv`
-/// - Selected structure with `UndeploysInto` → `Command::UndeployBuilding` (ConYard → MCV)
+/// Deploy or undeploy selected entities. KeyD sends DEPLOY (`Command::Deploy`)
+/// to each admitted object; a selected structure with `UndeploysInto` gets
+/// `Command::UndeployBuilding` (ConYard → MCV).
 fn queue_deploy_undeploy_for_selected(state: &mut AppState) {
     let selected_ids = selected_stable_ids_in_order(
         state
@@ -2815,8 +2815,8 @@ fn deployer_is_deployed(
     }
 }
 
-/// The deploy key's per-object decision. The command's historical
-/// `DeployMcv` wire name also carries a SimpleDeployer toggle.
+/// The deploy key's per-object decision: DEPLOY (`PUSH 9` at `0x00730B5C` /
+/// `0x00730D11`) for every object it admits.
 fn deploy_key_command(
     sim: &crate::sim::world::Simulation,
     rules: Option<&crate::rules::ruleset::RuleSet>,
@@ -2833,9 +2833,7 @@ fn deploy_key_command(
                     .cargo()
                     .is_some_and(|cargo| !cargo.is_empty())
             {
-                Some(Command::UnloadPassengers {
-                    transport_id: entity_id,
-                })
+                Some(Command::Deploy { entity_id })
             } else {
                 rules
                     .is_some_and(|rules| {
@@ -2846,18 +2844,18 @@ fn deploy_key_command(
         }
         EntityCategory::Infantry => obj
             .is_some_and(|object| object.deploy_fire)
-            .then_some(Command::ToggleInfantryDeploy { entity_id }),
+            .then_some(Command::Deploy { entity_id }),
         _ => {
-            // A loaded transport (including aircraft) keeps the unload action.
-            super::transport_orders::transport_unload_command(entity, obj).or_else(|| {
-                let object = obj?;
-                let deployable = if super::context_order::is_simple_deploy_unit(entity, object) {
-                    rules.is_some_and(|rules| sim.can_simple_deploy(entity_id, rules))
-                } else {
-                    object.deploys_into.is_some()
-                };
-                deployable.then_some(Command::DeployMcv { entity_id })
-            })
+            // A loaded transport (including aircraft) takes the same DEPLOY.
+            let deployable = super::transport_orders::is_loaded_transport(entity, obj)
+                || obj.is_some_and(|object| {
+                    if super::context_order::is_simple_deploy_unit(entity, object) {
+                        rules.is_some_and(|rules| sim.can_simple_deploy(entity_id, rules))
+                    } else {
+                        object.deploys_into.is_some()
+                    }
+                });
+            deployable.then_some(Command::Deploy { entity_id })
         }
     }
 }
@@ -3281,17 +3279,17 @@ mod deploy_key_tests {
 
         assert_eq!(
             deploy_key_command(&sim, Some(&rules), heli),
-            Some(Command::DeployMcv { entity_id: heli })
+            Some(Command::Deploy { entity_id: heli })
         );
         assert_eq!(
             deploy_key_command(&sim, Some(&rules), transport),
-            Some(Command::UnloadPassengers {
-                transport_id: transport
+            Some(Command::Deploy {
+                entity_id: transport
             })
         );
         assert_eq!(
             deploy_key_command(&sim, Some(&rules), infantry),
-            Some(Command::ToggleInfantryDeploy {
+            Some(Command::Deploy {
                 entity_id: infantry
             })
         );
@@ -3324,7 +3322,7 @@ mod deploy_key_tests {
             .expect("the deploy key fixture builds");
         assert_eq!(
             deploy_key_commands(&sim, Some(&rules), &[heli]),
-            [Command::DeployMcv { entity_id: heli }]
+            [Command::Deploy { entity_id: heli }]
         );
         sim.entities_mut().get_mut(heli).unwrap().berserk.active = true;
         assert!(deploy_key_commands(&sim, Some(&rules), &[heli]).is_empty());
@@ -3347,7 +3345,7 @@ mod deploy_key_tests {
         let (heli, theirs) = (spawn("Americans"), spawn("Russians"));
         assert_eq!(
             deploy_key_commands(&sim, Some(&rules), &[heli, theirs]),
-            [Command::DeployMcv { entity_id: heli }]
+            [Command::Deploy { entity_id: heli }]
         );
         sim.entities_mut().get_mut(heli).unwrap().deactivated = true;
         assert!(deploy_key_commands(&sim, Some(&rules), &[heli]).is_empty());
@@ -3375,7 +3373,7 @@ mod deploy_key_tests {
             .set_infantry_doing_verified(28)
             .unwrap();
         sim.entities_mut().get_mut(gassed).unwrap().berserk.active = true;
-        let toggle = |entity_id| Command::ToggleInfantryDeploy { entity_id };
+        let toggle = |entity_id| Command::Deploy { entity_id };
         let commands = |selection: &[u64]| deploy_key_commands(&sim, Some(&rules), selection);
         assert_eq!(commands(&[deployed]), [toggle(deployed)]);
         assert_eq!(commands(&[deployed, standing]), [toggle(standing)]);
@@ -3384,7 +3382,7 @@ mod deploy_key_tests {
     }
 
     #[test]
-    fn retail_siege_chopper_deploy_key_uses_the_existing_command_in_both_directions() {
+    fn retail_siege_chopper_deploy_key_sends_deploy_in_both_directions() {
         let Some(battle) = crate::rules::retail_ini_fixture::retail_battle_rules() else {
             return;
         };
@@ -3405,7 +3403,7 @@ mod deploy_key_tests {
                 .set_unit_simple_deploy_for_test(deployed, begin, reverse);
             assert_eq!(
                 deploy_key_command(&sim, Some(rules), id),
-                Some(Command::DeployMcv { entity_id: id }),
+                Some(Command::Deploy { entity_id: id }),
             );
         }
     }

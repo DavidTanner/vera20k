@@ -39,6 +39,7 @@ pub(crate) fn has_contact(sim: &Simulation, refinery_sid: u64, miner_sid: u64) -
 
 /// BREAK over the bus — drops the contact on both ends and clears the miner's
 /// `dock_entered_with`.
+#[cfg(test)]
 pub(crate) fn break_contact(
     sim: &mut Simulation,
     miner_sid: u64,

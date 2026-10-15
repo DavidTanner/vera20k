@@ -225,7 +225,7 @@ impl Simulation {
         );
         let placed_building_owner = self.successful_non_wall_placement_owner(cmd, applied, rules);
         let synchronous_deploy = applied
-            && matches!(cmd.payload, Command::DeployMcv { entity_id }
+            && matches!(cmd.payload, Command::Deploy { entity_id }
             if self.substrate.entities.get(entity_id).is_none_or(|e| e.dying));
         let spawned_entity = synchronous_deploy
             || placed_building_owner.is_some()
@@ -262,19 +262,14 @@ impl Simulation {
             Command::Move { .. }
                 | Command::MoveToObject { .. }
                 | Command::Attack { .. }
-                | Command::ForceAttack { .. }
                 | Command::AttackMove { .. }
                 | Command::Guard { .. }
-                | Command::MinerReturn { .. }
-                | Command::RepairAtDepot { .. }
-                | Command::EnterTransport { .. }
-                | Command::EnterBunker { .. }
+                | Command::Enter { .. }
                 | Command::EjectBunker { .. }
-                | Command::UnloadPassengers { .. }
+                | Command::Unload { .. }
                 | Command::HarvestCell { .. }
                 | Command::CaptureBuilding { .. }
                 | Command::PlantC4 { .. }
-                | Command::ToggleInfantryDeploy { .. }
                 | Command::ForceAttackCell { .. }
         )
     }

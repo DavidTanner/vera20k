@@ -265,20 +265,19 @@ fn order(s: &mut Scene, command: crate::sim::command::Command) {
     ));
 }
 
-/// A player return order on a cutting miner: its mission becomes the
-/// return's (VERA's ForcedReturn cursor for the native Enter), and
-/// `UnitClass::AI` (`0x007365BB..0x007365D8`) clears Unit+0x6D2 on the next
-/// frame, so OREGATH is gone while the miner waits at rest for its dock.
+/// A player's Enter onto the refinery on a cutting miner: its mission
+/// becomes Enter, and `UnitClass::AI` (`0x007365BB..0x007365D8`) clears
+/// Unit+0x6D2 on the next frame, so OREGATH is gone.
 #[test]
 fn a_return_order_ends_the_harvesting_byte_and_oregath() {
     let mut s = field((15, 15), serde_json::json!([[15, 15, 0, 0, 5]]));
     until_first_bale(&mut s);
-    let miner = s.miner;
+    let (miner, refinery) = (s.miner, s.refinery);
     order(
         &mut s,
-        crate::sim::command::Command::MinerReturn {
+        crate::sim::command::Command::Enter {
             entity_id: miner,
-            target_refinery_id: None,
+            destination_id: refinery,
         },
     );
     let sample = frame(&mut s);

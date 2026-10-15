@@ -11,7 +11,6 @@ use std::collections::BTreeSet;
 
 use super::{SimSoundEvent, Simulation, SimulationWallRuntimeHost};
 use crate::map::entities::EntityCategory;
-use crate::map::houses::are_houses_friendly;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::cell_rect::canonical_cell_coord;
 use crate::sim::combat;
@@ -30,6 +29,14 @@ use crate::sim::passenger;
 use crate::sim::pathfinding::PathGrid;
 use crate::sim::pathfinding::zone_incremental::ZoneRepairKind;
 use crate::sim::production;
+
+/// The VERA entry adapters an Enter order still routes through
+/// ([`Simulation::legacy_entry_adapter`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum LegacyEntryAdapter {
+    Transport,
+    Bunker,
+}
 
 #[cfg(test)]
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -841,10 +848,6 @@ impl Simulation {
             Command::Attack {
                 attacker_id,
                 target_id,
-            }
-            | Command::ForceAttack {
-                attacker_id,
-                target_id,
             } => {
                 if !self.entity_owned_by_id(command_owner, *attacker_id) {
                     return false;
@@ -852,15 +855,9 @@ impl Simulation {
                 if !self.substrate.entities.contains(*target_id) {
                     return false;
                 }
-                // Both payloads deliver the same native Attack event. The
-                // ForceAttack alias bypasses VERA's ordinary friendship guard
-                // for Ctrl and admitted friendly repair/defuse/Ivan actions;
-                // no persistent force-fire state or second receiver exists.
-                if matches!(cmd, Command::Attack { .. })
-                    && !self.can_attack_target_by_id(*attacker_id, *target_id)
-                {
-                    return false;
-                }
+                // The MEGAMISSION arm (`0x004C71CA..0x004C7380`) never tests
+                // the houses' relation: a click decides whether it may attack
+                // an ally (Ctrl, repair, defuse, Ivan) when it picks its action.
                 // Native order admission: BOTH the actor and the clicked Target
                 // object are gated, and a failure on either abandons the whole
                 // order. A victim that dies in the same tick is still resolvable
@@ -983,12 +980,44 @@ impl Simulation {
                 overlay_registry,
                 frame_effects,
             ),
-            Command::DeployMcv { entity_id } => {
+            Command::Deploy { entity_id } => {
                 let Some(rules) = rules else { return false };
                 if !self.entity_owned_by_id(command_owner, *entity_id) {
                     return false;
                 }
                 crate::sim::deploy::issue_order(self, *entity_id, rules, frame_effects)
+            }
+            Command::Unload { entity_id, target } => {
+                let applied = self.apply_megamission_command(
+                    command_owner,
+                    *entity_id,
+                    MissionType::Unload,
+                    *target,
+                    None,
+                    rules,
+                    overlay_registry,
+                    frame_effects,
+                );
+                // RESIDUAL: native leaves a queued aircraft Unload to its
+                // Ready/Commence promotion, whose aircraft latch has no
+                // producer in VERA, so VERA commits it here at once. Trigger:
+                // a self-click on a loaded transport aircraft. Dormant: no
+                // retail `[AircraftTypes]` entry has `Passengers=`.
+                if applied
+                    && self
+                        .substrate
+                        .entities
+                        .get(*entity_id)
+                        .is_some_and(|e| e.category() == EntityCategory::Aircraft)
+                {
+                    let now = self.session.binary_frame;
+                    let _ = self.mission_assign_exact(
+                        *entity_id,
+                        crate::sim::mission::MissionId::from_known(MissionType::Unload),
+                        now,
+                    );
+                }
+                applied
             }
             // RESIDUAL: retail undeploys a building only through a cell click
             // (`0x004436F0`: the rally/ArchiveTarget event 0x1E, then SELL
@@ -1005,35 +1034,14 @@ impl Simulation {
                 }
                 self.undeploy_building(*entity_id, rules, overlay_registry, frame_effects)
             }
-            // The synchronized self-deploy order queues Unload; the concrete
-            // Infantry51F6E0 handler selects Doing27/31 on the object's visit.
-            // CanDeploy700D50's UI tube-neighborhood gate484AE0 is a separate
-            // required query; it is not invented by this event receiver.
-            Command::ToggleInfantryDeploy { entity_id } => {
-                if !self.entity_owned_by_id(command_owner, *entity_id)
-                    || !self.order_actor_admits(*entity_id)
-                {
-                    return false;
-                }
-                let Some(rules) = rules else { return false };
-                let Some(actor) = self.substrate.entities.get(*entity_id) else {
-                    return false;
-                };
-                if actor.category() != EntityCategory::Infantry
-                    || !self
-                        .object_type(actor.type_ref(), rules)
-                        .is_some_and(|object| object.deployer)
-                {
-                    return false;
-                }
-                self.order_unload(*entity_id, rules, overlay_registry, frame_effects);
-                true
-            }
             Command::SetRally {
                 rx,
                 ry,
-                producer_ids,
-            } => self.set_rally_point_for_producers(command_owner, producer_ids, *rx, *ry, rules),
+                producer_id,
+            } => {
+                self.archive_rally_cell(*producer_id, *rx, *ry);
+                true
+            }
             // Production events act on the event's own house (the
             // EventClass header's house id); the payload names no owner.
             Command::QueueProduction { type_id } => {
@@ -1159,373 +1167,6 @@ impl Simulation {
                     )
                 })
             }
-            Command::MinerReturn {
-                entity_id,
-                target_refinery_id,
-            } => {
-                if !self.entity_owned_by_id(command_owner, *entity_id) {
-                    return false;
-                }
-                if self
-                    .substrate
-                    .entities
-                    .get(*entity_id)
-                    .is_some_and(|e| e.is_deployed())
-                {
-                    return false;
-                }
-                let explicit_refinery = match target_refinery_id {
-                    Some(refinery_id) => {
-                        let Some(rules) = rules else { return false };
-                        if !self.valid_explicit_miner_refinery(
-                            command_owner,
-                            *entity_id,
-                            *refinery_id,
-                            rules,
-                        ) {
-                            return false;
-                        }
-                        Some(*refinery_id)
-                    }
-                    None => None,
-                };
-                // A harvester's dock is its native Enter/Unload missions: the
-                // order's MEGAMISSION radio break (`0x004C72E8`) leaves the
-                // refinery link, and because the Harvest assign below replaces
-                // Unload without its contact gate (`0x0073DEE0`), the unload
-                // latch drops here too — as for `Command::HarvestCell`.
-                if !self.order_actor_admits(*entity_id)
-                    || self
-                        .substrate
-                        .entities
-                        .get(*entity_id)
-                        .is_none_or(|e| e.miner.is_none())
-                {
-                    return false;
-                }
-                self.begin_megamission_retask(
-                    *entity_id,
-                    MissionType::Enter,
-                    None,
-                    None,
-                    rules,
-                    frame_effects,
-                );
-                if self
-                    .substrate
-                    .entities
-                    .get(*entity_id)
-                    .is_some_and(crate::sim::game_entity::GameEntity::is_harvester)
-                {
-                    crate::sim::miner::clear_unload_latch(self, *entity_id);
-                }
-                let previous_refinery = self
-                    .substrate
-                    .entities
-                    .get(*entity_id)
-                    .and_then(|e| e.miner.as_ref())
-                    .and_then(|m| m.reserved_refinery);
-                let explicit_refinery_changed = explicit_refinery
-                    .is_some_and(|refinery_id| previous_refinery != Some(refinery_id));
-                if explicit_refinery_changed && let Some(old_refinery) = previous_refinery {
-                    // BREAK both ends: the old refinery's slot frees for
-                    // the next miner, and this miner loses the contact
-                    // that would let it path through that refinery.
-                    crate::sim::miner::miner_dock::break_contact(
-                        self,
-                        *entity_id,
-                        old_refinery,
-                        frame_effects,
-                    );
-                }
-                // Update miner state in EntityStore.
-                let Some(e) = self.substrate.entities.get_mut(*entity_id) else {
-                    return false;
-                };
-                let Some(ref mut miner) = e.miner else {
-                    return false;
-                };
-                if let Some(refinery_id) = explicit_refinery {
-                    miner.reserved_refinery = Some(refinery_id);
-                }
-                // Commit the Harvest mission and the ForcedReturn cursor of
-                // record. Assign resets the handler state and dispatch timer
-                // (prompt redispatch); the cursor write lands after it.
-                // UNCHECKED: the native return-order mission shape is
-                // unverified — this preserves the legacy immediate-effect
-                // command behavior.
-                let now = self.session.binary_frame;
-                let _ = self.mission_assign_exact(
-                    *entity_id,
-                    crate::sim::mission::MissionId::from_known(MissionType::Harvest),
-                    now,
-                );
-                if let Some(e) = self.substrate.entities.get_mut(*entity_id) {
-                    e.mission
-                        .set_handler_state(crate::sim::miner::MinerState::ForcedReturn.cursor());
-                }
-                true
-            }
-            Command::RepairAtDepot {
-                entity_id,
-                depot_id,
-            } => {
-                let Some(rules) = rules else { return false };
-                if !self.entity_owned_by_id(command_owner, *entity_id) {
-                    return false;
-                }
-                if self
-                    .substrate
-                    .entities
-                    .get(*entity_id)
-                    .is_some_and(|e| e.is_deployed())
-                {
-                    return false;
-                }
-                // Validate depot exists, is friendly, and has UnitRepair=yes.
-                let depot_ok = self.substrate.entities.get(*depot_id).is_some_and(|depot| {
-                    command_owner.eq_ignore_ascii_case(self.interner.resolve(depot.owner()))
-                        && self
-                            .object_type(depot.type_ref(), rules)
-                            .is_some_and(|obj| obj.unit_repair)
-                });
-                if !depot_ok {
-                    return false;
-                }
-                // A damaged vehicle: the player's click issues the order only
-                // for Units (`input::context_order`), and the depot's CAN_LOAD
-                // refuses any sender but a Unit or an Aircraft (Building
-                // Receive_Radio 0x0F, UnitRepair arm).
-                let entity_ok = self.substrate.entities.get(*entity_id).is_some_and(|e| {
-                    e.category() == crate::map::entities::EntityCategory::Unit
-                        && self
-                            .object_type(e.type_ref(), rules)
-                            .is_some_and(|object| e.health.current() < object.strength)
-                        && !e.dying
-                });
-                if !entity_ok {
-                    return false;
-                }
-                // Native order admission (actor + Destination token).
-                if !self.order_actor_admits(*entity_id)
-                    || !self.order_object_token_admits(*depot_id)
-                {
-                    return false;
-                }
-                // Duplicate Enter onto the building this unit is already linked
-                // to is consumed without touching anything.
-                if self.duplicate_enter_is_noop(*entity_id, *depot_id) {
-                    return true;
-                }
-                // Queue Enter; the Unit setter below owns depot admission and
-                // contact changes, without a parallel reservation teardown.
-                self.queue_megamission(
-                    *entity_id,
-                    MissionType::Enter,
-                    None,
-                    None,
-                    Some(rules),
-                    frame_effects,
-                );
-                // Event4C7467 dispatches the class target setter before Dest.
-                let _ = self.assign_target_represented(
-                    *entity_id,
-                    None,
-                    Some(rules),
-                    overlay_registry,
-                    frame_effects,
-                );
-                // Event4C747C: the Unit class setter with the depot.
-                self.set_unit_destination(
-                    *entity_id,
-                    crate::sim::components::NavTargetRef::Building { id: *depot_id },
-                    rules,
-                    true,
-                    frame_effects,
-                );
-                true
-            }
-            Command::EnterTransport {
-                passenger_id,
-                transport_id,
-            } => {
-                let Some(rules) = rules else { return false };
-                if !self.entity_owned_by_id(command_owner, *passenger_id) {
-                    return false;
-                }
-                if self
-                    .substrate
-                    .entities
-                    .get(*passenger_id)
-                    .is_some_and(|e| e.is_deployed())
-                {
-                    return false;
-                }
-                // Validate transport exists and has cargo capacity.
-                // CanBeOccupiedBy is also the cursor's garrison predicate,
-                // but that action sends Capture8, never this Enter7 payload
-                // (Infantry51E6A8 -> Foot4D7716). Retire the old adapter
-                // rather than inventing Boarding state for a garrison.
-                let carrier = self.substrate.entities.get(*transport_id).is_some_and(|t| {
-                    t.passenger_role.cargo().is_some()
-                        && !(t.category() == crate::map::entities::EntityCategory::Structure
-                            && self
-                                .object_type(t.type_ref(), rules)
-                                .is_some_and(|object| object.can_be_occupied))
-                });
-                if !carrier {
-                    return false;
-                }
-                // Shared carrier admission owner (Unit0F and building Enter).
-                if !passenger::can_enter_transport(self, rules, *passenger_id, *transport_id) {
-                    return false;
-                }
-                // Native order admission (actor + Destination token).
-                if !self.order_actor_admits(*passenger_id)
-                    || !self.order_object_token_admits(*transport_id)
-                {
-                    return false;
-                }
-                // Duplicate Enter onto a *building* transport (
-                // Grinder, bunker) the passenger is already linked to is
-                // consumed without touching anything — no fresh Boarding role
-                // and no re-path, so the unit walks in instead of backing off.
-                // Vehicle transports never take this branch.
-                if self.duplicate_enter_is_noop(*passenger_id, *transport_id) {
-                    return true;
-                }
-                // Infantry51F190 -> Foot4D76F8 ->6FFBE0 carries the clicked
-                // object as Destination for Enter7, as Unit738902 does
-                // (Steam3e81a617): Enter7, NULL Target. Event4C747C hands it
-                // to the class setter, which samples its live +4C through the
-                // shared coordinate owner after its prelude
-                // (foot_navigation_coordinate corpus). An object without that
-                // coordinate refuses the order before it is queued.
-                let transport_ref = crate::sim::components::NavTargetRef::object(*transport_id);
-                if crate::sim::movement::nav_target_coordinate(
-                    transport_ref,
-                    Some(*passenger_id),
-                    &self.substrate.entities,
-                    self.resolved_terrain.as_ref(),
-                    Some((rules, &self.interner)),
-                )
-                .is_err()
-                {
-                    return false;
-                }
-                // Retask onto Enter; the target setter below owns combat cancellation.
-                self.queue_megamission(
-                    *passenger_id,
-                    MissionType::Enter,
-                    None,
-                    None,
-                    Some(rules),
-                    frame_effects,
-                );
-                // Clear existing state on the passenger.
-                // Event4C7467 dispatches the class target setter before Dest.
-                let _ = self.assign_target_represented(
-                    *passenger_id,
-                    None,
-                    Some(rules),
-                    overlay_registry,
-                    frame_effects,
-                );
-                if let Some(e) = self.substrate.entities.get_mut(*passenger_id) {
-                    passenger::begin_boarding(e, *transport_id);
-                }
-                if let Err(cause) = self.assign_destination_represented(
-                    *passenger_id,
-                    Some(transport_ref),
-                    Some(rules),
-                    overlay_registry,
-                    frame_effects,
-                ) {
-                    log::warn!("Enter destination {passenger_id}: {cause}");
-                }
-                true
-            }
-            Command::UnloadPassengers { transport_id } => {
-                if !self.entity_owned_by_id(command_owner, *transport_id) {
-                    return false;
-                }
-                let has_passengers = self
-                    .substrate
-                    .entities
-                    .get(*transport_id)
-                    .and_then(|t| t.passenger_role.cargo())
-                    .is_some_and(|c| !c.is_empty());
-                if !has_passengers {
-                    return false;
-                }
-                let category = self
-                    .substrate
-                    .entities
-                    .get(*transport_id)
-                    .map(|t| t.category());
-                match category {
-                    Some(crate::map::entities::EntityCategory::Structure) => {
-                        // A garrison's Unload is its own mission
-                        // (`BuildingClass::Mission_Unload @ 0x0044D880`),
-                        // commenced at the building's ready checks.
-                        if !self.order_actor_admits(*transport_id) {
-                            return false;
-                        }
-                        self.queue_megamission(
-                            *transport_id,
-                            MissionType::Unload,
-                            None,
-                            None,
-                            rules,
-                            frame_effects,
-                        );
-                        true
-                    }
-                    Some(crate::map::entities::EntityCategory::Unit)
-                    | Some(crate::map::entities::EntityCategory::Aircraft) => {
-                        // Vehicle/aircraft transports unload through the Unload
-                        // mission (`UnitClass::Mission_Unload @ 0x0073D630`
-                        // transport branch; Aircraft slot `0x004151E0`).
-                        let Some(rules) = rules else { return false };
-                        let is_transport = self
-                            .substrate
-                            .entities
-                            .get(*transport_id)
-                            .and_then(|t| self.object_type(t.type_ref(), rules))
-                            .is_some_and(|obj| obj.passengers > 0);
-                        if !is_transport || !self.order_actor_admits(*transport_id) {
-                            return false;
-                        }
-                        if category == Some(crate::map::entities::EntityCategory::Aircraft) {
-                            // Aircraft readiness has no live transition-latch
-                            // producer, so a queued mission would never
-                            // promote; commit through Assign.
-                            //
-                            // RESIDUAL: native's self-click sends an aircraft
-                            // the same MEGAMISSION (AircraftClass slot +0x144
-                            // case 4, `0x00417BD0`), whose NULL target and
-                            // destination setters this arm does not run.
-                            // Dormant: no retail `[AircraftTypes]` entry has
-                            // `Passengers=`.
-                            let now = self.session.binary_frame;
-                            let _ = self.mission_assign_exact(
-                                *transport_id,
-                                crate::sim::mission::MissionId::from_known(MissionType::Unload),
-                                now,
-                            );
-                        } else {
-                            self.order_unload(
-                                *transport_id,
-                                rules,
-                                overlay_registry,
-                                frame_effects,
-                            );
-                        }
-                        true
-                    }
-                    _ => false,
-                }
-            }
             Command::HarvestCell {
                 entity_id,
                 target_rx,
@@ -1576,27 +1217,18 @@ impl Simulation {
                 // and Unit+0x6D2 carry on, so state 1 waits out the drive as
                 // a hop and cuts where it ends. Any other mission queues
                 // Harvest for the host's next Ready/Commence, and state 0
-                // cuts where the drive ends. VERA's ForcedReturn cursor
-                // stands for the return order's Enter mission, which Queue
-                // replaces, so that miner restarts at state 0 here.
+                // cuts where the drive ends.
                 // RESIDUAL: `0x004DA1C0` after the archive clear and the
                 // Assign_Target of the event's target are not represented.
                 let now = self.session.binary_frame;
                 let harvest = crate::sim::mission::MissionId::from_known(MissionType::Harvest);
-                let forced_return = self.substrate.entities.get(*entity_id).is_some_and(|e| {
-                    e.miner_state() == Some(crate::sim::miner::MinerState::ForcedReturn)
-                });
-                if forced_return {
-                    let _ = self.mission_assign_exact(*entity_id, harvest, now);
-                } else {
-                    let _ = self.mission_queue_exact(
-                        *entity_id,
-                        harvest,
-                        0,
-                        now,
-                        &crate::sim::mission::authority::EntityReadyInputProvider,
-                    );
-                }
+                let _ = self.mission_queue_exact(
+                    *entity_id,
+                    harvest,
+                    0,
+                    now,
+                    &crate::sim::mission::authority::EntityReadyInputProvider,
+                );
                 // `0x004C73E1..0x004C73EA`, before the archive clear and the
                 // setter: the order takes a Slave Miner off its hunt; the
                 // Harvest it queued then sends it to the clicked field
@@ -1834,73 +1466,197 @@ impl Simulation {
                     frame_effects,
                 )
             }
-            Command::EnterBunker { unit_id, bunker_id } => {
-                let Some(rules) = rules else { return false };
-                if !self.entity_owned_by_id(command_owner, *unit_id) {
-                    return false;
+            // RESIDUAL: a transport or tank bunker destination still runs
+            // VERA's Boarding and bunker-approach adapters instead of the
+            // class setter, radio and Mission_Enter alone, including their
+            // execute-time admission (owner, capacity, Bunkerable). Trigger:
+            // every Enter onto a transport or bunker. Effect: admission and
+            // approach follow the adapters, not native order. A refinery or
+            // repair depot takes the native arm.
+            Command::Enter {
+                entity_id,
+                destination_id,
+            } => match self.legacy_entry_adapter(*destination_id, rules) {
+                Some(LegacyEntryAdapter::Transport) => {
+                    let (passenger_id, transport_id) = (entity_id, destination_id);
+                    let Some(rules) = rules else { return false };
+                    if !self.entity_owned_by_id(command_owner, *passenger_id) {
+                        return false;
+                    }
+                    if self
+                        .substrate
+                        .entities
+                        .get(*passenger_id)
+                        .is_some_and(|e| e.is_deployed())
+                    {
+                        return false;
+                    }
+                    // Validate transport exists and has cargo capacity.
+                    // CanBeOccupiedBy is also the cursor's garrison predicate,
+                    // but that action sends Capture8, never this Enter7 payload
+                    // (Infantry51E6A8 -> Foot4D7716). Retire the old adapter
+                    // rather than inventing Boarding state for a garrison.
+                    let carrier = self.substrate.entities.get(*transport_id).is_some_and(|t| {
+                        t.passenger_role.cargo().is_some()
+                            && !(t.category() == crate::map::entities::EntityCategory::Structure
+                                && self
+                                    .object_type(t.type_ref(), rules)
+                                    .is_some_and(|object| object.can_be_occupied))
+                    });
+                    if !carrier {
+                        return false;
+                    }
+                    // Shared carrier admission owner (Unit0F and building Enter).
+                    if !passenger::can_enter_transport(self, rules, *passenger_id, *transport_id) {
+                        return false;
+                    }
+                    // Native order admission (actor + Destination token).
+                    if !self.order_actor_admits(*passenger_id)
+                        || !self.order_object_token_admits(*transport_id)
+                    {
+                        return false;
+                    }
+                    // Duplicate Enter onto a *building* transport (
+                    // Grinder, bunker) the passenger is already linked to is
+                    // consumed without touching anything — no fresh Boarding role
+                    // and no re-path, so the unit walks in instead of backing off.
+                    // Vehicle transports never take this branch.
+                    if self.duplicate_enter_is_noop(*passenger_id, *transport_id) {
+                        return true;
+                    }
+                    // Infantry51F190 -> Foot4D76F8 ->6FFBE0 carries the clicked
+                    // object as Destination for Enter7, as Unit738902 does
+                    // (Steam3e81a617): Enter7, NULL Target. Event4C747C hands it
+                    // to the class setter, which samples its live +4C through the
+                    // shared coordinate owner after its prelude
+                    // (foot_navigation_coordinate corpus). An object without that
+                    // coordinate refuses the order before it is queued.
+                    let transport_ref = crate::sim::components::NavTargetRef::object(*transport_id);
+                    if crate::sim::movement::nav_target_coordinate(
+                        transport_ref,
+                        Some(*passenger_id),
+                        &self.substrate.entities,
+                        self.resolved_terrain.as_ref(),
+                        Some((rules, &self.interner)),
+                    )
+                    .is_err()
+                    {
+                        return false;
+                    }
+                    // Retask onto Enter; the target setter below owns combat cancellation.
+                    self.queue_megamission(
+                        *passenger_id,
+                        MissionType::Enter,
+                        None,
+                        None,
+                        Some(rules),
+                        frame_effects,
+                    );
+                    // Clear existing state on the passenger.
+                    // Event4C7467 dispatches the class target setter before Dest.
+                    let _ = self.assign_target_represented(
+                        *passenger_id,
+                        None,
+                        Some(rules),
+                        overlay_registry,
+                        frame_effects,
+                    );
+                    if let Some(e) = self.substrate.entities.get_mut(*passenger_id) {
+                        passenger::begin_boarding(e, *transport_id);
+                    }
+                    if let Err(cause) = self.assign_destination_represented(
+                        *passenger_id,
+                        Some(transport_ref),
+                        Some(rules),
+                        overlay_registry,
+                        frame_effects,
+                    ) {
+                        log::warn!("Enter destination {passenger_id}: {cause}");
+                    }
+                    true
                 }
-                if self
-                    .substrate
-                    .entities
-                    .get(*unit_id)
-                    .is_some_and(|e| e.is_deployed())
-                {
-                    return false;
+                Some(LegacyEntryAdapter::Bunker) => {
+                    let (unit_id, bunker_id) = (entity_id, destination_id);
+                    let Some(rules) = rules else { return false };
+                    if !self.entity_owned_by_id(command_owner, *unit_id) {
+                        return false;
+                    }
+                    if self
+                        .substrate
+                        .entities
+                        .get(*unit_id)
+                        .is_some_and(|e| e.is_deployed())
+                    {
+                        return false;
+                    }
+                    // Target must be an own tank bunker (seeded `bunker_runtime`).
+                    let is_bunker = self
+                        .substrate
+                        .entities
+                        .get(*bunker_id)
+                        .is_some_and(|b| b.bunker_runtime.is_some());
+                    if !is_bunker || !self.entity_owned_by_id(command_owner, *bunker_id) {
+                        return false;
+                    }
+                    // Native order admission (actor + Destination token), ahead of
+                    // any radio traffic.
+                    if !self.order_actor_admits(*unit_id)
+                        || !self.order_object_token_admits(*bunker_id)
+                    {
+                        return false;
+                    }
+                    // Duplicate Enter onto the bunker this unit is already linked to
+                    // is consumed without touching anything — no CanEnter/DockNow
+                    // round trip and no re-approach.
+                    if self.duplicate_enter_is_noop(*unit_id, *bunker_id) {
+                        return true;
+                    }
+                    // Rules-gated weapon/Bunkerable check (the bus stays rules-free).
+                    if !crate::sim::docking::bunker_link::can_auto_deploy_here(
+                        self, *unit_id, rules,
+                    ) {
+                        return false;
+                    }
+                    let unit_id = *unit_id;
+                    crate::sim::docking::bunker_link::begin_entry(
+                        self,
+                        unit_id,
+                        *bunker_id,
+                        rules,
+                        overlay_registry,
+                        frame_effects,
+                        |sim| {
+                            // Retask onto Enter (no dock reservation).
+                            sim.queue_megamission(
+                                unit_id,
+                                MissionType::Enter,
+                                None,
+                                None,
+                                Some(rules),
+                                frame_effects,
+                            );
+                            // Event4C7467 dispatches the class target setter before Dest.
+                            let _ = sim.assign_target_represented(
+                                unit_id,
+                                None,
+                                Some(rules),
+                                overlay_registry,
+                                frame_effects,
+                            );
+                        },
+                    )
                 }
-                // Target must be an own tank bunker (seeded `bunker_runtime`).
-                let is_bunker = self
-                    .substrate
-                    .entities
-                    .get(*bunker_id)
-                    .is_some_and(|b| b.bunker_runtime.is_some());
-                if !is_bunker || !self.entity_owned_by_id(command_owner, *bunker_id) {
-                    return false;
-                }
-                // Native order admission (actor + Destination token), ahead of
-                // any radio traffic.
-                if !self.order_actor_admits(*unit_id) || !self.order_object_token_admits(*bunker_id)
-                {
-                    return false;
-                }
-                // Duplicate Enter onto the bunker this unit is already linked to
-                // is consumed without touching anything — no CanEnter/DockNow
-                // round trip and no re-approach.
-                if self.duplicate_enter_is_noop(*unit_id, *bunker_id) {
-                    return true;
-                }
-                // Rules-gated weapon/Bunkerable check (the bus stays rules-free).
-                if !crate::sim::docking::bunker_link::can_auto_deploy_here(self, *unit_id, rules) {
-                    return false;
-                }
-                let unit_id = *unit_id;
-                crate::sim::docking::bunker_link::begin_entry(
-                    self,
-                    unit_id,
-                    *bunker_id,
+                None => self.apply_megamission_command(
+                    command_owner,
+                    *entity_id,
+                    MissionType::Enter,
+                    None,
+                    Some(combat::TargetKind::Entity(*destination_id)),
                     rules,
                     overlay_registry,
                     frame_effects,
-                    |sim| {
-                        // Retask onto Enter (no dock reservation).
-                        sim.queue_megamission(
-                            unit_id,
-                            MissionType::Enter,
-                            None,
-                            None,
-                            Some(rules),
-                            frame_effects,
-                        );
-                        // Event4C7467 dispatches the class target setter before Dest.
-                        let _ = sim.assign_target_represented(
-                            unit_id,
-                            None,
-                            Some(rules),
-                            overlay_registry,
-                            frame_effects,
-                        );
-                    },
-                )
-            }
+                ),
+            },
             Command::EjectBunker { bunker_id } => {
                 let Some(rules) = rules else { return false };
                 if !self.entity_owned_by_id(command_owner, *bunker_id) {
@@ -1925,39 +1681,26 @@ impl Simulation {
         }
     }
 
-    /// The rally click's event 0x1E for each selected factory:
-    /// `BuildingClass::SetRallyPoint @ 0x00443860` queues it and
-    /// `EventClass::Execute @ 0x004C6DAA` runs `Set_ArchiveTarget @
-    /// 0x0070C610`, so the factory archives the cell (its only store).
+    /// ARCHIVE's Execute arm (`0x004C6DAA`): the building token resolves,
+    /// and a live building (`+0x90`) takes the Cell through
+    /// `Set_ArchiveTarget @ 0x0070C610`, its only rally store. The event tests
+    /// no house and no rally capability; the click decided those
+    /// ([`Self::takes_rally_point`]) and ran Map56DC20's nearby search
+    /// (`factory_rally_cell_input`) for this building.
     ///
-    /// The input owner `factory_rally_cell_input` has already run native
-    /// Map56DC20's nearby-passable search separately for each producer. This
-    /// synchronized event stores that prepared target without searching again.
-    fn set_rally_point_for_producers(
-        &mut self,
-        command_owner: &str,
-        producer_ids: &[u64],
-        rx: u16,
-        ry: u16,
-        rules: Option<&RuleSet>,
-    ) -> bool {
-        let Some(rules) = rules else {
-            return true;
-        };
-        let mut ids = producer_ids.to_vec();
-        ids.sort_unstable();
-        ids.dedup();
-        for stable_id in ids {
-            if self.takes_rally_point(stable_id, command_owner, rules)
-                && let Some(entity) = self.substrate.entities.get_mut(stable_id)
-            {
-                entity.set_archive_target(Some(crate::sim::combat::TargetKind::Cell(rx, ry)));
-            }
+    /// `EVA_NewRallyPointEstablished` is not a sim fact: `BuildingClass::
+    /// SetRallyPoint 0x00443A69` speaks inside the click handler, after the
+    /// rally EventClass is pushed and before it executes — the app owns it.
+    ///
+    /// RESIDUAL: the object form of the click (`0x00443683`) archives an
+    /// object token; VERA's command carries only a Cell. Trigger: a factory
+    /// selected and an object clicked. Frequency: low.
+    fn archive_rally_cell(&mut self, building_id: u64, rx: u16, ry: u16) {
+        if let Some(entity) = self.substrate.entities.get_mut(building_id)
+            && entity.lifecycle.object_alive()
+        {
+            entity.set_archive_target(Some(crate::sim::combat::TargetKind::Cell(rx, ry)));
         }
-        // `EVA_NewRallyPointEstablished` is not a sim fact: `BuildingClass::
-        // SetRallyPoint 0x00443A69` speaks inside the click handler, after the
-        // rally EventClass is pushed and before it executes — the app owns it.
-        true
     }
 
     /// Whether a rally order from `owner` reaches this building: `owner`'s
@@ -1965,8 +1708,8 @@ impl Simulation {
     /// (`BuildingClass::Active_Click_With 0x004436F0`) calls `SetRallyPoint`
     /// only for a building with `HasRallyPoint` (vt+0x284, `0x00443792`) or
     /// an `UndeploysInto=` type (`0x0044377E`); the undeploy arm's
-    /// repack-and-move order is not ported. The click and the event share
-    /// this rule so no building the event ignores is announced.
+    /// repack-and-move order is not ported. The ARCHIVE event itself tests
+    /// none of this.
     pub(crate) fn takes_rally_point(&self, stable_id: u64, owner: &str, rules: &RuleSet) -> bool {
         self.substrate
             .entities
@@ -2117,13 +1860,12 @@ impl Simulation {
     ///
     /// Residuals on this gate, recorded not fixed:
     ///
-    /// * **Two arms still ungated.** `Simulation::command_uses_megamission`
+    /// * **One arm still ungated.** `Simulation::command_uses_megamission`
     ///   already enumerates which VERA commands are MEGAMISSION-shaped — it is
     ///   what splits due commands into the non-MEGAMISSION pass and the staged
-    ///   batch, mirroring opcode 0x04 in `net::lockstep`. Checked against it,
-    ///   `EjectBunker` and `ToggleInfantryDeploy` carry only the ownership test.
-    ///   Trigger: issuing
-    ///   one of those to a dying or limboed actor. Player effect: the order runs
+    ///   batch, mirroring opcode 0x04 in `sim::event_queue`. Checked against it,
+    ///   `EjectBunker` carries only the ownership test. Trigger: issuing it to
+    ///   a dying or limboed actor. Player effect: the order runs
     ///   where retail abandons it. Frequency: low per order. These gates
     ///   remain outside ordinary Unit depot servicing.
     /// * **Duplicate-Enter is not applied to `MinerReturn`**, which is the
@@ -2199,53 +1941,24 @@ impl Simulation {
         receiver.radio_contacts.slot(0) == Some(destination_id)
     }
 
-    /// Validate an explicit refinery selected by a player miner-return order.
-    fn valid_explicit_miner_refinery(
+    /// Which VERA entry adapter still owns an Enter onto this destination:
+    /// a tank bunker (`bunker_runtime`) or a carrier that is not an occupiable
+    /// garrison. Every other destination takes the native MEGAMISSION arm.
+    fn legacy_entry_adapter(
         &self,
-        command_owner: &str,
-        miner_id: u64,
-        refinery_id: u64,
-        rules: &RuleSet,
-    ) -> bool {
-        let Some(miner) = self.substrate.entities.get(miner_id) else {
-            return false;
-        };
-        if miner.miner.is_none() {
-            return false;
+        destination_id: u64,
+        rules: Option<&RuleSet>,
+    ) -> Option<LegacyEntryAdapter> {
+        let destination = self.substrate.entities.get(destination_id)?;
+        if destination.bunker_runtime.is_some() {
+            return Some(LegacyEntryAdapter::Bunker);
         }
-        let harvester_type = self.interner.resolve(miner.type_ref());
-        let Some(refinery) = self.substrate.entities.get(refinery_id) else {
-            return false;
-        };
-        if refinery.category() != crate::map::entities::EntityCategory::Structure {
-            return false;
-        }
-        if refinery.health.current() == 0 || refinery.dying || refinery.building_up() {
-            return false;
-        }
-        let refinery_owner = self.interner.resolve(refinery.owner());
-        if !are_houses_friendly(&self.house_alliances, command_owner, refinery_owner) {
-            return false;
-        }
-        let refinery_type = self.interner.resolve(refinery.type_ref());
-        rules.is_refinery_type(refinery_type)
-            && rules.harvester_can_dock_at(harvester_type, refinery_type)
-    }
-
-    /// Check whether the attacker can attack the target (i.e. they are not allies).
-    /// Uses EntityStore for ownership lookup.
-    fn can_attack_target_by_id(&self, attacker_id: u64, target_id: u64) -> bool {
-        let Some(attacker) = self.substrate.entities.get(attacker_id) else {
-            return false;
-        };
-        let Some(target) = self.substrate.entities.get(target_id) else {
-            return false;
-        };
-        !are_houses_friendly(
-            &self.house_alliances,
-            self.interner.resolve(attacker.owner()),
-            self.interner.resolve(target.owner()),
-        )
+        let garrison = destination.category() == crate::map::entities::EntityCategory::Structure
+            && rules
+                .and_then(|rules| self.object_type(destination.type_ref(), rules))
+                .is_some_and(|object| object.can_be_occupied);
+        (destination.passenger_role.cargo().is_some() && !garrison)
+            .then_some(LegacyEntryAdapter::Transport)
     }
 
     /// TargetClass `0x006E6E20`: what an event token resolves to. An object
@@ -2316,6 +2029,15 @@ impl Simulation {
                 return false;
             }
         }
+        // `0x004C729F..0x004C72E2`: an Enter onto the building a Foot already
+        // Enters, and holds in radio contact 0, changes nothing.
+        if mission == MissionType::Enter
+            && let Some(combat::TargetKind::Entity(destination_id)) =
+                self.resolve_event_token(destination)
+            && self.duplicate_enter_is_noop(entity_id, destination_id)
+        {
+            return true;
+        }
         // Queue the mission Assign_Target_Command answers, which reads the
         // event tokens only for mission 29. The destination/radio owners
         // handle any existing dock contact.
@@ -2332,6 +2054,22 @@ impl Simulation {
             self.resolve_event_token(target),
             self.resolve_event_token(destination),
         );
+        // VERA splits native's one object pointer into three navigation
+        // forms. An Enter keeps the forms its consumers read: a building as
+        // `Building` (depot, refinery and bunker docking), any other object
+        // as `Object` (a transport).
+        let nav_destination = destination.map(|token| match (mission, token) {
+            (MissionType::Enter, combat::TargetKind::Entity(id)) => {
+                if self.substrate.entities.get(id).is_some_and(|object| {
+                    object.category() == crate::map::entities::EntityCategory::Structure
+                }) {
+                    crate::sim::components::NavTargetRef::Building { id }
+                } else {
+                    crate::sim::components::NavTargetRef::Object { id }
+                }
+            }
+            (_, token) => token.into(),
+        });
         // Event MegaMission4C7467 calls Assign_Target before the
         // destination setter. Its changed-null path6FCF5B also
         // resets retained burst state; dropping Target alone cannot.
@@ -2353,7 +2091,7 @@ impl Simulation {
         let assigned = self
             .assign_destination_represented(
                 entity_id,
-                destination.map(Into::into),
+                nav_destination,
                 rules,
                 overlay_registry,
                 frame_effects,
@@ -2487,47 +2225,6 @@ impl Simulation {
         )
         .is_ok()
     }
-
-    /// The Unload order a self-click sends: `ClickedMission(Unload, NULL,
-    /// NULL)` (FootClass slot +0x144 case 4, `0x004D74E0`) issues a
-    /// MEGAMISSION. Its arm queues Unload, then for a Foot clears
-    /// ArchiveTarget (`0x004C7448`) and runs the class target (`0x004C7467`)
-    /// and destination (`0x004C747C`) setters with the event's NULL tokens,
-    /// so a moving unit stops where it is and unloads there.
-    ///
-    /// RESIDUAL: the deploy key sends DEPLOY instead (`DeployCommandClass`
-    /// `0x00730AF0` → `ClickedEvent(9)`), and VERA does not tell the two
-    /// apart. That arm (`0x004C7762..0x004C7812`) also nulls the destination
-    /// and target, but it refuses a current mission 0x12 or 0x13, an
-    /// aircraft, a cell holding a `WeaponsFactory=` building (BuildingType
-    /// +0x16BD, read at `0x00460A72`), and a unit off a bridge on a flat cell
-    /// whose vt+0x2B0 answers true; it leaves ArchiveTarget and the suspended
-    /// NavCom/TarCom alone. Trigger: the deploy key on a loaded transport or
-    /// a deployer infantry in one of those states. Effect: VERA unloads or
-    /// deploys where native ignores the key, for example a transport still
-    /// in its war factory's cell. Frequency: rare. Risk: low.
-    fn order_unload(
-        &mut self,
-        id: u64,
-        rules: &RuleSet,
-        overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
-        frame_effects: FrameEffects<'_>,
-    ) {
-        self.queue_megamission(
-            id,
-            MissionType::Unload,
-            None,
-            None,
-            Some(rules),
-            frame_effects,
-        );
-        // Foot4DA1C0 (`0x004C7453`) clears the +5AC vector, distinct from
-        // NavQueue588/598, and has no represented producer here.
-        self.assign_target_represented(id, None, Some(rules), overlay_registry, frame_effects)
-            .unwrap_or_else(|cause| panic!("Unload order target: {cause}"));
-        self.assign_destination_represented(id, None, Some(rules), overlay_registry, frame_effects)
-            .unwrap_or_else(|cause| panic!("Unload order destination: {cause}"));
-    }
 }
 
 #[cfg(test)]
@@ -2538,7 +2235,7 @@ mod tests {
     use crate::sim::combat::Health;
     use crate::sim::game_entity::GameEntity;
     use crate::sim::house_state::HouseState;
-    use crate::sim::miner::{Miner, MinerConfig, MinerKind, MinerState};
+    use crate::sim::miner::{Miner, MinerConfig, MinerKind};
     use crate::sim::mission::MissionId;
     use crate::sim::movement::locomotor::LocomotorState;
     use crate::util::fixed_math::{SIM_ONE, ra2_speed_to_leptons_per_frame};
@@ -3493,8 +3190,12 @@ mod tests {
         sim.substrate.entities.insert(entity);
     }
 
+    /// ARCHIVE (opcode `0x1E`, Execute `0x004C6DAA`) resolves its building
+    /// token and, if that object is alive (`+0x90`), hands the second token to
+    /// `Set_ArchiveTarget @ 0x0070C610`. It tests neither the event's house
+    /// nor the building's rally point: the click (`0x004436F0`) decides that.
     #[test]
-    fn set_rally_updates_only_owned_eligible_producers() {
+    fn archive_event_sets_the_buildings_target_with_no_owner_or_type_test() {
         let rules = rally_rules();
         let mut sim = Simulation::new();
         let owner = sim.interner.intern("Americans");
@@ -3508,26 +3209,28 @@ mod tests {
             HouseState::new(enemy, 1, Some(enemy), false, 10_000, 10),
         );
         spawn_structure_for_owner(&mut sim, 2, "GAPILE", "Americans", 10, 10);
-        spawn_structure_for_owner(&mut sim, 3, "GAWEAP", "Americans", 12, 10);
         spawn_structure_for_owner(&mut sim, 4, "GAPOWR", "Americans", 14, 10);
         spawn_structure_for_owner(&mut sim, 5, "NAWEAP", "Soviet", 16, 10);
 
-        let command = Command::SetRally {
-            rx: 40,
-            ry: 41,
-            producer_ids: vec![3, 2, 2, 4, 5],
-        };
-
-        assert!(sim.apply_command("Americans", &command, Some(&rules)));
+        for producer_id in [2, 4, 5] {
+            let command = Command::SetRally {
+                rx: 40,
+                ry: 41,
+                producer_id,
+            };
+            assert!(sim.apply_command("Americans", &command, Some(&rules)));
+        }
         let rally = |id| sim.substrate.entities.get(id).unwrap().rally_cell();
         assert_eq!(rally(2), Some((40, 41)));
-        assert_eq!(rally(3), Some((40, 41)));
-        assert_eq!(rally(4), None);
-        assert_eq!(rally(5), None);
+        assert_eq!(rally(5), Some((40, 41)));
+        assert_eq!(
+            sim.substrate.entities.get(4).unwrap().archive_target(),
+            Some(crate::sim::combat::TargetKind::Cell(40, 41))
+        );
     }
 
     #[test]
-    fn miner_return_with_explicit_refinery_seeds_clicked_target() {
+    fn enter_onto_another_refinery_breaks_the_old_dock() {
         let rules = miner_return_rules();
         let mut sim = Simulation::new();
         spawn_miner(&mut sim, 1);
@@ -3557,9 +3260,9 @@ mod tests {
 
         let applied = sim.apply_command(
             "Americans",
-            &Command::MinerReturn {
+            &Command::Enter {
                 entity_id: 1,
-                target_refinery_id: Some(3),
+                destination_id: 3,
             },
             Some(&rules),
         );
@@ -3567,13 +3270,13 @@ mod tests {
         assert!(applied);
         let miner_entity = sim.substrate.entities.get(1).unwrap();
         let miner = miner_entity.miner.as_ref().unwrap();
-        assert_eq!(miner.reserved_refinery, Some(3));
-        assert_eq!(miner_entity.miner_state(), Some(MinerState::ForcedReturn));
-        // The order's radio break leaves the old refinery on both ends and
-        // the unload latch with it; a latch left up would refuse every later
-        // Ready_To_Commence (0x007442AB) and hold the miner in place.
-        assert!(!miner.unload_active);
-        assert_eq!(miner_entity.display_type_override, None);
+        assert_eq!(
+            miner_entity.mission.queued().known(),
+            Some(MissionType::Enter)
+        );
+        // The order's radio break leaves the old refinery on both ends; the
+        // unload latch stays up until the Unload mission's next visit.
+        assert!(miner.unload_active);
         assert!(!miner_entity.radio_contacts.contains(2));
         assert_eq!(miner_entity.dock_entered_with, None);
         let refinery = sim.substrate.entities.get(2).unwrap();
@@ -3581,40 +3284,26 @@ mod tests {
         assert_eq!(refinery.dock_entered_with, None);
         spawn_miner(&mut sim, 7);
         assert!(crate::sim::miner::miner_dock::test_support::dock_test_hello(&mut sim, 2, 7));
-    }
 
-    #[test]
-    fn generic_miner_return_can_reselect_later_without_rules() {
-        let mut sim = Simulation::new();
-        spawn_miner(&mut sim, 1);
-
-        let applied = sim.apply_command(
-            "Americans",
-            &Command::MinerReturn {
-                entity_id: 1,
-                target_refinery_id: None,
-            },
-            None,
-        );
-
-        assert!(applied);
-        let miner = sim
-            .substrate
-            .entities
-            .get(1)
-            .unwrap()
-            .miner
-            .as_ref()
-            .unwrap();
-        assert_eq!(miner.reserved_refinery, None);
+        // That visit's contact gate (0x0073DEE0) finds no contact, drops the
+        // latch and the unload image, and commences the queued Enter; a latch
+        // left up would refuse every later Ready_To_Commence (0x007442AB).
+        sim.session.binary_frame = sim.session.binary_frame.wrapping_add(1);
+        sim.session.tick += 1;
+        sim.object_ai_visit_one(1, Some(&rules), crate::sim::world::ObjectAiCtx::default());
+        let miner_entity = sim.substrate.entities.get(1).unwrap();
+        assert!(!miner_entity.miner.as_ref().unwrap().unload_active);
+        assert_eq!(miner_entity.display_type_override, None);
         assert_eq!(
-            sim.substrate.entities.get(1).unwrap().miner_state(),
-            Some(MinerState::ForcedReturn)
+            miner_entity.mission.current().known(),
+            Some(MissionType::Enter)
         );
     }
 
+    /// The MEGAMISSION Enter arm tests no `Dock=` compatibility; the click's
+    /// CAN_LOAD query (`0x00740360`) does, before any event exists.
     #[test]
-    fn explicit_miner_return_rejects_incompatible_refinery() {
+    fn enter_event_does_not_test_dock_compatibility() {
         let rules = miner_return_rules();
         let mut sim = Simulation::new();
         spawn_miner(&mut sim, 1);
@@ -3622,26 +3311,23 @@ mod tests {
 
         let applied = sim.apply_command(
             "Americans",
-            &Command::MinerReturn {
+            &Command::Enter {
                 entity_id: 1,
-                target_refinery_id: Some(2),
+                destination_id: 2,
             },
             Some(&rules),
         );
 
-        assert!(!applied);
-        let miner = sim
-            .substrate
-            .entities
-            .get(1)
-            .unwrap()
-            .miner
-            .as_ref()
-            .unwrap();
-        assert_eq!(miner.reserved_refinery, None);
+        assert!(applied);
         assert_eq!(
-            sim.substrate.entities.get(1).unwrap().miner_state(),
-            Some(MinerState::SearchOre)
+            sim.substrate
+                .entities
+                .get(1)
+                .unwrap()
+                .mission
+                .queued()
+                .known(),
+            Some(MissionType::Enter)
         );
     }
 
@@ -3719,9 +3405,9 @@ mod tests {
 
         let applied = sim.apply_command(
             "Americans",
-            &Command::EnterBunker {
-                unit_id: 1,
-                bunker_id: 2,
+            &Command::Enter {
+                entity_id: 1,
+                destination_id: 2,
             },
             Some(&rules),
         );
@@ -3756,9 +3442,9 @@ mod tests {
 
         let applied = sim.apply_command(
             "Americans",
-            &Command::EnterBunker {
-                unit_id: 1,
-                bunker_id: 2,
+            &Command::Enter {
+                entity_id: 1,
+                destination_id: 2,
             },
             Some(&rules),
         );
@@ -3790,9 +3476,9 @@ mod tests {
 
         let applied = sim.apply_command(
             "Americans",
-            &Command::EnterBunker {
-                unit_id: 1,
-                bunker_id: 2,
+            &Command::Enter {
+                entity_id: 1,
+                destination_id: 2,
             },
             Some(&rules),
         );
@@ -3942,9 +3628,9 @@ mod tests {
         // 1) Enter: admission + install machine starts.
         assert!(sim.apply_command(
             "Americans",
-            &Command::EnterBunker {
-                unit_id: 1,
-                bunker_id: 2,
+            &Command::Enter {
+                entity_id: 1,
+                destination_id: 2
             },
             Some(&rules),
         ));

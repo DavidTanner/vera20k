@@ -384,7 +384,6 @@ fn arm_full_ore_return(sim: &mut Simulation, entity_id: u64, config: &MinerConfi
             value: config.ore_bale_value,
         })
         .collect();
-    miner.reserved_refinery = None;
     entity
         .mission
         .set_handler_state(MinerState::ReturnToRefinery.cursor());
@@ -1047,7 +1046,6 @@ fn production_stock_harv_far_return_preserves_existing_navcom_owner() {
     ) = {
         let entity = sim.substrate.entities.get(entity_id).expect("HARV");
         let miner = entity.miner.as_ref().expect("miner");
-        assert_eq!(miner.reserved_refinery, None);
         (
             entity.navigation.nav_com,
             entity
@@ -1084,7 +1082,6 @@ fn production_stock_harv_far_return_preserves_existing_navcom_owner() {
     let miner = entity.miner.as_ref().expect("miner");
     let timers_after = *entity.native_stage();
     assert_eq!(entity.miner_state().unwrap(), MinerState::ReturnToRefinery);
-    assert_eq!(miner.reserved_refinery, None);
     assert_eq!(entity.navigation.nav_com, nav_before);
     assert_eq!(
         entity
@@ -1546,7 +1543,6 @@ fn cmin_full_close_return_warps_onto_the_pad_and_deposits() {
     let m = e.miner.as_ref().expect("miner comp");
     assert!(m.cargo.is_empty());
     assert!(!m.unload_active);
-    assert!(m.reserved_refinery.is_none());
     assert!(
         e.radio_contacts.is_empty(),
         "OVER_OUT at the end of the unload"

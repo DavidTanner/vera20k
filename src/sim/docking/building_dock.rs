@@ -2426,9 +2426,9 @@ mod tests {
     fn order_repair(sim: &mut Simulation, rules: &RuleSet, tank: u64) -> bool {
         sim.apply_command(
             "Americans",
-            &Command::RepairAtDepot {
+            &Command::Enter {
                 entity_id: tank,
-                depot_id: DEPOT,
+                destination_id: DEPOT,
             },
             Some(rules),
         )

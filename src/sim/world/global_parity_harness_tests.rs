@@ -625,7 +625,12 @@ const FINAL_STREAM_STATES: (u64, u64, u64) = (
 // with a hash that skips only that fold) gives this value in the same
 // test, with every tripwire above green.
 // Control removed. Previous: 0xE527_F567_DC13_C55E.
-const GLOBAL_HARNESS_FINAL_HASH: u64 = 0x0B64_C58D_B313_2AB4;
+// Snapshot356 drops Miner.reserved_refinery (the player return order is the
+// MEGAMISSION Enter), whose always-None value every miner's fold hashed.
+// Hash composition only: folding a None in its place in the same test
+// binary gives the previous value with every tripwire above green.
+// Control removed. Previous: 0x0B64_C58D_B313_2AB4.
+const GLOBAL_HARNESS_FINAL_HASH: u64 = 0x882D_E925_0501_07B8;
 
 fn harness_ini() -> IniFile {
     // Multi-faction vehicles + infantry + buildings (war factory, refinery) plus a

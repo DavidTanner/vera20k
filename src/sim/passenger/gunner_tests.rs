@@ -82,9 +82,9 @@ fn spawn_and_board(sim: &mut Simulation, rules: &RuleSet, passenger_type: &str) 
     assert!(sim.order_object_token_admits(ifv));
     assert!(sim.apply_command(
         OWNER,
-        &Command::EnterTransport {
-            passenger_id: passenger,
-            transport_id: ifv,
+        &Command::Enter {
+            entity_id: passenger,
+            destination_id: ifv
         },
         Some(rules),
     ));
@@ -186,9 +186,9 @@ fn retail_infantry_enter_keeps_the_transport_destination_reference() {
 
     assert!(sim.apply_command(
         OWNER,
-        &Command::EnterTransport {
-            passenger_id: passenger,
-            transport_id: ifv,
+        &Command::Enter {
+            entity_id: passenger,
+            destination_id: ifv
         },
         Some(rules),
     ));
@@ -218,9 +218,9 @@ fn retail_infantry_transport_boarding_waits_for_transport_cell() {
     let passenger = sim.spawn_object("E1", OWNER, 16, 15, 64, rules).unwrap();
     assert!(sim.apply_command(
         OWNER,
-        &Command::EnterTransport {
-            passenger_id: passenger,
-            transport_id: ifv,
+        &Command::Enter {
+            entity_id: passenger,
+            destination_id: ifv
         },
         Some(rules)
     ));
@@ -259,9 +259,9 @@ fn retail_chrono_remote_transport_enter_keeps_object_and_boards() {
     let passenger = sim.spawn_object("CLEG", OWNER, 8, 16, 64, rules).unwrap();
     assert!(sim.apply_command(
         OWNER,
-        &Command::EnterTransport {
-            passenger_id: passenger,
-            transport_id: ifv,
+        &Command::Enter {
+            entity_id: passenger,
+            destination_id: ifv
         },
         Some(rules)
     ));
@@ -329,9 +329,9 @@ fn retail_vehicle_enter_keeps_live_transport_target() {
         ));
         assert!(sim.apply_command(
             OWNER,
-            &Command::EnterTransport {
-                passenger_id: passenger,
-                transport_id: transport,
+            &Command::Enter {
+                entity_id: passenger,
+                destination_id: transport
             },
             Some(rules),
         ));
@@ -372,9 +372,9 @@ fn retail_loaded_ifv_survives_transport_snapshot_unload_and_reentry() {
     ));
     assert!(sim.apply_command(
         OWNER,
-        &Command::EnterTransport {
-            passenger_id: ifv,
-            transport_id: boat
+        &Command::Enter {
+            entity_id: ifv,
+            destination_id: boat
         },
         Some(rules)
     ));
@@ -455,9 +455,9 @@ fn retail_loaded_ifv_survives_transport_snapshot_unload_and_reentry() {
     unload_at_clear_exit(&mut sim, rules, ifv, engineer);
     assert!(sim.apply_command(
         OWNER,
-        &Command::EnterTransport {
-            passenger_id: engineer,
-            transport_id: ifv
+        &Command::Enter {
+            entity_id: engineer,
+            destination_id: ifv
         },
         Some(rules)
     ));
@@ -483,9 +483,9 @@ fn retail_replacement_move_cancels_pending_vehicle_boarding() {
     let passenger = sim.spawn_object("E1", OWNER, 16, 15, 64, rules).unwrap();
     assert!(sim.apply_command(
         OWNER,
-        &Command::EnterTransport {
-            passenger_id: passenger,
-            transport_id: ifv,
+        &Command::Enter {
+            entity_id: passenger,
+            destination_id: ifv
         },
         Some(rules)
     ));

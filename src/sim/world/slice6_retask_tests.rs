@@ -3,7 +3,7 @@
 //! Two jobs:
 //!   1. `replay_hash_stable_through_slice6` — the behavior-preserving gate. A
 //!      scripted skirmish drives every retasking command site (Move / Stop /
-//!      Attack / ForceAttack / ForceAttackCell / AttackMove) and asserts the
+//!      Attack / Attack / ForceAttackCell / AttackMove) and asserts the
 //!      end-of-run `state_hash()` equals the committed baseline. At the slice's
 //!      introduction, this exposed wrong aircraft dock teardown subsets and dropped
 //!      legacy-field clears. Changes require causal behavior or hash-composition
@@ -410,7 +410,7 @@ fn replay_hash_stable_through_slice6() {
         ),
         (
             7,
-            Command::ForceAttack {
+            Command::Attack {
                 attacker_id: 1,
                 target_id: 2,
             },

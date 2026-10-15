@@ -32,17 +32,19 @@ pub const MEGAMISSION_STAGE_CAPACITY: usize = 0x100;
 const FRAMEINFO_CHECKSUM_PAYLOAD_OFFSET: usize = 0;
 const FRAMEINFO_TIMING_WORD_PAYLOAD_OFFSET: usize = 4;
 const FRAMEINFO_DELAY_PAYLOAD_OFFSET: usize = 6;
-#[cfg(test)]
-const QUEUE_ONLY_EVENT_OPCODE_0C: u8 = 0x0c;
-#[cfg(test)]
-const QUEUE_ONLY_EVENT_OPCODE_22: u8 = 0x22;
+const LOCAL_ONLY_EVENT_OPCODE_0C: u8 = 0x0c;
+const LOCAL_ONLY_EVENT_OPCODE_22: u8 = 0x22;
 
-#[cfg(test)]
+/// Opcodes `Execute_DoList @ 0x0064C380` sends to EventClass::Execute only
+/// for the local player's house: `0x0064C64D`/`0x0064C656` branch to
+/// `0x0064C7B6 -> 0x0064C862`, whose `0x0064C8E0` compare against
+/// `PlayerPtr+0x30` reaches the Execute call at `0x0064C911`; any other
+/// house falls through to the processed mark at `0x0064CAA8`.
 #[inline]
-const fn queue_consumes_without_execute(opcode: u8) -> bool {
+const fn executes_only_for_local_player(opcode: u8) -> bool {
     matches!(
         opcode,
-        QUEUE_ONLY_EVENT_OPCODE_0C | QUEUE_ONLY_EVENT_OPCODE_22
+        LOCAL_ONLY_EVENT_OPCODE_0C | LOCAL_ONLY_EVENT_OPCODE_22
     )
 }
 
@@ -365,6 +367,9 @@ pub struct CommandDispatchHouse {
     pub owner: InternedId,
     pub house_id: i8,
     pub dispatch_eligible: bool,
+    /// Whether this is `PlayerPtr`'s house, the one whose opcode `0x0C` and
+    /// `0x22` records reach EventClass::Execute.
+    pub local_player: bool,
 }
 
 impl CommandDispatchHouse {
@@ -373,7 +378,14 @@ impl CommandDispatchHouse {
             owner,
             house_id,
             dispatch_eligible,
+            local_player: false,
         }
+    }
+
+    /// Mark this house as the local player's.
+    pub const fn local_player(mut self) -> Self {
+        self.local_player = true;
+        self
     }
 }
 
@@ -701,7 +713,13 @@ impl SynchronizedCommandQueue {
                         }
                         summary.timing_consumed += 1;
                     }
-                    opcode if queue_consumes_without_execute(opcode) => {}
+                    opcode if executes_only_for_local_player(opcode) => {
+                        if house.local_player {
+                            execute(owner, command, is_late);
+                            summary.executed += 1;
+                            summary.late_executed += usize::from(is_late);
+                        }
+                    }
                     _ if command.stages_as_megamission() => {
                         if staged_megamissions.len() < MEGAMISSION_STAGE_CAPACITY {
                             staged_megamissions.push(command.clone());
@@ -1389,39 +1407,42 @@ mod tests {
         );
     }
 
-    fn assert_queue_only_opcode_is_marked_without_execute(opcode: u8) {
-        let owner = InternedId::from_index(1);
+    /// `0x0064C8E0`: a `0x0C`/`0x22` record executes for `PlayerPtr`'s house
+    /// and is only marked processed for any other house.
+    fn assert_local_only_opcode_executes_for_the_local_player_alone(opcode: u8) {
+        let (local, remote) = (InternedId::from_index(1), InternedId::from_index(2));
         let mut queue = SynchronizedCommandQueue::new();
         queue.admit(opaque(0x15, 0, 11, &[]));
-        queue.admit(opaque(opcode, 0, 10, &[1]));
+        queue.admit(opaque(opcode, 1, 10, &[1]));
+        queue.admit(opaque(opcode, 0, 10, &[2]));
 
+        let mut executed = Vec::new();
         let summary = queue.dispatch_due_offline(
             10,
-            &[eligible(owner, 0)],
-            |_, _| panic!("queue-only records are not MegaMissions"),
-            |_, _, _| panic!("queue-only records must not reach EventClass execute"),
+            &[eligible(local, 0).local_player(), eligible(remote, 1)],
+            |_, _| panic!("local-only records are not MegaMissions"),
+            |owner, command, _| executed.push((owner, command.record().payload()[0])),
         );
 
-        assert_eq!(summary.executed, 0);
+        assert_eq!(executed, vec![(local, 2)]);
+        assert_eq!(summary.executed, 1);
         assert_eq!(summary.retired, 0);
         assert!(
             queue
                 .synchronized_records()
-                .nth(1)
-                .unwrap()
-                .record()
-                .is_processed()
+                .skip(1)
+                .all(|command| command.record().is_processed())
         );
     }
 
     #[test]
-    fn opcode_0c_is_marked_without_event_execute() {
-        assert_queue_only_opcode_is_marked_without_execute(0x0c);
+    fn opcode_0c_executes_only_for_the_local_player() {
+        assert_local_only_opcode_executes_for_the_local_player_alone(0x0c);
     }
 
     #[test]
-    fn opcode_22_is_marked_without_event_execute() {
-        assert_queue_only_opcode_is_marked_without_execute(0x22);
+    fn opcode_22_executes_only_for_the_local_player() {
+        assert_local_only_opcode_executes_for_the_local_player_alone(0x22);
     }
 
     #[test]

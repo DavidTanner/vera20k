@@ -356,7 +356,7 @@ fn a_second_chrono_miner_warps_in_after_the_first_leaves() {
     assert_eq!(docked[0].0, s.miner, "the nearer miner docks first");
 }
 
-/// A player refinery order (`Command::MinerReturn`) for a second Chrono Miner
+/// A player refinery order (`Command::Enter`) for a second Chrono Miner
 /// while the first unloads pins the busy refinery. The pin still goes
 /// through the narrow pass's free-slot gate, so the order sends no HELLO
 /// that the refinery would refuse and does not stop a driving miner; the
@@ -375,9 +375,9 @@ fn a_chrono_miner_ordered_to_a_busy_refinery_warps_in_after_it_frees() {
     let second = spawn_returning_cmin(&mut s, (15, 15));
     assert!(s.sim.apply_command(
         "Americans",
-        &crate::sim::command::Command::MinerReturn {
+        &crate::sim::command::Command::Enter {
             entity_id: second,
-            target_refinery_id: Some(s.refinery),
+            destination_id: s.refinery
         },
         Some(&s.rules),
     ));

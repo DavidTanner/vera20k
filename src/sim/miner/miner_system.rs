@@ -481,11 +481,9 @@ fn sync_harvest_visuals(entity: &mut crate::sim::game_entity::GameEntity) {
     }
 }
 
-/// Whether the unit's native mission is Harvest. VERA's ForcedReturn cursor
-/// stands for the Enter mission a player return order gives, so it is not.
+/// Whether the unit's native mission is Harvest.
 pub(crate) fn native_mission_is_harvest(entity: &crate::sim::game_entity::GameEntity) -> bool {
     entity.mission.current().known() == Some(MissionType::Harvest)
-        && entity.miner_state() != Some(MinerState::ForcedReturn)
 }
 
 /// `UnitClass::AI` once `FootClass::AI` returns (`0x007365BB..0x007365D8`):
@@ -587,10 +585,8 @@ pub(super) fn process_miner(
             harvest_cutting(sim, rules, config, overlay_registry, snap, frame_effects)
         }
         // Native return/finding-home state has no per-frame exit: every
-        // dispatch leaves through the default Rate epilogue. ForcedReturn is
-        // the VERA-internal player-order cursor, outside the native switch,
-        // so it exits there too like any high cursor.
-        MinerState::ReturnToRefinery | MinerState::ForcedReturn => {
+        // dispatch leaves through the default Rate epilogue.
+        MinerState::ReturnToRefinery => {
             handle_return(sim, rules, snap, frame_effects);
             arm_rate_epilogue(sim, rules, snap);
         }
@@ -949,10 +945,6 @@ fn harvest_ore_tick(
 ///   the dock's NW cell plus art `QueueingCell=` (`0x0073ECDF..0x0073EDBB`),
 ///   or its destination is cleared when there is none. Neither destination
 ///   has a radio contact, so a Teleporter's arm makes it drive.
-///
-/// VERA-internal: a player return order (`Command::MinerReturn`, the
-/// ForcedReturn cursor) pins both passes to its refinery; the native order is
-/// an Enter mission on the refinery, not yet represented.
 fn handle_return(
     sim: &mut Simulation,
     rules: &RuleSet,
@@ -963,10 +955,6 @@ fn handle_return(
     let teleporter = sim
         .object_type(snap.type_id, rules)
         .is_some_and(|object| object.teleporter);
-    let pinned = snap
-        .miner
-        .reserved_refinery
-        .filter(|&bay| sim.substrate.entities.get(bay).is_some());
     let driving = sim
         .substrate
         .entities
@@ -976,21 +964,9 @@ fn handle_return(
         return;
     }
     // The narrow pass takes only a bay with a free contact slot
-    // (`FUN_0065ADF0` at `0x004DEF09`), the pinned one included, so a
-    // driving Teleporter keeps its NavCom while that bay is busy.
-    let narrow = match pinned {
-        Some(bay) => sim
-            .substrate
-            .entities
-            .get(bay)
-            .filter(|entity| {
-                !entity.dying
-                    && entity.health.current() != 0
-                    && entity.radio_contacts.has_free_or(id)
-            })
-            .map(|_| bay),
-        None => find_docking_bay(sim, rules, snap.entity_id, false, false, frame_effects),
-    };
+    // (`FUN_0065ADF0` at `0x004DEF09`), so a driving Teleporter keeps its
+    // NavCom while every bay is busy.
+    let narrow = find_docking_bay(sim, rules, snap.entity_id, false, false, frame_effects);
     if driving {
         if narrow.is_none() {
             return;
@@ -1017,12 +993,9 @@ fn handle_return(
         ) == RadioResponse::Roger
     {
         snap.state = MinerState::Dock;
-        snap.miner.reserved_refinery = None;
         return;
     }
-    let Some(bay) =
-        pinned.or_else(|| find_docking_bay(sim, rules, snap.entity_id, true, true, frame_effects))
-    else {
+    let Some(bay) = find_docking_bay(sim, rules, snap.entity_id, true, true, frame_effects) else {
         return;
     };
     if !teleporter

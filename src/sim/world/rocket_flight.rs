@@ -438,7 +438,7 @@ pub(super) mod retail_tests {
                     vec![CommandEnvelope::new(
                         owner,
                         runtime.simulation.session.tick + 1,
-                        Command::ForceAttack {
+                        Command::Attack {
                             attacker_id: v3,
                             target_id: target,
                         },
@@ -733,7 +733,7 @@ pub(super) mod retail_tests {
                 vec![CommandEnvelope::new(
                     owner,
                     runtime.simulation.session.tick + 1,
-                    Command::ForceAttack {
+                    Command::Attack {
                         attacker_id: dred,
                         target_id: target,
                     },
@@ -898,7 +898,7 @@ pub(super) mod retail_tests {
                 vec![CommandEnvelope::new(
                     owner,
                     runtime.simulation.session.tick + 1,
-                    Command::ForceAttack {
+                    Command::Attack {
                         attacker_id: carrier,
                         target_id: target,
                     },
@@ -1104,7 +1104,7 @@ pub(super) mod retail_tests {
                 vec![CommandEnvelope::new(
                     owner,
                     runtime.simulation.session.tick + 1,
-                    Command::ForceAttack {
+                    Command::Attack {
                         attacker_id: v3,
                         target_id: target,
                     },

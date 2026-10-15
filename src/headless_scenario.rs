@@ -1218,7 +1218,7 @@ mod retail_construction_tests {
             let deploy = CommandEnvelope::new(
                 human,
                 sim.session.tick + 1,
-                Command::DeployMcv { entity_id: mcv },
+                Command::Deploy { entity_id: mcv },
             );
             scenario
                 .runtime
@@ -1425,7 +1425,7 @@ mod retail_construction_tests {
             let deploy = CommandEnvelope::new(
                 human,
                 sim.session.tick + 1,
-                Command::DeployMcv { entity_id: mcv },
+                Command::Deploy { entity_id: mcv },
             );
             scenario
                 .runtime

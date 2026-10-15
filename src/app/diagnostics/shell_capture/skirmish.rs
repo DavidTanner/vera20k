@@ -531,7 +531,7 @@ impl SkirmishCapture {
             crate::app::input::commands::schedule_command(
                 state,
                 &owner,
-                crate::sim::command::Command::DeployMcv { entity_id: mcv },
+                crate::sim::command::Command::Deploy { entity_id: mcv },
             );
             self.route.push(json!({"screen": "in game", "frame": frame,
                 "action": "deploy MCV", "entity": mcv}));

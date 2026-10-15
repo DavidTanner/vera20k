@@ -599,9 +599,9 @@ fn tibtre_spawned_ore_grows_is_harvested_and_reaches_refinery_credits() {
     let balance = s.sim.houses[&owner].economy.credits();
     assert!(s.sim.apply_command_with_overlays(
         "Americans",
-        &Command::MinerReturn {
+        &Command::Enter {
             entity_id: s.miner,
-            target_refinery_id: Some(s.refinery)
+            destination_id: s.refinery
         },
         Some(&s.rules),
         Some(registry()),

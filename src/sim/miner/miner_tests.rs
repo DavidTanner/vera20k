@@ -1040,7 +1040,6 @@ fn harvester_queues_guard_when_no_dock_compatible_refinery_exists() {
     // No owned instance of any `Dock=` type: the Harvest preamble queues
     // Guard before the state switch, so selection never runs.
     let miner = get_miner(&sim, miner_id);
-    assert_eq!(miner.reserved_refinery, None);
     assert_eq!(miner.state, MinerState::ReturnToRefinery);
     assert_eq!(
         sim.substrate
@@ -1792,10 +1791,6 @@ fn harvester_caps_extraction_at_remaining_capacity() {
         None,
         "archive is not selected on fill"
     );
-    assert_eq!(
-        miner.reserved_refinery, None,
-        "return does not begin on fill"
-    );
 
     let entity = sim.substrate.entities.get(miner_id).expect("miner entity");
     assert!(crate::sim::movement::motion_query::is_moving(&entity) != Some(true));
@@ -1855,7 +1850,6 @@ fn filling_extraction_waits_for_full_gate_before_war_return() {
             (0, 2)
         );
         assert_eq!(entity.archive_target(), None);
-        assert_eq!(miner.reserved_refinery, None);
         assert!(crate::sim::movement::motion_query::is_moving(&entity) != Some(true));
         assert!(entity.teleport_state().is_none());
         let overlay = entity.harvest_overlay.expect("harvest overlay");
@@ -1870,7 +1864,6 @@ fn filling_extraction_waits_for_full_gate_before_war_return() {
     );
     {
         let entity = sim.substrate.entities.get(miner_id).expect("miner entity");
-        let miner = entity.miner.as_ref().expect("miner component");
         assert_eq!(
             entity.miner_state().unwrap(),
             MinerState::Harvest,
@@ -1882,7 +1875,6 @@ fn filling_extraction_waits_for_full_gate_before_war_return() {
             "the ninth step lands after F+18's dispatch"
         );
         assert_eq!(entity.archive_target(), None);
-        assert_eq!(miner.reserved_refinery, None);
         assert!(crate::sim::movement::motion_query::is_moving(&entity) != Some(true));
         let overlay = entity.harvest_overlay.expect("harvest overlay");
         assert!(overlay.visible);
@@ -1897,7 +1889,6 @@ fn filling_extraction_waits_for_full_gate_before_war_return() {
     let full_gate_frame = sim.session.binary_frame;
     {
         let entity = sim.substrate.entities.get(miner_id).expect("miner entity");
-        let miner = entity.miner.as_ref().expect("miner component");
         assert_eq!(full_gate_frame.wrapping_sub(fill_frame), GATE as u32);
         assert_eq!(entity.miner_state().unwrap(), MinerState::ReturnToRefinery);
         assert_eq!(
@@ -1914,7 +1905,6 @@ fn filling_extraction_waits_for_full_gate_before_war_return() {
             entity.archive_target(),
             Some(crate::sim::combat::TargetKind::Cell(31, 30))
         );
-        assert_eq!(miner.reserved_refinery, None);
         assert!(crate::sim::movement::motion_query::is_moving(&entity) != Some(true));
         assert!(entity.teleport_state().is_none());
         let overlay = entity.harvest_overlay.expect("harvest overlay");
@@ -2312,11 +2302,6 @@ fn stop_breaks_an_untethered_refinery_contact_and_is_ignored_once_entered() {
         let rules = miner_rules();
         let miner_id = spawn_miner(&mut sim, 1, MinerKind::War, 14, 11);
         spawn_refinery(&mut sim, 2, 10, 10);
-        {
-            let entity = sim.substrate.entities.get_mut(miner_id).unwrap();
-            let miner = entity.miner.as_mut().unwrap();
-            miner.reserved_refinery = Some(2);
-        }
         assert!(
             crate::sim::miner::miner_dock::test_support::dock_test_hello(&mut sim, 2, miner_id)
         );
@@ -2676,7 +2661,6 @@ fn fill_and_return(sim: &mut Simulation, miner_id: u64) {
             value: 25,
         });
     }
-    miner.reserved_refinery = None;
     entity
         .mission
         .set_handler_state(MinerState::ReturnToRefinery.cursor());
@@ -2831,7 +2815,6 @@ fn refinery_selection_with_only_foreign_refinery_queues_guard() {
     // The other house's refinery is not an owned dock instance either: the
     // preamble queues Guard and selection never runs.
     let m = get_miner(&sim, miner_id);
-    assert_eq!(m.reserved_refinery, None);
     assert_eq!(m.state, MinerState::ReturnToRefinery);
     assert_eq!(
         sim.substrate

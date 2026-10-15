@@ -6442,7 +6442,7 @@ fn test_deploy_mcv_replaces_vehicle_with_conyard() {
         e.selected = true;
     }
 
-    let cmd = cmd_envelope(&sim, "Americans", 1, Command::DeployMcv { entity_id: mcv });
+    let cmd = cmd_envelope(&sim, "Americans", 1, Command::Deploy { entity_id: mcv });
     let _ = sim.advance_tick(&[cmd], Some(&rules), None, None, 33);
     assert!(
         sim.substrate.entities.get(mcv).is_some(),
@@ -7377,8 +7377,12 @@ fn test_attack_move_command_chrono_miner_uses_ground_path() {
     );
 }
 
+/// The MEGAMISSION Execute arm (`0x004C71CA..0x004C7380`) gates the source
+/// and the target token only on liveness, strength and limbo; it never tests
+/// the houses' relation. Whether a click may attack an ally is decided when
+/// the click picks its action, so an allied Attack event executes.
 #[test]
-fn test_attack_command_rejects_friendly_target() {
+fn attack_event_on_an_allied_target_executes() {
     let mut sim: Simulation = Simulation::new();
     sim.house_alliances = alliance_map(&[
         ("Americans", &["Americans", "British"]),
@@ -7438,15 +7442,15 @@ fn test_attack_command_rejects_friendly_target() {
     );
 
     let _ = sim.advance_tick(&[cmd], None, None, None, 33);
-    assert!(
+    assert_eq!(
         sim.substrate
             .entities
             .get(1)
             .unwrap()
             .attack_target
-            .target()
-            .is_none(),
-        "Attack on same-owner target should not issue"
+            .target(),
+        Some(crate::sim::combat::TargetKind::Entity(2)),
+        "native Execute assigns an allied target"
     );
 }
 
@@ -8204,7 +8208,7 @@ fn test_undeploy_conyard_spawns_mcv() {
     if let Some(e) = sim.substrate.entities.get_mut(mcv) {
         e.selected = true;
     }
-    let deploy_cmd = cmd_envelope(&sim, "Americans", 1, Command::DeployMcv { entity_id: mcv });
+    let deploy_cmd = cmd_envelope(&sim, "Americans", 1, Command::Deploy { entity_id: mcv });
     let _ = sim.advance_tick(&[deploy_cmd], Some(&rules), None, None, 33);
     let _ = sim.advance_tick(&[], Some(&rules), None, None, 33);
 

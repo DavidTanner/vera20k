@@ -133,9 +133,9 @@ fn board_infantry(fortress: &mut Fortress, kind: &str) -> u64 {
     sim.resolve_type_handles(&resources.rules);
     let enter = order(
         fortress,
-        Command::EnterTransport {
-            passenger_id: rider,
-            transport_id: fortress.bfrt,
+        Command::Enter {
+            entity_id: rider,
+            destination_id: fortress.bfrt,
         },
     );
     retail_frame(&mut fortress.scenario, vec![enter]);
@@ -574,9 +574,9 @@ fn retail_dustbowl_battle_fortress_rider_walks_in_and_stays_put() {
     };
     let enter = order(
         &fortress,
-        Command::EnterTransport {
-            passenger_id: gi,
-            transport_id: bfrt,
+        Command::Enter {
+            entity_id: gi,
+            destination_id: bfrt,
         },
     );
     retail_frame(&mut fortress.scenario, vec![enter]);

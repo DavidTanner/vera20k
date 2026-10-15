@@ -456,14 +456,6 @@ pub(crate) fn draw_debug_panel(ctx: &egui::Context, state: &AppState) {
                         entity.native_stage().rate(),
                         miner.harvesting
                     ));
-                    if let Some(ref_id) = miner.reserved_refinery {
-                        let ref_type = sim
-                            .entities()
-                            .get(ref_id)
-                            .map(|e| sim.interner.resolve(e.type_ref()))
-                            .unwrap_or("?");
-                        ui.label(format!("Refinery: {} (id={})", ref_type, ref_id));
-                    }
                     if let Some(crate::sim::combat::TargetKind::Cell(x, y)) =
                         entity.archive_target()
                     {

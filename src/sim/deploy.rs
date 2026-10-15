@@ -11,20 +11,21 @@ use crate::sim::mission::{MissionId, MissionType};
 use crate::sim::world::FrameEffects;
 use crate::sim::world::{SimSoundEvent, Simulation};
 
-/// Event9 DEPLOY4C778A..4C7812. MCV conversion and simple deployment
-/// share this event; each concrete Mission_Unload branch owns its effects.
+/// DEPLOY, `EventClass::Execute` opcode 9 (`0x004C76BC..0x004C7812`), the
+/// Deploy key's order. It names no class: every concrete Mission_Unload
+/// branch (MCV conversion, simple deployment, infantry deploy, transport and
+/// garrison unload) owns its effects once Unload is queued.
+///
+/// RESIDUAL: the EMP gate (`+0x504`, `0x004C7701`) has no producer in VERA.
 pub(crate) fn issue_order(
     sim: &mut Simulation,
     id: u64,
     rules: &RuleSet,
     effects: FrameEffects<'_>,
 ) -> bool {
+    // `0x004C76D7..0x004C76FB`: alive, not in limbo, not tethered (`+0x418`).
     if !sim.substrate.entities.get(id).is_some_and(|e| {
-        e.lifecycle.object_alive()
-            && !e.lifecycle.in_limbo()
-            && e.dock_entered_with.is_none()
-            && (crate::sim::mcv_deploy::is_mcv(sim, e, rules)
-                || crate::sim::unit_simple_deploy::is_simple_deployer(sim, e, rules))
+        e.lifecycle.object_alive() && !e.lifecycle.in_limbo() && e.dock_entered_with.is_none()
     }) {
         return false;
     }
@@ -56,6 +57,15 @@ pub(crate) fn issue_order(
     ) {
         return false;
     }
+    // `0x004C777E..0x004C7784`: an aircraft (`vt+0x2C == 2`) never deploys.
+    if sim
+        .substrate
+        .entities
+        .get(id)
+        .is_some_and(|e| e.category() == crate::map::entities::EntityCategory::Aircraft)
+    {
+        return false;
+    }
     // `0x004C778A..0x004C77DE`: the event is ignored while the Unit's cell
     // holds a WeaponsFactory= building (Cell_Building `0x0047C520`; VERA's
     // foundation scan stands in), so an MCV still leaving its factory stays.
@@ -70,9 +80,17 @@ pub(crate) fn issue_order(
     {
         return false;
     }
-    // Event DEPLOY: the Unit's class setter takes a null destination
-    // (`0x004C77F8`, Unit `0x00741970`) and its class target setter a null
-    // target (`0x004C7804`) before Queue_Mission(Unload) (`0x004C7812`).
+    // `0x004C77E4..0x004C77EA`: OVER_OUT to radio contact 0 (`vt+0x274(3)`).
+    let _ = crate::sim::radio::transmit_to_contact(
+        sim,
+        id,
+        crate::sim::radio::RadioMessage::Break,
+        Some(rules),
+        effects,
+    );
+    // The class setter takes a null destination (`0x004C77F8`, Unit
+    // `0x00741970`) and the class target setter a null target (`0x004C7804`)
+    // before Queue_Mission(Unload) (`0x004C7812`).
     // Queue's same-mission guard keeps the handler and timer on a repeated D.
     sim.assign_null_destination(id, Some(rules), None, effects);
     let _ = sim.assign_target_represented(id, None, Some(rules), None, effects);

@@ -1012,7 +1012,7 @@ fn completion_prefix_records_one_place_and_playback_consumes_its_copy() {
         crate::sim::command::Command::SetRally {
             rx: 20,
             ry: 20,
-            producer_ids: vec![1],
+            producer_id: 1,
         },
     );
     let mut output = live

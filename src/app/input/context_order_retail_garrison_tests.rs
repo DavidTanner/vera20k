@@ -365,9 +365,9 @@ fn retail_gi_ifv_click_keeps_enter() {
         .expect("a vehicle-admitted cell near the castle");
     assert_eq!(
         transport_entry_orders(&runtime.simulation, rules, &[gi], ifv),
-        vec![Command::EnterTransport {
-            passenger_id: gi,
-            transport_id: ifv
+        vec![Command::Enter {
+            entity_id: gi,
+            destination_id: ifv
         }]
     );
 }

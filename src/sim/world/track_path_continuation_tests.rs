@@ -569,9 +569,9 @@ fn depot_release_and_pad_entry_route_through_find_path() {
             .set_for_test(hp);
         assert!(sim.apply_command(
             "Americans",
-            &crate::sim::command::Command::RepairAtDepot {
+            &crate::sim::command::Command::Enter {
                 entity_id: tank,
-                depot_id: depot,
+                destination_id: depot
             },
             Some(&rules),
         ));
@@ -671,9 +671,9 @@ fn a_teleporter_is_repaired_at_a_depot_and_drives_off() {
         .set_for_test(150);
     assert!(sim.apply_command(
         "Americans",
-        &crate::sim::command::Command::RepairAtDepot {
+        &crate::sim::command::Command::Enter {
             entity_id: miner,
-            depot_id: depot,
+            destination_id: depot
         },
         Some(&rules),
     ));
@@ -759,9 +759,9 @@ fn three_depot_waiters_are_repaired_in_turn_without_pad_intrusion() {
         let order = |sim: &mut Simulation, tank: u64| {
             assert!(sim.apply_command(
                 "Americans",
-                &crate::sim::command::Command::RepairAtDepot {
+                &crate::sim::command::Command::Enter {
                     entity_id: tank,
-                    depot_id: depot,
+                    destination_id: depot
                 },
                 Some(&rules),
             ));
@@ -1641,9 +1641,9 @@ fn damaged_hover_unit_reaches_a_free_depot_pad() {
         .set_for_test(150);
     assert!(sim.apply_command(
         "Americans",
-        &crate::sim::command::Command::RepairAtDepot {
+        &crate::sim::command::Command::Enter {
             entity_id: hov,
-            depot_id: depot,
+            destination_id: depot
         },
         Some(&rules),
     ));

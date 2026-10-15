@@ -2900,7 +2900,10 @@ ConditionYellow=50%
         // (`SellBuilding(0, 0)`) and queues Guard.
         assert!(sim.apply_command(
             "Americans",
-            &Command::UnloadPassengers { transport_id: bldg },
+            &Command::Unload {
+                entity_id: bldg,
+                target: None
+            },
             Some(&rules),
         ));
         assert_eq!(

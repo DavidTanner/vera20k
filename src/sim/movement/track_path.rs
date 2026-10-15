@@ -816,12 +816,22 @@ impl Simulation {
                 .expect("same setter actor");
             super::movement_commands::clear_destination_path_head(actor);
         }
-        // Unit741C4F..741E8E and742C14..742D0B: the UnitRepair
-        // Building arm belongs to this same class setter, including callers
-        // that already HELLOed in Foot70D7E0. No caller repeats its handshake.
-        // The original incoming Building identity survives a modified NULL
-        // argument. Native controls: refinery_dock.json; source741970.
-        let depot = match requested {
+        // Unit 0x741C4F..0x741E8E: an Enter (current or queued) without any
+        // radio contact onto a Building. A busy building becomes the
+        // ArchiveTarget (Bunkers excepted) and a depot's damaged visitor waits
+        // as a pending entry; a free one is sent DOCKING (0x0E), whose receiver
+        // HELLOs the sender back (0x0043C8A4). On ROGER a `DockUnload=` dock's
+        // MOVE_HERE has already re-set NavCom to its pad, which replaces the
+        // requested destination (0x00741E10..0x00741E2C). 0x742C14..0x742D0B
+        // is the UnitRepair tail below. Both belong to this class setter,
+        // including callers that already HELLOed in Foot70D7E0; no caller
+        // repeats its handshake. The original incoming Building identity
+        // survives a modified NULL argument. Native controls:
+        // refinery_dock.json; source741970.
+        // RESIDUALS: the UnitAbsorb arm (0x00741CE5, a pending entry and a
+        // NULL destination) and the Bunker arms (0x00741D49) keep VERA's
+        // absorber entry and bunker adapter, which own those destinations.
+        let building = match requested {
             NavTargetRef::Building { id }
             | NavTargetRef::Entity { id }
             | NavTargetRef::Object { id } => self
@@ -829,16 +839,14 @@ impl Simulation {
                 .entities
                 .get(id)
                 .filter(|building| building.category() == EntityCategory::Structure)
-                .filter(|building| {
-                    self.object_type(building.type_ref(), rules)
-                        .is_some_and(|object| object.unit_repair)
-                })
-                .map(|_| id),
+                .and_then(|building| self.object_type(building.type_ref(), rules))
+                .filter(|object| !object.unit_absorb && !object.bunker)
+                .map(|object| (id, object.unit_repair, object.dock_unload)),
             _ => None,
         };
         let mut destination = Some(requested);
         let mut depot_fast_return = false;
-        if let Some(depot) = depot {
+        if let Some((building, unit_repair, dock_unload)) = building {
             let enter_without_contact = self.substrate.entities.get(id).is_some_and(|unit| {
                 (unit.mission.effective().known() == Some(MissionType::Enter)
                     || unit.mission.queued().known() == Some(MissionType::Enter))
@@ -848,30 +856,57 @@ impl Simulation {
                 let busy = self
                     .substrate
                     .entities
-                    .get(depot)
+                    .get(building)
                     .is_some_and(|building| !building.radio_contacts.is_empty());
                 if busy {
                     if let Some(unit) = self.substrate.entities.get_mut(id) {
                         unit.set_archive_target(Some(crate::sim::combat::TargetKind::Entity(
-                            depot,
+                            building,
                         )));
                     }
-                    let damaged = self
+                    if unit_repair {
+                        let damaged = self
+                            .substrate
+                            .entities
+                            .get(id)
+                            .and_then(|unit| {
+                                self.object_type(unit.type_ref(), rules)
+                                    .map(|object| !unit.health.is_full(object.strength))
+                            })
+                            .unwrap_or(false);
+                        if damaged {
+                            crate::sim::docking::building_dock::set_pending_entry(
+                                self,
+                                id,
+                                Some(building),
+                            );
+                        } else {
+                            crate::sim::radio::transmit_to_contact(
+                                self,
+                                id,
+                                crate::sim::radio::RadioMessage::Break,
+                                Some(rules),
+                                frame_effects,
+                            );
+                        }
+                        destination = None;
+                    }
+                } else {
+                    let nav_before = self
                         .substrate
                         .entities
                         .get(id)
-                        .and_then(|unit| {
-                            self.object_type(unit.type_ref(), rules)
-                                .map(|object| !unit.health.is_full(object.strength))
-                        })
-                        .unwrap_or(false);
-                    if damaged {
-                        crate::sim::docking::building_dock::set_pending_entry(
-                            self,
-                            id,
-                            Some(depot),
-                        );
-                    } else {
+                        .and_then(|unit| unit.navigation.nav_com);
+                    if crate::sim::radio::transmit(
+                        self,
+                        id,
+                        building,
+                        crate::sim::radio::RadioMessage::CanDock,
+                        crate::sim::radio::RadioPayload::default(),
+                        Some(rules),
+                        frame_effects,
+                    ) != crate::sim::radio::RadioResponse::Roger
+                    {
                         crate::sim::radio::transmit_to_contact(
                             self,
                             id,
@@ -879,29 +914,20 @@ impl Simulation {
                             Some(rules),
                             frame_effects,
                         );
-                    }
-                    destination = None;
-                } else if crate::sim::radio::transmit(
-                    self,
-                    id,
-                    depot,
-                    crate::sim::radio::RadioMessage::CanDock,
-                    crate::sim::radio::RadioPayload::default(),
-                    Some(rules),
-                    frame_effects,
-                ) != crate::sim::radio::RadioResponse::Roger
-                {
-                    crate::sim::radio::transmit_to_contact(
-                        self,
-                        id,
-                        crate::sim::radio::RadioMessage::Break,
-                        Some(rules),
-                        frame_effects,
-                    );
-                    if let Some(unit) = self.substrate.entities.get_mut(id) {
-                        unit.set_archive_target(Some(crate::sim::combat::TargetKind::Entity(
-                            depot,
-                        )));
+                        if unit_repair && let Some(unit) = self.substrate.entities.get_mut(id) {
+                            unit.set_archive_target(Some(crate::sim::combat::TargetKind::Entity(
+                                building,
+                            )));
+                        }
+                    } else if dock_unload {
+                        let nav_after = self
+                            .substrate
+                            .entities
+                            .get(id)
+                            .and_then(|unit| unit.navigation.nav_com);
+                        if nav_after != nav_before {
+                            destination = nav_after;
+                        }
                     }
                 }
             }
@@ -914,43 +940,48 @@ impl Simulation {
             {
                 unit.navigation.nav_queue.clear();
             }
-            let held_by_other = self.substrate.entities.get(depot).is_some_and(|building| {
-                !building.radio_contacts.is_empty() && building.radio_contacts.slot(0) != Some(id)
-            });
-            if held_by_other {
-                if let Some(unit) = self.substrate.entities.get_mut(id) {
-                    unit.set_archive_target(
-                        destination.map(|_| crate::sim::combat::TargetKind::Entity(depot)),
-                    );
-                }
-            } else if crate::sim::radio::transmit(
-                self,
-                id,
-                depot,
-                crate::sim::radio::RadioMessage::Hello,
-                crate::sim::radio::RadioPayload::default(),
-                Some(rules),
-                frame_effects,
-            ) == crate::sim::radio::RadioResponse::Roger
-            {
-                if crate::sim::radio::transmit_to_contact(
+            // 0x742C20: the UnitRepair tail.
+            if unit_repair {
+                let depot = building;
+                let held_by_other = self.substrate.entities.get(depot).is_some_and(|building| {
+                    !building.radio_contacts.is_empty()
+                        && building.radio_contacts.slot(0) != Some(id)
+                });
+                if held_by_other {
+                    if let Some(unit) = self.substrate.entities.get_mut(id) {
+                        unit.set_archive_target(
+                            destination.map(|_| crate::sim::combat::TargetKind::Entity(depot)),
+                        );
+                    }
+                } else if crate::sim::radio::transmit(
                     self,
                     id,
-                    crate::sim::radio::RadioMessage::CanDock,
+                    depot,
+                    crate::sim::radio::RadioMessage::Hello,
+                    crate::sim::radio::RadioPayload::default(),
                     Some(rules),
                     frame_effects,
-                ) != crate::sim::radio::RadioResponse::Roger
+                ) == crate::sim::radio::RadioResponse::Roger
                 {
-                    crate::sim::radio::transmit_to_contact(
+                    if crate::sim::radio::transmit_to_contact(
                         self,
                         id,
-                        crate::sim::radio::RadioMessage::Break,
+                        crate::sim::radio::RadioMessage::CanDock,
                         Some(rules),
                         frame_effects,
-                    );
-                    destination = None;
-                } else {
-                    depot_fast_return = true;
+                    ) != crate::sim::radio::RadioResponse::Roger
+                    {
+                        crate::sim::radio::transmit_to_contact(
+                            self,
+                            id,
+                            crate::sim::radio::RadioMessage::Break,
+                            Some(rules),
+                            frame_effects,
+                        );
+                        destination = None;
+                    } else {
+                        depot_fast_return = true;
+                    }
                 }
             }
         } else if clear_queue && let Some(unit) = self.substrate.entities.get_mut(id) {

@@ -1,38 +1,23 @@
-//! Deploy-key / self-click resolution for passenger transports.
+//! Deploy-key / self-click admission for passenger transports.
 //!
-//! In gamemd the deploy action on a vehicle or aircraft that carries
-//! passengers is the Unload mission: `UnitClass::Mission_Unload @ 0x0073D630`
-//! takes its transport branch on `Type+0x5E0 Passengers > 0` and the Aircraft
-//! Unload slot `0x004151E0` serves the Nighthawk. Every input site that turns
-//! the deploy key or a self-click into a command goes through this one
-//! resolver so the three sites cannot disagree on which objects unload.
+//! In gamemd a vehicle or aircraft that carries passengers unloads through
+//! its Unload mission: `UnitClass::Mission_Unload @ 0x0073D630` takes its
+//! transport branch on `Type+0x5E0 Passengers > 0` and the Aircraft Unload
+//! slot `0x004151E0` serves the Nighthawk. The Deploy key sends it DEPLOY and
+//! a self-click a MEGAMISSION Unload; both input sites ask this one predicate
+//! which objects are loaded transports, so they cannot disagree.
 
 use crate::map::entities::EntityCategory;
 use crate::rules::object_type::ObjectType;
-use crate::sim::command::Command;
 use crate::sim::game_entity::GameEntity;
 
-/// The unload command for a vehicle/aircraft transport with passengers aboard,
-/// or `None` when the entity is not such a transport or its hold is empty.
-pub(crate) fn transport_unload_command(
-    entity: &GameEntity,
-    obj: Option<&ObjectType>,
-) -> Option<Command> {
-    if !matches!(
+/// Whether the entity is a vehicle/aircraft transport with passengers aboard.
+pub(crate) fn is_loaded_transport(entity: &GameEntity, obj: Option<&ObjectType>) -> bool {
+    matches!(
         entity.category(),
         EntityCategory::Unit | EntityCategory::Aircraft
-    ) {
-        return None;
-    }
-    if !obj.is_some_and(|o| o.passengers > 0) {
-        return None;
-    }
-    if !entity.passenger_role.cargo().is_some_and(|c| !c.is_empty()) {
-        return None;
-    }
-    Some(Command::UnloadPassengers {
-        transport_id: entity.stable_id(),
-    })
+    ) && obj.is_some_and(|o| o.passengers > 0)
+        && entity.passenger_role.cargo().is_some_and(|c| !c.is_empty())
 }
 
 #[cfg(test)]
@@ -64,32 +49,23 @@ mod tests {
     }
 
     #[test]
-    fn deploy_key_on_loaded_apc_issues_unload() {
+    fn loaded_apc_and_aircraft_are_loaded_transports() {
         let rules = rules();
         let bfrt = entity(7, "BFRT", EntityCategory::Unit, true);
-        assert_eq!(
-            transport_unload_command(&bfrt, rules.object("BFRT")),
-            Some(Command::UnloadPassengers { transport_id: 7 })
-        );
+        assert!(is_loaded_transport(&bfrt, rules.object("BFRT")));
         let shad = entity(8, "SHAD", EntityCategory::Aircraft, true);
-        assert_eq!(
-            transport_unload_command(&shad, rules.object("SHAD")),
-            Some(Command::UnloadPassengers { transport_id: 8 })
-        );
+        assert!(is_loaded_transport(&shad, rules.object("SHAD")));
     }
 
     #[test]
-    fn deploy_key_ignores_empty_holds_and_non_transports() {
+    fn empty_holds_and_non_transports_are_not_loaded_transports() {
         let rules = rules();
         let empty = entity(7, "BFRT", EntityCategory::Unit, false);
-        assert_eq!(transport_unload_command(&empty, rules.object("BFRT")), None);
+        assert!(!is_loaded_transport(&empty, rules.object("BFRT")));
         let tank = entity(9, "MTNK", EntityCategory::Unit, true);
-        assert_eq!(transport_unload_command(&tank, rules.object("MTNK")), None);
+        assert!(!is_loaded_transport(&tank, rules.object("MTNK")));
         let mut building = entity(10, "BFRT", EntityCategory::Structure, true);
         building.set_category_for_test(EntityCategory::Structure);
-        assert_eq!(
-            transport_unload_command(&building, rules.object("BFRT")),
-            None
-        );
+        assert!(!is_loaded_transport(&building, rules.object("BFRT")));
     }
 }

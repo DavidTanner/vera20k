@@ -469,13 +469,7 @@ fn unit_repair_branch_orders(
                     id,
                     target.stable_id,
                 );
-                match payload {
-                    Command::Attack {
-                        attacker_id,
-                        target_id,
-                    } => object_attack_order(attacker_id, target_id, true),
-                    payload => payload,
-                }
+                payload
             }
             UnitRepairAction::Move => {
                 output.consumed = true;
@@ -546,7 +540,7 @@ fn attack_branch_orders(
                         target_rx,
                         target_ry,
                     },
-                    TargetKind::Entity(target_id) if force_fire => Command::ForceAttack {
+                    TargetKind::Entity(target_id) if force_fire => Command::Attack {
                         attacker_id: id,
                         target_id,
                     },
@@ -603,15 +597,10 @@ fn order_voice_key(command: &Command) -> Option<&'static str> {
         Command::Move { .. } | Command::MoveToObject { .. } | Command::AttackMove { .. } => {
             Some("VoiceMove")
         }
-        Command::Attack { .. } | Command::ForceAttack { .. } | Command::ForceAttackCell { .. } => {
-            Some("VoiceAttack")
-        }
+        Command::Attack { .. } | Command::ForceAttackCell { .. } => Some("VoiceAttack"),
         Command::HarvestCell { .. } => Some("VoiceHarvest"),
         Command::CaptureBuilding { .. } => Some("VoiceCapture"),
-        Command::MinerReturn { .. }
-        | Command::EnterTransport { .. }
-        | Command::RepairAtDepot { .. }
-        | Command::EnterBunker { .. } => Some("VoiceEnter"),
+        Command::Enter { .. } => Some("VoiceEnter"),
         // Sabotage and area guard have no dedicated slot, so retail takes the
         // default branch and speaks a VoiceSpecialAttack line.
         Command::PlantC4 { .. } | Command::Guard { .. } => Some("VoiceSpecialAttack"),
@@ -629,22 +618,17 @@ fn command_actor_id(command: &Command) -> Option<u64> {
         | Command::AttackMove { entity_id, .. }
         | Command::Guard { entity_id, .. }
         | Command::HarvestCell { entity_id, .. }
-        | Command::MinerReturn { entity_id, .. }
-        | Command::RepairAtDepot { entity_id, .. }
-        | Command::ToggleInfantryDeploy { entity_id }
-        | Command::DeployMcv { entity_id }
+        | Command::Enter { entity_id, .. }
+        | Command::Unload { entity_id, .. }
+        | Command::Deploy { entity_id }
         | Command::UndeployBuilding { entity_id }
         | Command::Stop { entity_id } => Some(*entity_id),
         Command::Attack { attacker_id, .. }
-        | Command::ForceAttack { attacker_id, .. }
         | Command::ForceAttackCell { attacker_id, .. }
         | Command::PlantC4 { attacker_id, .. } => Some(*attacker_id),
-        Command::EnterTransport { passenger_id, .. } => Some(*passenger_id),
-        Command::EnterBunker { unit_id, .. } => Some(*unit_id),
         Command::CaptureBuilding { engineer_id, .. } => Some(*engineer_id),
-        Command::UnloadPassengers { transport_id } => Some(*transport_id),
         Command::EjectBunker { bunker_id } => Some(*bunker_id),
-        Command::SetRally { producer_ids, .. } if producer_ids.len() == 1 => Some(producer_ids[0]),
+        Command::SetRally { producer_id, .. } => Some(*producer_id),
         _ => None,
     }
 }
@@ -941,7 +925,7 @@ pub(crate) fn object_click_payload(
     target_id: u64,
 ) -> Command {
     if modifier == OrderModifier::ForceFire {
-        return Command::ForceAttack {
+        return Command::Attack {
             attacker_id,
             target_id,
         };
@@ -983,7 +967,7 @@ pub(crate) fn object_click_payload(
 ///
 /// RESIDUAL (#605): force fire orders the payload whatever the receiver.
 /// Trigger: Ctrl over an object with an unarmed receiver. Effect: VERA
-/// queues ForceAttack where native, whose attack rung admits an unarmed
+/// queues Attack where native, whose attack rung admits an unarmed
 /// receiver under Ctrl too only as an `Infiltrate=` infantryman
 /// (`0x00700444..0x00700474`), selects the object or moves the receiver near
 /// it. Rare.
@@ -1456,7 +1440,6 @@ pub(crate) fn try_queue_context_order_at_screen_point(
                 })
             })
             .flatten();
-        let clicked_friendly_refinery = clicked_friendly_refinery_id.is_some();
 
         // Check if the clicked cell holds tiberium (ore/gems). The Unit
         // harvest arms run only over a Cell the viewer has mapped
@@ -1485,14 +1468,34 @@ pub(crate) fn try_queue_context_order_at_screen_point(
                 _ => false,
             };
 
-        if clicked_friendly_refinery && only_miners_selected {
+        if let Some(refinery_id) = clicked_friendly_refinery_id
+            && only_miners_selected
+        {
+            // The Unit's Enter arm asks the refinery CAN_LOAD (`vt+0x278(0xF)`,
+            // `0x00740360`), whose Receive_Radio answers by the harvester's
+            // `Dock=` list; a refused miner gets no Enter.
+            let refinery_type = sim
+                .entities()
+                .get(refinery_id)
+                .map(|refinery| sim.interner.resolve(refinery.type_ref()));
             for stable_id in selected_miner_ids {
+                let docks = refinery_type.is_some_and(|refinery_type| {
+                    sim.entities().get(stable_id).is_some_and(|miner| {
+                        resources.rules.harvester_can_dock_at(
+                            sim.interner.resolve(miner.type_ref()),
+                            refinery_type,
+                        )
+                    })
+                });
+                if !docks {
+                    continue;
+                }
                 queued.push(CommandEnvelope::new(
                     owner_id,
                     execute_tick,
-                    Command::MinerReturn {
+                    Command::Enter {
                         entity_id: stable_id,
-                        target_refinery_id: clicked_friendly_refinery_id,
+                        destination_id: refinery_id,
                     },
                 ));
             }
@@ -1611,7 +1614,7 @@ pub(crate) fn try_queue_context_order_at_screen_point(
                             Command::SetRally {
                                 rx,
                                 ry,
-                                producer_ids: vec![id],
+                                producer_id: id,
                             },
                         ));
                         rally_announce |= sim
@@ -1686,7 +1689,10 @@ pub(crate) fn try_queue_context_order_at_screen_point(
                         queued.push(CommandEnvelope::new(
                             owner_id,
                             execute_tick,
-                            object_attack_order(attacker_id, target.stable_id, friendly),
+                            Command::Attack {
+                                attacker_id,
+                                target_id: target.stable_id,
+                            },
                         ));
                     }
                     selected_units.retain(|id| !engineers.contains(id));
@@ -1837,9 +1843,9 @@ pub(crate) fn try_queue_context_order_at_screen_point(
                             queued.push(CommandEnvelope::new(
                                 owner_id,
                                 execute_tick,
-                                Command::RepairAtDepot {
+                                Command::Enter {
                                     entity_id: unit_id,
-                                    depot_id,
+                                    destination_id: depot_id,
                                 },
                             ));
                         }
@@ -1874,7 +1880,10 @@ pub(crate) fn try_queue_context_order_at_screen_point(
                         queued.push(CommandEnvelope::new(
                             owner_id,
                             execute_tick,
-                            Command::EnterBunker { unit_id, bunker_id },
+                            Command::Enter {
+                                entity_id: unit_id,
+                                destination_id: bunker_id,
+                            },
                         ));
                         return finish_order(state, queued, speaker_id);
                     }
@@ -1920,7 +1929,10 @@ pub(crate) fn try_queue_context_order_at_screen_point(
                         queued.push(CommandEnvelope::new(
                             owner_id,
                             execute_tick,
-                            object_attack_order(attacker_id, target.stable_id, true),
+                            Command::Attack {
+                                attacker_id,
+                                target_id: target.stable_id,
+                            },
                         ));
                     }
                     return finish_order(state, queued, speaker_id);
@@ -2183,8 +2195,9 @@ fn self_click_command(
         return if obj.is_some_and(|o| o.can_be_occupied)
             && entity.passenger_role.cargo().is_some_and(|c| !c.is_empty())
         {
-            Some(Command::UnloadPassengers {
-                transport_id: target.stable_id,
+            Some(Command::Unload {
+                entity_id: target.stable_id,
+                target: Some(TargetKind::Entity(target.stable_id)),
             })
         } else if entity.bunker_occupant.is_some() {
             Some(Command::EjectBunker {
@@ -2198,25 +2211,25 @@ fn self_click_command(
             None
         };
     }
+    // A Foot's self-click (`0x004D75E1..0x004D75ED`) sends MEGAMISSION
+    // Unload with no tokens; the object's Mission_Unload decides the rest.
+    let unload = Command::Unload {
+        entity_id: target.stable_id,
+        target: None,
+    };
     if entity.category() == EntityCategory::Infantry && obj.is_some_and(|o| o.deploy_fire) {
-        return Some(Command::ToggleInfantryDeploy {
-            entity_id: target.stable_id,
-        });
+        return Some(unload);
     }
-    if let Some(cmd) = super::transport_orders::transport_unload_command(entity, obj) {
-        return Some(cmd);
+    if super::transport_orders::is_loaded_transport(entity, obj) {
+        return Some(unload);
     }
     if obj.is_some_and(|object| is_simple_deploy_unit(entity, object)) {
         return sim
             .can_simple_deploy(target.stable_id, rules)
-            .then_some(Command::DeployMcv {
-                entity_id: target.stable_id,
-            });
+            .then_some(unload);
     }
     obj.is_some_and(|o| o.deploys_into.is_some() || o.deployer)
-        .then_some(Command::DeployMcv {
-            entity_id: target.stable_id,
-        })
+        .then_some(unload)
 }
 
 /// Object entry orders use the same admission owner as the hover cursor.
@@ -2247,9 +2260,9 @@ fn transport_entry_orders(
                     target_building_id: transport_id,
                 }
             } else {
-                Command::EnterTransport {
-                    passenger_id,
-                    transport_id,
+                Command::Enter {
+                    entity_id: passenger_id,
+                    destination_id: transport_id,
                 }
             }
         })
@@ -2478,23 +2491,6 @@ fn friendly_bomb_ivans(
                 })
         })
         .collect()
-}
-
-/// Native Attack events have no alliance test. Friendly context actions
-/// (repair, defuse and Ivan) use the existing ForceAttack internal alias:
-/// the same mission/target receiver, with no persistent Ctrl/fire modifier.
-fn object_attack_order(attacker_id: u64, target_id: u64, friendly: bool) -> Command {
-    if friendly {
-        Command::ForceAttack {
-            attacker_id,
-            target_id,
-        }
-    } else {
-        Command::Attack {
-            attacker_id,
-            target_id,
-        }
-    }
 }
 
 /// A Crazy Ivan's Attack over a target it cannot bomb becomes NoIvanBomb
@@ -3158,9 +3154,9 @@ mod tests {
             Some("VoiceHarvest")
         );
         assert_eq!(
-            order_voice_key(&Command::EnterTransport {
-                passenger_id: 1,
-                transport_id: 2,
+            order_voice_key(&Command::Enter {
+                entity_id: 1,
+                destination_id: 2,
             }),
             Some("VoiceEnter")
         );
@@ -3505,7 +3501,7 @@ mod tests {
         );
         assert_eq!(
             object_click_payload(OrderMode::AttackMove, OrderModifier::ForceFire, true, 1, 2),
-            Command::ForceAttack {
+            Command::Attack {
                 attacker_id: 1,
                 target_id: 2,
             }
@@ -3608,11 +3604,17 @@ mod tests {
 
         assert_eq!(
             click(&[gi], gi),
-            Some(Command::ToggleInfantryDeploy { entity_id: gi })
+            Some(Command::Unload {
+                entity_id: gi,
+                target: None
+            })
         );
         assert_eq!(
             click(&[mcv], mcv),
-            Some(Command::DeployMcv { entity_id: mcv })
+            Some(Command::Unload {
+                entity_id: mcv,
+                target: None
+            })
         );
         assert_eq!(click(&[gi, other_gi], gi), None, "a group click selects");
         assert_eq!(click(&[mcv, gi], mcv), None, "a group click selects");
@@ -3654,7 +3656,10 @@ mod tests {
                 .set_unit_simple_deploy_for_test(deployed, begin, reverse);
             assert_eq!(
                 self_click_command(&sim, rules, owner, &[id], Some(&hover)),
-                Some(Command::DeployMcv { entity_id: id }),
+                Some(Command::Unload {
+                    entity_id: id,
+                    target: None
+                }),
             );
             assert_eq!(
                 crate::app::input::cursor::capability_cursor_for_hover(
@@ -3793,8 +3798,8 @@ mod tests {
     }
 
     /// The click side of the bomb actions: an Engineer's DisarmBomb and a
-    /// Crazy Ivan's IvanBomb on a friend are Attack orders (ForceAttack past
-    /// VERA's alliance gate), and an Ivan never attacks a bombed target.
+    /// Crazy Ivan's IvanBomb on a friend are Attack orders, and an Ivan never
+    /// attacks a bombed target.
     #[test]
     fn bomb_click_orders() {
         let rules =
@@ -3860,15 +3865,6 @@ mod tests {
         sim.bomb_list_update(&rules);
         sim.bomb_list_update(&rules);
         assert!(disarm_bomb_engineers(&sim, &rules, &[engineer], engineer, americans).is_empty());
-
-        assert!(matches!(
-            object_attack_order(engineer, own_tank, true),
-            Command::ForceAttack { .. }
-        ));
-        assert!(matches!(
-            object_attack_order(engineer, far_tank, false),
-            Command::Attack { .. }
-        ));
     }
     /// Supplies the ordinary object-route prerequisites, through production
     /// object constructors and the existing terrain/type authorities.

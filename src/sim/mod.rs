@@ -47,6 +47,9 @@ pub(crate) mod conversion_health;
 pub(crate) mod crew_survival; // building SpawnSurvivors and vehicle crew escape
 pub mod economy; // per-house wallet/storage/statistics value-type (production+economy substrate)
 pub mod entity_store;
+pub mod event_queue; // EventClass OutList/DoList: Queue_AI transfer and Execute_DoList
+#[cfg(test)]
+mod event_queue_convergence_tests;
 pub(crate) mod estimated_health;
 pub(crate) mod flashing;
 pub mod game_entity;

@@ -32,9 +32,9 @@ fn repair_ifv(rules: &RuleSet) -> (Simulation, u64) {
         .unwrap();
     assert!(sim.apply_command(
         OWNER,
-        &Command::EnterTransport {
-            passenger_id: engineer,
-            transport_id: ifv,
+        &Command::Enter {
+            entity_id: engineer,
+            destination_id: ifv
         },
         Some(rules),
     ));

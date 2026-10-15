@@ -287,34 +287,96 @@ fn mixed_cargo_dumps_ore_then_gems_fifteen_frames_apart() {
     assert_eq!(paid[1].0 - paid[0].0, 15);
 }
 
-/// A player refinery order in the middle of an unload (`Command::MinerReturn`)
-/// leaves the dock and the unload latch; the miner docks again and pays the
-/// load it still carries, and the refinery's slot ends free.
+/// A player refinery order in the middle of an unload (`Command::Enter`)
+/// onto the miner's own refinery. The order's BREAK (`0x004C72F8`) frees the
+/// refinery and the same event's Unit setter sends it DOCKING
+/// (`0x00741DD5`), which admits and re-tethers the miner standing on the pad,
+/// so the latch and the unload carry on. The dump state pays the slot, its
+/// new-order check (`0x0073E539`) ends the unload, the queued Enter takes
+/// over, and the refinery's slot ends free.
 #[test]
 fn a_refinery_order_mid_unload_redocks_and_pays() {
     let mut s = returning_scene();
     run_until_unloading(&mut s);
     assert!(s.sim.apply_command(
         "Americans",
-        &crate::sim::command::Command::MinerReturn {
+        &crate::sim::command::Command::Enter {
             entity_id: s.miner,
-            target_refinery_id: Some(s.refinery),
+            destination_id: s.refinery
         },
         Some(&s.rules),
     ));
     let after_order = sample(&s, s.miner);
-    assert!(!after_order.unloading && !after_order.tethered);
+    assert!(after_order.tethered, "the order's DOCKING re-tethers");
+    assert_eq!(after_order.contact, Some(s.refinery));
+    assert!(after_order.unloading, "the order leaves the latch");
+    assert_eq!(
+        s.sim
+            .substrate
+            .entities
+            .get(s.miner)
+            .unwrap()
+            .mission
+            .queued(),
+        MissionId::from_known(MissionType::Enter)
+    );
+    let mut entered = false;
     let mut paid = 0;
     for _ in 0..1500 {
         paid = frame(&mut s);
+        entered |= sample(&s, s.miner).mission == MissionId::from_known(MissionType::Enter);
         if paid == 1000 && !sample(&s, s.miner).tethered {
             break;
         }
     }
-    assert_eq!(paid, 1000, "the whole load is paid after the re-dock");
+    assert_eq!(paid, 1000, "the whole load is paid");
+    assert!(entered, "the queued Enter took over");
     let refinery = s.sim.substrate.entities.get(s.refinery).unwrap();
     assert!(refinery.radio_contacts.is_empty());
     assert_eq!(refinery.dock_entered_with, None);
+}
+
+/// A player refinery order for a second miner while the first unloads: the
+/// Unit setter's Enter arm finds the refinery busy and makes it the
+/// ArchiveTarget (`0x00741D31..0x00741D44`), which Mission_Enter keeps asking
+/// (`0x004D92AC`); without a UnitRepair tail NavCom keeps the refinery. The
+/// miner docks once the first has left and both loads pay.
+#[test]
+fn a_refinery_order_onto_a_busy_refinery_archives_it_and_docks_later() {
+    let mut s = returning_scene();
+    run_until_unloading(&mut s);
+    let second = spawn_returning_miner(&mut s, (15, 15));
+    let refinery = s.refinery;
+    assert!(s.sim.apply_command(
+        "Americans",
+        &crate::sim::command::Command::Enter {
+            entity_id: second,
+            destination_id: refinery
+        },
+        Some(&s.rules),
+    ));
+    let entity = s.sim.substrate.entities.get(second).unwrap();
+    assert!(entity.radio_contacts.is_empty());
+    assert_eq!(
+        entity.archive_target(),
+        Some(crate::sim::combat::TargetKind::Entity(refinery))
+    );
+    assert_eq!(
+        entity.navigation.nav_com,
+        Some(crate::sim::components::NavTargetRef::Building { id: refinery })
+    );
+    let mut paid = 0;
+    let mut docked = false;
+    for _ in 0..3000 {
+        paid = frame(&mut s);
+        let now = sample(&s, second).tethered;
+        docked |= now;
+        if paid == 2000 && docked && !now {
+            break;
+        }
+    }
+    assert!(docked, "the ordered miner docks");
+    assert_eq!(paid, 2000, "both loads pay");
 }
 
 /// Selling the refinery under an unloading miner: the sale's stage-0 visit,

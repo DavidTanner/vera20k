@@ -455,8 +455,9 @@ fn vehicle_unload_republishes_threat_and_foot_coefficient_before_movement() {
         .unwrap()
         .navigation
         .retain_threat_avoidance_after_unlimbo(NativeF64Bits::ONE);
-    assert!(fx.apply(Command::UnloadPassengers {
-        transport_id: transport
+    assert!(fx.apply(Command::Unload {
+        entity_id: transport,
+        target: None
     }));
     let frame = fx.frame();
     for _ in 0..3 {
@@ -516,7 +517,10 @@ fn bfrt_unloads_one_per_dispatch_in_reverse_boarding_order_after_turning() {
         pax.iter().rev().copied().collect::<Vec<_>>()
     );
 
-    assert!(fx.apply(Command::UnloadPassengers { transport_id: bfrt }));
+    assert!(fx.apply(Command::Unload {
+        entity_id: bfrt,
+        target: None
+    }));
 
     let order = fx.run_until_revealed_with_missions(&pax, 200);
     let ids: Vec<u64> = order.iter().map(|(id, _, _)| *id).collect();
@@ -583,8 +587,9 @@ fn internal_ejection_preserves_passenger_archive() {
             .get_mut(passenger)
             .unwrap()
             .set_archive_target(retained);
-        assert!(fx.apply(Command::UnloadPassengers {
-            transport_id: transport,
+        assert!(fx.apply(Command::Unload {
+            entity_id: transport,
+            target: None
         }));
         for _ in 0..120 {
             fx.tick();
@@ -672,7 +677,10 @@ fn turreted_transport_keeps_its_last_passenger() {
     let mut fx = Fixture::new(|_, _| false);
     let fv = fx.spawn("FV", 20, 20, 0);
     let pax = fx.board(fv, 3);
-    assert!(fx.apply(Command::UnloadPassengers { transport_id: fv }));
+    assert!(fx.apply(Command::Unload {
+        entity_id: fv,
+        target: None
+    }));
     for _ in 0..120 {
         fx.tick();
     }
@@ -684,7 +692,10 @@ fn turreted_transport_keeps_its_last_passenger() {
     let mut fx = Fixture::new(|_, _| false);
     let fv = fx.spawn("FV", 20, 20, 0);
     let pax = fx.board(fv, 1);
-    assert!(fx.apply(Command::UnloadPassengers { transport_id: fv }));
+    assert!(fx.apply(Command::Unload {
+        entity_id: fv,
+        target: None
+    }));
     for _ in 0..80 {
         fx.tick();
     }
@@ -700,7 +711,10 @@ fn hover_transport_on_water_moves_to_shore_before_unloading() {
     let mut fx = Fixture::new(|rx, _| rx < 25);
     let lcrf = fx.spawn("LCRF", 20, 20, 0x40);
     let pax = fx.board(lcrf, 2);
-    assert!(fx.apply(Command::UnloadPassengers { transport_id: lcrf }));
+    assert!(fx.apply(Command::Unload {
+        entity_id: lcrf,
+        target: None
+    }));
 
     for _ in 0..3 {
         fx.tick();
@@ -743,7 +757,10 @@ fn hover_transport_on_water_is_sent_to_a_raised_bank() {
     }
     let lcrf = fx.spawn("LCRF", 20, 20, 0x40);
     fx.board(lcrf, 2);
-    assert!(fx.apply(Command::UnloadPassengers { transport_id: lcrf }));
+    assert!(fx.apply(Command::Unload {
+        entity_id: lcrf,
+        target: None
+    }));
 
     let mut sent = None;
     for _ in 0..10 {
@@ -772,7 +789,10 @@ fn move_order_cancels_a_running_unload() {
     let mut fx = Fixture::new(|_, _| false);
     let bfrt = fx.spawn("BFRT", 20, 20, 0);
     let pax = fx.board(bfrt, 5);
-    assert!(fx.apply(Command::UnloadPassengers { transport_id: bfrt }));
+    assert!(fx.apply(Command::Unload {
+        entity_id: bfrt,
+        target: None
+    }));
     let mut out = 0usize;
     for _ in 0..60 {
         fx.tick();
@@ -809,7 +829,10 @@ fn nighthawk_unloads_only_when_landed() {
     let shad = fx.spawn("SHAD", 20, 20, 0);
     let pax = fx.board(shad, 2);
     fx.sim.set_object_height_unmarked(shad, 600);
-    assert!(fx.apply(Command::UnloadPassengers { transport_id: shad }));
+    assert!(fx.apply(Command::Unload {
+        entity_id: shad,
+        target: None
+    }));
     assert_eq!(fx.mission(shad), MissionId::from_known(MissionType::Unload));
     for _ in 0..30 {
         fx.sim.set_object_height_unmarked(shad, 600);
@@ -873,7 +896,10 @@ fn nighthawk_ejects_five_passengers_to_scanned_neighbours() {
     let shad = fx.spawn("SHAD", 20, 20, 0);
     let pax = fx.board(shad, 5);
     fx.sim.set_object_height_unmarked(shad, 0);
-    assert!(fx.apply(Command::UnloadPassengers { transport_id: shad }));
+    assert!(fx.apply(Command::Unload {
+        entity_id: shad,
+        target: None
+    }));
 
     // (id, reveal frame, mission, destination) captured the tick each surfaces.
     type Surfaced = (u64, u32, MissionId, Option<(u16, u16)>);
@@ -964,7 +990,10 @@ fn ifv_keeps_gunner_weapon_when_every_exit_is_refused() {
         .get_mut(fv)
         .expect("ifv")
         .set_gunner_weapon(1, fx.rules.object("FV").unwrap());
-    assert!(fx.apply(Command::UnloadPassengers { transport_id: fv }));
+    assert!(fx.apply(Command::Unload {
+        entity_id: fv,
+        target: None
+    }));
 
     let mut reached_eject = false;
     for _ in 0..120 {
@@ -1036,7 +1065,10 @@ fn relaxed_pass_drives_vehicle_passenger_to_the_fnpc_cell() {
         .unwrap()
         .barrel_elevation()
         .timer_start_frame();
-    assert!(fx.apply(Command::UnloadPassengers { transport_id: bfrt }));
+    assert!(fx.apply(Command::Unload {
+        entity_id: bfrt,
+        target: None
+    }));
 
     let order = fx.run_until_revealed_with_missions(&[bggy], 200);
     assert_eq!(order.len(), 1, "the vehicle left: {order:?}");
@@ -1113,7 +1145,10 @@ fn vehicle_passenger_off_the_playfield_exit_lands_on_raised_in_playfield_ground(
         transport_id: bfrt,
         open_topped: true,
     };
-    assert!(fx.apply(Command::UnloadPassengers { transport_id: bfrt }));
+    assert!(fx.apply(Command::Unload {
+        entity_id: bfrt,
+        target: None
+    }));
 
     let order = fx.run_until_revealed_with_missions(&[bggy], 200);
     assert_eq!(order.len(), 1, "the vehicle left: {order:?}");
@@ -1149,7 +1184,10 @@ fn descending_nighthawk_draws_no_scenario_rng_until_it_ejects() {
     let shad = fx.spawn("SHAD", 20, 20, 0);
     let pax = fx.board(shad, 2);
     set_altitude(&mut fx, shad, 600);
-    assert!(fx.apply(Command::UnloadPassengers { transport_id: shad }));
+    assert!(fx.apply(Command::Unload {
+        entity_id: shad,
+        target: None
+    }));
 
     // First dispatch: state 0 → 2 with exactly one epilogue draw.
     let before = fx.sim.scenario_rng.state();
@@ -1298,7 +1336,10 @@ fn jumpjet_transport_ordered_to_unload_in_flight_lands_first() {
     }
     let ordered_at = fx.cell(hind);
     assert!(altitude(&fx) > 0, "in flight");
-    assert!(fx.apply(Command::UnloadPassengers { transport_id: hind }));
+    assert!(fx.apply(Command::Unload {
+        entity_id: hind,
+        target: None
+    }));
     let mut landed_reveals = 0;
     for _ in 0..600 {
         fx.tick();
@@ -1340,7 +1381,10 @@ fn unload_order_stops_a_driving_transport_where_it_is() {
         ordered_at.0 > 6 && ordered_at.0 < 30,
         "under way at {ordered_at:?}"
     );
-    assert!(fx.apply(Command::UnloadPassengers { transport_id: bfrt }));
+    assert!(fx.apply(Command::Unload {
+        entity_id: bfrt,
+        target: None
+    }));
     let transport = fx.sim.substrate.entities.get(bfrt).expect("transport");
     assert!(
         transport.navigation.nav_com.is_none(),
@@ -1364,7 +1408,10 @@ fn landed_aircraft_transport_unload_asks_the_locomotor() {
         let shad = fx.spawn("SHAD", 20, 20, 0);
         fx.board(shad, 2);
         set_altitude(&mut fx, shad, 600);
-        assert!(fx.apply(Command::UnloadPassengers { transport_id: shad }));
+        assert!(fx.apply(Command::Unload {
+            entity_id: shad,
+            target: None
+        }));
         crate::sim::aircraft::dispatch_mission(&mut fx.sim, shad, &fx.rules, Default::default());
         fx.sim.session.binary_frame += 1;
         assert_eq!(handler_state(&fx, shad), super::AIR_STATE_WAIT_STOP);
@@ -1428,7 +1475,10 @@ fn nighthawk_failed_ejection_keeps_cargo_and_leaves_for_guard() {
     let held = fx.cargo_ids(shad);
     assert_eq!(held, pax.iter().rev().copied().collect::<Vec<_>>());
     set_altitude(&mut fx, shad, 0);
-    assert!(fx.apply(Command::UnloadPassengers { transport_id: shad }));
+    assert!(fx.apply(Command::Unload {
+        entity_id: shad,
+        target: None
+    }));
 
     // State 0 → 3 (landed, team-less), one draw.
     crate::sim::aircraft::dispatch_mission(&mut fx.sim, shad, &fx.rules, Default::default());

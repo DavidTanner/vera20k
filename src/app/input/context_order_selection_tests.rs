@@ -62,12 +62,12 @@ fn prepared_factory_rallies_and_mobile_orders_keep_native_selection_order() {
         wrap(Command::SetRally {
             rx: 7,
             ry: 8,
-            producer_ids: vec![30],
+            producer_id: 30,
         }),
         wrap(Command::SetRally {
             rx: 9,
             ry: 10,
-            producer_ids: vec![20],
+            producer_id: 20,
         }),
         wrap(Command::Move {
             entity_id: 10,
@@ -87,32 +87,4 @@ fn prepared_factory_rallies_and_mobile_orders_keep_native_selection_order() {
         &queued[2].payload,
         Command::SetRally { rx: 9, ry: 10, .. }
     ));
-}
-
-#[test]
-fn aggregated_rally_batch_keeps_existing_dispatch_order() {
-    let owner = InternedId::default();
-    let mut queued = vec![
-        CommandEnvelope::new(
-            owner,
-            42,
-            Command::SetRally {
-                rx: 7,
-                ry: 8,
-                producer_ids: vec![30, 20],
-            },
-        ),
-        CommandEnvelope::new(
-            owner,
-            42,
-            Command::Move {
-                entity_id: 10,
-                target_rx: 7,
-                target_ry: 8,
-            },
-        ),
-    ];
-    let original = queued.clone();
-    restore_selection_dispatch_order(&mut queued, &[30, 10, 20]);
-    assert_eq!(queued, original);
 }

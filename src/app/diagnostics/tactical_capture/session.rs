@@ -392,7 +392,7 @@ impl TacticalCaptureSession {
                     action_id,
                     observation.tick,
                     &owner,
-                    Command::DeployMcv { entity_id },
+                    Command::Deploy { entity_id },
                 )?;
                 self.advance_exact_step(state)?;
             }

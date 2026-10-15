@@ -213,7 +213,7 @@ mod tests {
                 let command = Command::SetRally {
                     rx,
                     ry,
-                    producer_ids: vec![1],
+                    producer_id: 1,
                 };
                 let command: Command =
                     serde_json::from_slice(&serde_json::to_vec(&command).unwrap()).unwrap();

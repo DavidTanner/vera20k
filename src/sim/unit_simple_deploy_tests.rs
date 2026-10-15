@@ -283,11 +283,7 @@ fn mission_then_shared_stage_matches_original_frame_timelines() {
 #[test]
 fn ordinary_synchronized_deploy_command_accepts_schp() {
     let (mut sim, rules, id) = fixture(&json!({}));
-    assert!(sim.apply_command(
-        "Russians",
-        &Command::DeployMcv { entity_id: id },
-        Some(&rules)
-    ));
+    assert!(sim.apply_command("Russians", &Command::Deploy { entity_id: id }, Some(&rules)));
     let entity = sim.substrate.entities.get(id).unwrap();
     // Event9's Queue_Mission(Unload) at4C7812 leaves the current Guard
     // intact; the ordinary scheduler owns Commence on a later frame.
@@ -359,11 +355,7 @@ fn synchronized_deploy_obeys_native_event9_actor_guards() {
         }
         let before = sim.state_hash();
         assert_eq!(
-            sim.apply_command(
-                "Russians",
-                &Command::DeployMcv { entity_id: id },
-                Some(&rules)
-            ),
+            sim.apply_command("Russians", &Command::Deploy { entity_id: id }, Some(&rules)),
             admitted,
             "{case}",
         );
@@ -490,11 +482,7 @@ fn begin_landing_cycle() -> (Simulation, RuleSet, u64) {
     );
     // Event9 itself clears the previous destination; no test-only Stop, height
     // mutation or state injection stands in for that prerequisite.
-    assert!(sim.apply_command(
-        "Russians",
-        &Command::DeployMcv { entity_id: id },
-        Some(&rules)
-    ));
+    assert!(sim.apply_command("Russians", &Command::Deploy { entity_id: id }, Some(&rules)));
     advance_until(&mut sim, &rules, 40, "deployment landing request", |sim| {
         sim.substrate.entities.get(id).unwrap().landing_for_deploy()
     });
@@ -545,11 +533,7 @@ fn ordinary_commands_land_animate_deploy_reverse_and_resume_flight() {
         },
     );
     assert!(sim.anim(forward).is_none());
-    assert!(sim.apply_command(
-        "Russians",
-        &Command::DeployMcv { entity_id: id },
-        Some(&rules)
-    ));
+    assert!(sim.apply_command("Russians", &Command::Deploy { entity_id: id }, Some(&rules)));
     advance_until(
         &mut sim,
         &rules,

@@ -6,8 +6,8 @@ use std::collections::HashMap;
 
 use crate::app::AppState;
 use crate::map::entities::EntityCategory;
-use crate::net::lockstep::SynchronizedCommand;
 use crate::sim::command::{Command, CommandEnvelope};
+use crate::sim::event_queue::SynchronizedCommand;
 use crate::sim::intern::InternedId;
 use crate::sim::production;
 
@@ -1317,7 +1317,7 @@ mod tests {
         sim.input_delay_ticks = 7;
 
         let execute_tick =
-            schedule_command_in_sim(&mut sim, "Russians", Command::DeployMcv { entity_id: 99 })
+            schedule_command_in_sim(&mut sim, "Russians", Command::Deploy { entity_id: 99 })
                 .unwrap();
 
         assert_eq!(execute_tick, 41);
@@ -1330,7 +1330,7 @@ mod tests {
         );
         assert_eq!(
             sim.pending_command_snapshot()[0].payload,
-            Command::DeployMcv { entity_id: 99 }
+            Command::Deploy { entity_id: 99 }
         );
     }
 
@@ -1341,7 +1341,7 @@ mod tests {
         sim.input_delay_ticks = 8;
 
         let execute_tick =
-            schedule_command_in_sim(&mut sim, "YuriCountry", Command::DeployMcv { entity_id: 7 })
+            schedule_command_in_sim(&mut sim, "YuriCountry", Command::Deploy { entity_id: 7 })
                 .unwrap();
 
         assert_eq!(execute_tick, u64::MAX - 1);
@@ -1377,7 +1377,7 @@ mod tests {
         assert_eq!(issued.frame_stamp(), 23);
         assert_eq!(&issued.payload()[..4], &[0, 0, 1, 0]);
         assert_eq!(
-            crate::net::lockstep::SynchronizedCommand::opaque(issued)
+            crate::sim::event_queue::SynchronizedCommand::opaque(issued)
                 .decode_for_simulation(&sim, 23)
                 .unwrap(),
             CommandEnvelope::new(local, 23, Command::SellWallAtCell { x: 0, y: 1 })

@@ -1860,7 +1860,6 @@ fn hash_entity(entity: &GameEntity, frame: u32, hasher: &mut StateHasher) {
             // home_refinery: None.
             None::<u64>.hash(hasher);
         }
-        miner.reserved_refinery.hash(hasher);
         let native_ore_field = true;
         if !native_ore_field {
             // The retired target_ore_cell (None) and harvest_timer

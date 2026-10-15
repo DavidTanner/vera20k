@@ -1014,7 +1014,16 @@ use crate::sim::world::Simulation;
 // (`BuildingArt`), which changes the entity's field order.
 // 351 -> 352: the locomotor's altitude mirror is gone (#692); an object's
 // height is its Location Z. Version 351 records carry it.
-const SNAPSHOT_VERSION: u32 = 352;
+// 352 -> 353: the ForceAttack command variant is gone (a force-fire click
+// sends the same MEGAMISSION Attack record), which renumbers later variants
+// of pending commands.
+// 353 -> 354: DeployMcv, ToggleInfantryDeploy and UnloadPassengers become the
+// native DEPLOY event (`Deploy`) and the MEGAMISSION Unload order (`Unload`).
+// 354 -> 355: a pending rally (`SetRally`) names one building, as ARCHIVE does.
+// 355 -> 356: MinerReturn, RepairAtDepot, EnterTransport and EnterBunker become
+// the one MEGAMISSION Enter command; Miner drops reserved_refinery and the
+// ForcedReturn cursor.
+const SNAPSHOT_VERSION: u32 = 356;
 
 const SNAPSHOT_PRODUCT_MAGIC: [u8; 8] = *b"VERA20K\0";
 const SNAPSHOT_ENVELOPE_VERSION: u32 = 1;
@@ -2121,20 +2130,6 @@ fn restore_object_references(
                 "EntityStore",
                 entity_id,
                 "aircraft_ammo.dock",
-                "EntityStore",
-                target_id,
-            )?;
-        }
-        if let Some(target_id) = entity
-            .miner
-            .as_ref()
-            .and_then(|miner| miner.reserved_refinery)
-        {
-            require_resolved_reference(
-                entity_ids.contains(&target_id),
-                "EntityStore",
-                entity_id,
-                "miner.reserved_refinery",
                 "EntityStore",
                 target_id,
             )?;
@@ -4398,7 +4393,11 @@ mod tests {
         // 349 -> 350: the request each waiting Foot repeats.
         // 350 -> 351: the Building's animation art in one record.
         // 351 -> 352: no locomotor altitude copy; height is the Location Z.
-        assert_eq!(super::SNAPSHOT_VERSION, 352);
+        // 352 -> 353: no ForceAttack command variant.
+        // 353 -> 354: native Deploy and Unload commands.
+        // 354 -> 355: a rally names one building.
+        // 355 -> 356: one Enter command; no pinned miner refinery.
+        assert_eq!(super::SNAPSHOT_VERSION, 356);
     }
 
     #[test]

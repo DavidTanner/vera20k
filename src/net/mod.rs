@@ -16,7 +16,7 @@
 
 // Future modules - uncomment as implemented:
 // pub mod protocol;
-
-pub mod lockstep;
-#[cfg(test)]
-mod lockstep_sim_convergence_tests;
+//
+// Command staging, dispatch, FRAMEINFO and the checksum history live with
+// their frame-tail caller in `sim::event_queue`; this layer will own only
+// the wire and peers.

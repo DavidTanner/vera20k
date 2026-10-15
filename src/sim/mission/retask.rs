@@ -103,7 +103,7 @@ impl Simulation {
     /// exact authority with `commence_now = 0` — the
     /// native event-execute shape (Queue `0x004C73B9=dynamic/0`). Promotion to
     /// `current` happens at the per-object AI host's Ready→Commence. Used by
-    /// the shared MegaMission command funnel (Move, Attack, ForceAttack,
+    /// the shared MegaMission command funnel (Move, Attack,
     /// ForceAttackCell, AttackMove, Guard, RepairAtDepot, EnterTransport, PlantC4,
     /// CaptureBuilding). Stop has its own no-queue Event6 route above.
     pub fn queue_order_mission(&mut self, id: u64, mission: MissionType) {

@@ -183,13 +183,13 @@ mod tests {
                 actor.passively_acquired_target = true;
                 actor.weapon_burst.complete_shot(2);
                 let command = match order {
-                    0 => Command::RepairAtDepot {
+                    0 => Command::Enter {
                         entity_id: id,
-                        depot_id: destination,
+                        destination_id: destination,
                     },
-                    1 => Command::EnterTransport {
-                        passenger_id: id,
-                        transport_id: destination,
+                    1 => Command::Enter {
+                        entity_id: id,
+                        destination_id: destination,
                     },
                     2 => Command::PlantC4 {
                         attacker_id: id,
@@ -199,9 +199,9 @@ mod tests {
                         engineer_id: id,
                         target_building_id: destination,
                     },
-                    _ => Command::EnterBunker {
-                        unit_id: id,
-                        bunker_id: destination,
+                    _ => Command::Enter {
+                        entity_id: id,
+                        destination_id: destination,
                     },
                 };
                 // Rejected ownership cannot cancel a burst or passive provenance.

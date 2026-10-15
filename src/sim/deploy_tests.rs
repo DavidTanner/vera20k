@@ -1650,7 +1650,10 @@ fn synchronized_deploy_queues_unload_before_handler_action_and_sound() {
     assert_eq!(before_mission.current().known(), Some(MissionType::Enter));
     assert!(sim.apply_command(
         "Americans",
-        &Command::ToggleInfantryDeploy { entity_id: id },
+        &Command::Unload {
+            entity_id: id,
+            target: None
+        },
         Some(&rules),
     ));
     let actor = sim.substrate.entities.get(id).unwrap();
@@ -1713,4 +1716,90 @@ fn synchronized_deploy_queues_unload_before_handler_action_and_sound() {
         sim.sound_events.as_slice(),
         [SimSoundEvent::EntityDeployed { .. }]
     ));
+}
+
+/// DEPLOY (`EventClass::Execute` opcode 9, `0x004C76BC..0x004C7812`) gates
+/// only on the object: alive, not in limbo, untethered (`+0x418`), no EMP
+/// (`+0x504`), the bridge/slope test, not Construction or Selling, and not an
+/// aircraft (`vt+0x2C == 2` at `0x004C777E`). It names no class: a loaded
+/// vehicle transport queues Unload like an MCV, and its own Mission_Unload
+/// decides what unloading means.
+#[test]
+fn deploy_event_has_no_class_gate_except_aircraft() {
+    use crate::sim::mission::MissionType;
+
+    let rules = RuleSet::from_ini(&IniFile::from_str(
+        "[InfantryTypes]\n[VehicleTypes]\n0=BFRT\n[AircraftTypes]\n0=ORCA\n[BuildingTypes]\n\
+         [BFRT]\nStrength=600\nPassengers=5\nSpeed=6\n[ORCA]\nStrength=200\nSpeed=12\n",
+    ))
+    .unwrap();
+    let mut sim = deploy_sim(&rules);
+    let transport = sim
+        .spawn_object("BFRT", "Americans", 20, 22, 64, &rules)
+        .expect("spawn transport");
+    let aircraft = sim
+        .spawn_object("ORCA", "Americans", 24, 22, 64, &rules)
+        .expect("spawn aircraft");
+
+    assert!(sim.apply_command(
+        "Americans",
+        &Command::Deploy {
+            entity_id: transport
+        },
+        Some(&rules),
+    ));
+    let actor = sim.substrate.entities.get(transport).unwrap();
+    assert_eq!(actor.mission.queued().known(), Some(MissionType::Unload));
+
+    assert!(!sim.apply_command(
+        "Americans",
+        &Command::Deploy {
+            entity_id: aircraft
+        },
+        Some(&rules),
+    ));
+    let actor = sim.substrate.entities.get(aircraft).unwrap();
+    assert_ne!(actor.mission.queued().known(), Some(MissionType::Unload));
+}
+
+/// DEPLOY sends OVER_OUT to radio contact 0 (`vt+0x274(3)` at
+/// `0x004C77EA`) before its null destination and target, as the
+/// MEGAMISSION prefix does.
+#[test]
+fn deploy_event_breaks_radio_contact_zero() {
+    let rules = make_mcv_rules();
+    let mut sim = deploy_sim(&rules);
+    let mcv = sim
+        .spawn_object("AMCV", "Americans", 20, 22, 128, &rules)
+        .expect("spawn MCV");
+    let other = sim
+        .spawn_object("AMCV", "Americans", 26, 22, 128, &rules)
+        .expect("spawn contact");
+    let contacts = &mut sim.substrate.entities.get_mut(mcv).unwrap().radio_contacts;
+    contacts.set_capacity(1);
+    contacts.insert(other).expect("free radio slot");
+    assert_eq!(
+        sim.substrate
+            .entities
+            .get(mcv)
+            .unwrap()
+            .radio_contacts
+            .slot(0),
+        Some(other)
+    );
+
+    assert!(sim.apply_command(
+        "Americans",
+        &Command::Deploy { entity_id: mcv },
+        Some(&rules),
+    ));
+    assert_eq!(
+        sim.substrate
+            .entities
+            .get(mcv)
+            .unwrap()
+            .radio_contacts
+            .slot(0),
+        None
+    );
 }

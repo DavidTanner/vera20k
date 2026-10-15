@@ -1383,7 +1383,12 @@ fn apply_cursor_confinement_impl(state: &AppState, verbose: bool) {
             return;
         };
         let hwnd = w.hwnd.get() as *mut c_void;
-        let mut rect: RECT = RECT { left: 0, top: 0, right: 0, bottom: 0 };
+        let mut rect: RECT = RECT {
+            left: 0,
+            top: 0,
+            right: 0,
+            bottom: 0,
+        };
         unsafe {
             // Clip the *client* area, not the whole window: GetWindowRect would
             // include the title bar and the resize border, so the pointer could
@@ -1392,8 +1397,14 @@ fn apply_cursor_confinement_impl(state: &AppState, verbose: bool) {
             // space for ClipCursor. Both are in the same DPI-aware physical
             // pixels, so the rect matches what ClipCursor expects.
             GetClientRect(hwnd, &mut rect);
-            let mut tl = POINT { x: rect.left, y: rect.top };
-            let mut br = POINT { x: rect.right, y: rect.bottom };
+            let mut tl = POINT {
+                x: rect.left,
+                y: rect.top,
+            };
+            let mut br = POINT {
+                x: rect.right,
+                y: rect.bottom,
+            };
             ClientToScreen(hwnd, &mut tl);
             ClientToScreen(hwnd, &mut br);
             // Clip to the *exact* client rectangle — do NOT inset. The game's
@@ -1420,7 +1431,10 @@ fn apply_cursor_confinement_impl(state: &AppState, verbose: bool) {
                 if verbose {
                     log::info!(
                         "cursor confinement: client rect not ready ({},{},{},{}), deferring",
-                        clip.left, clip.top, clip.right, clip.bottom
+                        clip.left,
+                        clip.top,
+                        clip.right,
+                        clip.bottom
                     );
                 }
                 return;
@@ -1428,7 +1442,10 @@ fn apply_cursor_confinement_impl(state: &AppState, verbose: bool) {
             if verbose {
                 log::info!(
                     "cursor confinement: clipping to client ({},{},{},{}) confined={}",
-                    clip.left, clip.top, clip.right, clip.bottom,
+                    clip.left,
+                    clip.top,
+                    clip.right,
+                    clip.bottom,
                     state.platform.cursor_confined
                 );
             }
@@ -2228,7 +2245,7 @@ Verses=100%,100%,100%,100%,100%,100%,100%,100%,100%,100%,100%
                     target_ry: 10,
                 }
             } else {
-                Command::ForceAttack {
+                Command::Attack {
                     attacker_id: house,
                     target_id,
                 }

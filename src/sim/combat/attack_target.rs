@@ -9,7 +9,7 @@ use super::*;
 /// Auto-acquired and explicit attack-on-unit orders set `Entity`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum TargetKind {
-    /// Entity-targeted attack (normal Attack / ForceAttack on a unit/building).
+    /// Entity-targeted attack (an Attack order on a unit/building).
     Entity(u64),
     /// Ground-targeted attack (force-fire on a cell). Cell coord in map space.
     Cell(u16, u16),

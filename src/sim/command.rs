@@ -29,6 +29,18 @@ pub const EXIT_OPCODE: u8 = 0x13;
 pub const MEGAMISSION_OPCODE: u8 = 0x04;
 /// Native selected-object Scatter event.
 pub const SCATTER_OPCODE: u8 = 0x07;
+/// Native PLACE event: a ready building, or a finished mobile product.
+pub const PLACE_OPCODE: u8 = 0x0b;
+/// Native PRODUCE event: start or queue one type at its factory.
+pub const PRODUCE_OPCODE: u8 = 0x0e;
+/// Native SUSPEND event: put one factory on hold.
+pub const SUSPEND_OPCODE: u8 = 0x0f;
+/// Native ABANDON event: cancel one queued or building product.
+pub const ABANDON_OPCODE: u8 = 0x10;
+/// Native SPECIAL_PLACE event: fire one super weapon at a cell.
+pub const SPECIAL_PLACE_OPCODE: u8 = 0x12;
+/// Native ABANDON_ALL event: cancel every queued copy of one type.
+pub const ABANDON_ALL_OPCODE: u8 = 0x2e;
 
 const MEGAMISSION_SOURCE_VALUE_OFFSET: usize = 0;
 const MEGAMISSION_SOURCE_KIND_OFFSET: usize = 4;
@@ -323,6 +335,188 @@ impl ExitRecord {
     }
 }
 
+/// The four sidebar factory events built by `EventClass` constructor
+/// `0x004C6970`: PRODUCE `0x0E`, SUSPEND `0x0F`, ABANDON `0x10` and
+/// ABANDON_ALL `0x2E`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProductionEvent {
+    Produce,
+    Suspend,
+    Abandon,
+    AbandonAll,
+}
+
+impl ProductionEvent {
+    pub const fn opcode(self) -> u8 {
+        match self {
+            Self::Produce => PRODUCE_OPCODE,
+            Self::Suspend => SUSPEND_OPCODE,
+            Self::Abandon => ABANDON_OPCODE,
+            Self::AbandonAll => ABANDON_ALL_OPCODE,
+        }
+    }
+
+    pub const fn from_opcode(opcode: u8) -> Option<Self> {
+        match opcode {
+            PRODUCE_OPCODE => Some(Self::Produce),
+            SUSPEND_OPCODE => Some(Self::Suspend),
+            ABANDON_OPCODE => Some(Self::Abandon),
+            ABANDON_ALL_OPCODE => Some(Self::AbandonAll),
+            _ => None,
+        }
+    }
+}
+
+/// The type a factory event names: the factory-selecting RTTI, the type's
+/// index in its native TechnoType vector (`+0xDF8`; `-1` for a mobile PLACE)
+/// and its naval flag (`Type+0xCCE`), as `0x004C6970`/`0x004C6AE0` store
+/// them in three dwords at Event+07/+0B/+0F.
+///
+/// Execute reads the flag as `dword != 0` (`0x004C711B`, `0x004C70E1`); the
+/// producers write 0 or 1.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FactoryTypeToken {
+    pub rtti: i32,
+    pub type_index: i32,
+    pub naval: bool,
+}
+
+impl FactoryTypeToken {
+    const LEN: usize = 12;
+
+    fn write(self, payload: &mut [u8]) {
+        payload[0..4].copy_from_slice(&self.rtti.to_le_bytes());
+        payload[4..8].copy_from_slice(&self.type_index.to_le_bytes());
+        payload[8..12].copy_from_slice(&u32::from(self.naval).to_le_bytes());
+    }
+
+    fn read(payload: &[u8]) -> Option<Self> {
+        let dword = |at: usize| {
+            payload
+                .get(at..at + 4)?
+                .try_into()
+                .ok()
+                .map(i32::from_le_bytes)
+        };
+        Some(Self {
+            rtti: dword(0)?,
+            type_index: dword(4)?,
+            naval: dword(8)? != 0,
+        })
+    }
+}
+
+/// Typed view of the PRODUCE/SUSPEND/ABANDON/ABANDON_ALL records
+/// (`0x004C6970`). Execute hands the three dwords to the house's factory
+/// routine: `0x004FA350`, `0x004FA910` or `0x004FAA10`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ProductionRecord {
+    pub event: ProductionEvent,
+    pub house_id: i8,
+    pub frame: i32,
+    pub product: FactoryTypeToken,
+}
+
+impl ProductionRecord {
+    pub fn encode(self) -> Result<CommandRecord, CommandRecordError> {
+        let mut payload = [0u8; FactoryTypeToken::LEN];
+        self.product.write(&mut payload);
+        CommandRecord::encode(
+            self.event.opcode(),
+            i32::from(self.house_id),
+            self.frame,
+            &payload,
+        )
+    }
+
+    pub fn decode(record: &CommandRecord) -> Option<Self> {
+        Some(Self {
+            event: ProductionEvent::from_opcode(record.opcode())?,
+            house_id: record.house_id(),
+            frame: record.frame_stamp(),
+            product: FactoryTypeToken::read(record.payload())?,
+        })
+    }
+}
+
+/// Typed view of the PLACE record (`0x004C6AE0`): the factory token and the
+/// placement Cell as two signed words at Event+13/+15. Execute `0x004C70E1`
+/// calls `Place_Production @ 0x004FB0E0`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PlaceRecord {
+    pub house_id: i8,
+    pub frame: i32,
+    pub product: FactoryTypeToken,
+    pub x: i16,
+    pub y: i16,
+}
+
+impl PlaceRecord {
+    pub fn encode(self) -> Result<CommandRecord, CommandRecordError> {
+        let mut payload = [0u8; FactoryTypeToken::LEN + 4];
+        self.product.write(&mut payload);
+        payload[12..14].copy_from_slice(&self.x.to_le_bytes());
+        payload[14..16].copy_from_slice(&self.y.to_le_bytes());
+        CommandRecord::encode(PLACE_OPCODE, i32::from(self.house_id), self.frame, &payload)
+    }
+
+    pub fn decode(record: &CommandRecord) -> Option<Self> {
+        if record.opcode() != PLACE_OPCODE {
+            return None;
+        }
+        let payload = record.payload();
+        Some(Self {
+            house_id: record.house_id(),
+            frame: record.frame_stamp(),
+            product: FactoryTypeToken::read(payload)?,
+            x: i16::from_le_bytes(payload[12..14].try_into().ok()?),
+            y: i16::from_le_bytes(payload[14..16].try_into().ok()?),
+        })
+    }
+}
+
+/// Typed view of the SPECIAL_PLACE record (`0x004C6B60`): the super weapon
+/// type's array index at Event+07 and the target Cell at Event+0B/+0D.
+/// Execute `0x004C78D6` calls `0x004FAE50`, which indexes the House's super
+/// weapon vector (`+0x258`) with it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SpecialPlaceRecord {
+    pub house_id: i8,
+    pub frame: i32,
+    pub super_index: i32,
+    pub x: i16,
+    pub y: i16,
+}
+
+impl SpecialPlaceRecord {
+    pub fn encode(self) -> Result<CommandRecord, CommandRecordError> {
+        let mut payload = [0u8; 8];
+        payload[0..4].copy_from_slice(&self.super_index.to_le_bytes());
+        payload[4..6].copy_from_slice(&self.x.to_le_bytes());
+        payload[6..8].copy_from_slice(&self.y.to_le_bytes());
+        CommandRecord::encode(
+            SPECIAL_PLACE_OPCODE,
+            i32::from(self.house_id),
+            self.frame,
+            &payload,
+        )
+    }
+
+    pub fn decode(record: &CommandRecord) -> Option<Self> {
+        if record.opcode() != SPECIAL_PLACE_OPCODE {
+            return None;
+        }
+        let payload = record.payload();
+        Some(Self {
+            house_id: record.house_id(),
+            frame: record.frame_stamp(),
+            super_index: i32::from_le_bytes(payload[0..4].try_into().ok()?),
+            x: i16::from_le_bytes(payload[4..6].try_into().ok()?),
+            y: i16::from_le_bytes(payload[6..8].try_into().ok()?),
+        })
+    }
+}
+
 /// Target event used by Scatter. Original `EventClass` constructor4C65E0
 /// writes the Abstract token at Event+7..11, preserving flags and unused tail.
 /// Its signed house check uses the existing null-header owner, including
@@ -597,10 +791,10 @@ pub enum Command {
     MoveToObject { entity_id: u64, target_id: u64 },
     /// Stop movement/combat intent on one entity.
     Stop { entity_id: u64 },
-    /// Attack an explicit target.
+    /// Attack an object: MEGAMISSION mission 1 with the object in the target
+    /// token. A Ctrl force-fire click sends the same record; the click picks
+    /// its action, and Execute never tests the houses' relation.
     Attack { attacker_id: u64, target_id: u64 },
-    /// Force-attack a target (ignores friendship — Ctrl+click).
-    ForceAttack { attacker_id: u64, target_id: u64 },
     /// Attack-move: the MEGAMISSION event with mission 29 that ClickedMission
     /// (`0x006FFBE0`) promotes a Move or Attack click to. Its tokens are the
     /// click's: an attack click's object as `target` (`0x004D76B1..0x004D76C1`),
@@ -617,18 +811,25 @@ pub enum Command {
         entity_id: u64,
         target: Option<crate::sim::combat::TargetKind>,
     },
-    /// Unit DEPLOY event: convert an MCV or toggle a SimpleDeployer.
-    /// The existing wire spelling is retained for saved commands/replays.
-    DeployMcv { entity_id: u64 },
+    /// The Deploy key's DEPLOY event (opcode 9, Execute `0x004C76BC`): queue
+    /// Unload on one object with no target or destination. The object's own
+    /// Mission_Unload decides what that means (MCV, simple deployer, deployer
+    /// infantry, transport or garrison).
+    Deploy { entity_id: u64 },
+    /// A self-click's MEGAMISSION Unload (mission `0x10`): the Foot click
+    /// (`0x004D75E1`) sends no tokens; a garrison or absorber building
+    /// (`0x00443559`) puts itself in the target token.
+    Unload {
+        entity_id: u64,
+        target: Option<crate::sim::combat::TargetKind>,
+    },
     /// Undeploy a structure back into its mobile unit (e.g. ConYard → MCV).
     /// Reads UndeploysInto from rules.ini to determine the spawned unit type.
     UndeployBuilding { entity_id: u64 },
-    /// Archive a rally cell on each selected factory the command owner owns.
-    SetRally {
-        rx: u16,
-        ry: u16,
-        producer_ids: Vec<u64>,
-    },
+    /// ARCHIVE (opcode `0x1E`, constructor `0x004C6780`): one building and
+    /// the Cell it archives. The rally click (`SetRallyPoint @ 0x00443860`)
+    /// sends one per selected factory, each with its own searched Cell.
+    SetRally { rx: u16, ry: u16, producer_id: u64 },
     // The production commands act on the envelope's house, as a native
     // production event acts on its header's house id (`EventClass::Execute
     // 0x004C6CB0` reads it at `0x004C6CC4`); none names another.
@@ -654,36 +855,17 @@ pub enum Command {
     SellBuilding { entity_id: u64 },
     /// Toggle repair mode on a building (spend credits to heal over time).
     ToggleRepair { entity_id: u64 },
-    /// Force a miner to return to its refinery (right-click on own refinery or 'D' key).
-    /// Both kinds run the Harvest return; a Chrono Miner warps onto the pad
-    /// from within `ChronoHarvTooFarDistance`.
-    MinerReturn {
-        entity_id: u64,
-        /// Explicit refinery clicked by the player. Keyboard/generic forced
-        /// return leaves this empty and lets the miner choose a refinery.
-        target_refinery_id: Option<u64>,
-    },
-    /// Send a unit to a repair depot for repairs.
-    /// The unit pathfinds to the depot, docks, and auto-repairs until full HP or out of credits.
-    RepairAtDepot { entity_id: u64, depot_id: u64 },
-    /// Enter7: order an infantry/vehicle into a friendly transport or absorber.
-    /// Occupier garrison clicks use CaptureBuilding (Capture8).
-    EnterTransport {
-        passenger_id: u64,
-        transport_id: u64,
-    },
-    /// Order a bunkerable vehicle into a friendly `Bunker=yes` building (tank
-    /// bunker). The unit pathfinds to the bunker cell; the install machine takes
-    /// over on arrival (turn → slide onto the cell → turn south → hide). Gating
-    /// happens in `world_commands`: own-owner, the bunker idle/empty, and the
-    /// unit admitted by `bunker_link::can_auto_deploy_here` (`0x0070FB50`).
-    EnterBunker { unit_id: u64, bunker_id: u64 },
+    /// MEGAMISSION Enter (mission 7, constructor `0x004C6860`) with the clicked
+    /// object as the destination token and no target: a transport, a tank
+    /// bunker, a refinery or a repair depot. The Foot click sends it for the
+    /// Enter action (`0x004D76C6..0x004D7701`); the click decides whether the
+    /// object takes the actor, and the actor's class setter, radio and
+    /// Mission_Enter do the rest.
+    Enter { entity_id: u64, destination_id: u64 },
     /// Eject the occupant of a friendly occupied tank bunker. Targets the bunker
     /// (the hidden occupant is not selectable in this slice); the occupant
     /// reappears on a passable cell SW of the bunker and drives out.
     EjectBunker { bunker_id: u64 },
-    /// Order a transport or garrison to unload: the Unload mission of its class.
-    UnloadPassengers { transport_id: u64 },
     /// Direct a harvester to go harvest a specific ore cell.
     /// The miner will path to the cell, then enter Harvest state on arrival.
     HarvestCell {
@@ -718,15 +900,6 @@ pub enum Command {
         target_rx: u16,
         target_ry: u16,
     },
-    /// Toggle an infantry unit's deploy-fire state.
-    ///
-    /// Three transitions:
-    /// - `None → Deploying` (start deploy animation)
-    /// - `Deployed → Undeploying` (start undeploy animation)
-    /// - mid-transition (Deploying / Undeploying) → no-op (matches gamemd)
-    ///
-    /// Silently no-op if the entity's type is not `DeployFire=yes`.
-    ToggleInfantryDeploy { entity_id: u64 },
     /// Force-attack on a ground cell (Ctrl + left-click on empty terrain).
     ///
     /// Bypasses friendship check and entity-targeting — fires the attacker's
@@ -1193,5 +1366,81 @@ mod tests {
                 actual: COMMAND_RECORD_PAYLOAD_LEN + 1,
             })
         );
+    }
+
+    /// Field offsets the constructors write, as Event offsets: `0x004C6970`
+    /// stores rtti/index/naval at +07/+0B/+0F; `0x004C6AE0` adds the Cell
+    /// words at +13/+15; `0x004C6B60` stores the index at +07 and the Cell
+    /// at +0B/+0D. Static instruction reading; no executed control yet.
+    #[test]
+    fn factory_and_special_place_records_use_the_constructor_offsets() {
+        use super::{
+            ABANDON_ALL_OPCODE, FactoryTypeToken, PLACE_OPCODE, PlaceRecord, ProductionEvent,
+            ProductionRecord, SPECIAL_PLACE_OPCODE, SpecialPlaceRecord,
+        };
+        let product = FactoryTypeToken {
+            rtti: 0x28,
+            type_index: 0x0102_0304,
+            naval: true,
+        };
+        let abandon_all = ProductionRecord {
+            event: ProductionEvent::AbandonAll,
+            house_id: 3,
+            frame: 0x1234,
+            product,
+        };
+        let bytes = abandon_all.encode().unwrap().into_bytes();
+        assert_eq!(bytes[0], ABANDON_ALL_OPCODE);
+        assert_eq!(bytes[2], 3);
+        assert_eq!(&bytes[3..7], &0x1234i32.to_le_bytes());
+        assert_eq!(&bytes[0x07..0x0b], &0x28i32.to_le_bytes());
+        assert_eq!(&bytes[0x0b..0x0f], &0x0102_0304i32.to_le_bytes());
+        assert_eq!(&bytes[0x0f..0x13], &1u32.to_le_bytes());
+        assert_eq!(
+            ProductionRecord::decode(&CommandRecord::decode_exact(&bytes).unwrap()),
+            Some(abandon_all)
+        );
+
+        let mobile = PlaceRecord {
+            house_id: 0,
+            frame: 9,
+            product: FactoryTypeToken {
+                rtti: 0x0f,
+                type_index: -1,
+                naval: false,
+            },
+            x: -2,
+            y: 300,
+        };
+        let bytes = mobile.encode().unwrap().into_bytes();
+        assert_eq!(bytes[0], PLACE_OPCODE);
+        assert_eq!(&bytes[0x0b..0x0f], &(-1i32).to_le_bytes());
+        assert_eq!(&bytes[0x13..0x15], &(-2i16).to_le_bytes());
+        assert_eq!(&bytes[0x15..0x17], &300i16.to_le_bytes());
+        assert_eq!(
+            PlaceRecord::decode(&CommandRecord::decode_exact(&bytes).unwrap()),
+            Some(mobile)
+        );
+
+        let special = SpecialPlaceRecord {
+            house_id: 1,
+            frame: 2,
+            super_index: 7,
+            x: 40,
+            y: -41,
+        };
+        let bytes = special.encode().unwrap().into_bytes();
+        assert_eq!(bytes[0], SPECIAL_PLACE_OPCODE);
+        assert_eq!(&bytes[0x07..0x0b], &7i32.to_le_bytes());
+        assert_eq!(&bytes[0x0b..0x0d], &40i16.to_le_bytes());
+        assert_eq!(&bytes[0x0d..0x0f], &(-41i16).to_le_bytes());
+        assert_eq!(
+            SpecialPlaceRecord::decode(&CommandRecord::decode_exact(&bytes).unwrap()),
+            Some(special)
+        );
+        // Opcodes decode only into their own view.
+        let record = CommandRecord::decode_exact(&bytes).unwrap();
+        assert_eq!(ProductionRecord::decode(&record), None);
+        assert_eq!(PlaceRecord::decode(&record), None);
     }
 }

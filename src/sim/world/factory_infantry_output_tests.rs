@@ -1927,7 +1927,7 @@ fn joined_two_paid_gi(route: OutputRoute) {
             Command::SetRally {
                 rx,
                 ry,
-                producer_ids: vec![producer],
+                producer_id: producer,
             },
         );
         sim.advance_tick(&[command], Some(&rules), None, Some(&registry), TICK_MS);
@@ -1982,7 +1982,7 @@ fn joined_two_paid_gi(route: OutputRoute) {
                 Command::SetRally {
                     rx,
                     ry,
-                    producer_ids: vec![producer],
+                    producer_id: producer,
                 },
             ));
         }

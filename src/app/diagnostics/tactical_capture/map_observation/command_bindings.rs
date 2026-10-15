@@ -234,11 +234,12 @@ fn substitute_symbols(
                         | "passenger_id"
                         | "transport_id"
                         | "depot_id"
+                        | "producer_id"
                 ) && argument.is_object()
                 {
                     *argument = bind(&pointer, actor_symbol(argument)?)?;
-                } else if ((variant == "Select" && field == "entity_ids")
-                    || (variant == "SetRally" && field == "producer_ids"))
+                } else if variant == "Select"
+                    && field == "entity_ids"
                     && let Some(elements) = argument.as_array_mut()
                 {
                     for (index, element) in elements.iter_mut().enumerate() {
@@ -447,10 +448,10 @@ mod tests {
                 },
             ),
             (
-                json!({"SetRally": {"producer_ids": [selector], "rx": 25, "ry": 26}}),
-                "/SetRally/producer_ids/0",
+                json!({"SetRally": {"producer_id": selector, "rx": 25, "ry": 26}}),
+                "/SetRally/producer_id",
                 Command::SetRally {
-                    producer_ids: vec![17],
+                    producer_id: 17,
                     rx: 25,
                     ry: 26,
                 },

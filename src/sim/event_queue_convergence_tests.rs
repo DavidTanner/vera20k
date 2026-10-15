@@ -1,10 +1,6 @@
-//! Boundary tests (F14): raw lockstep command records converging with
-//! semantic simulation execution.
-//!
-//! These tests exercise `net::lockstep` admission/dispatch against the full
-//! `Simulation`, so they live on the net side of the sim/net boundary —
-//! `sim/` itself never names `crate::net`. Moved verbatim from the
-//! `sim::world` test module (whose fixtures they still share).
+//! Convergence tests: raw EventClass records admitted through
+//! `sim::event_queue` converging with semantic simulation execution, and the
+//! stage 0 two-instance multiplayer checksum test.
 
 use crate::rules::ruleset::RuleSet;
 use crate::sim::command::{Command, CommandEnvelope};
@@ -70,9 +66,9 @@ fn gsi_04_07_wall_sell_raw_lockstep_replay_converges_with_semantic_execution() {
             .expect("native replay decode");
     let replay_record = decoded.frames[0].commands.as_ref().unwrap()[0].clone();
 
-    let mut queue = crate::net::lockstep::SynchronizedCommandQueue::new();
+    let mut queue = crate::sim::event_queue::SynchronizedCommandQueue::new();
     assert!(
-        queue.admit(crate::net::lockstep::SynchronizedCommand::opaque(
+        queue.admit(crate::sim::event_queue::SynchronizedCommand::opaque(
             replay_record
         ))
     );
@@ -83,7 +79,7 @@ fn gsi_04_07_wall_sell_raw_lockstep_replay_converges_with_semantic_execution() {
         .copied()
         .enumerate()
         .map(|(index, owner)| {
-            crate::net::lockstep::CommandDispatchHouse::new(
+            crate::sim::event_queue::CommandDispatchHouse::new(
                 owner,
                 index as i8,
                 raw.houses[&owner].event_dispatch_eligible(),
@@ -131,14 +127,14 @@ fn gsi_04_07_wall_sell_raw_lockstep_replay_converges_with_semantic_execution() {
     .encode()
     .unwrap();
     assert!(
-        crate::net::lockstep::SynchronizedCommand::opaque(invalid_house)
+        crate::sim::event_queue::SynchronizedCommand::opaque(invalid_house)
             .decode_for_simulation(&raw, raw.session.tick)
             .is_none()
     );
     let invalid_opcode =
         crate::sim::command::CommandRecord::encode(0x16, 1, 0, &[1, 0, 1, 0]).unwrap();
     assert!(
-        crate::net::lockstep::SynchronizedCommand::opaque(invalid_opcode)
+        crate::sim::event_queue::SynchronizedCommand::opaque(invalid_opcode)
             .decode_for_simulation(&raw, raw.session.tick)
             .is_none()
     );
@@ -161,7 +157,7 @@ fn gsi_04_07_wall_sell_raw_signed_linear_coordinates_use_canonical_cell() {
         }
         .encode()
         .expect("wall-sale record");
-        let envelope = crate::net::lockstep::SynchronizedCommand::opaque(record)
+        let envelope = crate::sim::event_queue::SynchronizedCommand::opaque(record)
             .decode_for_simulation(sim, sim.session.tick)
             .expect("registered receiver decodes");
         let receiver = sim.interner.resolve(envelope.owner).to_string();
@@ -219,12 +215,12 @@ fn gsi_04_07_wall_sell_raw_signed_linear_coordinates_use_canonical_cell() {
 /// checksums every frame; one extra Scenario RNG draw is then caught.
 #[test]
 fn two_instance_multiplayer_checksums_match_every_frame_and_catch_a_desync() {
-    use crate::net::lockstep::{
+    use crate::rules::ini_parser::IniFile;
+    use crate::sim::combat::TargetKind;
+    use crate::sim::event_queue::{
         CommandDispatchHouse, LockstepScheduler, MultiplayerChecksumHistory, SynchronizedCommand,
         SynchronizedCommandQueue,
     };
-    use crate::rules::ini_parser::IniFile;
-    use crate::sim::combat::TargetKind;
     use crate::sim::world::{CommandQueueRoute, FrameEffects, TickLane};
 
     const FRAMES: u32 = 150;

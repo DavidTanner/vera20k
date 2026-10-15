@@ -552,18 +552,16 @@ impl MapCaptureProfile {
                         | Command::Move { .. }
                         | Command::Stop { .. }
                         | Command::Attack { .. }
-                        | Command::ForceAttack { .. }
                         | Command::Guard { .. }
-                        | Command::DeployMcv { .. }
+                        | Command::Deploy { .. }
                         | Command::SetRally { .. }
                         | Command::ForceAttackCell { .. }
                         | Command::QueueProduction { .. }
                         | Command::PlaceReadyBuilding { .. }
                         | Command::CaptureBuilding { .. }
                         | Command::ToggleRepair { .. }
-                        | Command::EnterTransport { .. }
-                        | Command::UnloadPassengers { .. }
-                        | Command::RepairAtDepot { .. }
+                        | Command::Enter { .. }
+                        | Command::Unload { .. }
                         | Command::SellBuilding { .. }
                         | Command::LaunchSuperWeapon { .. }
                 ),
@@ -4342,7 +4340,7 @@ mod tests {
         let mut modern = original;
         modern["schema_version"] = json!(PROFILE_V2);
         modern["commands"] = json!([{"issue_after_step": 0, "owner": "Computer1",
-            "payload": {"DeployMcv": {"entity_id": 1}}},
+            "payload": {"Deploy": {"entity_id": 1}}},
             {"issue_after_step": 0, "owner": "Computer1", "payload": {"LaunchSuperWeapon":
                 {"sw_type_id": 5, "target_rx": 3, "target_ry": 4}}}]);
         modern["observe_owners"] = json!(["Computer1"]);
@@ -4401,7 +4399,7 @@ mod tests {
         }
         for (key, value) in [("ignored", json!(true)), ("entity_id", json!(1.0))] {
             let mut invalid = modern.clone();
-            invalid["commands"][0]["payload"]["DeployMcv"][key] = value;
+            invalid["commands"][0]["payload"]["Deploy"][key] = value;
             assert!(
                 serde_json::from_value::<MapCaptureProfile>(invalid).is_err(),
                 "{key}"
@@ -5229,7 +5227,7 @@ mod tests {
             MapScheduledCommand {
                 issue_after_step: 0,
                 owner: "Computer1".to_owned(),
-                payload: Command::DeployMcv { entity_id: 2 },
+                payload: Command::Deploy { entity_id: 2 },
                 symbolic: None,
             },
             MapScheduledCommand {
@@ -5288,11 +5286,11 @@ mod tests {
             {"issue_after_step": 2, "owner": "Computer1",
                 "payload": {"ToggleRepair": {"entity_id": 9}}},
             {"issue_after_step": 2, "owner": "Computer1",
-                "payload": {"EnterTransport": {"passenger_id": 7, "transport_id": 8}}},
+                "payload": {"Enter": {"entity_id": 7, "destination_id": 8}}},
             {"issue_after_step": 2, "owner": "Computer1",
-                "payload": {"UnloadPassengers": {"transport_id": 8}}},
+                "payload": {"Unload": {"entity_id": 8, "target": null}}},
             {"issue_after_step": 2, "owner": "Computer1",
-                "payload": {"RepairAtDepot": {"entity_id": 7, "depot_id": 9}}},
+                "payload": {"Enter": {"entity_id": 7, "destination_id": 9}}},
             {"issue_after_step": 2, "owner": "Computer1",
                 "payload": {"SellBuilding": {"entity_id": 10}}},
         ]);
@@ -5401,7 +5399,7 @@ mod tests {
         assert!(profile.commands().iter().all(|command| {
             matches!(
                 command.payload,
-                Command::DeployMcv { .. }
+                Command::Deploy { .. }
                     | Command::QueueProduction { .. }
                     | Command::PlaceReadyBuilding { .. }
             )
@@ -5595,7 +5593,7 @@ mod tests {
         );
         assert_eq!(
             attack.resolve(&sim, &rules).unwrap().0,
-            Command::ForceAttack {
+            Command::Attack {
                 attacker_id: 93,
                 target_id: 71
             }
@@ -5740,7 +5738,7 @@ mod tests {
         // still validates actual ownership/presence at runtime. No diagnostic
         // Archive mutation or caller-specific rally setter is introduced.
         let rally = json!({"issue_after_step": 1159, "owner": "VERA-OBSERVER",
-            "payload": {"SetRally": {"rx": 30, "ry": 86, "producer_ids": [17]}}});
+            "payload": {"SetRally": {"rx": 30, "ry": 86, "producer_id": 17}}});
         value["commands"].as_array_mut().unwrap().insert(5, rally);
         let profile: MapCaptureProfile = serde_json::from_value(value.clone()).unwrap();
         profile.validate().unwrap();

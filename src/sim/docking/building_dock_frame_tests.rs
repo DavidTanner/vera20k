@@ -122,9 +122,9 @@ fn constructed_depot_waiters_take_the_freed_slot_in_live_logic_order() {
         for tank in [tanks[0], tanks[2], tanks[1]] {
             assert!(sim.apply_command(
                 "Americans",
-                &Command::RepairAtDepot {
+                &Command::Enter {
                     entity_id: tank,
-                    depot_id: depot,
+                    destination_id: depot
                 },
                 Some(rules)
             ));
