@@ -128,7 +128,7 @@
       "issue_after_step": 0,
       "owner": "VERA-OBSERVER",
       "payload": {
-        "DeployMcv": {
+        "Deploy": {
           "entity_id": 1371
         }
       }
@@ -180,9 +180,7 @@
         "SetRally": {
           "rx": 35,
           "ry": 89,
-          "producer_ids": [
-            1477
-          ]
+          "producer_id": 1477
         }
       }
     },

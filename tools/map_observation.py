@@ -366,7 +366,7 @@ def _symbolic_requests(payload: Mapping[str, Any], label: str) -> dict[str, Any]
                 references[pointer] = _binding_name(value, f'{label}{pointer}')
             elif field.endswith('_id') and field not in ('type_id', 'sw_type_id') and isinstance(value, dict):
                 references[pointer] = value
-            elif field in ('entity_ids', 'producer_ids') and isinstance(value, list):
+            elif field == 'entity_ids' and isinstance(value, list):
                 references.update((f'{pointer}/{index}', item)
                                   for index, item in enumerate(value) if isinstance(item, dict))
     if len(references) > 256:

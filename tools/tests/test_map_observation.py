@@ -2539,11 +2539,11 @@ class MapObservationTests(unittest.TestCase):
                     m['observations']['commands'][i]['payload'][v].update({k: 99})
                 self.assertEqual(self.run_capture()['status'], 'INVALID')
 
-    def test_rally_order_keeps_existing_producer_ids_and_coordinate_payload(self):
+    def test_rally_order_keeps_its_producer_and_coordinate_payload(self):
         self.production_profile()
         self.profile['commands'] = [
             {'issue_after_step': 0, 'owner': 'Computer1',
-             'payload': {'SetRally': {'producer_ids': [1], 'rx': 87, 'ry': 53}}}]
+             'payload': {'SetRally': {'producer_id': 1, 'rx': 87, 'ry': 53}}}]
         self.profile_path.write_text(json.dumps(self.profile))
         report = self.run_capture()
         self.assertEqual(report['status'], 'VALID', report['errors'])

@@ -15,7 +15,7 @@ receipt shapes are unchanged. In a v3 command payload:
 - `sw_type_id` accepts the SuperWeapon section, such as `"IronCurtainSpecial"`.
 - Actor ID fields accept `{"type_id":"HTNK","owner":"VERA-OBSERVER"}`,
   optionally with `"cell":[44,54]` to disambiguate. `Select.entity_ids` and
-  `SetRally.producer_ids` can mix numeric IDs and selectors.
+  `SetRally.producer_id` can be a numeric ID or a selector.
 
 Names are case sensitive, nonempty, and at most 256 UTF-8 bytes. Actor selectors
 resolve **at the command's `issue_after_step` boundary**, using the current living,
@@ -912,7 +912,7 @@ camera pixels must come from the loaded map, not the oracle's fixture identities
 
 [`map_observation.war-miner-attack.example.json`](map_observation.war-miner-attack.example.json)
 uses stock Russia/Battle/AnyTown, ordinary MCV deployment and building production,
-and the refinery's free War Miner. At step2500 it ForceAttacks a stationary
+and the refinery's free War Miner. At step2500 it attacks a stationary
 friendly conscript. Actor and terrain samples show Attack, combat target removal,
 the idle return and later ore consumption. The conscript belongs to the local
 house and remains stationary. The command bypasses UI click resolution,
@@ -1436,7 +1436,7 @@ fixture with the observer's NAIRON at (46,42) and two NAPOWR in place of its GAW
 GAPOWR, and the observer's HTNK at (44,54) with an E2 at (45,55) beside it and a second
 HTNK at (44,58), outside the curtain's block. `observe_super_weapons` adds the Super
 rows: IronCurtainSpecial is granted on the first step (charge start 0, 4500 frames) and
-is ready from step 4501. An ordinary `ForceAttack` at step 4440 sets
+is ready from step 4501. An ordinary `Attack` at step 4440 sets
 the second HTNK, at (44,58), on the first, at (44,54), and an ordinary
 `LaunchSuperWeapon` at step 4510 aims the curtain at (44,54). Run a profile copy whose
 `launch.selected_map_file` is
@@ -1755,7 +1755,7 @@ The native comparisons are as for the V3 observation, with
 [`map_observation.siege-chopper.example.json`](map_observation.siege-chopper.example.json)
 uses a normal Russia/Battle launch and an authored map containing one local SCHP.
 It keeps stock rules and assets. The ordinary command schedule moves actor 1 to
-(50,50) at step 10, issues `DeployMcv` at steps 200 and 500, then moves it back to
+(50,50) at step 10, issues `Deploy` at steps 200 and 500, then moves it back to
 (48,48) at step 650. The legacy command name also carries simple deployment and
 undeployment. The run ends at step 750. An enqueue receipt establishes neither
 admission nor completion; this route also bypasses self-click and deploy-key input.
@@ -1913,8 +1913,8 @@ while spent credits stayed at 2,600. Both complete compact receipts are about
 ## Repair-depot service observation
 
 [The depot profile](map_observation.depot-repair.example.json) uses stock
-Russia/Battle/AnyTown and ordinary Deploy, Build, ForceAttack, Stop,
-RepairAtDepot and SellBuilding commands. It damages one starting HTNK, spends
+Russia/Battle/AnyTown and ordinary Deploy, Build, Attack, Stop,
+Enter (onto the depot) and SellBuilding commands. It damages one starting HTNK, spends
 the initial 5900 credits on prerequisites, stops the produced HARV before it
 harvests, orders repair, then sells the barracks to fund the retained occupant.
 No administrative health, wallet or contact edits are used.
@@ -1940,7 +1940,7 @@ the profile to different inputs.
 
 [The Allied waiter profile](map_observation.depot-waiters.example.json) constructs
 a stock GADEPT through ordinary Queue/Place and damages three starting MTNKs
-through ForceAttack/Stop before repair orders. It starts with 20,000 credits;
+through Attack/Stop before repair orders. It starts with 20,000 credits;
 construction spends 6,100. One ordinary Move stages the third tank south of
 the pad before repair. All three repair from40 to300 HP in33 paid steps/66 credits
 each, release at6620/7250/7878 and leave the foundation by7903. The last tank is
@@ -1982,7 +1982,7 @@ in [`spatial_oracle/ore_queue.md`](spatial_oracle/ore_queue.md) and its
 
 [`map_observation.engineer-repair.example.json`](map_observation.engineer-repair.example.json)
 uses ordinary Battle/AnyTown orders to deploy the MCV, construct GAPOWR/GAPILE,
-deliver an ENGINEER, damage the power plant by MTNK ForceAttack, stop the tank,
+deliver an ENGINEER, damage the power plant by an MTNK Attack, stop the tank,
 enable paid repair and send the Engineer through CaptureBuilding. The
 production receipt (`tools/spatial_oracle/engineer_repair.production.json`, in git at 1b1a8b43e) records the
 1650-step release capture and exact repeat: all fingerprints, complete observed
@@ -2040,7 +2040,7 @@ created by the AI MCV. Seal the final profile with those IDs and observed timing
 {
   "commands": [
     {"issue_after_step": 0, "owner": "Computer1",
-     "payload": {"DeployMcv": {"entity_id": 120}}},
+     "payload": {"Deploy": {"entity_id": 120}}},
     {"issue_after_step": 40, "owner": "Computer1",
      "payload": {"Move": {"entity_id": 121, "target_rx": 87, "target_ry": 53}}},
     {"issue_after_step": 200, "owner": "Computer2",
@@ -2054,12 +2054,11 @@ created by the AI MCV. Seal the final profile with those IDs and observed timing
 
 These IDs and timings illustrate syntax; obtain actual values from the production
 probes. Command payloads are the existing Rust serde `Command`, with no separate
-order translator. Supported orders are Move, Stop, Attack, ForceAttack, Guard,
-DeployMcv, ForceAttackCell, QueueProduction, PlaceReadyBuilding and
+order translator. Supported orders are Move, Stop, Attack, Guard,
+Deploy, ForceAttackCell, QueueProduction, PlaceReadyBuilding and
 CaptureBuilding (the resolved Engineer repair/capture mission), ToggleRepair,
-EnterTransport, UnloadPassengers, RepairAtDepot and SellBuilding. RepairAtDepot
-uses the ordinary damaged-vehicle order with `entity_id` and `depot_id` stable
-handles. SellBuilding uses `entity_id` and the production sale lifecycle; it can
+Enter, Unload and SellBuilding. Enter takes `entity_id` and `destination_id`
+stable handles; onto a repair depot it is the ordinary damaged-vehicle order. SellBuilding uses `entity_id` and the production sale lifecycle; it can
 restore funds for a repair experiment without writing a House wallet.
 Rust rejects
 ignored payload fields or argument

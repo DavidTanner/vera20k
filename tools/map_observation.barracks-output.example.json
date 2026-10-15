@@ -128,7 +128,7 @@
       "issue_after_step": 0,
       "owner": "VERA-OBSERVER",
       "payload": {
-        "DeployMcv": {
+        "Deploy": {
           "entity_id": 1371
         }
       }

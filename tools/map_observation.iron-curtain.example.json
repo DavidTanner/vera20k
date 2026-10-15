@@ -118,7 +118,7 @@
       "issue_after_step": 4440,
       "owner": "VERA-OBSERVER",
       "payload": {
-        "ForceAttack": {
+        "Attack": {
           "attacker_id": {
             "type_id": "HTNK",
             "owner": "VERA-OBSERVER",

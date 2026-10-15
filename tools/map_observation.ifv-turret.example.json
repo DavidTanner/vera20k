@@ -114,9 +114,9 @@
       "issue_after_step": 10,
       "owner": "VERA-OBSERVER",
       "payload": {
-        "EnterTransport": {
-          "passenger_id": 18,
-          "transport_id": 14
+        "Enter": {
+          "entity_id": 18,
+          "destination_id": 14
         }
       }
     },
@@ -124,9 +124,9 @@
       "issue_after_step": 10,
       "owner": "VERA-OBSERVER",
       "payload": {
-        "EnterTransport": {
-          "passenger_id": 19,
-          "transport_id": 15
+        "Enter": {
+          "entity_id": 19,
+          "destination_id": 15
         }
       }
     },
@@ -134,9 +134,9 @@
       "issue_after_step": 10,
       "owner": "VERA-OBSERVER",
       "payload": {
-        "EnterTransport": {
-          "passenger_id": 20,
-          "transport_id": 16
+        "Enter": {
+          "entity_id": 20,
+          "destination_id": 16
         }
       }
     },
@@ -144,8 +144,8 @@
       "issue_after_step": 160,
       "owner": "VERA-OBSERVER",
       "payload": {
-        "UnloadPassengers": {
-          "transport_id": 14
+        "Unload": {
+          "entity_id": 14, "target": null
         }
       }
     },
@@ -153,8 +153,8 @@
       "issue_after_step": 160,
       "owner": "VERA-OBSERVER",
       "payload": {
-        "UnloadPassengers": {
-          "transport_id": 15
+        "Unload": {
+          "entity_id": 15, "target": null
         }
       }
     },
@@ -162,8 +162,8 @@
       "issue_after_step": 160,
       "owner": "VERA-OBSERVER",
       "payload": {
-        "UnloadPassengers": {
-          "transport_id": 16
+        "Unload": {
+          "entity_id": 16, "target": null
         }
       }
     },
@@ -171,9 +171,9 @@
       "issue_after_step": 300,
       "owner": "VERA-OBSERVER",
       "payload": {
-        "EnterTransport": {
-          "passenger_id": 18,
-          "transport_id": 14
+        "Enter": {
+          "entity_id": 18,
+          "destination_id": 14
         }
       }
     },
@@ -181,9 +181,9 @@
       "issue_after_step": 300,
       "owner": "VERA-OBSERVER",
       "payload": {
-        "EnterTransport": {
-          "passenger_id": 19,
-          "transport_id": 15
+        "Enter": {
+          "entity_id": 19,
+          "destination_id": 15
         }
       }
     },
@@ -191,9 +191,9 @@
       "issue_after_step": 300,
       "owner": "VERA-OBSERVER",
       "payload": {
-        "EnterTransport": {
-          "passenger_id": 20,
-          "transport_id": 16
+        "Enter": {
+          "entity_id": 20,
+          "destination_id": 16
         }
       }
     }

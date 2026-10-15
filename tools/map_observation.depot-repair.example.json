@@ -128,7 +128,7 @@
       "issue_after_step": 0,
       "owner": "VERA-OBSERVER",
       "payload": {
-        "DeployMcv": {
+        "Deploy": {
           "entity_id": 1371
         }
       }
@@ -168,7 +168,7 @@
       "issue_after_step": 200,
       "owner": "VERA-OBSERVER",
       "payload": {
-        "ForceAttack": {
+        "Attack": {
           "attacker_id": 1374,
           "target_id": 1375
         }
@@ -287,9 +287,9 @@
       "issue_after_step": 5230,
       "owner": "VERA-OBSERVER",
       "payload": {
-        "RepairAtDepot": {
+        "Enter": {
           "entity_id": 1375,
-          "depot_id": 1811
+          "destination_id": 1811
         }
       }
     },

@@ -85,8 +85,8 @@ The authoritative files are `V3GameTunnelHandler.cs`, `TunnelHandler.cs` and
 
 | Area | State |
 |---|---|
-| `src/net/lockstep.rs` | Ported native command staging and dispatch: send policies, FrameInfo (opcode `0x1c`), checksum history, single-player and network transfer. Test-only; no production caller. |
-| `src/net/lockstep_sim_convergence_tests.rs` | Convergence tests over the queue, including the stage 0 two-instance test: live semantic commands against the same orders as native records (Move, Area Guard, Scatter), with sync checksums compared every frame and an injected desync caught. |
+| `src/sim/event_queue.rs` | Ported native command staging and dispatch (moved from `net::lockstep` in stage 2): OutList/DoList, send policies, FrameInfo (opcode `0x1c`), checksum history, single-player and network transfer. No production caller yet; stage 2 makes it the only command path. |
+| `src/sim/event_queue_convergence_tests.rs` | Convergence tests over the queue, including the stage 0 two-instance test: live semantic commands against the same orders as native records (Move, Area Guard, Scatter), with sync checksums compared every frame and an injected desync caught. |
 | `src/sim/multiplayer_checksum.rs` | Stage 0: per-frame sync checksum ported from `0x0064DAB0`, computed in the frame tail before command dispatch only on the multiplayer `Queue_AI` route (`CommandQueueRoute`, which the app writes from `MatchSession` before each frame). `MatchSession` records it into the `MultiplayerChecksumHistory` ring, with the native frame-0 ring reset. Offline frames never compute it. Its parity is bounded by VERA's object registries (open display-layer writers in `display_registry.rs`). |
 | `MatchSession` (`src/app/match_runtime/session.rs`) | Stage 1 done: the live session owner (mode, participant list, local participant, host flag). The launch path writes Campaign or Skirmish and the saved-game restore follows the persisted classification; the modal pump, elapsed clock and command bar read it. No writer produces `Lan` or `Wol` yet. |
 | `src/app/frontend/skirmish_session.rs` | Reads the local multiplayer preferences (handle, game mode) that native refreshes before the Network dialog. |
@@ -100,7 +100,7 @@ The authoritative files are `V3GameTunnelHandler.cs`, `TunnelHandler.cs` and
 
 | Responsibility | Owner |
 |---|---|
-| Command staging, frame stamps, dispatch order, checksum history | `net::lockstep` (exists) |
+| Command staging, frame stamps, dispatch order, FrameInfo, checksum history | `sim::event_queue` (exists; owned by `Simulation` from stage 2) |
 | Wire framing, peer table, send and receive, tunnel header | `net::protocol` (new) |
 | LAN discovery: announce, listen, game list | `net::discovery` (new, stage 7) |
 | Tunnel discovery: master list, ping, selection | `net::tunnel` (new, stage 8) |
@@ -111,6 +111,11 @@ The authoritative files are `V3GameTunnelHandler.cs`, `TunnelHandler.cs` and
 
 Rules that apply throughout: one owner per state, no competing command paths, every
 RNG draw and timer in native frame order, presentation never reads the socket.
+
+The queue lives in `sim/`, not `net/`. Native runs `Queue_AI` (`0x00647260`) and its
+`Execute_DoList` (`0x0064C380`) inside Main_Tick's tail, so the simulation frame is the
+caller, and `sim/` must not depend on `net/`. `net/` moves records between the queue
+and the wire.
 
 ## Implementation chains, in dependency order
 
@@ -156,7 +161,7 @@ host flag. Skirmish and campaign keep writing their modes.
 Done when: the modal pump, elapsed clock and any other `is_network` consumer read the
 live value, and offline play is unchanged.
 
-### Stage 2: lockstep queue in production, offline path
+### Stage 2: lockstep queue in production, offline path (in progress)
 
 Scope: route live command issue through `SynchronizedCommandQueue`, using
 `transfer_single_player` and `dispatch_due_offline`. Delete the direct command path it
@@ -168,6 +173,144 @@ the old path is gone.
 
 Why before transport: the queue's frame-stamp and ahead-window semantics are native
 behavior the game must already obey before a second client exists.
+
+Starting point. The live path is `Simulation::pending_commands`: semantic
+`CommandEnvelope`s that `Simulation::apply_due_commands` dispatches in the frame tail
+in house order, with MegaMission runs staged after each house's other orders. That is
+a second implementation of `Execute_DoList` beside the queue's. Only six command kinds
+had native records (Move, Move to object, Area Guard, Scatter, Exit, wall sale).
+
+Design:
+
+- The queue moves into `sim::event_queue` and `Simulation` owns it in place of
+  `pending_commands` (see "Target ownership"). It is saved with the simulation.
+- Issue encodes each command into its native record and appends it to the OutList,
+  stamped with the current native frame. The 128-record OutList limit applies.
+- The frame tail runs the single-player `Queue_AI` body (`0x006474DC`): transfer the
+  OutList, then `Execute_DoList`. The execute callback decodes each due record into the
+  semantic command the existing handlers run; the MegaMission hook runs the group
+  spread (`0x0064CDA0`) on the staged records. `apply_due_commands`,
+  `take_due_commands` and the app-side due-command handoff are deleted.
+- Dispatch scans only houses with `IsHuman` or `PlayerControl` (`0x0064C4FB`).
+- Events the simulation raises itself (the strip's ABANDON and mobile PLACE) are
+  issued into the OutList like player input, as native does.
+- Two inputs are not EventClass records offline and stay local frame-ingress inputs:
+  selection (client-local in native) and the in-game speed, which the Options dialog
+  writes directly when GameMode is 0 or 5 (`0x004E1DE0`). Opcode `0x0D` carries the
+  speed only in multiplayer (stage 6).
+
+Native records by command (EventClass constructors and Execute arms in `gamemd.exe`):
+
+| VERA command | Opcode | Constructor | Notes |
+|---|---|---|---|
+| QueueProduction | PRODUCE `0x0E` | `0x004C6970` | Type RTTI, `+0xDF8` index, naval flag. |
+| SuspendProduction | SUSPEND `0x0F` | `0x004C6970` | Names the category's active type; Execute uses the index only to pick Building or Defense. |
+| CancelProductionByType | ABANDON `0x10` / ABANDON_ALL `0x2E` | `0x004C6970` | Also raised by `StripClass::Recalculate` (`0x006AA600`). |
+| PlaceReadyBuilding | PLACE `0x0B` | `0x004C6AE0` | Object RTTI 6, index, naval, Cell. |
+| PlaceProducedMobile | PLACE `0x0B` | `0x004C6AE0` | Raised by `StripClass::AI` (`0x006A8B30`); index `-1`, Cell (0,0). |
+| LaunchSuperWeapon | SPECIAL_PLACE `0x12` | `0x004C6B60` | `[SuperWeaponTypes]` index and Cell. |
+| SellBuilding | SELL `0x16` | `0x004C65E0` | Object token. |
+| ToggleRepair | REPAIR `0x15` | `0x004C65E0` | Object token. Execute has no owner check; VERA's handler has one. |
+| SetRally | ARCHIVE `0x1E` | `0x004C6780` | One record per factory: building token and that factory's searched Cell. |
+| CycleProducerFocus | PRIMARY `0x11` | `0x004C65E0` | No native cycle. The native order is a self-click naming one factory, so input picks the factory. |
+| UndeployBuilding | ARCHIVE `0x1E` then SELL `0x16` | | Native undeploy is a cell click on the building (`0x004436F0`). |
+| SellWallAtCell, ExitMatch, Move, MoveToObject, Area Guard, Scatter | `0x17`, `0x13`, `0x04`, `0x07` | | Ported before stage 2. |
+
+| Stop | IDLE `0x06` | `0x004C65E0` via `0x006FFE00` | Self token; StopCommand `0x00730EA0`. |
+| Attack, ForceAttack | MEGAMISSION `0x04`, mission 1 | `0x004C6860` | Object in the target token. Ctrl only changes the click action (`0x0051F190`, `0x00738890`); the record is identical. |
+| ForceAttackCell | MEGAMISSION, mission 1 | `0x004C6860` | Cell in the target token (`0x004D80E9`). |
+| AttackMove | MEGAMISSION, mission `0x1D` | `0x004C6860` | Tokens as the original click; promoted at `0x006FFC10`. |
+| EnterTransport, EnterBunker, RepairAtDepot, MinerReturn (refinery) | MEGAMISSION, mission 7 | `0x004C6860` | Building or transport in the destination token. EnterBunker's CAN_LOAD answer is unverified. |
+| HarvestCell | MEGAMISSION, mission `0x0A` | `0x004C6860` | Cell in the destination token. |
+| CaptureBuilding | MEGAMISSION, mission 8 | `0x004C6860` | Building in the destination token. |
+| PlantC4 | MEGAMISSION, mission `0x11` | `0x004C6860` | Building in the destination token. |
+| UnloadPassengers, ToggleInfantryDeploy, DeployMcv | MEGAMISSION mission `0x10` (self click) or DEPLOY `0x09` (Deploy key) | `0x004C6860` / `0x004C65E0` | Two encodings with different Execute gates; the producer decides. A garrison's self click puts the building in the target token. |
+| EjectBunker | none found | | No native producer. |
+
+Mismatches between VERA's commands and the native records. Each changes behavior once
+the record is the only carrier:
+
+- ForceAttack and Attack are the same record. VERA's handlers differ.
+- MinerReturn: native sends a plain Enter (mission 7). VERA queues Enter and then forces
+  Harvest with ForcedReturn, and has a no-refinery form with no native event.
+- EjectBunker has no native producer.
+- Deploy, unload and infantry deploy need the producer (self click or Deploy key) to
+  choose the record.
+- SetRally is one record per factory with that factory's searched Cell; VERA sends one
+  shared Cell.
+- UndeployBuilding is ARCHIVE then SELL; VERA's undeploy flag has no wire form.
+- CycleProducerFocus has no native event; PRIMARY names one factory.
+- ToggleRepair: native Execute has no owner check.
+- SuspendProduction names the active product's type, which VERA must read from the
+  factory at issue time.
+
+Status (2026-10-14). Decision: each mismatch is ported to native behavior before
+the switch, one gameplay change at a time. Nothing is committed; all of it is in
+the working tree of `feature/networkStage2Again`.
+
+Done and validated (full lib suite passed after each, except where noted):
+
+- The queue and its convergence tests moved to `sim::event_queue`; opcodes `0x0C`
+  and `0x22` execute for the local player only.
+- PRODUCE/SUSPEND/ABANDON/ABANDON_ALL, PLACE and SPECIAL_PLACE record codecs; native
+  TechnoType and super weapon indices in `TypeHandleTable`, both directions.
+- Attack and ForceAttack are one `Attack` command; Execute has no alliance test.
+- `Deploy` (DEPLOY `0x09`, no class gate, aircraft refused, OVER_OUT) and `Unload`
+  (MEGAMISSION `0x10`) replace DeployMcv, ToggleInfantryDeploy and UnloadPassengers.
+- `SetRally` names one building; ARCHIVE's Execute checks only that it is alive.
+- Snapshot version is 356 for these command shape changes.
+- MinerReturn, RepairAtDepot, EnterTransport and EnterBunker are one `Enter`
+  command through the generic MEGAMISSION arm, with the mission-7 duplicate check
+  (`0x004C729F`). The miner's pinned refinery and ForcedReturn cursor are deleted;
+  the `Dock=` check moved to the click; the JSON profiles are converted. An Enter
+  keeps VERA's `Building`/`Object` navigation forms its consumers read.
+- The Unit destination setter's Enter arm (`0x00741C4F..0x00741E8E`) now serves
+  every Building, not only `UnitRepair=` depots: a busy building becomes the
+  ArchiveTarget, a free one is sent DOCKING (`0x0E`) and a `DockUnload=` pad's
+  MOVE_HERE replaces the requested destination. The UnitRepair tail
+  (`0x00742C20`) stays depot-only. A player Enter onto a refinery docks through it.
+- An Enter on a miner unloading at its own refinery breaks the tether
+  (`0x004C72F8`), and the same event's DOCKING re-admits and re-tethers it on the
+  pad; the unload pays the slot and its new-order check (`0x0073E539`) hands over
+  to the Enter. With no contact left, the latch drops at the next Mission_Unload
+  visit's contact gate (`0x0073DEE0`), not at the order.
+- The global harness pin moved by hash composition only (the dropped
+  `reserved_refinery` fold); a control restored the previous value.
+
+Residuals of the Enter chain:
+
+- Transport and tank-bunker destinations still route to their VERA adapters
+  (`legacy_entry_adapter`). Trigger: an Enter onto a transport or Tank Bunker.
+- The setter's UnitAbsorb arm (`0x00741CE5`, pending entry and a NULL
+  destination) and its Bunker arms (`0x00741D49`) are not ported; VERA's
+  absorber entry and bunker adapter keep those destinations. Trigger: an Enter
+  onto a `UnitAbsorb=` building or a bunker.
+- The depot's busy-visitor test is VERA's `!is_full` health check, not native's
+  ratio against ConditionGreen (`0x00741D83..0x00741D9B`). Trigger: a busy depot
+  ordered for a unit between ConditionGreen and full health.
+
+Ordered tasks, one session each, in this checkout:
+
+1. Done: the Enter chain (above).
+2. Building click orders: EjectBunker has no native producer (a bunkered tank is
+   ordered itself); Construction Yard undeploy is a cell click sending ARCHIVE then
+   SELL (`0x004436F0`), and the Deploy key on it sends DEPLOY, which queues Guard;
+   CycleProducerFocus becomes PRIMARY `0x11` on one factory (native self-click on a
+   non-primary factory, Execute `vt+0x4F0`); ToggleRepair's Execute has no owner check.
+3. Remaining record codecs and semantic encode/decode for every command: target
+   events (IDLE `0x06`, DEPLOY `0x09`, REPAIR `0x15`, SELL `0x16`, PRIMARY `0x11`),
+   ARCHIVE `0x1E`, and the MegaMission orders (Attack 1, AttackMove `0x1D`, Enter 7,
+   Capture 8, Harvest `0x0A`, Unload `0x10`, PlantC4 `0x11`, Cell attack). SuspendProduction
+   names the factory's active type at issue. Make each authoritative at issue time.
+4. The switch: `Simulation` owns the `SynchronizedCommandQueue` in place of
+   `pending_commands`; issue appends to the OutList; the frame tail runs the
+   single-player Queue_AI transfer and `dispatch_due_offline` with native house
+   eligibility; Select and offline game speed stay local frame-ingress inputs; delete
+   `apply_due_commands`, `take_due_commands` and the app due-command handoff; migrate
+   the tests.
+5. PR readiness: full lib suite and Clippy with retail INIs, `python -m tools.run_tests`,
+   a release retail map load, one critic review, and this section rewritten as done
+   with residuals.
 
 ### Stage 3: UDP transport and network lockstep
 
