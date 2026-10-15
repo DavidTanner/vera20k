@@ -394,7 +394,7 @@ fn two_instance_multiplayer_checksums_match_every_frame_and_catch_a_desync() {
     }
     assert_eq!(live.state_hash(), raw.state_hash());
     let moved = &live.substrate.entities.get(actor).unwrap().position;
-    assert_ne!((moved.rx, moved.ry), (10, 10), "the Move order executed");
+    assert_ne!((moved.rx(), moved.ry()), (10, 10), "the Move order executed");
     assert!(
         live.substrate
             .entities
