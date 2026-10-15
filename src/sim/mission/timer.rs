@@ -19,8 +19,26 @@ pub const SENTINEL: u32 = u32::MAX;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct MissionTimer {
-    pub start_frame: u32,
-    pub duration: u32,
+    start_frame: u32,
+    duration: u32,
+}
+
+impl MissionTimer {
+    /// See the field.
+    pub(crate) const fn start_frame(&self) -> u32 {
+        self.start_frame
+    }
+
+    /// A fixture's value.
+    #[cfg(test)]
+    pub(crate) fn set_start_frame_for_test(&mut self, start_frame: u32) {
+        self.start_frame = start_frame;
+    }
+
+    /// See the field.
+    pub(crate) const fn duration(&self) -> u32 {
+        self.duration
+    }
 }
 
 /// Native Mission-dispatch timer state: a [`CdTimer`] whose frame is the

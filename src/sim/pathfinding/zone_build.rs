@@ -4,7 +4,7 @@
 //! This module is private to sim/ — public API lives in zone_map.rs.
 //!
 //! ## Dependency rules
-//! - Part of sim/ — depends on sim/pathfinding, sim/terrain_cost, sim/locomotor.
+//! - Part of sim/ — depends on sim/pathfinding, sim/locomotor.
 //! - sim/ NEVER depends on render/, ui/, audio/, net/.
 
 pub(crate) mod hierarchy;

@@ -55,8 +55,8 @@ mod tests {
     use super::*;
     use crate::map::entities::EntityCategory;
     use crate::sim::combat::Health;
-    use crate::sim::components::RockingState;
     use crate::sim::intern::test_intern;
+    use crate::sim::rocking::RockingState;
 
     struct CountingHook {
         fired: usize,

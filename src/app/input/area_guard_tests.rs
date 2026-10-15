@@ -381,7 +381,12 @@ fn area_guard_uses_pending_selection_array_before_simulation_membership_commits(
         pending_order, sorted,
         "the native witness distinguishes selection and storage order"
     );
-    assert!(f.sim.entities().values().all(|actor| !actor.selected));
+    assert!(
+        f.sim
+            .entities()
+            .values()
+            .all(|actor| !actor.selection.is_selected())
+    );
     let selected = selected_stable_ids_in_order(Some(&f.sim), Some(&f.rules), &pending_order, true);
     assert_eq!(selected, pending_order);
     let owner = f.sim.session.current_house.unwrap();
@@ -412,7 +417,10 @@ fn area_guard_uses_pending_selection_array_before_simulation_membership_commits(
         .collect();
     assert_eq!(guard_ids, native_ids);
     assert!(
-        f.sim.entities().values().all(|actor| !actor.selected),
+        f.sim
+            .entities()
+            .values()
+            .all(|actor| !actor.selection.is_selected()),
         "issuing Guard never commits selection"
     );
 }

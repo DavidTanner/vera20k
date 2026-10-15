@@ -38,19 +38,80 @@ use crate::sim::components::DriveOccupationFootprint;
 /// committed head. Both XYZ values belong to this complete locomotor instance.
 #[derive(Debug, Default, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct WalkRuntime {
-    pub head: Option<crate::sim::components::DriveCoord>,
-    pub destination: Option<crate::sim::components::DriveCoord>,
+    head: Option<crate::sim::components::DriveCoord>,
+    destination: Option<crate::sim::components::DriveCoord>,
     /// Full object+34 / interface+30, read by IsMoving75AB30. Constructor
     ///75AAD3 clears; MoveTo75AD5A sets; null MoveTo/Stop clear only with no
     ///head. FindSubCellDest's head retirement does not change this byte.
-    pub moving: bool,
+    moving: bool,
     /// Full object+36 / interface+32: Is_Really_Moving_Now (75CB20), which
     /// Infantry520F40 asks. Process sets it on a fresh head (75BC2A) and a
     /// paid one (75BD25), and clears it after a failed path search (75AFD5),
     /// on a refused head (75B6A3) and on arrival (75BF60). Stop75ADEC clears
     /// it only with no paid head; Stop_Movement_Animation (75CBC0) always.
     /// It is distinct from IsMoving(+34).
-    pub animation_moving: bool,
+    animation_moving: bool,
+}
+
+impl WalkRuntime {
+    /// A fixture's state.
+    #[cfg(test)]
+    pub(crate) const fn for_test(
+        head: Option<crate::sim::components::DriveCoord>,
+        destination: Option<crate::sim::components::DriveCoord>,
+        moving: bool,
+        animation_moving: bool,
+    ) -> Self {
+        Self {
+            head,
+            destination,
+            moving,
+            animation_moving,
+        }
+    }
+
+    /// See the field.
+    pub(crate) const fn head(&self) -> Option<crate::sim::components::DriveCoord> {
+        self.head
+    }
+
+    /// Store the field.
+    pub(crate) fn set_head(&mut self, head: Option<crate::sim::components::DriveCoord>) {
+        self.head = head;
+    }
+
+    /// See the field.
+    pub(crate) const fn destination(&self) -> Option<crate::sim::components::DriveCoord> {
+        self.destination
+    }
+
+    /// Store the field.
+    pub(crate) fn set_destination(
+        &mut self,
+        destination: Option<crate::sim::components::DriveCoord>,
+    ) {
+        self.destination = destination;
+    }
+
+    /// See the field.
+    pub(crate) const fn moving(&self) -> bool {
+        self.moving
+    }
+
+    /// Store the field.
+    pub(crate) fn set_moving(&mut self, moving: bool) {
+        self.moving = moving;
+    }
+
+    /// See the field.
+    pub(crate) const fn animation_moving(&self) -> bool {
+        self.animation_moving
+    }
+
+    /// Store the field.
+    pub(crate) fn set_animation_moving(&mut self, animation_moving: bool) {
+        self.animation_moving = animation_moving;
+    }
 }
 
 /// Class-local state that travels with the locomotor object.
@@ -191,11 +252,11 @@ fn begin_with(state: &mut LocomotorState, incoming: Option<LocomotorState>) -> B
     let Some(incoming) = incoming else {
         return BeginOutcome::RefusedNull;
     };
-    if incoming.piggyback.is_some() {
+    if incoming.is_overridden() {
         return BeginOutcome::RefusedNested;
     }
     let displaced = std::mem::replace(state, incoming);
-    state.piggyback = Some(StashedLocomotor(Box::new(displaced)));
+    state.set_piggyback(Some(StashedLocomotor(Box::new(displaced))));
     BeginOutcome::Installed
 }
 
@@ -206,7 +267,7 @@ pub(crate) fn suspend_effect_for_test(
     active: LocomotorState,
     mut effect: LocomotorState,
 ) -> LocomotorState {
-    assert!(active.piggyback.is_none(), "fixture already has a stash");
+    assert!(active.piggyback().is_none(), "fixture already has a stash");
     assert_eq!(
         begin_with(&mut effect, Some(active)),
         BeginOutcome::Installed
@@ -232,7 +293,7 @@ pub fn end_into(
     let Some(output) = output else {
         return EndOutcome::RefusedNull;
     };
-    let Some(stashed) = state.piggyback.take() else {
+    let Some(stashed) = state.take_piggyback() else {
         return EndOutcome::Empty;
     };
     *output = Some(*stashed.0);
@@ -247,9 +308,9 @@ pub fn end_into(
 /// and Teleport both answer Ground from `In_Which_Layer` (`0x004B4820`,
 /// `0x00719E20`), so a Foot that drove onto or off a bridge deck stays there.
 pub fn end(state: &mut LocomotorState) -> Option<LocomotorState> {
-    let stashed = state.piggyback.take()?;
+    let stashed = state.take_piggyback()?;
     let released = std::mem::replace(state, *stashed.0);
-    state.layer = released.layer;
+    state.set_layer(released.layer());
     Some(released)
 }
 
@@ -257,7 +318,7 @@ pub fn end(state: &mut LocomotorState) -> Option<LocomotorState> {
 /// Serde persists the following boxed object only when this returns one.
 #[cfg(test)]
 pub fn serialized_presence(state: &LocomotorState) -> u8 {
-    u8::from(state.piggyback.is_some())
+    u8::from(state.piggyback().is_some())
 }
 
 #[cfg(test)]
@@ -299,15 +360,15 @@ mod tests {
             begin(&mut state, LocomotorKind::Teleport, 0),
             BeginOutcome::Installed
         );
-        assert_eq!(state.kind, LocomotorKind::Teleport);
-        assert_eq!(state.piggyback.as_deref(), Some(&driving));
+        assert_eq!(state.active_kind(), LocomotorKind::Teleport);
+        assert_eq!(state.piggyback().as_deref(), Some(&driving));
         assert_eq!(state.effective_kind(), LocomotorKind::Teleport);
 
         let released = end(&mut state).expect("the Teleport");
-        assert_eq!(released.kind, LocomotorKind::Teleport);
+        assert_eq!(released.active_kind(), LocomotorKind::Teleport);
         assert_eq!(state, driving);
         let released = end(&mut state).expect("the Drive");
-        assert_eq!(released.kind, LocomotorKind::Drive);
+        assert_eq!(released.active_kind(), LocomotorKind::Drive);
         assert_eq!(state, before);
         assert!(end(&mut state).is_none());
     }
@@ -318,7 +379,7 @@ mod tests {
     #[test]
     fn begin_and_end_transfer_the_complete_object() {
         let mut state = teleporter();
-        state.speed_type = SpeedType::Wheel;
+        state.set_speed_type_for_test(SpeedType::Wheel);
         state.power_off();
         let before = state.clone();
 
@@ -326,18 +387,18 @@ mod tests {
             begin(&mut state, LocomotorKind::Drive, 0),
             BeginOutcome::Installed
         );
-        assert_eq!(state.kind, LocomotorKind::Drive);
+        assert_eq!(state.active_kind(), LocomotorKind::Drive);
         assert_eq!(state.effective_kind(), LocomotorKind::Teleport);
         // LocomotionClass constructor 0x0055A6C0 raises Powered; the
         // temporary shares only the type's data with the displaced object.
-        assert!(state.powered);
-        assert_eq!(state.speed_type, SpeedType::Wheel);
-        assert_eq!(state.piggyback.as_deref(), Some(&before));
+        assert!(state.is_powered());
+        assert_eq!(state.speed_type(), SpeedType::Wheel);
+        assert_eq!(state.piggyback().as_deref(), Some(&before));
 
         state.power_off();
         let released = end(&mut state).expect("suspended object");
-        assert_eq!(released.kind, LocomotorKind::Drive);
-        assert!(!released.powered);
+        assert_eq!(released.active_kind(), LocomotorKind::Drive);
+        assert!(!released.is_powered());
         assert_eq!(state, before);
         assert_eq!(state.effective_kind(), LocomotorKind::Teleport);
     }
@@ -349,19 +410,19 @@ mod tests {
     #[test]
     fn begin_and_end_keep_the_foot_layer() {
         let mut state = teleporter();
-        state.layer = MovementLayer::Bridge;
+        state.set_layer(MovementLayer::Bridge);
 
         assert_eq!(
             begin(&mut state, LocomotorKind::Drive, 0),
             BeginOutcome::Installed
         );
-        assert_eq!(state.layer, MovementLayer::Bridge);
+        assert_eq!(state.layer(), MovementLayer::Bridge);
 
-        state.layer = MovementLayer::Ground;
+        state.set_layer(MovementLayer::Ground);
         let released = end(&mut state).expect("suspended object");
-        assert_eq!(released.layer, MovementLayer::Ground);
-        assert_eq!(state.kind, LocomotorKind::Teleport);
-        assert_eq!(state.layer, MovementLayer::Ground);
+        assert_eq!(released.layer(), MovementLayer::Ground);
+        assert_eq!(state.active_kind(), LocomotorKind::Teleport);
+        assert_eq!(state.layer(), MovementLayer::Ground);
     }
 
     #[test]
@@ -369,26 +430,29 @@ mod tests {
         let mut hover = super::super::super::hover::HoverRuntime::default();
         hover.set_head(Some(crate::sim::components::DriveCoord::cell(4, 5, 0)));
         let mut state = LocomotorState::for_test_kind(LocomotorKind::Hover);
-        state.runtime_payload = LocomotorRuntimePayload::Hover(hover.clone());
+        state.set_runtime_payload_for_test(LocomotorRuntimePayload::Hover(hover.clone()));
 
         assert_eq!(
             begin(&mut state, LocomotorKind::Drive, 0),
             BeginOutcome::Installed
         );
         assert_eq!(
-            state.runtime_payload,
+            *state.runtime_payload(),
             LocomotorRuntimePayload::for_kind(LocomotorKind::Drive, 0)
         );
         assert_eq!(
             state
-                .piggyback
+                .piggyback()
                 .as_deref()
-                .map(|stashed| &stashed.runtime_payload),
+                .map(|stashed| stashed.runtime_payload()),
             Some(&LocomotorRuntimePayload::Hover(hover.clone()))
         );
 
         assert!(end(&mut state).is_some());
-        assert_eq!(state.runtime_payload, LocomotorRuntimePayload::Hover(hover));
+        assert_eq!(
+            *state.runtime_payload(),
+            LocomotorRuntimePayload::Hover(hover)
+        );
     }
 
     #[test]
@@ -396,7 +460,7 @@ mod tests {
         let mut hover = super::super::super::hover::HoverRuntime::default();
         hover.set_head(Some(crate::sim::components::DriveCoord::cell(6, 7, 0)));
         let mut state = LocomotorState::for_test_kind(LocomotorKind::Hover);
-        state.runtime_payload = LocomotorRuntimePayload::Hover(hover.clone());
+        state.set_runtime_payload_for_test(LocomotorRuntimePayload::Hover(hover.clone()));
         assert_eq!(
             begin(&mut state, LocomotorKind::Rocket, 0),
             BeginOutcome::Installed
@@ -406,16 +470,16 @@ mod tests {
         let loaded: LocomotorState = bincode::deserialize(&bytes).expect("load locomotor");
 
         assert_eq!(
-            loaded.runtime_payload,
+            *loaded.runtime_payload(),
             LocomotorRuntimePayload::Rocket(
                 super::super::super::rocket_movement::RocketRuntime::constructed(0)
             )
         );
         assert_eq!(
             loaded
-                .piggyback
+                .piggyback()
                 .as_deref()
-                .map(|stashed| &stashed.runtime_payload),
+                .map(|stashed| stashed.runtime_payload()),
             Some(&LocomotorRuntimePayload::Hover(hover.clone()))
         );
     }
@@ -432,12 +496,12 @@ mod tests {
             end_into(&mut state, Some(&mut output)),
             EndOutcome::Restored
         );
-        assert_eq!(state.kind, LocomotorKind::Drive);
+        assert_eq!(state.active_kind(), LocomotorKind::Drive);
         assert_eq!(
-            output.expect("transferred object").kind,
+            output.expect("transferred object").active_kind(),
             LocomotorKind::Teleport
         );
-        assert!(state.piggyback.is_none());
+        assert!(state.piggyback().is_none());
     }
 
     #[test]

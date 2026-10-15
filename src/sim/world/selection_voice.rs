@@ -47,7 +47,7 @@ impl Simulation {
         let object = rules.object(self.interner.resolve(entity.type_ref()))?;
         let voices = if entity.slave.owner().is_some() {
             &object.voice_select_enslaved
-        } else if entity.deactivated {
+        } else if entity.deactivated.is_offline() {
             &object.voice_select_deactivated
         } else {
             &object.voice_select

@@ -17,7 +17,7 @@
 //!
 //! Scope note: this is a determinism + baseline guard, not a miner-dock test.
 //! Driving a harvester physically to ore and through the full refinery dock
-//! handshake needs movement world-setup (terrain costs / resolved terrain) that
+//! handshake needs movement world-setup (resolved terrain, navigation) that
 //! the dedicated miner-dock suite (`miner_tests.rs`) provides and owns; this
 //! harness only guards that the miner system stays wired and deterministic.
 //!
@@ -106,6 +106,16 @@ pub(super) fn record_replay_diagnostic(
             "factories":sim.production.factories.holders_insertion_ordered().into_iter()
                 .map(|(holder,factory)|serde_json::json!({"holder":holder,"factory":factory})).collect::<Vec<_>>(),
         },
+        // Only the global fixture kills a Unit. Preserve the shared cleanup
+        // owners around that death without inventing or draining any state.
+        "lifecycle_hash_attribution":{
+            "raw_occupation":format!("{:?}",sim.substrate.raw_cell_occupation),
+            "shared_dummy":format!("{:?}",sim.effective_shared_cell_dummy().snapshot()),
+            "shared_dummy_raw_occupation":sim.substrate.raw_cell_occupation.dummy_for_hash(),
+            "houses":sim.houses.iter().map(|(owner,house)|serde_json::json!({
+                "owner":sim.resolve(*owner),"retained":house,
+            })).collect::<Vec<_>>(),
+        },
     });
     serde_json::to_writer(
         &mut *writer,
@@ -140,9 +150,9 @@ pub(super) fn print_replay_summary(name: &str, sim: &Simulation) {
             let e = sim.substrate.entities.get(id).unwrap();
             serde_json::json!({"id":id,"type":sim.resolve(e.type_ref()),
             "health":e.health.current(),"position":e.position,"mission":e.mission,
-            "target":e.attack_target,"nav":e.navigation.nav_com,
-            "passive_timer":e.passive_scan_timer,"last_scan":e.last_target_scan_frame,
-            "rearm":e.rearm_timer})
+            "target":e.attack_target,"nav":e.navigation.nav_com(),
+            "passive_timer":e.passive_scan.timer(),"last_scan":e.passive_scan.last_scan_frame(),
+            "rearm":e.rearm_timer.timer()})
         })
         .collect();
     println!(
@@ -151,7 +161,51 @@ pub(super) fn print_replay_summary(name: &str, sim: &Simulation) {
             "next_frame":sim.session.binary_frame,"hash":sim.state_hash(),
             "streams":[sim.scenario_rng.state(),sim.main_rng.state(),sim.mapgen_rng.state()],
             "actors":actors,"fire_count":sim.fire_events.len(),
+            "hash_owners":sim.hash_owner_diagnostics_for_test(),
         })
+    );
+}
+
+/// Same-binary Rust hash attribution, independent of gameplay/native goldens.
+/// Only the removed TriggerRuntime last_announcement=None delimiter is fed.
+pub(super) fn assert_announcement_feed_retirement_hash_control(
+    name: &str,
+    sim: &Simulation,
+    expected_state_hasher_pin: u64,
+) {
+    let current = sim.state_hash();
+    let retained_authority = bincode::serialize(sim).expect("retained replay authority");
+    let retained_dummy = sim.effective_shared_cell_dummy().snapshot();
+    let retained_streams = (
+        sim.scenario_rng.state(),
+        sim.main_rng.state(),
+        sim.mapgen_rng.state(),
+    );
+    let control =
+        crate::sim::trigger_runtime::with_legacy_announcement_hash_control_for_test(|| {
+            sim.state_hash()
+        });
+    println!(
+        "[announcement hash attribution {name}] current={current:016X} control={control:016X}"
+    );
+    assert_eq!(
+        control, expected_state_hasher_pin,
+        "restoring only the retired None feed must recover the main StateHasher pin"
+    );
+    assert_eq!(sim.state_hash(), current, "the diagnostic feed is scoped");
+    assert_eq!(
+        bincode::serialize(sim).expect("unchanged replay authority"),
+        retained_authority,
+        "diagnostic feeds cannot alter serialized gameplay state"
+    );
+    assert_eq!(sim.effective_shared_cell_dummy().snapshot(), retained_dummy);
+    assert_eq!(
+        (
+            sim.scenario_rng.state(),
+            sim.main_rng.state(),
+            sim.mapgen_rng.state()
+        ),
+        retained_streams
     );
 }
 
@@ -625,7 +679,20 @@ const FINAL_STREAM_STATES: (u64, u64, u64) = (
 // with a hash that skips only that fold) gives this value in the same
 // test, with every tripwire above green.
 // Control removed. Previous: 0xE527_F567_DC13_C55E.
-const GLOBAL_HARNESS_FINAL_HASH: u64 = 0x0B64_C58D_B313_2AB4;
+// Integrated StateHasher pin after executed scoped feed attribution. The test
+// below recovers current main exactly with retired feeds and preserves serialized
+// gameplay, the live Dummy and all three RNG streams; this is a Rust ratchet.
+// Re-pinned after merging main's +0x438/+0x439 latches into the hash.
+const GLOBAL_HARNESS_FINAL_HASH: u64 = 0x3B11_939D_CFE5_8242;
+
+// ALL01 r6 (fork-local schema345) used DefaultHasher before main's
+// pinned StateHasher, entity/fog digests and owner migrations. These remain
+// historical Rust receipts; they are not comparable to current u64 outputs.
+const GLOBAL_HARNESS_INCOMING_HASH: u64 = 0x0D69_4099_AD39_5D63;
+const GLOBAL_HARNESS_R6_FINAL_HASH: u64 = 0x488E_0917_87DF_8E1A;
+// The legacy-feed control uses this main StateHasher reference, which
+// includes the +0x438/+0x439 infantry tracking latches.
+const GLOBAL_HARNESS_MAIN_HASH: u64 = 0x6616_10FD_E8C9_ADDE;
 
 fn harness_ini() -> IniFile {
     // Multi-faction vehicles + infantry + buildings (war factory, refinery) plus a
@@ -915,7 +982,10 @@ fn global_skirmish_replay_is_deterministic_and_baseline_stable() {
         let due = due_commands(&rec, &script, tick);
         let before_scan = {
             let tank = rec.substrate.entities.get(6).expect("surviving tank");
-            (tank.last_target_scan_frame, tank.passive_scan_timer)
+            (
+                tank.passive_scan.last_scan_frame(),
+                tank.passive_scan.timer(),
+            )
         };
         let mut advance = || {
             rec.advance_tick(
@@ -957,9 +1027,9 @@ fn global_skirmish_replay_is_deterministic_and_baseline_stable() {
                 "Stop retains the active dispatch timer"
             );
             assert!(tank.attack_target.target().is_none());
-            assert!(tank.navigation.nav_com.is_none());
+            assert!(tank.navigation.nav_com().is_none());
             assert!(tank.mega_mission.is_attack_move());
-            assert_eq!(tank.last_target_scan_frame, 297);
+            assert_eq!(tank.passive_scan.last_scan_frame(), 297);
         }
         // The fatal Bullet detaches TarCom after the Unit's own visit. The
         // literal committed Attack gate cannot scan before a due Attack
@@ -969,7 +1039,10 @@ fn global_skirmish_replay_is_deterministic_and_baseline_stable() {
         if rec.substrate.entities.get(4).is_none() {
             let tank = rec.substrate.entities.get(6).expect("surviving tank");
             assert!(tank.attack_target.target().is_none());
-            let scan = (tank.last_target_scan_frame, tank.passive_scan_timer);
+            let scan = (
+                tank.passive_scan.last_scan_frame(),
+                tank.passive_scan.timer(),
+            );
             if target_expired.is_none() {
                 target_expired = Some(tick);
                 assert_eq!(scan, before_scan, "expiry itself cannot run a scanner");
@@ -982,7 +1055,7 @@ fn global_skirmish_replay_is_deterministic_and_baseline_stable() {
                 Some(MissionType::Guard) => {
                     if let Some(guard_frame) = guard_commenced {
                         if tick == guard_frame + 1 {
-                            assert_eq!(tank.last_target_scan_frame, tick as u32);
+                            assert_eq!(tank.passive_scan.last_scan_frame(), tick as u32);
                             post_guard_scan = Some(tick);
                         }
                     } else {
@@ -1000,18 +1073,18 @@ fn global_skirmish_replay_is_deterministic_and_baseline_stable() {
 
         if let Some(harvester) = rec.substrate.entities.get(3) {
             if let Some(crate::sim::components::NavTargetRef::Cell { rx, ry }) =
-                harvester.navigation.nav_com
+                harvester.navigation.nav_com()
             {
                 miner_acquired_field |= (12 + HARNESS_COORD_SHIFT..=13 + HARNESS_COORD_SHIFT)
                     .contains(&rx)
                     && (13 + HARNESS_COORD_SHIFT..=14 + HARNESS_COORD_SHIFT).contains(&ry);
             }
-            miner_moved |= (harvester.position.rx, harvester.position.ry)
+            miner_moved |= (harvester.position.rx(), harvester.position.ry())
                 != (8 + HARNESS_COORD_SHIFT, 12 + HARNESS_COORD_SHIFT);
             miner_cut_ore |= harvester
                 .miner
                 .as_ref()
-                .is_some_and(|miner| !miner.cargo.is_empty());
+                .is_some_and(|miner| !miner.cargo().is_empty());
         }
         log.record_tick(tick, due, result.state_hash);
         if STREAM_CHECKPOINT_TICKS.contains(&tick) {
@@ -1180,6 +1253,55 @@ fn global_skirmish_replay_is_deterministic_and_baseline_stable() {
             .map(|tank| tank.health.current()),
         Some(108),
         "tank 6 takes four 105mm hits (65 * 75% heavy)"
+    );
+    let legacy_super_owner = rep.interner.get("Americans").expect("building owner");
+    assert!(
+        rep.session.house_order.is_empty(),
+        "this fixture runs no House AI"
+    );
+    assert!(
+        rep.super_weapons.is_empty(),
+        "the fixture constructs no Supers"
+    );
+    assert!(
+        rep.substrate
+            .entities
+            .values()
+            .filter(|entity| entity.category() == EntityCategory::Structure)
+            .all(|entity| entity.owner() == legacy_super_owner),
+        "the retired initializer visited only this building owner"
+    );
+    let retained_authority = bincode::serialize(&rep).expect("retained replay authority");
+    let retained_dummy = rep.effective_shared_cell_dummy().snapshot();
+    let retained_streams = (
+        rep.scenario_rng.state(),
+        rep.main_rng.state(),
+        rep.mapgen_rng.state(),
+    );
+    let incoming_hash_control =
+        crate::sim::trigger_runtime::with_legacy_announcement_hash_control_for_test(|| {
+            rep.state_hash_with_legacy_empty_super_owner_for_test(legacy_super_owner)
+        });
+    println!(
+        "[global retired hash feeds] current={final_hash:016X} control={incoming_hash_control:016X} main={GLOBAL_HARNESS_MAIN_HASH:016X} archived_default_incoming={GLOBAL_HARNESS_INCOMING_HASH:016X} archived_r6={GLOBAL_HARNESS_R6_FINAL_HASH:016X}"
+    );
+    assert_eq!(
+        incoming_hash_control, GLOBAL_HARNESS_MAIN_HASH,
+        "restoring only the retired None and empty Super owner feeds must recover the main StateHasher pin; other drift needs attribution"
+    );
+    assert_eq!(rep.state_hash(), final_hash, "diagnostic feeds stay scoped");
+    assert!(
+        retained_authority == bincode::serialize(&rep).expect("unchanged replay authority"),
+        "diagnostic feeds cannot alter serialized gameplay state"
+    );
+    assert_eq!(rep.effective_shared_cell_dummy().snapshot(), retained_dummy);
+    assert_eq!(
+        (
+            rep.scenario_rng.state(),
+            rep.main_rng.state(),
+            rep.mapgen_rng.state()
+        ),
+        retained_streams
     );
     assert_eq!(
         final_hash, GLOBAL_HARNESS_FINAL_HASH,
@@ -1409,7 +1531,7 @@ fn fresh_drive_turn_publishes_on_request_frame_and_restores_before_admission() {
             .and_then(|r| r.retained())
             .unwrap();
         assert_eq!(
-            drive.track().turn_index,
+            drive.track().turn_index(),
             -1,
             "turn must return before admission"
         );
@@ -1499,10 +1621,10 @@ fn s2_dense_scenario_position_fingerprint_stable() {
         for (id, e) in sim.substrate.entities.iter_sorted() {
             (
                 id,
-                e.position.rx,
-                e.position.ry,
-                e.position.sub_x,
-                e.position.sub_y,
+                e.position.rx(),
+                e.position.ry(),
+                e.position.sub_x(),
+                e.position.sub_y(),
             )
                 .hash(&mut h);
         }

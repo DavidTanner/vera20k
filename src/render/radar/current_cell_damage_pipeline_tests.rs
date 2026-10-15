@@ -250,7 +250,7 @@ fn spawn(
         5,
         category == EntityCategory::Unit,
     );
-    entity.in_playfield = true;
+    entity.set_in_playfield(true);
     sim.substrate.entities.insert(entity);
     assert!(matches!(
         sim.reveal(id),

@@ -104,8 +104,15 @@ fn retail_repair_ifv_scan_takes_only_a_damaged_vehicle() {
     let full = rules.object("MTNK").unwrap().strength;
     for rearming in [false, true] {
         let frame = sim.session.binary_frame as i32;
-        sim.substrate.entities.get_mut(ifv).unwrap().rearm_timer =
-            crate::sim::timer::CdTimer::started(frame, if rearming { 80 } else { 0 });
+        sim.substrate
+            .entities
+            .get_mut(ifv)
+            .unwrap()
+            .rearm_timer
+            .set_for_test(crate::sim::timer::CdTimer::started(
+                frame,
+                if rearming { 80 } else { 0 },
+            ));
         sim.substrate
             .entities
             .get_mut(tank)
@@ -173,10 +180,10 @@ fn place(
     let mut entity =
         GameEntity::test_default_of_category(id, type_id, owner, cell.0, cell.1, category);
     entity.lifecycle.set_in_limbo_for_test(false);
-    entity.lifecycle.cell_marked = true;
+    entity.lifecycle.set_cell_marked(true);
     entity.health.set_for_test(health);
     if category == EntityCategory::Structure {
-        entity.foundation = "1x1".to_string();
+        entity.type_facts.set_foundation_for_test("1x1".to_string());
     }
     entities.insert(entity);
 }
@@ -323,15 +330,16 @@ fn a_controlled_transports_rider_takes_its_own_house_and_spares_the_controllers(
     // One cell, the rider's own house's man at its head.
     place(&mut entities, 6, "GI", YURI, (7, 5), infantry, 100);
     place(&mut entities, 7, "GI", OWNER, (7, 5), infantry, 100);
-    entities.get_mut(RIDER).unwrap().passenger_role = PassengerRole::Inside {
-        transport_id: 2,
-        open_topped: true,
-    };
+    entities.get_mut(RIDER).unwrap().passenger_role = PassengerRole::inside_for_test(2, true);
     entities.get_mut(2).unwrap().mind_control = MindControlLink::controlled_by_for_test(3);
     let scan = |entities: &EntityStore| scan_without_world(entities, &rules, RIDER);
     assert_eq!(scan(&entities), None);
     place(&mut entities, 5, "GI", OWNER, (8, 5), infantry, 100);
     assert_eq!(scan(&entities), Some(5), "the rider's own house's man");
-    entities.get_mut(RIDER).unwrap().berserk.active = true;
+    entities
+        .get_mut(RIDER)
+        .unwrap()
+        .berserk
+        .set_active_for_test(true);
     assert!(matches!(scan(&entities), Some(5 | 7)), "berserk");
 }

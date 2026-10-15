@@ -143,15 +143,16 @@ fn native_on_bridge_controls_the_cliff_gate_and_shp_surface() {
     let mut runtime = runtime();
     let mut tank = entity(&mut runtime, "TANK", EntityCategory::Unit);
     set_live_level(&mut runtime, (3, 3), 4);
-    tank.on_bridge = false;
+    tank.set_on_bridge(false);
     assert_eq!(unit_z_adjust_in_runtime(Some(&runtime), &tank, true), 19);
     assert_eq!(shp_z_adjust_in_runtime(Some(&runtime), &tank), 17.0);
 
-    tank.on_bridge = true;
+    tank.set_on_bridge(true);
     assert_eq!(unit_z_adjust_in_runtime(Some(&runtime), &tank, true), -1);
     // Exactly on the native bridge surface: GetHeight()==0 still reaches Foot,
     // even when the derived occupancy marker is absent.
-    tank.position.exact_z_leptons = Some(crate::util::lepton::BRIDGE_DECK_HEIGHT_LEPTONS);
+    tank.position
+        .set_exact_z_leptons(Some(crate::util::lepton::BRIDGE_DECK_HEIGHT_LEPTONS));
     let foot = unit_z_adjust_in_runtime(Some(&runtime), &tank, true);
     assert_eq!(
         shp_z_adjust_in_runtime(Some(&runtime), &tank),
@@ -173,25 +174,25 @@ fn shp_uses_exact_height_and_category_while_raw_unit_depth_keeps_foot() {
 
     // An exact one-lepton height excludes Foot even though it rounds to no
     // screen lift and there is no air-layer locomotor.
-    tank.position.exact_z_leptons = Some(1);
+    tank.position.set_exact_z_leptons(Some(1));
     assert_eq!(shp_z_adjust_in_runtime(Some(&runtime), &tank), -2.0);
     assert_eq!(unit_z_adjust_in_runtime(Some(&runtime), &tank, true), 19);
 
     let mut locomotor =
         LocomotorState::from_object_type(runtime.resources.rules.object("TANK").unwrap(), 0);
-    locomotor.kind = LocomotorKind::Jumpjet;
-    locomotor.layer = MovementLayer::Air;
+    locomotor.set_kind_for_test(LocomotorKind::Jumpjet);
+    locomotor.set_layer(MovementLayer::Air);
     tank.locomotor = Some(locomotor);
-    tank.position.exact_z_leptons = None;
+    tank.position.set_exact_z_leptons(None);
     assert_eq!(
         shp_z_adjust_in_runtime(Some(&runtime), &tank),
         17.0,
         "air layer alone is not GetHeight"
     );
-    tank.position.exact_z_leptons = Some(104);
+    tank.position.set_exact_z_leptons(Some(104));
     assert_eq!(shp_z_adjust_in_runtime(Some(&runtime), &tank), -17.0);
     assert_eq!(unit_z_adjust_in_runtime(Some(&runtime), &tank, true), 4);
-    aircraft.position.exact_z_leptons = Some(104);
+    aircraft.position.set_exact_z_leptons(Some(104));
     assert_eq!(shp_z_adjust_in_runtime(Some(&runtime), &aircraft), -17.0);
     assert_eq!(
         unit_z_adjust_in_runtime(Some(&runtime), &aircraft, true),
@@ -208,8 +209,8 @@ fn shp_ramp_gate_preserves_coarse_grounded_poses_and_checks_exact_surface_height
 
     let mut runtime = runtime();
     let mut infantry = entity(&mut runtime, "INF", EntityCategory::Infantry);
-    infantry.position.sub_x = SimFixed::from_num(128);
-    infantry.position.sub_y = SimFixed::from_num(128);
+    infantry.position.set_sub_x(SimFixed::from_num(128));
+    infantry.position.set_sub_y(SimFixed::from_num(128));
     runtime
         .simulation
         .resolved_terrain
@@ -224,7 +225,7 @@ fn shp_ramp_gate_preserves_coarse_grounded_poses_and_checks_exact_surface_height
 
     // Ground movement retains only coarse cell-level Z. Its zero semantic
     // altitude must still reach Foot when the subcell ramp surface is higher.
-    assert!(infantry.position.exact_z_leptons.is_none());
+    assert!(infantry.position.exact_z_leptons().is_none());
     assert_eq!(
         shp_z_adjust_in_runtime(Some(&runtime), &infantry),
         (unit_z_adjust_in_runtime(Some(&runtime), &infantry, true) - 2) as f32
@@ -232,14 +233,14 @@ fn shp_ramp_gate_preserves_coarse_grounded_poses_and_checks_exact_surface_height
     assert_ne!(shp_z_adjust_in_runtime(Some(&runtime), &infantry), -2.0);
 
     // An exact coordinate instead permits the actual GetHeight subtraction.
-    infantry.position.exact_z_leptons = Some(0);
+    infantry.position.set_exact_z_leptons(Some(0));
     assert_eq!(shp_z_adjust_in_runtime(Some(&runtime), &infantry), -2.0);
-    infantry.position.exact_z_leptons = Some(surface);
+    infantry.position.set_exact_z_leptons(Some(surface));
     assert_eq!(
         shp_z_adjust_in_runtime(Some(&runtime), &infantry),
         (unit_z_adjust_in_runtime(Some(&runtime), &infantry, true) - 2) as f32
     );
-    infantry.position.exact_z_leptons = Some(surface + 1);
+    infantry.position.set_exact_z_leptons(Some(surface + 1));
     let airborne = shp_z_adjust_in_runtime(Some(&runtime), &infantry);
     assert_eq!(airborne, (-adjust_for_z_standard(surface + 1) - 2) as f32);
     assert_ne!(
@@ -256,7 +257,7 @@ fn actual_type_wins_display_art_except_the_harvester_unloading_body() {
     let display = runtime.simulation.interner.intern("CUSTOM");
     let unloading = runtime.simulation.interner.intern("UNLOAD");
     set_live_level(&mut runtime, (3, 3), 4);
-    tank.display_type_override = Some(display);
+    tank.display_type_override.set_for_test(Some(display));
     let mut disguise = DisguiseRuntime::default();
     disguise.acquire(0, Some(unloading), None);
     tank.disguise = Some(disguise);
@@ -266,7 +267,9 @@ fn actual_type_wins_display_art_except_the_harvester_unloading_body() {
 
     // Unit+6C4 is temporarily replaced for the unloading body. The original
     // type still owns the callers that explicitly do not request that body.
-    harvester.display_type_override = Some(unloading);
+    harvester
+        .display_type_override
+        .set_for_test(Some(unloading));
     assert_eq!(
         unit_z_adjust_in_runtime(Some(&runtime), &harvester, true),
         5
@@ -276,7 +279,7 @@ fn actual_type_wins_display_art_except_the_harvester_unloading_body() {
         unit_z_adjust_in_runtime(Some(&runtime), &harvester, false),
         19
     );
-    harvester.display_type_override = None;
+    harvester.display_type_override.set_for_test(None);
     assert_eq!(
         unit_z_adjust_in_runtime(Some(&runtime), &harvester, true),
         19
@@ -306,8 +309,8 @@ fn fixed_slot_alias_and_missing_cells_leave_the_shared_simulation_dummy_unchange
     assert_eq!(missing.level, -7);
 
     for (rx, ry) in [(512, 1), (500, 500), (0, 0)] {
-        tank.position.rx = rx;
-        tank.position.ry = ry;
+        tank.position.set_rx(rx);
+        tank.position.set_ry(ry);
         let _ = unit_z_adjust_in_runtime(Some(&runtime), &tank, true);
         let _ = shp_z_adjust_in_runtime(Some(&runtime), &tank);
         assert_eq!(
@@ -339,9 +342,9 @@ fn composite_split_uses_live_raw_bridge_terms_and_native_on_bridge() {
         evaluate(&runtime, &tank),
         "zero ZFudgeBridge must not disable the split"
     );
-    tank.on_bridge = true;
+    tank.set_on_bridge(true);
     assert!(!evaluate(&runtime, &tank));
-    tank.on_bridge = false;
+    tank.set_on_bridge(false);
     for cells in [&[(2, 3)][..], &[(3, 3)][..], &[(2, 3), (3, 3)][..]] {
         for &(x, y) in cells {
             // Synthetic grid base is -1: 5 - (-1) + 1 = native column tile 7.
@@ -424,7 +427,9 @@ fn composite_split_uses_active_unloading_type_and_not_art_override() {
         &harvester,
         true
     ));
-    harvester.display_type_override = Some(runtime.simulation.interner.intern("UNLOAD"));
+    harvester
+        .display_type_override
+        .set_for_test(Some(runtime.simulation.interner.intern("UNLOAD")));
     assert!(unit_bridge_split_in_runtime(
         Some(&runtime),
         &harvester,
@@ -455,7 +460,8 @@ fn composite_factory_split_requires_navcom_and_slot_zero_weapons_factory() {
         |rt: &SimRuntime, e: &GameEntity| unit_bridge_split_in_runtime(Some(rt), e, true);
     tank.radio_contacts.insert(17);
     assert!(!evaluate(&runtime, &tank));
-    tank.navigation.nav_com = Some(crate::sim::components::NavTargetRef::cell(3, 3));
+    tank.navigation
+        .set_nav_com(Some(crate::sim::components::NavTargetRef::cell(3, 3)));
     assert!(
         !super::shp_unit_bridge_fudge_in_runtime(Some(&runtime), &tank),
         "direct SHP has no weapons-factory alternative"
@@ -464,7 +470,7 @@ fn composite_factory_split_requires_navcom_and_slot_zero_weapons_factory() {
         evaluate(&runtime, &tank),
         "native only tests NavCom presence, not target identity"
     );
-    tank.on_bridge = true;
+    tank.set_on_bridge(true);
     assert!(
         evaluate(&runtime, &tank),
         "factory arm is independent of bridge proximity"

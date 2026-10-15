@@ -122,7 +122,7 @@ impl Simulation {
         self.substrate
             .entities
             .get(id)
-            .is_some_and(|entity| !entity.dying && entity.lifecycle.object_alive())
+            .is_some_and(|entity| !entity.death.is_dying() && entity.lifecycle.object_alive())
     }
 
     /// The Teleport Process of an owner whose Teleport holds a Chronosphere
@@ -162,9 +162,9 @@ impl Simulation {
                 self.foot_mark_remove(id, Some(rules), registry, ctx.effects);
                 self.teleport_warp_sound(id, WarpSound::Out, rules);
                 if let Some(entity) = self.substrate.entities.get_mut(id) {
-                    entity.on_bridge = false;
+                    entity.set_on_bridge(false);
                     if let Some(locomotor) = entity.locomotor.as_mut() {
-                        locomotor.layer = MovementLayer::Ground;
+                        locomotor.set_layer(MovementLayer::Ground);
                     }
                 }
                 if let Some(warp) = self.chrono_warp_mut(id) {
@@ -230,8 +230,7 @@ impl Simulation {
                 if let Some(entity) = self.substrate.entities.get_mut(id) {
                     super::teleport_movement::teleport_stop_moving(entity);
                     // `0x00719AEE`/`0x00719AF7`: the drop and warp credits go.
-                    entity.manipulated_by = None;
-                    entity.warped_by_house = None;
+                    entity.drop_credit.forget();
                     entity.set_archive_target(None);
                 }
                 self.assign_null_destination(id, Some(rules), registry, ctx.effects);
@@ -299,12 +298,12 @@ impl Simulation {
     /// Location (vt+0x1B8) outside `MapClass::IsCellInPlayfield(cell, 1)`
     /// clears `+0x3D5`; inside, the byte stays as it was.
     fn chrono_playfield_check(&mut self, id: u64) {
-        let Some(cell) = self
-            .substrate
-            .entities
-            .get(id)
-            .map(|entity| (i32::from(entity.position.rx), i32::from(entity.position.ry)))
-        else {
+        let Some(cell) = self.substrate.entities.get(id).map(|entity| {
+            (
+                i32::from(entity.position.rx()),
+                i32::from(entity.position.ry()),
+            )
+        }) else {
             return;
         };
         if !crate::sim::cell_rect::cell_is_in_playfield_height_aware(
@@ -313,7 +312,7 @@ impl Simulation {
             self.resolved_terrain.as_ref(),
         ) && let Some(entity) = self.substrate.entities.get_mut(id)
         {
-            entity.in_playfield = false;
+            entity.set_in_playfield(false);
         }
     }
 
@@ -380,8 +379,8 @@ impl Simulation {
             let Some(entity) = self.substrate.entities.get_mut(id) else {
                 return false;
             };
-            let on_bridge = bridge && !entity.on_bridge;
-            entity.on_bridge = on_bridge;
+            let on_bridge = bridge && !entity.on_bridge();
+            entity.set_on_bridge(on_bridge);
             let z = if on_bridge {
                 ground.wrapping_add(crate::util::lepton::BRIDGE_DECK_HEIGHT_LEPTONS)
             } else {
@@ -393,11 +392,11 @@ impl Simulation {
                 z,
             };
             if let Some(locomotor) = entity.locomotor.as_mut() {
-                locomotor.layer = if on_bridge {
+                locomotor.set_layer(if on_bridge {
                     MovementLayer::Bridge
                 } else {
                     MovementLayer::Ground
-                };
+                });
                 if let Some(runtime) = locomotor.teleport_runtime_mut() {
                     runtime.set_resolved_destination(marked);
                 }
@@ -658,7 +657,11 @@ impl Simulation {
             self.chrono_warp_sink(id, rules, registry, effects);
             // `0x007189BE..0x007189F5`: the kill goes to the Magnetron that
             // dropped the object, else the warping house.
-            self.record_manipulated_kill(id, id, rules);
+            self.record_manipulated_kill(
+                id,
+                id,
+                crate::sim::world::UninitContext::new(Some(rules), registry).with_effects(effects),
+            );
             return;
         }
         let code = self
@@ -699,12 +702,12 @@ impl Simulation {
         effects: FrameEffects<'_>,
     ) {
         self.begin_warp_sinking(id, rules, effects);
-        let Some((killer, house)) = self
-            .substrate
-            .entities
-            .get(id)
-            .map(|entity| (entity.manipulated_by, entity.warped_by_house))
-        else {
+        let Some((killer, house)) = self.substrate.entities.get(id).map(|entity| {
+            (
+                entity.drop_credit.manipulated_by(),
+                entity.drop_credit.warped_by_house(),
+            )
+        }) else {
             return;
         };
         self.free_slaves(id, killer, house, rules, registry, effects);

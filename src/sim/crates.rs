@@ -30,6 +30,7 @@ mod runtime;
 mod speed;
 mod state;
 
+pub(crate) use effects::CrateMultipliers;
 pub(crate) use pickup::pickup_crate;
 pub(crate) use runtime::tick_crate_regeneration;
 pub use state::{CrateAuthority, CrateSlot};
@@ -2213,10 +2214,6 @@ pub(crate) mod tests {
         let cells = [(12, 13), (6, 13)];
         for cell in cells {
             assert_eq!(
-                sim.terrain_costs[&SpeedType::Foot].cost_at(cell.0, cell.1),
-                100
-            );
-            assert_eq!(
                 validate_and_stamp_candidate(
                     &mut sim,
                     &rules.crate_rules,
@@ -2234,11 +2231,6 @@ pub(crate) mod tests {
                 .unwrap();
             assert_eq!(projected.land_type, LandType::Road.as_index());
             assert_eq!(projected.speed_costs.foot, Some(37));
-            assert_eq!(
-                sim.terrain_costs[&SpeedType::Foot].cost_at(cell.0, cell.1),
-                100,
-                "canonical navigation waits for the next-reader boundary"
-            );
         }
         let repeated = sim.overlay_grid.as_mut().unwrap().recalculate_runtime_cell(
             sim.resolved_terrain.as_mut().unwrap(),
@@ -2258,12 +2250,6 @@ pub(crate) mod tests {
             &[],
             crate::sim::world::FrameEffects::default(),
         );
-        for cell in cells {
-            assert_eq!(
-                sim.terrain_costs[&SpeedType::Foot].cost_at(cell.0, cell.1),
-                37
-            );
-        }
         let mut pending = sim.overlay_grid.as_ref().unwrap().clone();
         assert!(pending.take_synchronous_navigation_cells().is_empty());
         assert_eq!(

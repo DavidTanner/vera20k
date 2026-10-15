@@ -351,7 +351,7 @@ impl JumpjetRuntime {
         let lifted = self.phase == STATE_DESCEND;
         if lifted {
             self.phase = STATE_ASCEND;
-            self.flight.target_height = self.params.height;
+            self.flight.set_target_height(self.params.height());
         }
         MoveToOutcome { lifted }
     }
@@ -529,7 +529,7 @@ impl JumpjetOrderHost for WorldOrderHost<'_> {
         FlightOwnerKind::of(self.owner().category())
     }
     fn balloon_hover(&self) -> bool {
-        self.owner().locomotor.as_ref().unwrap().balloon_hover
+        self.owner().locomotor.as_ref().unwrap().balloon_hover()
     }
     fn mission_is_enter(&self) -> bool {
         owner_mission_is_enter(self.owner())
@@ -540,9 +540,9 @@ impl JumpjetOrderHost for WorldOrderHost<'_> {
     fn stop_search(&mut self, seed: (i16, i16)) -> Option<(i16, i16)> {
         let locomotor = self.owner().locomotor.as_ref().unwrap();
         let passability = crate::sim::find_nearby_cell::PassabilityArgs {
-            speed_type: locomotor.speed_type,
+            speed_type: locomotor.speed_type(),
             required_zone_id: None,
-            movement_zone: locomotor.movement_zone,
+            movement_zone: locomotor.movement_zone(),
             bridge_aware_zone: false,
         };
         self.search(seed, passability, true)
@@ -595,9 +595,9 @@ impl JumpjetOrderHost for WorldOrderHost<'_> {
             .get_mut(self.id)
             .unwrap()
             .navigation
-            .nav_com = Some(crate::sim::components::NavTargetRef::cell(
-            x as u16, y as u16,
-        ));
+            .set_nav_com(Some(crate::sim::components::NavTargetRef::cell(
+                x as u16, y as u16,
+            )));
     }
 }
 

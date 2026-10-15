@@ -105,10 +105,10 @@ impl Simulation {
                 self.sound_events.push(SimSoundEvent::VocAt {
                     sound_id,
                     audible_to: None,
-                    rx: entity.position.rx,
-                    ry: entity.position.ry,
-                    sub_x: entity.position.sub_x,
-                    sub_y: entity.position.sub_y,
+                    rx: entity.position.rx(),
+                    ry: entity.position.ry(),
+                    sub_x: entity.position.sub_x(),
+                    sub_y: entity.position.sub_y(),
                     world_z_leptons: coord.z,
                 });
             }
@@ -153,7 +153,7 @@ impl Simulation {
         let mut coord = position_world_coord(&entity.position);
         let floor = ground_surface_z_at(
             [coord.x, coord.y],
-            entity.on_bridge,
+            entity.on_bridge(),
             self.resolved_terrain.as_ref(),
             None,
         )
@@ -171,10 +171,9 @@ impl Simulation {
             // retains Health1 and records two total losses across both calls.
             self.record_the_kill(
                 id,
-                None,
-                None,
+                crate::sim::combat::KillSource::Techno(None),
                 crate::sim::combat::KillCallback::Terminal,
-                rules,
+                UninitContext::new(Some(rules), registry).with_effects(frame_effects),
             );
             self.uninit_with_context(
                 id,

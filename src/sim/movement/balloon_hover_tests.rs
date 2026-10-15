@@ -23,8 +23,8 @@ const OTHER: u64 = 3;
 fn unit(id: u64, name: &str, cell: (u16, u16), sub: (i32, i32)) -> GameEntity {
     let mut unit = GameEntity::test_default(id, name, "Americans", cell.0, cell.1);
     unit.set_category_for_test(EntityCategory::Unit);
-    unit.position.sub_x = SimFixed::from_num(sub.0);
-    unit.position.sub_y = SimFixed::from_num(sub.1);
+    unit.position.set_sub_x(SimFixed::from_num(sub.0));
+    unit.position.set_sub_y(SimFixed::from_num(sub.1));
     unit.lifecycle.set_in_limbo_for_test(false);
     unit
 }
@@ -79,15 +79,17 @@ fn world(input: &Value, facing: u16) -> (Simulation, RuleSet) {
             TargetKind::Cell(rx, ry) => TargetKind::Cell(rx, ry),
         }));
     }
-    actor.navigation.nav_com = match input["nav"].as_str().unwrap_or("none") {
-        "none" => None,
-        "target" => Some(match target {
-            TargetKind::Entity(id) => NavTargetRef::object(id),
-            TargetKind::Cell(rx, ry) => NavTargetRef::cell(rx, ry),
-        }),
-        "other" => Some(NavTargetRef::object(OTHER)),
-        _ => Some(NavTargetRef::cell(11, 10)),
-    };
+    actor
+        .navigation
+        .set_nav_com(match input["nav"].as_str().unwrap_or("none") {
+            "none" => None,
+            "target" => Some(match target {
+                TargetKind::Entity(id) => NavTargetRef::object(id),
+                TargetKind::Cell(rx, ry) => NavTargetRef::cell(rx, ry),
+            }),
+            "other" => Some(NavTargetRef::object(OTHER)),
+            _ => Some(NavTargetRef::cell(11, 10)),
+        });
     actor.body_facing = FacingClass::new(facing, 0);
     actor.mission.apply_test_fixture(MissionTestFixture {
         current: MissionId::from_raw(input["mission"].as_i64().unwrap_or(1) as i32),
@@ -184,7 +186,7 @@ fn balloon_approach_arm_matches_the_original() {
             );
             if assigned {
                 let actor = sim.substrate.entities.get(ACTOR).unwrap();
-                assert_eq!(actor.navigation.nav_com, answer, "{input}");
+                assert_eq!(actor.navigation.nav_com(), answer, "{input}");
             }
         }
     }
@@ -209,7 +211,7 @@ fn balloon_null_destination_arm_matches_the_original() {
             .get(ACTOR)
             .unwrap()
             .navigation
-            .nav_com;
+            .nav_com();
         // Direction_To (0x005F3DB0) on the two coordinates (vt+0x48), a
         // Cell's its centre.
         let actor = sim.substrate.entities.get(ACTOR).unwrap();
@@ -222,7 +224,7 @@ fn balloon_null_destination_arm_matches_the_original() {
         assert_eq!(keeps, row["path"] == "kept", "{input}");
         kept += usize::from(keeps);
         let actor = sim.substrate.entities.get(ACTOR).unwrap();
-        assert_eq!(actor.navigation.nav_com, before, "{input}");
+        assert_eq!(actor.navigation.nav_com(), before, "{input}");
         let mission = &actor.mission;
         let timer = mission.dispatch_timer();
         let fields = [
@@ -273,7 +275,7 @@ fn stop_clears_an_attacking_balloons_destination() {
             Some(&rules)
         ));
         let actor = sim.substrate.entities.get(ACTOR).unwrap();
-        assert_eq!(actor.navigation.nav_com, None, "balloon {balloon}");
+        assert_eq!(actor.navigation.nav_com(), None, "balloon {balloon}");
         assert!(actor.attack_target.target().is_none());
         let attack = MissionId::from_known(crate::sim::mission::MissionType::Attack);
         let guard = MissionId::from_known(crate::sim::mission::MissionType::Guard);

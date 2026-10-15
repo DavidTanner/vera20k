@@ -19,7 +19,7 @@ use crate::util::fixed_math::{SIM_ONE, SIM_ZERO, SimFixed};
 /// share this tail. Native controls: foot_scold_latch.json paid_tails.
 pub(super) fn finish_idle(entity: &mut GameEntity) {
     if !entity.locomotor.as_ref().is_some_and(|loco| {
-        loco.kind == crate::rules::locomotor_type::LocomotorKind::Walk
+        loco.active_kind() == crate::rules::locomotor_type::LocomotorKind::Walk
             && loco.step_head().is_none()
             && loco.walk_destination().is_none()
     }) {
@@ -55,7 +55,7 @@ pub(super) fn advance(
     let speed = prone_crawls.map_or(speed, |crawls| {
         crate::sim::infantry::apply_prone_speed(SimFixed::from_num(speed), crawls).to_num::<i32>()
     });
-    entity.navigation.path_runtime.path_blocked = false; //75BFD1; retain grace timer.
+    entity.navigation.path_runtime.set_path_blocked(false); //75BFD1; retain grace timer.
     let current = super::ground_pose::position_world_xy(&entity.position);
     let desired = crate::util::direction_tables::facing16_from_delta(
         head.x.wrapping_sub(current[0]),
@@ -63,7 +63,7 @@ pub(super) fn advance(
     );
     // Walk75AE00 snaps the body, but SI still supplies the desired direction to
     // the displacement even if snap's equality branch retains an old target.
-    entity.body_facing.snap(desired, native_frame);
+    super::locomotor_turn::walk_do_turn(entity, desired, native_frame);
     let proposed = crate::util::native_trig::facing_step_world_xy(current, desired, speed);
     // A boundary step's staged sub-cell only feeds the crossing test, which
     // restores the old Location for walk_host's SetLocation (0x0075C12E). A
@@ -71,13 +71,18 @@ pub(super) fn advance(
     // FootClass::SetLocation at 0x0075C20F.
     // RESIDUAL: this direct write skips that call's OpenTopped rider tail.
     // Dormant: retail rulesmd.ini makes only the Drive BFRT OpenTopped=yes.
-    entity.position.sub_x = SimFixed::from_num(proposed[0] - i32::from(entity.position.rx) * 256);
-    entity.position.sub_y = SimFixed::from_num(proposed[1] - i32::from(entity.position.ry) * 256);
-    if proposed[0] / 256 == i32::from(entity.position.rx)
-        && proposed[1] / 256 == i32::from(entity.position.ry)
+    entity.position.set_sub_x(SimFixed::from_num(
+        proposed[0] - i32::from(entity.position.rx()) * 256,
+    ));
+    entity.position.set_sub_y(SimFixed::from_num(
+        proposed[1] - i32::from(entity.position.ry()) * 256,
+    ));
+    if proposed[0] / 256 == i32::from(entity.position.rx())
+        && proposed[1] / 256 == i32::from(entity.position.ry())
     {
         // Native clears +74 around this SetCoords/SetHeight pair (75C1FB..75C227).
-        super::ground_pose::set_height(&mut entity.position, entity.on_bridge, 0, terrain, grid);
+        let on_bridge = entity.on_bridge();
+        super::ground_pose::set_height(&mut entity.position, on_bridge, 0, terrain, grid);
         //75C22F follows the same-cell SetCoords/SetHeight callbacks. A
         //boundary step retains the byte until its world placement completes.
         entity.navigation.path_runtime.clear_scold_latch();

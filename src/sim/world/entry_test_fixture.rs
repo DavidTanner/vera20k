@@ -107,9 +107,6 @@ pub(crate) fn fixture_with_rules_and_fixed_art(
     sim.zone_grid = Some(zones);
     sim.path_grid = Some(Arc::new(path));
     sim.install_resolved_terrain_for_new_map(terrain);
-    sim.terrain_costs = crate::sim::pathfinding::terrain_cost::build_canonical_terrain_cost_grids(
-        sim.resolved_terrain.as_ref().unwrap(),
-    );
     for p in [(15, 15), (16, 15), (17, 14), (17, 15), (17, 16)] {
         assert!(crate::sim::cell_rect::cell_is_in_playfield_height_aware(
             (p.0, p.1),

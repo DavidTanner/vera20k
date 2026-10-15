@@ -672,7 +672,7 @@ mod tests {
     fn entity_position_for_owner(sim: &Simulation, owner: &str) -> Option<(u16, u16)> {
         sim.entities().values().find_map(|entity| {
             (sim.interner.resolve(entity.owner()) == owner)
-                .then_some((entity.position.rx, entity.position.ry))
+                .then_some((entity.position.rx(), entity.position.ry()))
         })
     }
 
@@ -1157,6 +1157,41 @@ mod tests {
         assert_eq!(current_iq("Computer1"), Some(rules.general.max_iq_levels));
         assert_eq!(current_iq("Neutral"), Some(0));
         assert_eq!(current_iq("Special"), Some(0));
+    }
+
+    #[test]
+    fn skirmish_launch_houses_construct_every_super_weapon_type() {
+        // `HouseClass::HouseClass` builds one Super per `[SuperWeaponTypes]`
+        // entry (`0x004F620E..0x004F6290`) for every House: the launch
+        // participants and Neutral/Special alike. The grant pass only walks
+        // that list, so a House without it never receives a superweapon.
+        let session = test_session();
+        let mut sim = Simulation::new();
+        let rules = RuleSet::from_ini(&IniFile::from_str(
+            "[SuperWeaponTypes]\n0=ParaDropSpecial\n1=NukeSpecial\n\
+             [ParaDropSpecial]\n[NukeSpecial]\n",
+        ))
+        .expect("super weapon rules");
+        assert_eq!(rules.super_weapon_order, ["ParaDropSpecial", "NukeSpecial"]);
+
+        initialize_skirmish_launch_houses(
+            &mut sim,
+            &HouseRoster::default(),
+            &rules,
+            &launch_descriptor(&session),
+        );
+
+        for owner in ["Player", "Computer1", "Neutral", "Special"] {
+            let id = sim.interner.get(owner).expect("launch house");
+            let mut types: Vec<&str> = sim.super_weapons.get(&id).map_or_else(Vec::new, |supers| {
+                supers
+                    .keys()
+                    .map(|&type_id| sim.interner.resolve(type_id))
+                    .collect()
+            });
+            types.sort_unstable();
+            assert_eq!(types, ["NukeSpecial", "ParaDropSpecial"], "{owner}");
+        }
     }
 
     #[test]
@@ -2570,7 +2605,7 @@ mod tests {
             .map(|entity| {
                 (
                     sim.interner.resolve(entity.owner()).to_string(),
-                    (entity.position.rx, entity.position.ry),
+                    (entity.position.rx(), entity.position.ry()),
                 )
             })
             .collect();

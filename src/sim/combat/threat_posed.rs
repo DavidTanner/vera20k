@@ -31,7 +31,7 @@ pub(crate) fn live_threat_posed(
         if occupants > 0 {
             return occupants.wrapping_mul(rules.general.threat_per_occupant);
         }
-        if let Some(tank_id) = candidate.bunker_occupant {
+        if let Some(tank_id) = candidate.bunker.occupant() {
             // Native reads the linked tank's TYPE field directly; do not
             // recurse through this getter or add another reciprocal-link gate.
             return entities

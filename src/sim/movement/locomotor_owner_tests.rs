@@ -53,11 +53,7 @@ fn fixture() -> (Simulation, RuleSet) {
 }
 
 fn replay_fixture() -> crate::sim::components::FootPathQueue {
-    crate::sim::components::FootPathQueue {
-        directions: vec![2, 8, 7],
-        cursor: 1,
-        reference_cell: Some((-17, 301)),
-    }
+    crate::sim::components::FootPathQueue::for_test(vec![2, 8, 7], 1, Some((-17, 301)))
 }
 
 fn supply_drive_state(entity: &mut GameEntity) {
@@ -73,11 +69,12 @@ fn supply_drive_state(entity: &mut GameEntity) {
                     // Is_Moving compares exact XY only. Retained Z deliberately differs
                     // from the owner's height, so retirement cannot depend on full XYZ.
                     .with_head_to_for_test(Some(DriveCoord::cell(8, 8, 731)))
-                    .with_track_for_test(crate::sim::components::TrackProgress {
-                        turn_index: 1,
-                        cursor: 3,
-                        residual: 971,
-                        ..Default::default()
+                    .with_track_for_test({
+                        let mut value = crate::sim::components::TrackProgress::default();
+                        value.set_turn_index(1);
+                        value.set_cursor(3);
+                        value.set_residual(971);
+                        value
                     })
             ))
     );
@@ -100,7 +97,7 @@ fn owned_state(entity: &GameEntity) -> serde_json::Value {
 fn assert_retired(entity: &GameEntity) {
     let locomotor = entity.locomotor.as_ref().expect("restored locomotor");
     assert_eq!(locomotor.active_kind(), LocomotorKind::Teleport);
-    assert!(locomotor.piggyback.is_none());
+    assert!(locomotor.piggyback().is_none());
     assert!(!locomotor.has_track_state(TrackFamily::Drive));
 }
 
@@ -196,7 +193,7 @@ fn refused_restore_keeps_live_head_and_forced_segment() {
         let entity = sim.substrate.entities.get(1).unwrap();
         let locomotor = entity.locomotor.as_ref().unwrap();
         assert_eq!(locomotor.active_kind(), LocomotorKind::Drive);
-        assert!(locomotor.piggyback.is_some());
+        assert!(locomotor.piggyback().is_some());
         let loco = entity.locomotor.as_ref().unwrap();
         assert_eq!(
             loco.track_head(TrackFamily::Drive),
@@ -208,10 +205,10 @@ fn refused_restore_keeps_live_head_and_forced_segment() {
             "Stop_Moving, no Move_To"
         );
         assert_eq!(
-            entity.navigation.nav_com,
+            entity.navigation.nav_com(),
             Some(crate::sim::components::NavTargetRef::cell(12, 8))
         );
-        assert!(entity.setter_force_reassign);
+        assert!(entity.setter_force_reassign.is_raised());
         assert_eq!(
             entity.mission.current(),
             crate::sim::mission::MissionId::NONE
@@ -233,7 +230,7 @@ fn out_of_contact_destination_installs_fresh_drive_without_previous_instance_sta
     activate_drive(entity);
     let loco = entity.locomotor.as_mut().unwrap();
     let mut track = loco.track_progress(TrackFamily::Drive).unwrap();
-    track.turn_index = 0x47;
+    track.set_turn_index(0x47);
     loco.store_track_progress(TrackFamily::Drive, track);
     assert!(sim.try_end_piggyback(1, None));
 
@@ -248,7 +245,7 @@ fn out_of_contact_destination_installs_fresh_drive_without_previous_instance_sta
         locomotor
             .track_progress(TrackFamily::Drive)
             .unwrap()
-            .residual,
+            .residual(),
         0
     );
     assert_eq!(entity.foot_speed.applied_fraction(), SimFixed::lit("0.5"));
@@ -280,7 +277,7 @@ fn chain(entity: &GameEntity) -> Vec<LocomotorKind> {
     let mut at = entity.locomotor.as_ref();
     while let Some(locomotor) = at {
         kinds.push(locomotor.active_kind());
-        at = locomotor.piggyback.as_deref();
+        at = locomotor.piggyback().as_deref();
     }
     kinds
 }
@@ -312,10 +309,10 @@ fn teleporter_drive_ends_what_may_end_and_begins_over_the_rest() {
         let locomotor = entity.locomotor.as_ref().unwrap();
         if mid_warp {
             assert_eq!(chain(entity), [Drive, Teleport, Drive, Teleport]);
-            assert_eq!(locomotor.piggyback.as_deref(), warp_teleport.as_ref());
+            assert_eq!(locomotor.piggyback().as_deref(), warp_teleport.as_ref());
         } else {
             assert_eq!(chain(entity), [Drive, Drive, Teleport]);
-            assert_eq!(locomotor.piggyback.as_deref(), driving.as_ref());
+            assert_eq!(locomotor.piggyback().as_deref(), driving.as_ref());
         }
     }
 }
@@ -382,7 +379,7 @@ fn stop_command_retires_only_the_drive_admitted_by_its_existing_gate() {
                     .unwrap()
                     .track_progress(TrackFamily::Drive)
                     .unwrap()
-                    .residual,
+                    .residual(),
                 971
             );
         } else {
@@ -405,12 +402,13 @@ fn refused_miner_order_leaves_teleport_payload_untouched() {
         }
         let entity = sim.substrate.entities.get_mut(1).unwrap();
         let mut path_runtime = crate::sim::components::FootPathRuntime::at_frame(0);
-        path_runtime.movement_timer = crate::sim::timer::CdTimer::from_raw(-1, -7);
-        path_runtime.blocked_timer = crate::sim::timer::CdTimer::from_raw(i32::MAX - 2, 31);
-        path_runtime.path_blocked = true;
-        path_runtime.retries_left = u32::MAX;
+        path_runtime.set_movement_timer_for_test(crate::sim::timer::CdTimer::from_raw(-1, -7));
+        path_runtime
+            .set_blocked_timer_for_test(crate::sim::timer::CdTimer::from_raw(i32::MAX - 2, 31));
+        path_runtime.set_path_blocked(true);
+        path_runtime.set_retries_left(u32::MAX);
         entity.navigation.path_runtime = path_runtime;
-        entity.dying = true;
+        entity.death.set_dying_for_test(true);
         let before = owned_state(entity);
         let mut grid = PathGrid::test_all_blocked(16, 16);
         grid.set_blocked(8, 8, false);
@@ -430,7 +428,7 @@ fn refused_miner_order_leaves_teleport_payload_untouched() {
         assert_eq!(owned_state(entity), before);
         assert_eq!(entity.navigation.path_runtime, path_runtime);
         assert!(matches!(
-            entity.locomotor.as_ref().unwrap().runtime_payload,
+            entity.locomotor.as_ref().unwrap().runtime_payload(),
             LocomotorRuntimePayload::Teleport(_)
         ));
         assert!(crate::sim::movement::motion_query::is_moving(&entity) != Some(true));
@@ -600,7 +598,9 @@ fn foot_stop_preserves_queue() {
     let (mut sim, _) = fixture();
     let entity = sim.substrate.entities.get_mut(1).unwrap();
     activate_drive(entity);
-    entity.navigation.nav_com = Some(crate::sim::components::NavTargetRef::cell(12, 8));
+    entity
+        .navigation
+        .set_nav_com(Some(crate::sim::components::NavTargetRef::cell(12, 8)));
     super::super::navcom::foot_stop_moving(entity);
     assert_eq!(entity.navigation.path_replay, replay_fixture());
 }
@@ -645,9 +645,9 @@ fn foot_queue_without_class_payload_roundtrips_and_hashes_each_field() {
             .path_replay;
         *queue = replay_fixture();
         match field {
-            0 => queue.directions[1] = 6,
-            1 => queue.cursor = 2,
-            _ => queue.reference_cell = Some((-18, 301)),
+            0 => queue.set_direction(1, 6),
+            1 => queue.set_cursor(2),
+            _ => queue.set_reference_cell(Some((-18, 301))),
         }
         assert_ne!(
             loaded.state_hash(),
@@ -674,11 +674,11 @@ fn foot_queue_operations_match_original_memory_witnesses() {
         let entity = sim.substrate.entities.get_mut(1).unwrap();
         activate_drive(entity);
         // Native shifts the queue; Rust can retain an already-consumed prefix.
-        entity.navigation.path_replay = crate::sim::components::FootPathQueue {
-            directions: [vec![6], directions].concat(),
-            cursor: 1,
-            reference_cell: Some(reference),
-        };
+        entity.navigation.path_replay = crate::sim::components::FootPathQueue::for_test(
+            [vec![6], directions].concat(),
+            1,
+            Some(reference),
+        );
         if operation.contains("fresh") {
             super::super::path_markers::accept_path_replay(
                 &mut entity.navigation.path_replay,
@@ -703,7 +703,7 @@ fn foot_queue_operations_match_original_memory_witnesses() {
             "{operation}"
         );
         assert_eq!(
-            entity.navigation.path_replay.reference_cell,
+            entity.navigation.path_replay.reference_cell(),
             Some(expected_reference),
             "{operation}"
         );
@@ -724,7 +724,7 @@ fn drive_end_uses_native_gates_and_preserves_owner_state() {
                     .unwrap()
                     .store_drive_end_permission(false);
             }
-            2 => entity.foot_locomotor_swap_active = true,
+            2 => entity.lift.set_swap_active_for_test(true),
             3 => {
                 entity.locomotor.as_mut().unwrap().store_track_destination(
                     TrackFamily::Drive,
@@ -761,7 +761,7 @@ fn drive_end_denial_flags_survive_save_and_block_generic_restore() {
             .as_mut()
             .unwrap()
             .store_drive_end_permission(permission);
-        entity.foot_locomotor_swap_active = permission;
+        entity.lift.set_swap_active_for_test(permission);
         let bytes = GameSnapshot::save(&sim, 0, 0, "drive_end_gate", 0);
         let mut loaded = GameSnapshot::load(&bytes).unwrap().sim;
         assert_eq!(loaded.state_hash(), sim.state_hash());
@@ -773,7 +773,7 @@ fn drive_end_denial_flags_survive_save_and_block_generic_restore() {
             .as_mut()
             .unwrap()
             .store_drive_end_permission(true);
-        entity.foot_locomotor_swap_active = false;
+        entity.lift.set_swap_active_for_test(false);
         assert_ne!(loaded.state_hash(), before);
         assert!(loaded.try_end_piggyback(1, None));
     }

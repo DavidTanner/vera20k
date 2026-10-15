@@ -3399,13 +3399,13 @@ pub(crate) fn occupant_can_use_track(
     if head >= 8 {
         return false;
     }
-    let Some(turn) = usize::try_from(track.turn_index)
+    let Some(turn) = usize::try_from(track.turn_index())
         .ok()
         .and_then(turn_track_at)
     else {
         return false;
     };
-    let raw = if track.reversed {
+    let raw = if track.reversed() {
         turn.short_track
     } else {
         turn.normal_track
@@ -3417,7 +3417,7 @@ pub(crate) fn occupant_can_use_track(
     let Some(raw_meta) = RAW_TRACKS.get(usize::from(raw)) else {
         return false;
     };
-    if i32::from(raw_meta.chain_index) != track.cursor || track.cursor == 0 {
+    if i32::from(raw_meta.chain_index) != track.cursor() || track.cursor() == 0 {
         return false;
     }
     let chained_index = usize::from(head) + exit_octant as usize * FACING_DIRECTIONS;
@@ -3442,7 +3442,9 @@ pub(crate) fn occupant_slot_a4_answers_true(
     occupant: &crate::sim::game_entity::GameEntity,
 ) -> bool {
     let track = occupant.locomotor.as_ref().and_then(|loco| {
-        loco.track_progress(super::track_process::TrackFamily::from_kind(loco.kind)?)
+        loco.track_progress(super::track_process::TrackFamily::from_kind(
+            loco.active_kind(),
+        )?)
     });
     let Some(track) = track else {
         return false;

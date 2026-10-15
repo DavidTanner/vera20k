@@ -48,15 +48,29 @@ pub(super) enum BridgeStateUpdate {
     Unchanged,
 }
 
-/// Persisted analogue of the runtime Foot bridge-state mismatch byte.
+/// Persisted analogue of the runtime Foot bridge-state mismatch byte
+/// (`Foot+0x68B`).
 ///
-/// The owner integration stores this alongside locomotor runtime state. It is
-/// intentionally independent from A* bridge-layer selection and from the
-/// `on_bridge` occupancy byte.
+/// The Foot constructor zeroes it (`0x004D33BA`); the Drive (`0x004B3391`,
+/// `0x004B45ED`) and Walk (`0x0075B662`) movement processors set it when the
+/// candidate cell's bridge bit and the current bridge state differ
+/// ([`Self::latch`]), and nothing clears it. It is intentionally independent
+/// from A* bridge-layer selection and from the `on_bridge` occupancy byte.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(crate) struct RuntimeBridgeTransitionState {
-    /// Set when candidate bridge bit and current bridge state differ.
-    pub pending_mismatch: bool,
+    pending_mismatch: bool,
+}
+
+impl RuntimeBridgeTransitionState {
+    /// `Foot+0x68B`: a bridge mismatch was seen.
+    pub(crate) const fn pending_mismatch(self) -> bool {
+        self.pending_mismatch
+    }
+
+    /// The mismatch store, `Foot+0x68B = 1`.
+    pub(super) fn latch(&mut self) {
+        self.pending_mismatch = true;
+    }
 }
 
 /// Read-only runtime bridge row for oracle diagnostics.
@@ -188,7 +202,7 @@ pub(super) fn resolve_cell_transition_bridge_state(
     // and therefore no value that can be absent, so this must not consult the A*
     // layer or any cell-side walkability permission — both are VERA inventions
     // that silently substituted ground level for the deck.
-    position.z = stored_level(dst_cell.ground_level, on_bridge_after);
+    position.set_z(stored_level(dst_cell.ground_level, on_bridge_after));
     // Raw Object Z has a separate setter cadence. Paid Drive/Ship points and
     // Walk commits refresh it; a residual crossing retains it (0x4B253F).
     update
@@ -233,7 +247,7 @@ pub(super) fn resolve_cell_transition_bridge_state_oracle(
         on_bridge_before,
         on_bridge_after,
         bridge_update: format!("{:?}", update),
-        visible_z_after: position.z,
+        visible_z_after: position.z(),
     };
     (update, row)
 }
@@ -258,11 +272,11 @@ pub(super) fn apply_bridge_layer_state(
         BridgeStateUpdate::Unchanged => {}
     }
     if let Some(loco) = locomotor {
-        loco.layer = if *on_bridge {
+        loco.set_layer(if *on_bridge {
             MovementLayer::Bridge
         } else {
             MovementLayer::Ground
-        };
+        });
     }
 }
 
@@ -501,7 +515,7 @@ mod tests {
     /// Legacy coarse cell/deck projection, independent of the authoritative
     /// raw-Z producer. This helper does not establish native GetHeight parity.
     fn assert_native_height(grid: &PathGrid, pos: &Position, on_bridge: bool, step: &str) {
-        let cell = grid.cell(pos.rx, pos.ry).expect("cell in bounds");
+        let cell = grid.cell(pos.rx(), pos.ry()).expect("cell in bounds");
         let expected = (cell.signed_level()
             + if on_bridge {
                 crate::util::lepton::BRIDGE_DECK_HEIGHT_LEVELS as i16
@@ -509,7 +523,7 @@ mod tests {
                 0
             }) as u8;
         assert_eq!(
-            pos.z,
+            pos.z(),
             expected,
             "{step}: z must be terrain({}) + {} when on_bridge={on_bridge}",
             cell.signed_level(),
@@ -533,10 +547,10 @@ mod tests {
             let update =
                 resolve_cell_transition_bridge_state(&mut pos, Some(grid), src, dst, on_bridge);
             on_bridge = projected_on_bridge(on_bridge, update);
-            pos.rx = dst.0;
-            pos.ry = dst.1;
+            pos.set_rx(dst.0);
+            pos.set_ry(dst.1);
             assert_native_height(grid, &pos, on_bridge, &format!("step {x}->{}", x + 1));
-            trace.push((pos.z, on_bridge));
+            trace.push((pos.z(), on_bridge));
         }
         trace
     }
@@ -615,7 +629,7 @@ mod tests {
         );
         assert!(matches!(update, BridgeStateUpdate::Set));
         assert_eq!(
-            pos.z,
+            pos.z(),
             RIVERBED_LEVEL + crate::util::lepton::BRIDGE_DECK_HEIGHT_LEVELS as u8,
             "entry height is terrain + 4, never the stored deck field"
         );
@@ -630,20 +644,11 @@ mod tests {
         let update =
             resolve_cell_transition_bridge_state(&mut pos, Some(&grid), (2, 2), (3, 2), false);
         assert_eq!(update, BridgeStateUpdate::Unchanged);
-        assert_eq!(pos.z, 7, "ground movement keeps the terrain level");
+        assert_eq!(pos.z(), 7, "ground movement keeps the terrain level");
     }
 
     fn pos_at(rx: u16, ry: u16, z: u8) -> Position {
-        Position {
-            rx,
-            ry,
-            z,
-            exact_z_leptons: None,
-            sub_x: SimFixed::ZERO,
-            sub_y: SimFixed::ZERO,
-            // screen_x/screen_y are #[serde(skip, default)] but Position has no
-            // Default impl, so we must initialize them explicitly in struct literals.
-        }
+        Position::new(rx, ry, z, None, SimFixed::ZERO, SimFixed::ZERO)
     }
 
     #[test]
@@ -651,7 +656,7 @@ mod tests {
         let mut p = pos_at(5, 5, 10);
         let update = resolve_cell_transition_bridge_state(&mut p, None, (5, 5), (6, 5), false);
         assert_eq!(update, BridgeStateUpdate::Unchanged);
-        assert_eq!(p.z, 10, "position.z must be untouched on Unchanged");
+        assert_eq!(p.z(), 10, "position.z must be untouched on Unchanged");
     }
 
     #[test]
@@ -662,7 +667,7 @@ mod tests {
         let update =
             resolve_cell_transition_bridge_state(&mut p, Some(&g), (0, 0), (999, 999), false);
         assert_eq!(update, BridgeStateUpdate::Unchanged);
-        assert_eq!(p.z, 10);
+        assert_eq!(p.z(), 10);
     }
 
     #[test]
@@ -676,7 +681,8 @@ mod tests {
         let update = resolve_cell_transition_bridge_state(&mut p, Some(&g), (5, 5), (6, 5), false);
         assert_eq!(update, BridgeStateUpdate::Set);
         assert_eq!(
-            p.z, 4,
+            p.z(),
+            4,
             "Enter height is the destination terrain level (0) plus the deck delta"
         );
     }
@@ -710,7 +716,7 @@ mod tests {
         let mut p = pos_at(6, 5, 4);
         let update = resolve_cell_transition_bridge_state(&mut p, Some(&g), (5, 5), (6, 5), true);
         assert_eq!(update, BridgeStateUpdate::Clear);
-        assert_eq!(p.z, 0, "position.z must equal dst.ground_level on Exit");
+        assert_eq!(p.z(), 0, "position.z must equal dst.ground_level on Exit");
     }
 
     #[test]
@@ -723,7 +729,7 @@ mod tests {
         let mut p = pos_at(6, 5, 4);
         let update = resolve_cell_transition_bridge_state(&mut p, Some(&g), (5, 5), (6, 5), true);
         assert_eq!(update, BridgeStateUpdate::Unchanged);
-        assert_eq!(p.z, 4, "a mover on the deck stays at terrain + 4");
+        assert_eq!(p.z(), 4, "a mover on the deck stays at terrain + 4");
     }
 
     #[test]
@@ -735,7 +741,7 @@ mod tests {
         let mut p = pos_at(6, 5, 0);
         let update = resolve_cell_transition_bridge_state(&mut p, Some(&g), (5, 5), (6, 5), false);
         assert_eq!(update, BridgeStateUpdate::Unchanged);
-        assert_eq!(p.z, 0, "a mover under the span stays on the terrain");
+        assert_eq!(p.z(), 0, "a mover under the span stays on the terrain");
     }
 
     // ------------------------------------------------------------------------
@@ -748,7 +754,7 @@ mod tests {
     /// with sensible defaults — LocomotorState has no `Default` impl.
     fn make_loco(layer: MovementLayer) -> Option<LocomotorState> {
         let mut loco = LocomotorState::for_test_kind(LocomotorKind::Drive);
-        loco.layer = layer;
+        loco.set_layer(layer);
         Some(loco)
     }
 
@@ -781,7 +787,7 @@ mod tests {
             } else {
                 MovementLayer::Ground
             };
-            assert_eq!(loco.unwrap().layer, expected, "{update:?}");
+            assert_eq!(loco.unwrap().layer(), expected, "{update:?}");
         }
     }
 }

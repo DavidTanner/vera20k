@@ -712,7 +712,8 @@ fn a_tower_going_offline_frees_its_captives() {
         .entities
         .get_mut(tower)
         .unwrap()
-        .building_last_operational = true;
+        .building_last_operational
+        .set_for_test(true);
     sim.substrate
         .entities
         .get_mut(tower)
@@ -893,7 +894,6 @@ fn native_decide_unit_fate_corpus() {
 /// The corpus above stubs the seek to find none.
 #[test]
 fn a_captive_sent_to_a_bio_reactor_does_not_hunt() {
-    use crate::sim::passenger::PassengerRole;
     let mut rules = rules_from(&RULES.replace(
         "[BIOR]\nStrength=900\nPassengers=5",
         "[BIOR]\nStrength=900\nPassengers=5\nInfantryAbsorb=yes\nSizeLimit=15",
@@ -917,10 +917,7 @@ fn a_captive_sent_to_a_bio_reactor_does_not_hunt() {
     let entity = sim.substrate.entities.get(gi).unwrap();
     assert_eq!(queued_mission(&sim, gi), Some(MissionType::Enter));
     assert!(entity.building_entry.should_enter_absorber());
-    assert!(matches!(
-        entity.passenger_role,
-        PassengerRole::Boarding { target_transport_id } if target_transport_id == reactor
-    ));
+    assert_eq!(entity.passenger_role.boarding_transport_id(), Some(reactor));
     assert_eq!(sim.scenario_rng.state(), replay.state());
 }
 
@@ -1476,7 +1473,8 @@ fn a_controlled_mcv_cannot_deploy_and_a_controlled_yard_cannot_repack() {
         .entities
         .get_mut(mcv)
         .unwrap()
-        .mcv_deploy_pending = true;
+        .mcv_deploy_pending
+        .set_for_test(true);
     sim.sound_events.clear();
     assert!(!sim.deploy_mcv(
         mcv,
@@ -1485,7 +1483,12 @@ fn a_controlled_mcv_cannot_deploy_and_a_controlled_yard_cannot_repack() {
         crate::sim::world::FrameEffects::default()
     ));
     assert!(
-        !sim.substrate.entities.get(mcv).unwrap().mcv_deploy_pending,
+        !sim.substrate
+            .entities
+            .get(mcv)
+            .unwrap()
+            .mcv_deploy_pending
+            .is_pending(),
         "the refusal clears the pending deploy"
     );
     assert!(
@@ -1539,6 +1542,7 @@ fn selling_a_psychic_tower_frees_its_captives() {
             .get(tower)
             .unwrap()
             .building_last_operational
+            .is_operational()
     );
     let gi = spawn(&mut sim, &rules, "E1", "Americans", 12, 10);
     assert!(sim.capture_unit(
@@ -1632,7 +1636,7 @@ fn a_released_captive_resumes_its_attack_move() {
     ));
     let captive = sim.substrate.entities.get(gi).unwrap();
     assert!(captive.mega_mission.is_attack_move());
-    assert_eq!(captive.navigation.nav_com, None);
+    assert_eq!(captive.navigation.nav_com(), None);
     assert_eq!(
         captive.mission.effective().known(),
         Some(MissionType::Guard)
@@ -1655,7 +1659,7 @@ fn a_released_captive_resumes_its_attack_move() {
     assert_eq!(owner(&sim, gi), "Americans");
     let freed = sim.substrate.entities.get(gi).unwrap();
     assert!(freed.mega_mission.is_attack_move());
-    assert_eq!(freed.navigation.nav_com, Some(NavTargetRef::cell(30, 30)));
+    assert_eq!(freed.navigation.nav_com(), Some(NavTargetRef::cell(30, 30)));
     assert_eq!(freed.mission.effective().known(), Some(MissionType::Move));
 }
 
@@ -1679,10 +1683,8 @@ fn a_captive_boarding_an_absorber_is_freed_first() {
     sim.sound_events.clear();
     // PerCellProcess boards from the absorber's own foundation cell.
     let gi_entity = sim.substrate.entities.get_mut(gi).unwrap();
-    gi_entity.position.rx = 14;
-    gi_entity.passenger_role = PassengerRole::Boarding {
-        target_transport_id: reactor,
-    };
+    gi_entity.position.set_rx(14);
+    gi_entity.passenger_role = PassengerRole::boarding_for_test(reactor);
 
     crate::sim::passenger::tick_passenger_system(
         &mut sim,

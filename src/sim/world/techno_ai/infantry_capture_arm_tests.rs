@@ -93,8 +93,11 @@ const CAPTURE: MissionId = MissionId::from_known(MissionType::Capture);
 
 fn rules() -> RuleSet {
     let art = IniFile::from_str(ART);
-    let mut rules = RuleSet::from_ini_with_fixed_art_for_test(&IniFile::from_str(RULES), &art)
-        .expect("capture arm rules");
+    let mut rules = RuleSet::from_ini_with_fixed_art_for_test(
+        &crate::sim::arena_fixture::clear_ground_ini(RULES),
+        &art,
+    )
+    .expect("capture arm rules");
     rules.install_art_data(ArtRegistry::from_ini(&art));
     rules.bind_animation_sequences(
         &crate::rules::infantry_sequence::parse_infantry_sequence_registry(&art),
@@ -131,7 +134,7 @@ fn assign(sim: &mut Simulation, id: u64, mission: MissionType) {
 }
 
 fn heading(sim: &Simulation, id: u64) -> Option<NavTargetRef> {
-    sim.substrate.entities.get(id)?.navigation.nav_com
+    sim.substrate.entities.get(id)?.navigation.nav_com()
 }
 
 /// The setter heads an `Infiltrate=` infantryman with no NavCom for a
@@ -278,7 +281,12 @@ fn a_computer_spy_holding_a_dying_building_keeps_its_mission() {
         let mut sim = arena(&rules);
         let target = spawn(&mut sim, &rules, "NAPOWR", "Americans", 16, 10);
         let actor = spawn(&mut sim, &rules, "SPY", "Russians", 10, 10);
-        sim.substrate.entities.get_mut(target).unwrap().dying = true;
+        sim.substrate
+            .entities
+            .get_mut(target)
+            .unwrap()
+            .death
+            .set_dying_for_test(true);
         sim.substrate
             .entities
             .get_mut(actor)
@@ -313,7 +321,12 @@ fn a_deployed_computer_infantryman_hunting_without_a_target_undeploys() {
         if stale_target {
             // A dying Target, which the native detach has already cleared.
             let victim = spawn(&mut sim, &rules, "GI", "Americans", 14, 10);
-            sim.substrate.entities.get_mut(victim).unwrap().dying = true;
+            sim.substrate
+                .entities
+                .get_mut(victim)
+                .unwrap()
+                .death
+                .set_dying_for_test(true);
             sim.substrate
                 .entities
                 .get_mut(actor)

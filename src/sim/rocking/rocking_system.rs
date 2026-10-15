@@ -6,9 +6,9 @@
 
 use crate::map::entities::EntityCategory;
 use crate::rules::ruleset::RuleSet;
-use crate::sim::components::RockingState;
 use crate::sim::entity_store::EntityStore;
 use crate::sim::game_entity::GameEntity;
+use crate::sim::rocking::RockingState;
 use crate::sim::rocking::self_destruct::SelfDestructHook;
 use crate::util::fixed_math::SimFixed;
 

@@ -18,7 +18,7 @@ use crate::sim::game_entity::GameEntity;
 /// Prevents destination changes during special states: dying, deploying,
 /// undeploying and falling.
 pub(crate) fn can_accept_destination(entity: &GameEntity) -> bool {
-    if entity.dying {
+    if entity.death.is_dying() {
         return false;
     }
     if entity.building_up() || entity.building_down() {
@@ -47,7 +47,7 @@ pub(crate) fn movement_goal_cell(entity: &GameEntity) -> Option<(u16, u16)> {
         )
     }) {
         if let Some(crate::sim::components::NavTargetRef::Cell { rx, ry }) =
-            entity.navigation.nav_com
+            entity.navigation.nav_com()
         {
             return Some((rx, ry));
         }
@@ -55,7 +55,7 @@ pub(crate) fn movement_goal_cell(entity: &GameEntity) -> Option<(u16, u16)> {
             .or_else(|| super::track_head::committed_track_head(entity))
             .map(|coord| ((coord.x / 256) as u16, (coord.y / 256) as u16));
     }
-    match entity.navigation.nav_com {
+    match entity.navigation.nav_com() {
         Some(crate::sim::components::NavTargetRef::Cell { rx, ry }) => Some((rx, ry)),
         _ => None,
     }
@@ -93,7 +93,7 @@ impl DestinationTiming {
         let path = &mut entity.navigation.path_runtime;
         path.start_movement(self.binary_frame, 0);
         path.start_blocked(self.binary_frame, self.blockage_path_delay_ticks);
-        path.path_blocked = false;
+        path.set_path_blocked(false);
     }
 }
 
@@ -118,7 +118,7 @@ pub(crate) fn prepare_walk_destination(
     if !entity
         .locomotor
         .as_ref()
-        .is_some_and(|l| l.kind == LocomotorKind::Walk)
+        .is_some_and(|l| l.active_kind() == LocomotorKind::Walk)
     {
         return false;
     }

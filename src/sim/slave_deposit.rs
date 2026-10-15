@@ -168,14 +168,14 @@ mod tests {
             if id == 1 {
                 e.slave_manager = manager(&mut interner, &[2]);
                 // Construction stamps the type's `Foundation=2x2`.
-                e.foundation = "2x2".to_string();
+                e.type_facts.set_foundation_for_test("2x2".to_string());
             }
             if id == 2 {
                 e.slave = SlaveLink::for_test(Some(1), Vec::new());
             }
             if id == 3 {
-                e.position.sub_x = SimFixed::from_num(32);
-                e.position.sub_y = SimFixed::from_num(32);
+                e.position.set_sub_x(SimFixed::from_num(32));
+                e.position.set_sub_y(SimFixed::from_num(32));
             }
             entities.insert(e);
         }

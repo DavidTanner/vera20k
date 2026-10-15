@@ -90,7 +90,7 @@ fn escape_counter_matches_native_cell_list_and_raw_owner_gates() {
         mover.set_owner_for_test(ours);
         mover.set_type_ref_for_test(sim.intern("MOVER"));
         mover.set_category_for_test(EntityCategory::Infantry);
-        mover.in_playfield = true;
+        mover.set_in_playfield(true);
         mover.locomotor = Some(LocomotorState::for_test_kind(LocomotorKind::Walk));
         sim.substrate.entities.insert(mover);
         sim.mission_assign_exact(90, crate::sim::mission::MissionId::from_raw(5), 0)
@@ -109,16 +109,16 @@ fn escape_counter_matches_native_cell_list_and_raw_owner_gates() {
             blocker.set_owner_for_test(enemy);
             blocker.set_type_ref_for_test(sim.intern(name));
             blocker.set_category_for_test(category);
-            blocker.position.sub_x = SimFixed::from_num(128);
-            blocker.position.sub_y = SimFixed::from_num(128);
-            blocker.foot_occupation_enabled = true;
+            blocker.position.set_sub_x(SimFixed::from_num(128));
+            blocker.position.set_sub_y(SimFixed::from_num(128));
+            blocker.set_foot_occupation_enabled(true);
             let moving = input["occupant"] == "moving";
             if infantry {
                 let mut locomotor = LocomotorState::for_test_kind(LocomotorKind::Walk);
-                let LocomotorRuntimePayload::Walk(walk) = &mut locomotor.runtime_payload else {
+                let LocomotorRuntimePayload::Walk(walk) = locomotor.runtime_payload_mut() else {
                     unreachable!()
                 };
-                walk.moving = moving;
+                walk.set_moving(moving);
                 blocker.locomotor = Some(locomotor);
             } else if category == EntityCategory::Unit {
                 blocker.locomotor = Some(LocomotorState::for_test_kind(LocomotorKind::Drive));

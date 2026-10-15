@@ -4,7 +4,7 @@
 //! access, no rules dependency. Multiple impulses in the same tick stack
 //! additively before the per-axis velocity cap is enforced.
 
-use crate::sim::components::RockingState;
+use crate::sim::rocking::RockingState;
 use crate::sim::rocking::rocking_system::{FORCE_SATURATION, IMPULSE_VEL_CAP};
 use crate::util::fixed_math::SimFixed;
 

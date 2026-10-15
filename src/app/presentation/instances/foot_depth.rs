@@ -83,12 +83,12 @@ fn coefficients(object: Option<&ObjectType>) -> FootDepthCoefficients {
 
 fn world_xy(entity: &GameEntity) -> [i32; 2] {
     [
-        i32::from(entity.position.rx)
+        i32::from(entity.position.rx())
             .wrapping_mul(256)
-            .wrapping_add(entity.position.sub_x.to_num::<i32>()),
-        i32::from(entity.position.ry)
+            .wrapping_add(entity.position.sub_x().to_num::<i32>()),
+        i32::from(entity.position.ry())
             .wrapping_mul(256)
-            .wrapping_add(entity.position.sub_y.to_num::<i32>()),
+            .wrapping_add(entity.position.sub_y().to_num::<i32>()),
     ]
 }
 
@@ -107,6 +107,7 @@ fn draw_type<'a>(
     if unloading_body && actual.is_some_and(|o| o.harvester) {
         entity
             .display_type_override
+            .image()
             .and_then(|id| runtime.resources.rules.object(view.interner().resolve(id)))
             .or(actual)
     } else {
@@ -178,7 +179,7 @@ fn unit_bridge_condition_in_runtime(
     }
     let view = runtime.view();
     let factory = allow_factory
-        && entity.navigation.nav_com.is_some()
+        && entity.navigation.nav_com().is_some()
         && entity
             .radio_contacts
             .slot(0)
@@ -198,7 +199,7 @@ fn unit_bridge_condition_in_runtime(
     crate::render::foot_depth::unit_composite_split(
         FootDepthContext {
             cell: [(xy[0] / 256) as i16, (xy[1] / 256) as i16],
-            on_bridge: entity.on_bridge,
+            on_bridge: entity.on_bridge(),
             bridge_set_base: terrain.concrete_bridge_set_base(),
             ..Default::default()
         },
@@ -250,7 +251,7 @@ fn shp_z_adjust_in_runtime(
     else {
         return height_only as f32;
     };
-    let surface = ground.wrapping_add(if entity.on_bridge {
+    let surface = ground.wrapping_add(if entity.on_bridge() {
         crate::util::lepton::BRIDGE_DECK_HEIGHT_LEPTONS
     } else {
         0
@@ -259,11 +260,11 @@ fn shp_z_adjust_in_runtime(
     // independent-altitude inputs can still lack that coordinate; retain their
     // semantic altitude for the grounded gate. Exact coordinates use the full
     // native GetHeight subtraction without a second render-side terrain snap.
-    let height_above_ground = if entity.position.exact_z_leptons.is_some() {
+    let height_above_ground = if entity.position.exact_z_leptons().is_some() {
         world_z.wrapping_sub(surface)
     } else {
         world_z.wrapping_sub(
-            i32::from(entity.position.z as i8) * crate::util::lepton::GROUND_LEVEL_HEIGHT_LEPTONS,
+            i32::from(entity.position.z() as i8) * crate::util::lepton::GROUND_LEVEL_HEIGHT_LEPTONS,
         )
     };
     if height_above_ground == 0 {
@@ -310,7 +311,8 @@ fn unit_z_adjust_in_runtime(
     let coord = [(xy[0] / 256) as i16, (xy[1] / 256) as i16];
     let special = if entity.category() == EntityCategory::Unit {
         let contact = entity
-            .dock_entered_with
+            .tether
+            .partner()
             .and_then(|_| entity.radio_contacts.slot(0))
             .and_then(|id| view.entities().get(id));
         if contact.is_some_and(|other| {
@@ -343,7 +345,7 @@ fn unit_z_adjust_in_runtime(
     };
     let context = FootDepthContext {
         cell: coord,
-        on_bridge: entity.on_bridge,
+        on_bridge: entity.on_bridge(),
         facing_u16: entity.body_facing_current(view.session().binary_frame),
         world_z_leptons: world_z,
         // Drive 0x4B4870, Ship 0x6A3EA0, and the shared 0x55ABA0 inherited

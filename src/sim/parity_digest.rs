@@ -108,11 +108,11 @@ impl ParityDigest {
             entity_state_hash = fnv1a64_fold_i32(entity_state_hash, entity.health.current());
             entity_state_hash = fnv1a64_fold_i32(
                 entity_state_hash,
-                absolute_axis(entity.position.rx, entity.position.sub_x),
+                absolute_axis(entity.position.rx(), entity.position.sub_x()),
             );
             entity_state_hash = fnv1a64_fold_i32(
                 entity_state_hash,
-                absolute_axis(entity.position.ry, entity.position.sub_y),
+                absolute_axis(entity.position.ry(), entity.position.sub_y()),
             );
             entity_count += 1;
         }

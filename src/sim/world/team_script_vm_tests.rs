@@ -366,7 +366,8 @@ fn team_fixture(
     buildings: [(&str, u16, u16); 2],
     script: &str,
 ) -> (Simulation, RuleSet, u64, [u64; 2], [u64; 2]) {
-    let rules = RuleSet::from_ini(&IniFile::from_str(rules)).expect("minimal rules");
+    let rules = RuleSet::from_ini(&crate::sim::arena_fixture::clear_ground_ini(rules))
+        .expect("minimal rules");
     let comparison = zero_ai_trigger_comparison();
     let aimd = IniFile::from_str(&format!(
         "[TeamTypes]\n0=TT\n[TT]\nScript=S\nTaskForce=F\n\
@@ -471,7 +472,7 @@ fn a_computer_team_gathers_outside_the_enemy_base() {
             if let Some(nav) = sim
                 .entities()
                 .get(member)
-                .and_then(|entity| entity.navigation.nav_com)
+                .and_then(|entity| entity.navigation.nav_com())
                 && !destinations.contains(&nav)
             {
                 destinations.push(nav);
@@ -529,10 +530,10 @@ fn a_computer_aircraft_team_flies_to_its_gathering_cell() {
                 continue;
             };
             sent |= matches!(
-                entity.navigation.nav_com,
+                entity.navigation.nav_com(),
                 Some(crate::sim::components::NavTargetRef::Cell { rx, ry }) if near_seed(rx, ry)
             );
-            arrived[n] |= near_seed(entity.position.rx, entity.position.ry);
+            arrived[n] |= near_seed(entity.position.rx(), entity.position.ry());
         }
         if sim.team_script_vm.team(team_id).is_none() {
             break;
@@ -650,6 +651,21 @@ fn super_team_fixture(script: &str) -> (Simulation, RuleSet, u64, [u64; 2], [u64
         [("PLANTA", 18, 8), ("PLANTB", 18, 13)],
         script,
     );
+    // House construction retains every stock entry, including the ungranted
+    // ChronoWarp that Fire_SW reaches via PostClick. Clicking never constructs.
+    for owner in sim.session.house_order.clone() {
+        for name in &rules.super_weapon_order {
+            let id = sim.interner.intern(name);
+            sim.super_weapons.entry(owner).or_default().insert(
+                id,
+                crate::sim::superweapon::SuperWeaponInstance::new(
+                    id,
+                    owner,
+                    sim.session.binary_frame as i32,
+                ),
+            );
+        }
+    }
     for (building, rx, ry) in [("IRON", 4, 4), ("CHRONO", 4, 8)] {
         sim.spawn_object_at_height(building, "Computer", rx, ry, 0, 0, &rules)
             .expect("building spawns");
@@ -660,10 +676,9 @@ fn super_team_fixture(script: &str) -> (Simulation, RuleSet, u64, [u64; 2], [u64
     for name in ["IronCurtainSpecial", "ChronoSphereSpecial"] {
         let id = sim.interner.intern(name);
         let mut instance = crate::sim::superweapon::SuperWeaponInstance::new(id, owner, 0);
-        instance.activate(
-            rules.super_weapon(name).unwrap().recharge_time_frames,
-            sim.session.binary_frame,
-        );
+        instance.is_active = true;
+        instance.charge_start_tick = sim.session.binary_frame as i32;
+        instance.charge_duration = rules.super_weapon(name).unwrap().recharge_time_frames;
         instance.is_ready = true;
         sim.super_weapons
             .entry(owner)
@@ -710,7 +725,7 @@ fn a_computer_team_iron_curtains_itself() {
     for member in members {
         let entity = sim.entities().get(member).expect("member");
         assert_eq!(
-            entity.invulnerability.as_ref().map(|state| state.kind),
+            entity.invulnerability.as_ref().map(|state| state.kind()),
             Some(crate::sim::superweapon::invulnerability::InvulnKind::IronCurtain),
             "member {member} is under the Iron Curtain"
         );
@@ -789,7 +804,7 @@ fn a_computer_team_chronoshifts_onto_the_enemy_power_plant() {
     let (mut sim, rules, team_id, members, [_, bigger]) = super_team_fixture("0=57,9\n1=49,0");
     let fires = super_fires(&mut sim, &rules, team_id);
     let plant = sim.entities().get(bigger).expect("plant");
-    let plant_cell = (plant.position.rx, plant.position.ry);
+    let plant_cell = (plant.position.rx(), plant.position.ry());
     assert_eq!(
         fires,
         vec![
@@ -815,7 +830,7 @@ fn a_computer_team_chronoshifts_onto_the_enemy_power_plant() {
     for (member, cell) in members.into_iter().zip(expected) {
         let entity = sim.entities().get(member).expect("member");
         assert_eq!(
-            (entity.position.rx, entity.position.ry),
+            (entity.position.rx(), entity.position.ry()),
             cell,
             "member {member} arrived beside the plant"
         );

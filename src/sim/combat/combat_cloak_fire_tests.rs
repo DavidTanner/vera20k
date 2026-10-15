@@ -83,7 +83,7 @@ fn resolve_once(
 fn bsub_cruise_launcher_uncloaks_without_same_tick_fire_then_retry_fires() {
     let rules = boomer_rules();
     let mut entities = entities("TGTWOOD");
-    let rearm_before = entities.get(1).unwrap().rearm_timer;
+    let rearm_before = entities.get(1).unwrap().rearm_timer.timer();
     let mut interner = test_interner();
     let mut sounds = Vec::new();
     let mut blocked = CombatEmit::default();
@@ -97,7 +97,7 @@ fn bsub_cruise_launcher_uncloaks_without_same_tick_fire_then_retry_fires() {
     );
 
     assert_eq!(
-        entities.get(1).unwrap().cloak.as_ref().unwrap().state,
+        entities.get(1).unwrap().cloak.as_ref().unwrap().state(),
         3,
         "0x736DF0 case 9 calls StartUncloaking"
     );
@@ -109,7 +109,7 @@ fn bsub_cruise_launcher_uncloaks_without_same_tick_fire_then_retry_fires() {
     assert!(blocked.damage_events.is_empty());
     assert!(blocked.projectile_spawns.is_empty());
     assert_eq!(
-        entities.get(1).unwrap().rearm_timer,
+        entities.get(1).unwrap().rearm_timer.timer(),
         rearm_before,
         "no ROF/burst write on the surfacing visit"
     );
@@ -152,7 +152,7 @@ fn bsub_cruise_launcher_uncloaks_without_same_tick_fire_then_retry_fires() {
 
     // Represent completion of StartUncloaking's ordinary state-3 progression.
     let cloak = entities.get_mut(1).unwrap().cloak.as_mut().unwrap();
-    cloak.state = 0;
+    cloak.set_state_for_test(0);
     let mut retry = CombatEmit::default();
     resolve_once(
         &mut entities,
@@ -188,7 +188,7 @@ fn bsub_boomer_torpedo_explicit_no_fires_while_fully_cloaked() {
 
     resolve_once(&mut entities, &rules, &mut interner, &mut sounds, &mut out);
 
-    assert_eq!(entities.get(1).unwrap().cloak.as_ref().unwrap().state, 2);
+    assert_eq!(entities.get(1).unwrap().cloak.as_ref().unwrap().state(), 2);
     assert_eq!(out.fire_events.len(), 1);
     assert_eq!(
         interner.resolve(out.fire_events[0].weapon_id),

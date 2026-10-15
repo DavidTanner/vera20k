@@ -244,7 +244,7 @@ pub(crate) fn deactivated_unit_light(
     tint: [f32; 3],
     light: crate::render::palette_light::PaletteLight,
 ) -> ([f32; 3], crate::render::palette_light::PaletteLight) {
-    if entity.deactivated {
+    if entity.deactivated.is_offline() {
         with_intensity(tint, light, light.brightness() / 2)
     } else {
         (tint, light)
@@ -289,7 +289,7 @@ pub(crate) fn building_colour_word(
     shrouded: impl FnOnce() -> bool,
 ) -> u16 {
     let shielded = building.invulnerability.as_ref().is_some_and(|curtain| {
-        curtain.kind == crate::sim::superweapon::invulnerability::InvulnKind::ForceShield
+        curtain.kind() == crate::sim::superweapon::invulnerability::InvulnKind::ForceShield
             && crate::sim::superweapon::invulnerability::is_invulnerable(
                 Some(curtain),
                 sim.session.binary_frame,
@@ -808,7 +808,7 @@ mod palette_producer_tests {
                 10,
                 category,
             );
-            entity.position.exact_z_leptons = Some(1500);
+            entity.position.set_exact_z_leptons(Some(1500));
             body_extra_light(&entity, &rules, sim, None)
         };
         assert_eq!(extra(&sim, EntityCategory::Unit), 100);

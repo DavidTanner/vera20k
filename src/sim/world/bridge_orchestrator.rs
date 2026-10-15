@@ -16,7 +16,8 @@ use std::collections::BTreeSet;
 
 #[path = "bridge_damage_dispatch.rs"]
 mod damage_dispatch;
-use damage_dispatch::{BridgeDamageDrivers, LiveCells};
+pub(crate) use damage_dispatch::BridgeDamageDrivers;
+use damage_dispatch::LiveCells;
 
 #[path = "bridge_ground.rs"]
 mod ground_fallout;
@@ -100,6 +101,57 @@ pub(crate) fn apply_bridge_damage_events_with_overlay_registry(
             apply_one_bridge_damage_event(sim, rules, event, overlay_registry, frame_effects);
     }
     collapsed
+}
+
+/// `TActionClass::Execute`63 (`0x006DDDC9`) -> DamageAtWaypoint6E0490.
+/// Five synchronous AreaDamage489280 visits precede the direct587180 tail.
+/// Re-query the waypoint before each visit: an earlier bridge collapse can
+/// change the following height. +90 is the waypoint, not the trailing+44.
+/// Original dispatch/geometry and NANRCT receiver controls:
+/// `tools/spatial_oracle/trigger_damage_at_waypoint.json` (+ metadata).
+/// Receiver and bridge state remain with their existing shared owners.
+pub(crate) fn damage_at_waypoint(
+    sim: &mut Simulation,
+    rules: &RuleSet,
+    waypoint: i32,
+    overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
+    frame_effects: FrameEffects<'_>,
+) -> Option<bool> {
+    use crate::sim::combat::{RAD_NO_ATTACKER, world_receiver::apply_area_damage};
+    use crate::sim::projectile::ProjectileCoord;
+
+    let warhead = rules.warhead(&rules.bridge_warheads.c4_name)?;
+    let warhead_id = sim.interner.intern(&rules.bridge_warheads.c4_name);
+    let mut changed = false;
+    for (dx, dy) in [(0, 0), (85, 85), (-85, 85), (85, -85), (-85, -85)] {
+        let [x, y, z] = sim.trigger_waypoint_coord(waypoint)?;
+        changed |= apply_area_damage(
+            sim,
+            rules,
+            overlay_registry,
+            ProjectileCoord::new(x.wrapping_add(dx), y.wrapping_add(dy), z),
+            100,
+            warhead,
+            (RAD_NO_ATTACKER, None, warhead_id),
+            frame_effects,
+        );
+    }
+    // IsWaypointValid68BD80 gates only the tail, after all five area visits.
+    // The retained unset coordinate is zero; the shared session bounds the index.
+    if let Some(cell) = sim.session.waypoint_cell(waypoint)
+        && cell != (0, 0)
+    {
+        let mut drivers = BridgeDamageDrivers::new(sim, rules, overlay_registry, frame_effects);
+        for _ in 0..4 {
+            if drivers.apply_damage_to_cell(cell) {
+                break;
+            }
+        }
+        changed |= drivers.collapsed;
+        // 6E0705..6E077A invalidates a256px tactical rectangle. VERA redraws
+        // the whole tactical scene each frame; no retained screen pixels exist.
+    }
+    Some(changed)
 }
 
 fn apply_one_bridge_damage_event(
@@ -985,7 +1037,7 @@ mod tests {
     /// Build a Drive locomotor on the Bridge layer (mimics `high=true` spawn).
     fn drive_loco_on_bridge() -> LocomotorState {
         let mut loco = LocomotorState::for_test_kind(LocomotorKind::Drive);
-        loco.layer = MovementLayer::Bridge;
+        loco.set_layer(MovementLayer::Bridge);
         loco
     }
 
@@ -1005,9 +1057,9 @@ mod tests {
             5,
             true,
         );
-        entity.on_bridge = true;
+        entity.set_on_bridge(true);
         entity.lifecycle.set_in_limbo_for_test(false);
-        entity.lifecycle.cell_marked = true;
+        entity.lifecycle.set_cell_marked(true);
         entity.locomotor = Some(drive_loco_on_bridge());
         sim.substrate.entities.insert(entity);
         1
@@ -1026,7 +1078,7 @@ mod tests {
             .get_mut(id)
             .unwrap()
             .navigation
-            .nav_com = order;
+            .set_nav_com(order);
         sim.substrate.occupancy.add(
             5,
             5,
@@ -1043,17 +1095,18 @@ mod tests {
             .entities
             .get(id)
             .expect("deck entity remains until the landing receiver");
-        assert_eq!(e.position.z, 3, "Location is retained");
+        assert_eq!(e.position.z(), 3, "Location is retained");
         assert!(e.was_dropped_as_bomb() && e.is_falling_down());
-        assert!(!e.on_bridge, "OnBridge cleared by DropIn");
+        assert!(!e.on_bridge(), "OnBridge cleared by DropIn");
         assert_eq!(
-            e.navigation.nav_com, order,
+            e.navigation.nav_com(),
+            order,
             "DropAsBomb does not write orders"
         );
         assert_eq!(e.health.current(), 256, "DropIn never harms — no damage");
         let loco = e.locomotor.as_ref().expect("locomotor");
         assert_eq!(
-            loco.layer,
+            loco.layer(),
             MovementLayer::Bridge,
             "DropAsBomb does not write locomotor storage; live list queries use OnBridge"
         );
@@ -1074,7 +1127,7 @@ mod tests {
         sim.resolved_terrain = Some(water_below_bridge_terrain(3));
         let id = spawn_deck_unit(&mut sim);
         let entity = sim.substrate.entities.get_mut(id).unwrap();
-        entity.position.exact_z_leptons = Some(1000);
+        entity.position.set_exact_z_leptons(Some(1000));
         entity.set_falling_down_for_test(true);
         sim.substrate.occupancy.add(
             5,
@@ -1088,9 +1141,9 @@ mod tests {
         drop_in_bridge_deck_entities(&mut sim, 5, 5, super::super::UninitContext::default());
 
         let e = sim.substrate.entities.get(id).unwrap();
-        assert!(!e.on_bridge);
+        assert!(!e.on_bridge());
         assert!(e.is_falling_down());
-        assert_eq!(e.position.exact_z_leptons, Some(1000));
+        assert_eq!(e.position.exact_z_leptons(), Some(1000));
         let mut frames = 0;
         while !sim.advance_fall(
             id,
@@ -1108,7 +1161,7 @@ mod tests {
                 .get(id)
                 .unwrap()
                 .position
-                .exact_z_leptons,
+                .exact_z_leptons(),
             Some(0)
         );
     }
@@ -1535,7 +1588,8 @@ mod tests {
             let sim = &scene.runtime.simulation;
             assert!(
                 sim.entities().values().any(|e| {
-                    (e.position.rx, e.position.ry) == hut && sim.resolve(e.type_ref()) == "CABHUT"
+                    (e.position.rx(), e.position.ry()) == hut
+                        && sim.resolve(e.type_ref()) == "CABHUT"
                 }),
                 "{map}: a CABHUT stands at {hut:?}"
             );
@@ -1627,9 +1681,9 @@ mod tests {
             5,
             true,
         );
-        entity.on_bridge = false; // ground-layer occupant
+        entity.set_on_bridge(false); // ground-layer occupant
         let mut loco = drive_loco_on_bridge();
-        loco.layer = MovementLayer::Bridge;
+        loco.set_layer(MovementLayer::Bridge);
         entity.locomotor = Some(loco);
         sim.substrate.entities.insert(entity);
         sim.substrate.occupancy.add(
@@ -1650,8 +1704,8 @@ mod tests {
             .get(1)
             .expect("ground entity untouched");
         assert_eq!(e.health.current(), 256);
-        assert!(!e.on_bridge);
-        assert_eq!(e.locomotor.as_ref().unwrap().layer, MovementLayer::Bridge);
+        assert!(!e.on_bridge());
+        assert_eq!(e.locomotor.as_ref().unwrap().layer(), MovementLayer::Bridge);
         let cell = sim.substrate.occupancy.get(5, 5).expect("ground occupancy");
         assert_eq!(cell.count_on(MovementLayer::Ground), 1);
         assert_eq!(cell.count_on(MovementLayer::Bridge), 0);
@@ -1697,9 +1751,9 @@ mod tests {
             true,
         );
         let mut loco = drive_loco_on_bridge();
-        loco.layer = MovementLayer::Air;
+        loco.set_layer(MovementLayer::Air);
         air.locomotor = Some(loco);
-        air.on_bridge = false;
+        air.set_on_bridge(false);
         sim.substrate.entities.insert(air);
 
         // Consumed Engineers can retain positive HP after UnInit until the
@@ -1728,7 +1782,7 @@ mod tests {
         )).unwrap();
         let ground = sim.substrate.entities.get_mut(1).unwrap();
         ground.lifecycle.set_in_limbo_for_test(false);
-        ground.lifecycle.cell_marked = true;
+        ground.lifecycle.set_cell_marked(true);
         sim.substrate.occupancy.add(
             5,
             5,
@@ -1753,12 +1807,12 @@ mod tests {
             "unlinked retired object is not a ground receiver"
         );
         assert!(!retired.lifecycle.object_alive());
-        assert!(retired.infantry_terminal.is_none());
+        assert!(retired.death.infantry_terminal().is_none());
         assert_eq!(sim.substrate.pending_delete.object_ids(), vec![3, 1]);
 
         let g = sim.substrate.entities.get(1).expect("ground unit present");
         assert_eq!(g.health.current(), 0, "ground occupant is force-killed");
-        assert!(g.dying, "ground occupant flagged dying");
+        assert!(g.death.is_dying(), "ground occupant flagged dying");
 
         let a = sim.substrate.entities.get(2).expect("aircraft present");
         assert_eq!(
@@ -1766,7 +1820,7 @@ mod tests {
             256,
             "aircraft overflying the collapse cell must NOT be killed"
         );
-        assert!(!a.dying, "aircraft not flagged dying");
+        assert!(!a.death.is_dying(), "aircraft not flagged dying");
     }
 
     /// `CellClass::BlowUpBridge @ 0x0047DDAE` kills each ground occupant
@@ -1817,7 +1871,7 @@ mod tests {
         for id in 1..=3 {
             let unit = sim.substrate.entities.get_mut(id).unwrap();
             unit.lifecycle.set_in_limbo_for_test(false);
-            unit.lifecycle.cell_marked = true;
+            unit.lifecycle.set_cell_marked(true);
             sim.substrate.occupancy.add(
                 5,
                 5,
@@ -1850,7 +1904,7 @@ mod tests {
             "each human kill publishes its type-7 request (the client's radar              array dedupes them); the AI kill is silent"
         );
         for id in 1..=3 {
-            assert!(sim.substrate.entities.get(id).unwrap().dying);
+            assert!(sim.substrate.entities.get(id).unwrap().death.is_dying());
         }
     }
 }

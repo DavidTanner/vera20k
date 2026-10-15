@@ -104,15 +104,6 @@ fn ore_rung_publishes_native_cell_attributes_before_live_object_turns() {
                 .unwrap()
                 .resolved_cell_is_current(cell, false)
         );
-        for (&speed_type, costs) in &sim.terrain_costs {
-            assert_eq!(
-                costs.ground_cost_at(x, y),
-                cell.speed_costs
-                    .cost_for_speed_type(speed_type)
-                    .unwrap_or(0),
-                "{name}: new ore's movement row is visible before object AI"
-            );
-        }
     }
 }
 

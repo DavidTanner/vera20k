@@ -16,7 +16,6 @@ use crate::sim::movement::locomotor::MovementLayer;
 use crate::sim::overlay_grid::OverlayGrid;
 use crate::sim::pathfinding::PathGrid;
 use crate::sim::pathfinding::passability::LandType;
-use crate::sim::pathfinding::terrain_cost::TerrainCostGrid;
 use crate::sim::pathfinding::zone_hierarchy::{
     ZoneEdgeRecord, ZoneHierarchy, ZoneLevelGraph, ZoneRecord,
 };
@@ -194,16 +193,6 @@ fn install_world(
     // Map-load authority retains Size height beside the bounds (the shared
     // Foot zone precheck reads both).
     sim.playfield_size_height = Some(i32::from(terrain.height()));
-    sim.terrain_costs = SpeedType::ALL_WITH_COSTS
-        .iter()
-        .copied()
-        .map(|speed_type| {
-            (
-                speed_type,
-                TerrainCostGrid::from_resolved_terrain(&terrain, speed_type),
-            )
-        })
-        .collect();
     sim.resolved_terrain = Some(terrain);
     sim.overlay_grid = Some(OverlayGrid::new(GRID_SIZE, GRID_SIZE));
     for &(rx, ry) in ore_cells {
@@ -222,12 +211,10 @@ fn install_world(
         sim.zone_grid = None;
     }
     for &(rx, ry) in ore_cells {
+        let cell = sim.resolved_terrain.as_ref().unwrap().cell(rx, ry).unwrap();
         assert_eq!(
-            sim.terrain_costs
-                .get(&SpeedType::Track)
-                .expect("Track terrain costs")
-                .cost_at(rx, ry),
-            70,
+            cell.speed_costs.cost_for_speed_type(SpeedType::Track),
+            Some(70)
         );
     }
 }
@@ -288,8 +275,8 @@ fn spawn_stock_miner(
     let entity = sim.substrate.entities.get(id).expect("spawned miner");
     assert!(entity.lifecycle.object_alive());
     assert!(!entity.lifecycle.in_limbo());
-    assert!(entity.lifecycle.cell_marked);
-    assert!(entity.in_logic_vector);
+    assert!(entity.lifecycle.cell_marked());
+    assert!(entity.in_logic_vector.is_member());
     assert!(sim.live_object_order_snapshot().contains(&id));
     assert_eq!(
         entity.miner.as_ref().expect("miner component").kind,
@@ -300,7 +287,7 @@ fn spawn_stock_miner(
             .locomotor
             .as_ref()
             .expect("stock locomotor")
-            .movement_zone,
+            .movement_zone(),
         MovementZone::Crusher,
     );
     id
@@ -365,8 +352,8 @@ fn spawn_stock_refinery(
     let entity = sim.substrate.entities.get(id).expect("spawned refinery");
     assert!(entity.lifecycle.object_alive());
     assert!(!entity.lifecycle.in_limbo());
-    assert!(entity.lifecycle.cell_marked);
-    assert!(entity.in_logic_vector);
+    assert!(entity.lifecycle.cell_marked());
+    assert!(entity.in_logic_vector.is_member());
     assert!(sim.live_object_order_snapshot().contains(&id));
     id
 }
@@ -419,7 +406,12 @@ fn position_tuple(sim: &Simulation, entity_id: u64) -> (u16, u16, SimFixed, SimF
         .get(entity_id)
         .expect("entity")
         .position;
-    (position.rx, position.ry, position.sub_x, position.sub_y)
+    (
+        position.rx(),
+        position.ry(),
+        position.sub_x(),
+        position.sub_y(),
+    )
 }
 
 fn assert_ore_intact(sim: &Simulation, oracle: &OutboundContractOracle, target: (u16, u16)) {
@@ -443,7 +435,7 @@ fn assert_command_state(sim: &Simulation, entity_id: u64, target: (u16, u16)) {
         Some(target)
     );
     assert_eq!(
-        entity.navigation.nav_com,
+        entity.navigation.nav_com(),
         Some(NavTargetRef::cell(target.0, target.1)),
     );
     let expected_coord = DriveCoord::cell(target.0, target.1, 0);
@@ -460,19 +452,23 @@ fn assert_command_state(sim: &Simulation, entity_id: u64, target: (u16, u16)) {
     let expected_head = DriveCoord::cell(START.0, START.1 - 1, 0);
     assert_eq!(drive.head_to(), Some(expected_head));
     assert_eq!(
-        drive.track().turn_index,
+        drive.track().turn_index(),
         0,
         "accepted northbound straight track"
     );
-    assert!(drive.track().cursor >= 0);
-    assert!(!drive.track().reversed);
-    assert!(!entity.navigation.path_replay.directions.is_empty());
+    assert!(drive.track().cursor() >= 0);
+    assert!(!drive.track().reversed());
+    assert!(!entity.navigation.path_replay.directions().is_empty());
     // The Harvest handler dispatches BEFORE Phase-1 ground movement (the
     // native handler→locomotion order), so by observation time the drive has
     // already begun accelerating in the same tick the command was issued.
     assert!(entity.foot_speed.applied_fraction() > SIM_ZERO);
     assert_eq!(
-        entity.locomotor.as_ref().expect("active locomotor").kind,
+        entity
+            .locomotor
+            .as_ref()
+            .expect("active locomotor")
+            .active_kind(),
         LocomotorKind::Drive,
     );
 }
@@ -493,10 +489,10 @@ fn locomotor_tuple(
         .and_then(|entity| entity.locomotor.as_ref())
         .expect("locomotor");
     (
-        locomotor.kind,
+        locomotor.active_kind(),
         locomotor.effective_kind(),
-        locomotor.piggyback.clone(),
-        locomotor.layer,
+        locomotor.piggyback().clone(),
+        locomotor.layer(),
     )
 }
 
@@ -565,7 +561,7 @@ fn production_stock_miners_use_drive_command_for_adjacent_ore() {
         // Mission_Harvest state 0 holds through the drive (`0x0073E8C3`).
         assert_eq!(entity.miner_state().unwrap(), MinerState::SearchOre);
         assert_eq!(
-            entity.navigation.nav_com,
+            entity.navigation.nav_com(),
             Some(NavTargetRef::cell(target.0, target.1))
         );
         // The full outbound command is installed by the scan dispatch itself.
@@ -578,19 +574,19 @@ fn production_stock_miners_use_drive_command_for_adjacent_ore() {
                 // Teleport stays the PRIMARY locomotor and the outbound leg rides
                 // a Drive piggyback on top of it — that is what makes a stock
                 // chrono miner DRIVE to its first ore field instead of warping.
-                assert_eq!(locomotor.kind, LocomotorKind::Drive);
+                assert_eq!(locomotor.active_kind(), LocomotorKind::Drive);
                 assert_eq!(locomotor.effective_kind(), LocomotorKind::Teleport);
                 assert_eq!(
                     locomotor
-                        .piggyback
+                        .piggyback()
                         .as_ref()
                         .expect("CMIN Drive piggyback")
-                        .kind,
+                        .active_kind(),
                     LocomotorKind::Teleport,
                 );
             } else {
                 assert_eq!(locomotor.effective_kind(), LocomotorKind::Drive);
-                assert_eq!(locomotor.piggyback, None);
+                assert!(locomotor.piggyback().is_none());
             }
             assert!(entity.teleport_state().is_none());
         }
@@ -638,9 +634,9 @@ fn production_stock_miners_use_drive_command_for_adjacent_ore() {
                 && crate::sim::movement::motion_query::is_moving(&entity) == Some(true)
             {
                 let locomotor = entity.locomotor.as_ref().expect("CMIN locomotor");
-                assert_eq!(locomotor.kind, LocomotorKind::Drive);
+                assert_eq!(locomotor.active_kind(), LocomotorKind::Drive);
                 assert_eq!(locomotor.effective_kind(), LocomotorKind::Teleport);
-                assert!(locomotor.piggyback.is_some());
+                assert!(locomotor.piggyback().is_some());
             }
             if reached_harvest {
                 break;
@@ -649,12 +645,12 @@ fn production_stock_miners_use_drive_command_for_adjacent_ore() {
         assert!(physically_departed, "{type_id} must leave {START:?}");
         assert!(reached_harvest, "{type_id} must reach Harvest");
         let entity = sim.substrate.entities.get(entity_id).expect("miner");
-        assert_eq!(entity.navigation.nav_com, None);
-        assert!(!entity.navigation.pending_destination_setter);
+        assert_eq!(entity.navigation.nav_com(), None);
+        assert!(!entity.navigation.pending_destination_setter());
         if type_id == "CMIN" {
             let locomotor = entity.locomotor.as_ref().expect("CMIN locomotor");
             assert_eq!(
-                locomotor.kind,
+                locomotor.active_kind(),
                 LocomotorKind::Teleport,
                 "Drive={:?}; Foot={:?}; position={:?}; Nav={:?}; mission={:?}",
                 entity
@@ -669,7 +665,7 @@ fn production_stock_miners_use_drive_command_for_adjacent_ore() {
                 entity.mission
             );
             assert_eq!(locomotor.effective_kind(), LocomotorKind::Teleport);
-            assert_eq!(locomotor.piggyback, None);
+            assert!(locomotor.piggyback().is_none());
             assert!(
                 entity
                     .locomotor
@@ -811,7 +807,7 @@ fn production_stock_harv_far_return_drive_uses_rule_profile() {
         "beyond HarvesterTooFarDistance the return sends no HELLO"
     );
     assert_eq!(
-        entity.navigation.nav_com,
+        entity.navigation.nav_com(),
         Some(NavTargetRef::cell(staging.0, staging.1)),
     );
     assert_eq!(
@@ -969,7 +965,7 @@ fn gsi_04_07_placement_miner_return_threads_live_wall_neighbor_authority() {
             .substrate
             .entities
             .get(wall_miner)
-            .and_then(|entity| entity.navigation.nav_com),
+            .and_then(|entity| entity.navigation.nav_com()),
         Some(NavTargetRef::cell(staging.0, staging.1)),
     );
 
@@ -1020,7 +1016,7 @@ fn production_stock_harv_far_return_preserves_existing_navcom_owner() {
     {
         let entity = sim.substrate.entities.get(entity_id).expect("HARV");
         assert_eq!(
-            entity.navigation.nav_com,
+            entity.navigation.nav_com(),
             Some(NavTargetRef::cell(original.0, original.1)),
         );
         assert_eq!(
@@ -1049,7 +1045,7 @@ fn production_stock_harv_far_return_preserves_existing_navcom_owner() {
         let miner = entity.miner.as_ref().expect("miner");
         assert_eq!(miner.reserved_refinery, None);
         (
-            entity.navigation.nav_com,
+            entity.navigation.nav_com(),
             entity
                 .locomotor
                 .as_ref()
@@ -1060,7 +1056,7 @@ fn production_stock_harv_far_return_preserves_existing_navcom_owner() {
             miner.cargo.clone(),
             *entity.native_stage(),
             entity.radio_contacts.clone(),
-            entity.dock_entered_with,
+            entity.tether.partner(),
         )
     };
     let refinery_contacts_before = sim
@@ -1085,7 +1081,7 @@ fn production_stock_harv_far_return_preserves_existing_navcom_owner() {
     let timers_after = *entity.native_stage();
     assert_eq!(entity.miner_state().unwrap(), MinerState::ReturnToRefinery);
     assert_eq!(miner.reserved_refinery, None);
-    assert_eq!(entity.navigation.nav_com, nav_before);
+    assert_eq!(entity.navigation.nav_com(), nav_before);
     assert_eq!(
         entity
             .locomotor
@@ -1097,7 +1093,7 @@ fn production_stock_harv_far_return_preserves_existing_navcom_owner() {
     assert_eq!(miner.cargo, cargo_before);
     assert_eq!(timers_after, timers_before);
     assert_eq!(entity.radio_contacts, miner_contacts_before);
-    assert_eq!(entity.dock_entered_with, dock_entered_before);
+    assert_eq!(entity.tether.partner(), dock_entered_before);
     assert_eq!(
         sim.substrate
             .entities
@@ -1142,17 +1138,17 @@ fn production_cmin_outbound_drive_keeps_teleport_primary() {
         let entity = sim.substrate.entities.get(entity_id).expect("CMIN");
         let locomotor = entity.locomotor.as_ref().expect("CMIN locomotor");
         assert_eq!(
-            entity.navigation.nav_com,
+            entity.navigation.nav_com(),
             Some(NavTargetRef::cell(target.0, target.1)),
         );
-        assert_eq!(locomotor.kind, LocomotorKind::Drive);
+        assert_eq!(locomotor.active_kind(), LocomotorKind::Drive);
         assert_eq!(locomotor.effective_kind(), LocomotorKind::Teleport);
         assert_eq!(
             locomotor
-                .piggyback
+                .piggyback()
                 .as_ref()
                 .expect("CMIN Drive piggyback")
-                .kind,
+                .active_kind(),
             LocomotorKind::Teleport,
         );
         assert!(
@@ -1168,15 +1164,15 @@ fn production_cmin_outbound_drive_keeps_teleport_primary() {
         assert!(entity.teleport_state().is_none());
         if crate::sim::movement::motion_query::is_moving(&entity) == Some(true) {
             let locomotor = entity.locomotor.as_ref().expect("CMIN locomotor");
-            assert_eq!(locomotor.kind, LocomotorKind::Drive);
+            assert_eq!(locomotor.active_kind(), LocomotorKind::Drive);
             assert_eq!(locomotor.effective_kind(), LocomotorKind::Teleport);
-            assert!(locomotor.piggyback.is_some());
+            assert!(locomotor.piggyback().is_some());
         }
         if entity.miner_state().expect("miner") == MinerState::Harvest {
             assert!(crate::sim::movement::motion_query::is_moving(&entity) != Some(true));
             let locomotor = entity.locomotor.as_ref().expect("CMIN locomotor");
             assert_eq!(
-                locomotor.kind,
+                locomotor.active_kind(),
                 LocomotorKind::Teleport,
                 "Drive={:?}; Foot={:?}; position={:?}; Nav={:?}; mission={:?}",
                 entity
@@ -1191,9 +1187,9 @@ fn production_cmin_outbound_drive_keeps_teleport_primary() {
                 entity.mission
             );
             assert_eq!(locomotor.effective_kind(), LocomotorKind::Teleport);
-            assert_eq!(locomotor.piggyback, None);
-            assert_eq!(entity.navigation.nav_com, None);
-            assert!(!entity.navigation.pending_destination_setter);
+            assert!(locomotor.piggyback().is_none());
+            assert_eq!(entity.navigation.nav_com(), None);
+            assert!(!entity.navigation.pending_destination_setter());
             assert!(
                 entity
                     .locomotor
@@ -1247,7 +1243,7 @@ fn production_cmin_unreachable_outbound_drive_returns_to_teleport() {
             .get(entity_id)
             .expect("CMIN")
             .navigation
-            .nav_com,
+            .nav_com(),
         None,
     );
     // The scan dispatch arms the Rate epilogue: one scenario draw.
@@ -1263,7 +1259,7 @@ fn production_cmin_unreachable_outbound_drive_returns_to_teleport() {
     advance(&mut sim, &oracle, &grid);
     let entity = sim.substrate.entities.get(entity_id).expect("CMIN");
     assert!(crate::sim::movement::motion_query::is_moving(&entity) != Some(true));
-    assert_eq!(entity.navigation.nav_com, None);
+    assert_eq!(entity.navigation.nav_com(), None);
     assert_eq!(locomotor_tuple(&sim, entity_id), before);
     let rng_after_retry = sim.rng_state();
     assert_eq!(rng_after_retry.scenario, scenario_after_retry);
@@ -1293,7 +1289,7 @@ fn production_harv_navcom_is_not_reissued() {
             .get(entity_id)
             .expect("HARV")
             .navigation
-            .nav_com,
+            .nav_com(),
         Some(NavTargetRef::cell(original.0, original.1)),
     );
 
@@ -1312,7 +1308,7 @@ fn production_harv_navcom_is_not_reissued() {
     advance(&mut sim, &oracle, &grid);
     let entity = sim.substrate.entities.get(entity_id).expect("HARV");
     assert_eq!(
-        entity.navigation.nav_com,
+        entity.navigation.nav_com(),
         Some(NavTargetRef::cell(original.0, original.1)),
     );
     let rng_after = sim.rng_state();
@@ -1342,7 +1338,7 @@ fn production_harv_navcom_defers_removed_target_revalidation() {
     {
         let entity = sim.substrate.entities.get_mut(entity_id).expect("HARV");
         assert_eq!(
-            entity.navigation.nav_com,
+            entity.navigation.nav_com(),
             Some(NavTargetRef::cell(original.0, original.1)),
             "fixture must isolate the native NavCom owner gate",
         );
@@ -1364,7 +1360,7 @@ fn production_harv_navcom_defers_removed_target_revalidation() {
     let entity = sim.substrate.entities.get(entity_id).expect("HARV");
     assert_eq!(entity.miner_state().unwrap(), MinerState::SearchOre);
     assert_eq!(
-        entity.navigation.nav_com,
+        entity.navigation.nav_com(),
         Some(NavTargetRef::cell(original.0, original.1)),
         "non-null NavCom must defer depletion validation and command reissue",
     );
@@ -1397,15 +1393,15 @@ fn production_cmin_arrival_clears_navcom_same_tick_and_releases_drive() {
         advance(&mut sim, &oracle, &grid);
         let entity = sim.substrate.entities.get(entity_id).expect("CMIN");
         assert!(entity.teleport_state().is_none());
-        if (entity.position.rx, entity.position.ry) == target
+        if (entity.position.rx(), entity.position.ry()) == target
             && crate::sim::movement::motion_query::is_moving(&entity) != Some(true)
         {
             arrived = true;
-            assert_eq!(entity.navigation.nav_com, None);
-            assert!(!entity.navigation.pending_destination_setter);
+            assert_eq!(entity.navigation.nav_com(), None);
+            assert!(!entity.navigation.pending_destination_setter());
             let locomotor = entity.locomotor.as_ref().expect("CMIN locomotor");
             assert_eq!(
-                locomotor.kind,
+                locomotor.active_kind(),
                 LocomotorKind::Teleport,
                 "Drive={:?}; Foot={:?}; position={:?}; Nav={:?}; mission={:?}",
                 entity
@@ -1420,7 +1416,7 @@ fn production_cmin_arrival_clears_navcom_same_tick_and_releases_drive() {
                 entity.mission
             );
             assert_eq!(locomotor.effective_kind(), LocomotorKind::Teleport);
-            assert_eq!(locomotor.piggyback, None);
+            assert!(locomotor.piggyback().is_none());
             assert!(
                 entity
                     .locomotor
@@ -1444,8 +1440,8 @@ fn production_cmin_arrival_clears_navcom_same_tick_and_releases_drive() {
         let entity = sim.substrate.entities.get(entity_id).expect("CMIN");
         if entity.miner_state().expect("miner") == MinerState::Harvest {
             reached_harvest = true;
-            assert_eq!(entity.navigation.nav_com, None);
-            assert!(!entity.navigation.pending_destination_setter);
+            assert_eq!(entity.navigation.nav_com(), None);
+            assert!(!entity.navigation.pending_destination_setter());
             assert!(
                 entity
                     .locomotor
@@ -1500,7 +1496,7 @@ fn cmin_full_close_return_warps_onto_the_pad_and_deposits() {
         let sounds_before = sim.sound_events.len();
         advance(&mut sim, &oracle, &grid);
         let e = sim.substrate.entities.get(entity_id).expect("miner");
-        if warped_at.is_none() && (e.position.rx, e.position.ry) == pad {
+        if warped_at.is_none() && (e.position.rx(), e.position.ry()) == pad {
             warped_at = Some(tick);
             assert_eq!(
                 (before.0, before.1),
@@ -1519,8 +1515,8 @@ fn cmin_full_close_return_warps_onto_the_pad_and_deposits() {
             assert_eq!(chrono, vec![START, pad], "ChronoOut, then ChronoIn");
             let locomotor = e.locomotor.as_ref().expect("CMIN locomotor");
             assert_eq!(locomotor.active_kind(), LocomotorKind::Teleport);
-            assert!(locomotor.piggyback.is_none(), "the arrival Drive ended");
-            assert_eq!(e.navigation.nav_com, None);
+            assert!(locomotor.piggyback().is_none(), "the arrival Drive ended");
+            assert_eq!(e.navigation.nav_com(), None);
             assert_eq!(e.radio_contacts.slot(0), Some(refinery_id));
         }
         if e.miner.as_ref().expect("miner comp").cargo.is_empty() {

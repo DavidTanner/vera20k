@@ -348,7 +348,19 @@ fn unit(owner: &str, type_id: &str, cx: u16, cy: u16, cat: EntityCategory) -> Ma
 // with a hash that skips only that fold) gives this value in the same
 // test, with every tripwire above green.
 // Control removed. Previous: 0xE3F1_10CD_1C40_81A1.
-const SLICE6_BASELINE_HASH: u64 = 0x7DBF_3798_6DCA_6E31;
+// Integrated StateHasher pin after executed scoped feed attribution. The test
+// below recovers current main exactly with retired feeds and preserves serialized
+// gameplay, the live Dummy and all three RNG streams; this is a Rust ratchet.
+const SLICE6_BASELINE_HASH: u64 = 0x2884_EE4E_0340_B160;
+
+// ALL01 r6 (fork-local schema345) used DefaultHasher before main's
+// pinned StateHasher, entity/fog digests and owner migrations. These remain
+// historical Rust receipts; they are not comparable to current u64 outputs.
+const SLICE6_INCOMING_HASH: u64 = 0xC4B5_83A9_D807_77FD;
+const SLICE6_ANNOUNCEMENT_ONLY_HASH: u64 = 0x4645_6FE7_BB02_4917;
+const SLICE6_R6_BASELINE_HASH: u64 = 0x9041_91B9_31BD_8D18;
+// The legacy-feed control uses this main StateHasher reference.
+const SLICE6_MAIN_HASH: u64 = 0x7DBF_3798_6DCA_6E31;
 
 #[test]
 fn replay_hash_stable_through_slice6() {
@@ -493,9 +505,10 @@ fn replay_hash_stable_through_slice6() {
             // into the Foot body): a cell within M60 range of the tank, not
             // the tank's own cell.
             let gi = sim.substrate.entities.get(3).unwrap();
-            let Some(crate::sim::components::NavTargetRef::Cell { rx, ry }) = gi.navigation.nav_com
+            let Some(crate::sim::components::NavTargetRef::Cell { rx, ry }) =
+                gi.navigation.nav_com()
             else {
-                panic!("the GI approaches a cell: {:?}", gi.navigation.nav_com);
+                panic!("the GI approaches a cell: {:?}", gi.navigation.nav_com());
             };
             let aim = crate::sim::movement::ground_pose::position_world_coord(
                 &sim.substrate.entities.get(2).unwrap().position,
@@ -537,7 +550,7 @@ fn replay_hash_stable_through_slice6() {
                 );
             }
             assert!(
-                tank.navigation.nav_com.is_none(),
+                tank.navigation.nav_com().is_none(),
                 "Stop clears owner NavCom"
             );
             assert!(
@@ -641,6 +654,52 @@ fn replay_hash_stable_through_slice6() {
             .body_facing
             .rot_per_frame(),
         0x7F00
+    );
+    let current_hash = sim.state_hash();
+    let retained_authority = bincode::serialize(&sim).expect("retained retask authority");
+    let retained_dummy = sim.effective_shared_cell_dummy().snapshot();
+    let retained_streams = (
+        sim.scenario_rng.state(),
+        sim.main_rng.state(),
+        sim.mapgen_rng.state(),
+    );
+    let announcement_only_hash = sim.state_hash_with_legacy_absent_real_cell_authority_for_test();
+    let incoming_hash_control =
+        crate::sim::trigger_runtime::with_legacy_announcement_hash_control_for_test(|| {
+            sim.state_hash_with_legacy_absent_real_cell_authority_for_test()
+        });
+    println!(
+        "[slice6 fixture hash feeds] current={current_hash:016X} old_map={announcement_only_hash:016X} control={incoming_hash_control:016X} main={SLICE6_MAIN_HASH:016X} archived_default_incoming={SLICE6_INCOMING_HASH:016X} archived_default_announcement={SLICE6_ANNOUNCEMENT_ONLY_HASH:016X} archived_r6={SLICE6_R6_BASELINE_HASH:016X}"
+    );
+    assert_ne!(
+        announcement_only_hash, current_hash,
+        "the captured real-cell authority contributes to the current hash"
+    );
+    assert_ne!(
+        announcement_only_hash, incoming_hash_control,
+        "the retired announcement None feed contributes independently"
+    );
+    assert_eq!(
+        incoming_hash_control, SLICE6_MAIN_HASH,
+        "restoring only the retired None and absent saved real-cell feeds must recover the main StateHasher pin; other drift needs attribution"
+    );
+    assert_eq!(
+        sim.state_hash(),
+        current_hash,
+        "diagnostic feeds stay scoped"
+    );
+    assert!(
+        retained_authority == bincode::serialize(&sim).expect("unchanged retask authority"),
+        "diagnostic feeds cannot alter serialized gameplay state"
+    );
+    assert_eq!(sim.effective_shared_cell_dummy().snapshot(), retained_dummy);
+    assert_eq!(
+        (
+            sim.scenario_rng.state(),
+            sim.main_rng.state(),
+            sim.mapgen_rng.state()
+        ),
+        retained_streams
     );
     assert_eq!(
         sim.state_hash(),

@@ -35,11 +35,11 @@ fn fixture(relative_z: i32) -> (Simulation, RuleSet, u64) {
     entity.set_category_for_test(EntityCategory::Unit);
     entity.health.set_for_test(0);
     entity.lifecycle.set_in_limbo_for_test(false);
-    entity.lifecycle.cell_marked = false;
-    entity.position.sub_x = SimFixed::from_num(128);
-    entity.position.sub_y = SimFixed::from_num(128);
-    entity.position.z = 2;
-    entity.position.exact_z_leptons = Some(208 + relative_z);
+    entity.lifecycle.set_cell_marked(false);
+    entity.position.set_sub_x(SimFixed::from_num(128));
+    entity.position.set_sub_y(SimFixed::from_num(128));
+    entity.position.set_z(2);
+    entity.position.set_exact_z_leptons(Some(208 + relative_z));
     sim.substrate.entities.insert(entity);
     sim.begin_receiver_kill_record(id);
     sim.record_destruction_once(id);
@@ -431,8 +431,8 @@ fn retained_health_one_ship_is_illegal_as_firer_and_target() {
     firer.set_owner_for_test(sim.interner.intern("Russians"));
     firer.lifecycle.set_in_limbo_for_test(false);
     firer.health.set_for_test(800);
-    firer.position.z = 2;
-    firer.position.exact_z_leptons = Some(208);
+    firer.position.set_z(2);
+    firer.position.set_exact_z_leptons(Some(208));
     sim.substrate.entities.insert(firer);
     sim.resolve_type_handles(&rules);
     let query = |sim: &Simulation| {
@@ -499,12 +499,7 @@ fn retained_ship_skips_process_but_keeps_its_head_and_runs_sinking_ai() {
                     .with_head_to_for_test(Some(head))
                     .with_track_valid_for_test(true)
                     .with_target_speed_fraction_for_test(SimFixed::from_num(1))
-                    .with_track_for_test(TrackProgress {
-                        turn_index: 0,
-                        cursor: 0,
-                        reversed: false,
-                        residual: 0,
-                    })
+                    .with_track_for_test(TrackProgress::for_test(0, 0, false, 0))
             ))
     );
     slope_transition::snap_after_successful_unlimbo(hull, 5, 0);
@@ -531,7 +526,7 @@ fn retained_ship_skips_process_but_keeps_its_head_and_runs_sinking_ai() {
             .and_then(|r| r.retained())
             .unwrap()
             .track()
-            .cursor,
+            .cursor(),
         0
     );
     assert_eq!(
@@ -539,7 +534,7 @@ fn retained_ship_skips_process_but_keeps_its_head_and_runs_sinking_ai() {
         slope_before
     );
     assert_eq!(position_world_coord(&hull.position).z, 203);
-    assert_eq!((hull.position.rx, hull.position.ry), (113, 59));
-    assert_eq!(hull.body_frame_counter, 0);
+    assert_eq!((hull.position.rx(), hull.position.ry()), (113, 59));
+    assert_eq!(hull.body_frame_counter.get(), 0);
     assert!(hull.sinking.sound_edge_seen());
 }

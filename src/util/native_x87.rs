@@ -416,6 +416,39 @@ impl X87Chop53 {
     }
 }
 
+/// `FLD m32` of one binary32 operand, `FADD m32` of the other and `FSTP m32`,
+/// for two non-negative finite operands: their exact sum truncated to binary32,
+/// computed on the host for path-search hot loops.
+///
+/// Truncating the exact sum to 53 bits and then to binary32 truncates it to
+/// binary32 once. The host's binary64 sum is exact unless the operands'
+/// exponents differ by more than 29. Then neither operand has a bit 24 to 29
+/// places below the sum's leading bit, so the rounding of the binary64 sum
+/// cannot carry into the 24 bits binary32 keeps, and truncating that sum
+/// gives the same result. A sum past binary32's range stores the largest
+/// finite value, as the masked store does. Debug builds check every result
+/// against [`X87Chop53`].
+pub(crate) fn chop_sum_f32(lhs: f32, rhs: f32) -> f32 {
+    debug_assert!(lhs >= 0.0 && rhs >= 0.0 && lhs.is_finite() && rhs.is_finite());
+    let sum = f64::from(lhs) + f64::from(rhs);
+    let nearest = sum as f32;
+    let sum32 = if f64::from(nearest) > sum {
+        f32::from_bits(nearest.to_bits() - 1)
+    } else {
+        nearest
+    };
+    debug_assert_eq!(
+        sum32.to_bits(),
+        X87Chop53::store_f32_masked_chop(X87Chop53::add(
+            X87Chop53::load_f32(NativeF32Bits::from_bits(lhs.to_bits())).expect("finite"),
+            X87Chop53::load_f32(NativeF32Bits::from_bits(rhs.to_bits())).expect("finite"),
+        ))
+        .bits(),
+        "{lhs:e} + {rhs:e}"
+    );
+    sum32
+}
+
 /// Active `gamemd.exe` `Sqrt_Approx` (`0x004CAC40`).
 ///
 /// The helper first stores its finite positive input as an x87-chopped `f32`,
@@ -596,6 +629,47 @@ mod tests {
         // A value at or above 1 was already ordered correctly; keep it pinned.
         let one = X87Chop53::load_f64(NativeF64Bits::ONE).expect("1.0 loads");
         assert_eq!(X87Chop53::compare(one, zero), X87Ordering::Greater);
+    }
+
+    #[test]
+    fn host_binary32_sum_truncates_as_the_x87_does() {
+        // Every exponent gap up to and past the binary64 limit, with full,
+        // empty and pseudo-random significands; `chop_sum_f32` asserts each
+        // result against `X87Chop53` itself.
+        let mut seed = 0x9E37_79B9_u32;
+        let mut next = || {
+            seed ^= seed << 13;
+            seed ^= seed >> 17;
+            seed ^= seed << 5;
+            seed & 0x007f_ffff
+        };
+        for exponent in [1_u32, 100, 127, 150, 200, 253] {
+            for gap in 0..=40_u32 {
+                // Down to zero exponents: subnormal operands.
+                let low_exponent = exponent.saturating_sub(gap);
+                for (high, low) in [
+                    (0x007f_ffff, 0x007f_ffff),
+                    (0, 0),
+                    (0x007f_ffff, 0),
+                    (next(), next()),
+                    (next(), next()),
+                ] {
+                    let a = f32::from_bits(exponent << 23 | high);
+                    let b = f32::from_bits(low_exponent << 23 | low);
+                    super::chop_sum_f32(a, b);
+                    super::chop_sum_f32(b, a);
+                }
+            }
+        }
+        assert_eq!(super::chop_sum_f32(0.0, 0.0).to_bits(), 0);
+        assert_eq!(super::chop_sum_f32(0.0, 1.5), 1.5);
+        assert_eq!(super::chop_sum_f32(f32::from_bits(1), 0.0).to_bits(), 1);
+        assert_eq!(super::chop_sum_f32(f32::MAX, f32::MAX), f32::MAX);
+        // Round to nearest would give 0x3F8020C5 here.
+        assert_eq!(
+            super::chop_sum_f32(1.0, f32::from_bits(0x3a83_126f)).to_bits(),
+            0x3f80_20c4
+        );
     }
     use super::*;
 

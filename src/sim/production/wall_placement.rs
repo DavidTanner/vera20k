@@ -183,7 +183,6 @@ pub(super) fn stamp_wall(
         radar_dirty_cells: &mut sim.radar_terrain_dirty_cells,
         radar_dirty_generation: &mut sim.radar_terrain_dirty_generation,
         tactical_dirty_cells: &mut sim.tactical_dirty_cells,
-        terrain_costs: &mut sim.terrain_costs,
         zone_grid: &mut sim.zone_grid,
         path_grid: &mut sim.path_grid,
         bridge_state: sim.bridge_state.as_ref(),

@@ -92,7 +92,7 @@ pub mod radio; // RadioMessage / RadioResponse / RadioPayload
 // --- Movement: ground pathing, speed ramping, cell transitions,
 //     special locomotors, drive tracks, turret rotation ---
 pub mod movement;
-pub mod pathfinding; // A* search, zone connectivity, terrain costs, path smoothing
+pub mod pathfinding; // A* search, zone connectivity, terrain speed, path smoothing
 pub mod projectile; // serialized BulletClass-style flight state and detonation handoff
 pub mod wave; // serialized WaveClass-style display registrations and lifetime
 
@@ -147,7 +147,6 @@ pub mod passenger;
 pub(crate) mod slave_deposit;
 pub(crate) mod slave_manager;
 pub mod spawn_manager;
-mod spawn_manager_tests;
 pub mod transport_unload;
 
 // --- Economy, map resources ---

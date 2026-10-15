@@ -278,13 +278,13 @@ impl crate::sim::world::Simulation {
             self.resolved_terrain.as_ref(),
         )
         .wrapping_add(rate);
-        let marked = entity.lifecycle.cell_marked;
+        let marked = entity.lifecycle.cell_marked();
         let context = crate::sim::world::UninitContext::new(rules, registry).with_effects(effects);
         if marked {
             self.unmark_entity_remove(stable_id, context);
         }
         if let Some(entity) = self.substrate.entities.get_mut(stable_id) {
-            entity.position.exact_z_leptons = Some(z);
+            entity.position.set_exact_z_leptons(Some(z));
         }
         if marked {
             self.mark_entity_put(stable_id, context);
@@ -327,7 +327,7 @@ mod tests {
 
     fn make_walk_loco() -> LocomotorState {
         let mut loco = LocomotorState::for_test_kind(LocomotorKind::Walk);
-        loco.speed_type = SpeedType::Foot;
+        loco.set_speed_type_for_test(SpeedType::Foot);
         loco
     }
 
@@ -346,13 +346,17 @@ mod tests {
     fn test_begin_attaches_state_at_the_drop_z_and_keeps_locomotor_identity() {
         let mut entities = EntityStore::new();
         let id = insert_test_infantry(&mut entities, 1);
-        entities.get_mut(id).unwrap().position.exact_z_leptons = Some(52);
+        entities
+            .get_mut(id)
+            .unwrap()
+            .position
+            .set_exact_z_leptons(Some(52));
 
         assert!(begin_parachute_descent(&mut entities, id, 1200));
 
         let entity = entities.get(id).expect("should exist");
         assert_eq!(
-            entity.position.exact_z_leptons,
+            entity.position.exact_z_leptons(),
             Some(1200),
             "the drop coordinate's Z replaces the passenger's old one"
         );
@@ -367,9 +371,9 @@ mod tests {
             !loco.is_overridden(),
             "ordinary paradropped infantry keep their base locomotor"
         );
-        assert_eq!(loco.kind, LocomotorKind::Walk);
+        assert_eq!(loco.active_kind(), LocomotorKind::Walk);
         assert_eq!(
-            loco.layer,
+            loco.layer(),
             MovementLayer::Ground,
             "object-level falling state must not rewrite locomotor layer"
         );
@@ -389,7 +393,7 @@ mod tests {
             .as_ref()
             .expect("has anim");
         assert_eq!(
-            anim.sequence,
+            anim.sequence(),
             SequenceKind::Stand,
             "normal paradrops render the attached PARACH anim, not body Paradrop frames"
         );
@@ -451,7 +455,7 @@ mod tests {
             .get(id)
             .unwrap()
             .position
-            .exact_z_leptons
+            .exact_z_leptons()
             .expect("a falling object keeps its Location Z")
     }
 
@@ -546,7 +550,7 @@ mod tests {
         assert!(fall(&mut sim, id), "the overshooting tick lands");
         let entity = sim.substrate.entities.get(id).expect("alive");
         assert!(!entity.is_falling_down());
-        assert_eq!(entity.position.exact_z_leptons, Some(0), "SetHeight(0)");
+        assert_eq!(entity.position.exact_z_leptons(), Some(0), "SetHeight(0)");
     }
 
     #[test]
@@ -610,7 +614,7 @@ mod tests {
                 .animation
                 .as_ref()
                 .unwrap()
-                .sequence
+                .sequence()
         };
         assert_eq!(sequence(&sim), SequenceKind::Stand);
 
@@ -658,7 +662,7 @@ mod tests {
             .as_ref()
             .unwrap();
         assert_eq!(
-            anim.sequence,
+            anim.sequence(),
             SequenceKind::Die1,
             "must NOT overwrite Die1 with Stand on landing"
         );
@@ -685,7 +689,7 @@ mod tests {
             "object-level falling must not leave a locomotor override"
         );
         assert_eq!(
-            loco.kind,
+            loco.active_kind(),
             LocomotorKind::Walk,
             "must preserve base Walk locomotor"
         );

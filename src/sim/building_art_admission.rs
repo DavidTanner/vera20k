@@ -1,6 +1,23 @@
 //! Building slot producers formerly approximated by presentation predicates.
 use super::*;
 
+/// HasEngineer, `BuildingClass+0x6CC`. The constructor clears it; every
+/// changed-owner Building path sets it (`0x004484AF`), including transfers
+/// without an engineer. An authored `NeedsEngineer=` building without it
+/// starts disabled. Never infer it from the owner.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(transparent)]
+pub(crate) struct HasEngineer {
+    set: bool,
+}
+
+impl HasEngineer {
+    /// The building has had an engineer, or a new owner.
+    pub(crate) const fn is_set(self) -> bool {
+        self.set
+    }
+}
+
 impl Simulation {
     /// Building452480 / ChangeOwner4484C6: this differs from Type.Powered
     /// constructor policy. Toggle existing slot Powered flags only.
@@ -27,7 +44,7 @@ impl Simulation {
             return;
         };
         if entity.category() == crate::map::entities::EntityCategory::Structure
-            && !entity.building_has_engineer
+            && !entity.building_has_engineer.is_set()
             && rules
                 .object(self.interner.resolve(entity.type_ref()))
                 .is_some_and(|o| o.needs_engineer)
@@ -45,7 +62,7 @@ impl Simulation {
         if entity.category() != crate::map::entities::EntityCategory::Structure {
             return;
         }
-        entity.building_has_engineer = true;
+        entity.building_has_engineer.set = true;
         if let Some(rules) = rules
             && rules
                 .object(self.interner.resolve(entity.type_ref()))
@@ -75,7 +92,7 @@ impl Simulation {
         let occupied = entity
             .passenger_role
             .cargo()
-            .is_some_and(|c| !c.passengers.is_empty());
+            .is_some_and(|c| !c.passengers().is_empty());
         let damaged = requested_damage_state(
             entity.health,
             object.strength,
@@ -193,7 +210,13 @@ mod tests {
             None,
             crate::sim::world::FrameEffects::default(),
         );
-        assert!(!sim.entities().get(id).unwrap().building_has_engineer);
+        assert!(
+            !sim.entities()
+                .get(id)
+                .unwrap()
+                .building_has_engineer
+                .is_set()
+        );
         let owner = sim.interner.intern("Americans");
         sim.change_owner_with_rules(
             id,
@@ -202,7 +225,13 @@ mod tests {
             None,
             crate::sim::world::FrameEffects::default(),
         );
-        assert!(sim.entities().get(id).unwrap().building_has_engineer);
+        assert!(
+            sim.entities()
+                .get(id)
+                .unwrap()
+                .building_has_engineer
+                .is_set()
+        );
         assert!(sim.entities().get(id).unwrap().building_art.stuff_enabled);
         assert!(!sim.anim(anim).unwrap().runtime.paused);
         for _ in 0..3 {
@@ -216,7 +245,14 @@ mod tests {
             .sim;
         restored.retain_process_state_for_load(crate::sim::world::SnapshotProcessState::Live(&sim));
         restored.restore_after_snapshot_load().unwrap();
-        assert!(restored.entities().get(id).unwrap().building_has_engineer);
+        assert!(
+            restored
+                .entities()
+                .get(id)
+                .unwrap()
+                .building_has_engineer
+                .is_set()
+        );
         assert_eq!(restored.state_hash(), sim.state_hash());
     }
 
@@ -255,10 +291,7 @@ mod tests {
         sim.entities_mut()
             .get_mut(passenger)
             .unwrap()
-            .passenger_role = crate::sim::passenger::PassengerRole::Inside {
-            transport_id: id,
-            open_topped: false,
-        };
+            .passenger_role = crate::sim::passenger::PassengerRole::inside_for_test(id, false);
         assert!(
             sim.entities_mut()
                 .get_mut(id)
@@ -305,9 +338,7 @@ mod tests {
             .passenger_role
             .cargo_mut()
             .unwrap();
-        cargo.passengers.clear();
-        cargo.passenger_sizes.clear();
-        cargo.total_size = 0;
+        cargo.clear_contents();
         tick(&mut restored, &rules);
         let empty = restored.entities().get(id).unwrap().building_art.anim_slots[3].unwrap();
         assert!(restored.entities().get(id).unwrap().building_art.anim_slots[4].is_none());

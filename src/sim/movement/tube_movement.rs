@@ -39,9 +39,54 @@ use crate::util::native_x87::{NativeF32Bits, NativeF64Bits, X87Chop53, distance_
 /// occupation. Immutable path bytes remain in the map-owned [`TubeFact`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct LowBridgeTubeMovementState {
-    pub tube_id: TubeId,
-    pub cursor: u8,
-    pub target: DriveCoord,
+    tube_id: TubeId,
+    cursor: u8,
+    target: DriveCoord,
+}
+
+impl LowBridgeTubeMovementState {
+    /// The tube (FootClass+0x684).
+    pub fn tube_id(&self) -> TubeId {
+        self.tube_id
+    }
+
+    /// The step along the tube's path.
+    pub fn cursor(&self) -> u8 {
+        self.cursor
+    }
+
+    /// The retained transit target.
+    pub fn target(&self) -> DriveCoord {
+        self.target
+    }
+
+    /// Install a fixture's tube.
+    #[cfg(test)]
+    pub(crate) fn set_tube_id_for_test(&mut self, tube_id: TubeId) {
+        self.tube_id = tube_id;
+    }
+
+    /// Install a fixture's cursor.
+    #[cfg(test)]
+    pub(crate) fn set_cursor_for_test(&mut self, cursor: u8) {
+        self.cursor = cursor;
+    }
+
+    /// Install a fixture's transit target.
+    #[cfg(test)]
+    pub(crate) fn set_target_for_test(&mut self, target: DriveCoord) {
+        self.target = target;
+    }
+
+    /// A fixture's transit.
+    #[cfg(test)]
+    pub(crate) fn for_test(tube_id: TubeId, cursor: u8, target: DriveCoord) -> Self {
+        Self {
+            tube_id,
+            cursor,
+            target,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -75,7 +120,7 @@ pub fn pending_path_tube_id(
         return None;
     }
     let terrain = terrain?;
-    let tube_id = terrain.cell(position.rx, position.ry)?.tube_index?;
+    let tube_id = terrain.cell(position.rx(), position.ry())?.tube_index?;
     if tube_id.0 > i8::MAX as u16 {
         return None;
     }
@@ -109,7 +154,7 @@ pub(crate) fn begin_path_tube_step(
         && locomotor
             .as_ref()
             .and_then(|loco| loco.track_progress(TrackFamily::Drive))
-            .is_some_and(|track| track.turn_index != -1)
+            .is_some_and(|track| track.turn_index() != -1)
     {
         return Err(TubeBeginError::MissingTerrain);
     }
@@ -149,7 +194,7 @@ pub(crate) fn begin_path_tube_step(
             }),
         );
         loco.store_track_valid(TrackFamily::Drive, true); // Original4B1480.
-        progress.turn_index = -1; // Original4B1484; cursor is untouched.
+        progress.set_turn_index(-1); // Original4B1484; cursor is untouched.
         loco.store_track_progress(TrackFamily::Drive, progress);
     }
     super::path_markers::consume_path_replay(path_replay, 1);
@@ -190,7 +235,9 @@ fn initial_state(
             next_y.wrapping_mul(256).wrapping_add(128),
         )
     };
-    position.exact_z_leptons.get_or_insert(current_ground);
+    if position.exact_z_leptons().is_none() {
+        position.set_exact_z_leptons(Some(current_ground));
+    }
     Ok(LowBridgeTubeMovementState {
         tube_id,
         cursor: 0,
@@ -213,8 +260,8 @@ fn detach_for_tube(
     cell_occupation: &mut CellOccupationGrid,
     raw_cell_occupation: &mut RawCellOccupationGrid,
 ) {
-    let rx = position.rx;
-    let ry = position.ry;
+    let rx = position.rx();
+    let ry = position.ry();
     occupancy.remove_on_layer(rx, ry, entity_id, MovementLayer::Ground);
     match category {
         EntityCategory::Unit => {
@@ -235,7 +282,7 @@ fn detach_for_tube(
         EntityCategory::Infantry => raw_cell_occupation.clear_ground(
             rx,
             ry,
-            infantry_raw_occupation_mask(position.sub_x, position.sub_y),
+            infantry_raw_occupation_mask(position.sub_x(), position.sub_y()),
         ),
         _ => {}
     }
@@ -376,7 +423,7 @@ fn finalize_tube_object(
         return true;
     };
     let category = entity.category();
-    let reached_cell = (entity.position.rx, entity.position.ry);
+    let reached_cell = (entity.position.rx(), entity.position.ry());
 
     let infantry_subcell = if category == EntityCategory::Infantry {
         let terrain_blocked =
@@ -393,7 +440,7 @@ fn finalize_tube_object(
         }
         let (sub_x, sub_y) = entities
             .get(entity_id)
-            .map(|entity| (entity.position.sub_x, entity.position.sub_y))
+            .map(|entity| (entity.position.sub_x(), entity.position.sub_y()))
             .unwrap_or((CELL_CENTER_LEPTON, CELL_CENTER_LEPTON));
         bump_crush::allocate_sub_cell_with_preference(
             occupancy.get(reached_cell.0, reached_cell.1),
@@ -472,15 +519,17 @@ fn finalize_tube_object(
             if let Some(locomotor) = entity.locomotor.as_mut() {
                 locomotor.stop_movement_animation();
             }
-            entity.sub_cell = Some(sub_cell);
+            entity.set_sub_cell(Some(sub_cell));
             if floor_supported {
-                entity.position.z = terrain
-                    .cell(reached_cell.0, reached_cell.1)
-                    .map_or(entity.position.z, |cell| cell.level);
+                entity.position.set_z(
+                    terrain
+                        .cell(reached_cell.0, reached_cell.1)
+                        .map_or(entity.position.z(), |cell| cell.level),
+                );
             }
         } else {
             if let Some(cell) = terrain.cell(tube.exit.0, tube.exit.1) {
-                entity.position.z = cell.level;
+                entity.position.set_z(cell.level);
             }
             if let Some(loco) = entity.locomotor.as_mut() {
                 loco.store_track_target_fraction(TrackFamily::Drive, SIM_ONE);
@@ -515,15 +564,15 @@ fn put_after_tube(
     let Some(entity) = entities.get_mut(entity_id) else {
         return;
     };
-    let rx = entity.position.rx;
-    let ry = entity.position.ry;
+    let rx = entity.position.rx();
+    let ry = entity.position.ry();
     occupancy.add(
         rx,
         ry,
         entity_id,
         MovementLayer::Ground,
         (entity.category() == EntityCategory::Infantry)
-            .then_some(entity.sub_cell)
+            .then_some(entity.sub_cell())
             .flatten(),
         CellListInsertion::from_category(entity.category()),
     );
@@ -531,17 +580,18 @@ fn put_after_tube(
         EntityCategory::Unit => {
             raw_cell_occupation.mark_ground(rx, ry, VEHICLE_OCCUPATION_BIT);
             cell_occupation.mark_vehicle_on_layer(rx, ry, entity_id, MovementLayer::Ground);
-            entity.foot_occupation_enabled = true;
+            entity.set_foot_occupation_enabled(true);
         }
         EntityCategory::Infantry => {
-            let mask = infantry_raw_occupation_mask(entity.position.sub_x, entity.position.sub_y);
+            let mask =
+                infantry_raw_occupation_mask(entity.position.sub_x(), entity.position.sub_y());
             raw_cell_occupation.mark_ground(rx, ry, mask);
             // Native Infantry final explicitly calls the same raw mark again.
             raw_cell_occupation.mark_ground(rx, ry, mask);
         }
         _ => {}
     }
-    entity.lifecycle.cell_marked = true;
+    entity.lifecycle.set_cell_marked(true);
 }
 
 /// `UnitClass::TubeMovement`'s blocked exit (`0x00735F55`): `Scatter(null,
@@ -602,7 +652,7 @@ fn update_unit_final_facing(
         return;
     };
     let Some(tube) = terrain
-        .cell(entity.position.rx, entity.position.ry)
+        .cell(entity.position.rx(), entity.position.ry())
         .and_then(|cell| cell.tube_index)
         .and_then(|tube_id| terrain.tube(tube_id))
     else {
@@ -771,7 +821,7 @@ mod tests {
             true,
         );
         entity.lifecycle.set_in_limbo_for_test(false);
-        entity.lifecycle.cell_marked = true;
+        entity.lifecycle.set_cell_marked(true);
         entity.locomotor = Some(LocomotorState::for_test_kind(
             crate::rules::locomotor_type::LocomotorKind::Drive,
         ));
@@ -791,9 +841,10 @@ mod tests {
             vec![flat_cell(0, 0, Some(TubeId(0)))],
             vec![TubeFact::auto_low_bridge((0, 0), 2)],
         );
-        let queue = crate::sim::components::FootPathQueue {
-            directions: vec![crate::util::direction::TUBE_STEP_DIRECTION],
-            ..Default::default()
+        let queue = {
+            let mut value = crate::sim::components::FootPathQueue::default();
+            value.set_directions_for_test(vec![crate::util::direction::TUBE_STEP_DIRECTION]);
+            value
         };
         let entity = unit(1);
         assert_eq!(
@@ -823,8 +874,8 @@ mod tests {
             let mut entity = unit(1);
             entity.set_category_for_test(category);
             entity.locomotor = Some(LocomotorState::for_test_kind(LocomotorKind::Teleport));
-            entity.lifecycle.cell_marked = false;
-            entity.position.rx = 2;
+            entity.lifecycle.set_cell_marked(false);
+            entity.position.set_rx(2);
             entity.foot_speed.set_speed_fraction(SimFixed::lit("0.625"));
             let state = LowBridgeTubeMovementState {
                 tube_id: TubeId(0),
@@ -837,7 +888,7 @@ mod tests {
             let mut occupancy = OccupancyGrid::new();
             if blocked && category == EntityCategory::Unit {
                 let mut blocker = unit(2);
-                blocker.position.rx = 2;
+                blocker.position.set_rx(2);
                 entities.insert(blocker);
                 occupancy.add(
                     2,
@@ -889,7 +940,7 @@ mod tests {
             );
             assert_eq!(owner.low_bridge_tube_state.is_some(), blocked);
             if !blocked {
-                assert!(owner.lifecycle.cell_marked);
+                assert!(owner.lifecycle.cell_marked());
                 assert_eq!(occupancy.count_on_layer(2, 0, MovementLayer::Ground), 1);
             }
         }
@@ -899,9 +950,10 @@ mod tests {
     fn gsi_04_15_tube_admission_requires_ground_object_list_layer() {
         let terrain = explicit_terrain(vec![2, 2]);
         let entity = unit(1);
-        let mut queue = crate::sim::components::FootPathQueue {
-            directions: vec![crate::util::direction::TUBE_STEP_DIRECTION],
-            ..Default::default()
+        let mut queue = {
+            let mut value = crate::sim::components::FootPathQueue::default();
+            value.set_directions_for_test(vec![crate::util::direction::TUBE_STEP_DIRECTION]);
+            value
         };
 
         assert_eq!(
@@ -923,7 +975,7 @@ mod tests {
             Some(TubeId(0))
         );
         // Walk75B302 enters only on a direction-8 head word.
-        queue.directions = vec![2];
+        queue.set_directions_for_test(vec![2]);
         assert_eq!(
             pending_path_tube_id(
                 &queue,
@@ -944,12 +996,7 @@ mod tests {
             y: -17,
             z: 731,
         };
-        let retained = crate::sim::components::TrackProgress {
-            turn_index: -1,
-            cursor: -1,
-            reversed: true,
-            residual: 6,
-        };
+        let retained = crate::sim::components::TrackProgress::for_test(-1, -1, true, 6);
         let loco = entity.locomotor.as_mut().unwrap();
         loco.store_track_destination(TrackFamily::Drive, Some(destination));
         loco.store_track_head(
@@ -961,11 +1008,8 @@ mod tests {
             }),
         );
         loco.store_track_progress(TrackFamily::Drive, retained);
-        entity.navigation.path_replay = crate::sim::components::FootPathQueue {
-            directions: vec![8, 2],
-            cursor: 0,
-            reference_cell: Some((-3, 7)),
-        };
+        entity.navigation.path_replay =
+            crate::sim::components::FootPathQueue::for_test(vec![8, 2], 0, Some((-3, 7)));
         let mut occupancy = OccupancyGrid::new();
         occupancy.add(
             0,
@@ -981,6 +1025,7 @@ mod tests {
         raw.mark_ground(0, 0, VEHICLE_OCCUPATION_BIT);
 
         let (stable_id, category) = (entity.stable_id(), entity.category());
+        let mut cell_marked = entity.lifecycle.cell_marked();
         begin_path_tube_step(
             &mut true,
             &mut entity.navigation.path_replay,
@@ -989,7 +1034,7 @@ mod tests {
             &mut entity.position,
             &mut entity.locomotor,
             &mut entity.low_bridge_tube_state,
-            &mut entity.lifecycle.cell_marked,
+            &mut cell_marked,
             TubeId(0),
             &terrain,
             &mut occupancy,
@@ -997,8 +1042,9 @@ mod tests {
             &mut raw,
         )
         .unwrap();
+        entity.lifecycle.set_cell_marked(cell_marked);
 
-        assert!(!entity.lifecycle.cell_marked);
+        assert!(!entity.lifecycle.cell_marked());
         assert_eq!(occupancy.count_on_layer(0, 0, MovementLayer::Ground), 0);
         assert_eq!(raw.ground_bits(0, 0), 0);
         assert_eq!(cell_occupation.vehicle_bits(0, 0, MovementLayer::Ground), 0);
@@ -1020,8 +1066,11 @@ mod tests {
         );
         assert!(drive.track_valid());
         assert_eq!(drive.track(), retained);
-        assert_eq!(entity.navigation.path_replay.cursor, 1);
-        assert_eq!(entity.navigation.path_replay.reference_cell, Some((-3, 7)));
+        assert_eq!(entity.navigation.path_replay.cursor(), 1);
+        assert_eq!(
+            entity.navigation.path_replay.reference_cell(),
+            Some((-3, 7))
+        );
     }
 
     #[test]
@@ -1059,7 +1108,7 @@ mod tests {
         let terrain = explicit_terrain(vec![2, 2]);
         let mut entities = EntityStore::new();
         let mut entity = unit(1);
-        entity.position.rx = 2;
+        entity.position.set_rx(2);
         entity.low_bridge_tube_state = Some(LowBridgeTubeMovementState {
             tube_id: TubeId(0),
             cursor: 2,
@@ -1086,11 +1135,15 @@ mod tests {
         terrain.cell_mut(2, 0).unwrap().slope_type = 1;
         let mut entity = unit(1);
         entity.set_category_for_test(EntityCategory::Infantry);
-        entity.lifecycle.cell_marked = false;
-        entity.position.rx = 2;
-        entity.position.sub_x = crate::util::fixed_math::SimFixed::from_num(64);
-        entity.position.sub_y = crate::util::fixed_math::SimFixed::from_num(192);
-        entity.position.exact_z_leptons = Some(0);
+        entity.lifecycle.set_cell_marked(false);
+        entity.position.set_rx(2);
+        entity
+            .position
+            .set_sub_x(crate::util::fixed_math::SimFixed::from_num(64));
+        entity
+            .position
+            .set_sub_y(crate::util::fixed_math::SimFixed::from_num(192));
+        entity.position.set_exact_z_leptons(Some(0));
         let mut walk = crate::sim::movement::locomotor::LocomotorState::for_test_kind(
             crate::rules::locomotor_type::LocomotorKind::Walk,
         );
@@ -1134,7 +1187,7 @@ mod tests {
             owner.locomotor.as_ref().unwrap().walk_animation_moving(),
             Some(false)
         );
-        assert_eq!(owner.sub_cell, Some(3));
+        assert_eq!(owner.sub_cell(), Some(3));
         assert_eq!(
             ground_pose::position_world_coord(&owner.position),
             DriveCoord {
@@ -1161,8 +1214,10 @@ mod tests {
         let terrain = explicit_terrain(vec![2, 2]);
         let mut transport = unit_of(1, "BFRT");
         // Ten leptons short of the first step's target, inside the budget.
-        transport.position.rx = 1;
-        transport.position.sub_x = crate::util::fixed_math::SimFixed::from_num(118);
+        transport.position.set_rx(1);
+        transport
+            .position
+            .set_sub_x(crate::util::fixed_math::SimFixed::from_num(118));
         transport.low_bridge_tube_state = Some(LowBridgeTubeMovementState {
             tube_id: TubeId(0),
             cursor: 0,
@@ -1170,14 +1225,11 @@ mod tests {
         });
         let mut cargo = PassengerCargo::new(5, 2);
         assert!(cargo.board(2, 1));
-        transport.passenger_role = PassengerRole::Transport { cargo };
+        transport.passenger_role = PassengerRole::transport(cargo);
         let mut rider = unit_of(2, "E1");
         rider.set_category_for_test(EntityCategory::Infantry);
-        rider.position.rx = 3;
-        rider.passenger_role = PassengerRole::Inside {
-            transport_id: 1,
-            open_topped: true,
-        };
+        rider.position.set_rx(3);
+        rider.passenger_role = PassengerRole::inside_for_test(1, true);
         let mut entities = EntityStore::new();
         entities.insert(transport);
         entities.insert(rider);
@@ -1196,7 +1248,7 @@ mod tests {
             &mut ScatterRequests::default(),
         ));
         let [transport, rider] = [1, 2].map(|id| &entities.get(id).unwrap().position);
-        let coord = |p: &Position| (ground_pose::position_world_xy(p), p.exact_z_leptons);
+        let coord = |p: &Position| (ground_pose::position_world_xy(p), p.exact_z_leptons());
         // The leftover budget then steps on towards the next target as well.
         assert!(
             ground_pose::position_world_xy(transport)[0] >= 384,

@@ -37,8 +37,8 @@ impl BuildingGateRuntime {
     }
 
     pub(crate) fn hash_state(self, hasher: &mut impl Hasher) {
-        self.hold_timer.duration.hash(hasher);
-        self.hold_timer.start_frame.hash(hasher);
+        self.hold_timer.duration().hash(hasher);
+        self.hold_timer.start_frame().hash(hasher);
     }
 }
 
@@ -114,8 +114,8 @@ fn footprint_has_other_object(sim: &Simulation, id: u64, foundation: &str) -> bo
         return false;
     };
     crate::sim::production::building_base_foundation_cells(
-        gate.position.rx,
-        gate.position.ry,
+        gate.position.rx(),
+        gate.position.ry(),
         foundation,
     )
     .into_iter()
@@ -337,8 +337,8 @@ mod tests {
         // The native fixture supplies an already admitted cell-list object;
         // class construction/reveal is outside this comparison boundary.
         gate.lifecycle.set_in_limbo_for_test(false);
-        gate.lifecycle.cell_marked = true;
-        gate.in_playfield = true;
+        gate.lifecycle.set_cell_marked(true);
+        gate.set_in_playfield(true);
         sim.substrate.entities.insert(gate);
         let mover_type = sim.interner.intern("MTNK");
         sim.substrate
@@ -437,9 +437,9 @@ mod tests {
         // seeds it identically with60C and no retained read mutates either.
         assert_eq!(
             json!([
-                hold.start_frame as i32,
-                hold.duration as i32,
-                hold.duration as i32
+                hold.start_frame() as i32,
+                hold.duration() as i32,
+                hold.duration() as i32
             ]),
             native["hold"],
             "{context}: hold clock and nominal value"
@@ -613,7 +613,7 @@ mod tests {
                 .as_mut()
                 .unwrap()
                 .hold_timer;
-            timer.start_frame = timer.start_frame.wrapping_add(1);
+            timer.set_start_frame_for_test(timer.start_frame().wrapping_add(1));
             assert_ne!(sim.state_hash(), hash, "{name}: hold anchor in world hash");
             sim.substrate.entities.get_mut(GATE).unwrap().building_gate = initial_hold;
             assert_eq!(sim.state_hash(), hash, "{name}: restored hold");

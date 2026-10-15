@@ -142,7 +142,7 @@ pub(crate) fn acquire_best_target_for_entity(
     };
     // Aircraft with 0 ammo should not acquire new targets — need to reload.
     if let Some(ref ammo) = entity.aircraft_ammo
-        && ammo.current == 0
+        && ammo.current() == 0
     {
         return super::greatest_threat::ThreatScanOutcome::default();
     }
@@ -372,7 +372,7 @@ pub(crate) fn should_retaliate(
     // The receiver asks only in its surviving arms; a victim the represented
     // lifecycle already retired cannot be one.
     if !victim.is_alive()
-        || victim.dying
+        || victim.death.is_dying()
         || !victim.lifecycle.object_alive()
         || victim.lifecycle.in_limbo()
     {
@@ -583,12 +583,12 @@ pub(crate) fn build_attacker_snapshot(
         owner: entity.owner(),
         category: entity.category(),
         target,
-        pos_rx: entity.position.rx,
-        pos_ry: entity.position.ry,
-        pos_z: entity.position.z,
-        pos_exact_z_leptons: entity.position.exact_z_leptons,
-        sub_x: entity.position.sub_x,
-        sub_y: entity.position.sub_y,
+        pos_rx: entity.position.rx(),
+        pos_ry: entity.position.ry(),
+        pos_z: entity.position.z(),
+        pos_exact_z_leptons: entity.position.exact_z_leptons(),
+        sub_x: entity.position.sub_x(),
+        sub_y: entity.position.sub_y(),
         type_id: entity.type_ref(),
         veterancy: entity.veterancy.rank(),
         barrel_facing: entity.barrel_facing,
@@ -688,13 +688,13 @@ mod tests {
         let mut sref = GameEntity::test_default(1, "SREF", "Americans", 5, 5);
         sref.set_category_for_test(EntityCategory::Unit);
         sref.lifecycle.set_in_limbo_for_test(false);
-        sref.lifecycle.cell_marked = true;
+        sref.lifecycle.set_cell_marked(true);
         entities.insert(sref);
 
         let mut enemy = GameEntity::test_default(2, "HTNK", "Russians", 6, 5);
         enemy.set_category_for_test(EntityCategory::Unit);
         enemy.lifecycle.set_in_limbo_for_test(false);
-        enemy.lifecycle.cell_marked = true;
+        enemy.lifecycle.set_cell_marked(true);
         entities.insert(enemy);
 
         // Snapshot the thread-local test interner only after `test_default`

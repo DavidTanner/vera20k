@@ -7,8 +7,8 @@
 //! removal control starts its stale selection through the shared selector.
 
 use super::{
-    DepartureFailure, DepartureRoute, PassengerRole, depart_cargo_head, reveal_unloaded_passenger,
-    tick_passenger_system,
+    DepartureFailure, DepartureRoute, depart_cargo_head, exit_cell_position,
+    reveal_unloaded_passenger, tick_passenger_system,
 };
 use crate::rules::ruleset::RuleSet;
 use crate::sim::combat::combat_weapon::current_weapon;
@@ -88,10 +88,12 @@ fn spawn_and_board(sim: &mut Simulation, rules: &RuleSet, passenger_type: &str) 
         },
         Some(rules),
     ));
-    assert!(matches!(
-        entity(sim, passenger).passenger_role,
-        PassengerRole::Boarding { target_transport_id } if target_transport_id == ifv
-    ));
+    assert_eq!(
+        entity(sim, passenger)
+            .passenger_role
+            .boarding_transport_id(),
+        Some(ifv)
+    );
     // Walk to the occupied transport cell through the production entry path.
     let grid = sim.path_grid_snapshot().unwrap();
     for _ in 0..240 {
@@ -110,18 +112,15 @@ fn assert_boarded(sim: &Simulation, ifv: u64, passenger: u64) {
     assert_eq!(cargo.passenger_sizes, [1]);
     assert_eq!(cargo.total_size, 1);
     let pax = entity(sim, passenger);
-    assert!(matches!(
-        pax.passenger_role,
-        PassengerRole::Inside { transport_id, open_topped: false } if transport_id == ifv
-    ));
+    assert_eq!(pax.passenger_role.inside_transport(), Some((ifv, false)));
     assert!(pax.lifecycle.in_limbo());
     assert!(!sim.live_object_order_snapshot().contains(&passenger));
 }
 
 fn unload_at_clear_exit(sim: &mut Simulation, rules: &RuleSet, ifv: u64, passenger: u64) {
     let exit = (
-        entity(sim, ifv).position.rx,
-        entity(sim, ifv).position.ry + 1,
+        entity(sim, ifv).position.rx(),
+        entity(sim, ifv).position.ry() + 1,
     );
     assert_eq!(
         depart_cargo_head(
@@ -135,14 +134,15 @@ fn unload_at_clear_exit(sim: &mut Simulation, rules: &RuleSet, ifv: u64, passeng
                 // FootClass::RemoveFirstPassenger 4DE710 resets the gunner before
                 // UnitClass::Mission_Unload attempts the passenger's Unlimbo.
                 assert_selection(sim, ifv, (0, 0));
+                let position = exit_cell_position(sim, departing, exit.0, exit.1, 0);
                 reveal_unloaded_passenger(
                     sim,
                     rules,
                     ifv,
                     departing,
-                    exit.0,
-                    exit.1,
-                    0,
+                    position,
+                    crate::sim::world::PlacementEvidence::MarkSucceeded,
+                    None,
                     crate::sim::world::FrameEffects::default(),
                 )
             },
@@ -157,9 +157,9 @@ fn unload_at_clear_exit(sim: &mut Simulation, rules: &RuleSet, ifv: u64, passeng
     assert!(cargo.passenger_sizes.is_empty());
     assert_eq!(cargo.total_size, 0);
     let pax = entity(sim, passenger);
-    assert!(matches!(pax.passenger_role, PassengerRole::None));
+    assert!(pax.passenger_role.is_none());
     assert!(!pax.lifecycle.in_limbo());
-    assert_eq!((pax.position.rx, pax.position.ry), exit);
+    assert_eq!((pax.position.rx(), pax.position.ry()), exit);
     assert_eq!(
         sim.live_object_order_snapshot()
             .iter()
@@ -194,7 +194,7 @@ fn retail_infantry_enter_keeps_the_transport_destination_reference() {
     ));
     let passenger = entity(&sim, passenger);
     assert_eq!(
-        passenger.navigation.nav_com,
+        passenger.navigation.nav_com(),
         Some(crate::sim::components::NavTargetRef::object(ifv)),
         "the native Enter destination is the clicked object, retaining its identity"
     );
@@ -231,10 +231,10 @@ fn retail_infantry_transport_boarding_waits_for_transport_cell() {
         crate::sim::world::FrameEffects::default(),
     );
     assert!(
-        matches!(
-            entity(&sim, passenger).passenger_role,
-            PassengerRole::Boarding { .. }
-        ),
+        entity(&sim, passenger)
+            .passenger_role
+            .boarding_transport_id()
+            .is_some(),
         "an adjacent passenger must remain visible until it reaches the vehicle cell"
     );
     assert!(entity(&sim, ifv).passenger_role.cargo().unwrap().is_empty());
@@ -266,7 +266,7 @@ fn retail_chrono_remote_transport_enter_keeps_object_and_boards() {
         Some(rules)
     ));
     assert_eq!(
-        entity(&sim, passenger).navigation.nav_com,
+        entity(&sim, passenger).navigation.nav_com(),
         Some(crate::sim::components::NavTargetRef::object(ifv)),
         "a Chrono Enter must retain the transport object through the destination setter"
     );
@@ -302,7 +302,7 @@ fn retail_chrono_remote_transport_enter_keeps_object_and_boards() {
                 Some(rules)
             ));
             assert_eq!(
-                entity(&sim, passenger).navigation.nav_com,
+                entity(&sim, passenger).navigation.nav_com(),
                 Some(crate::sim::components::NavTargetRef::cell(12, 16)),
                 "after unloading, the Legionnaire accepts a new teleport destination"
             );
@@ -336,7 +336,7 @@ fn retail_vehicle_enter_keeps_live_transport_target() {
             Some(rules),
         ));
         assert_eq!(
-            entity(&sim, passenger).navigation.nav_com,
+            entity(&sim, passenger).navigation.nav_com(),
             Some(crate::sim::components::NavTargetRef::object(transport)),
             "{passenger_type}: Unit boarding must retain its live transport"
         );
@@ -429,14 +429,15 @@ fn retail_loaded_ifv_survives_transport_snapshot_unload_and_reentry() {
             DepartureRoute::Vehicle,
             |sim, departing| {
                 assert_eq!(departing, ifv);
+                let position = exit_cell_position(sim, departing, 16, 20, 0);
                 reveal_unloaded_passenger(
                     sim,
                     rules,
                     boat,
                     departing,
-                    16,
-                    20,
-                    0,
+                    position,
+                    crate::sim::world::PlacementEvidence::MarkSucceeded,
+                    None,
                     crate::sim::world::FrameEffects::default(),
                 )
             },
@@ -505,10 +506,7 @@ fn retail_replacement_move_cancels_pending_vehicle_boarding() {
         entity(&sim, ifv).passenger_role.cargo().unwrap().is_empty(),
         "crossing the old destination cannot board after Move replaced NavCom"
     );
-    assert!(matches!(
-        entity(&sim, passenger).passenger_role,
-        PassengerRole::None
-    ));
+    assert!(entity(&sim, passenger).passenger_role.is_none());
     assert!(!entity(&sim, passenger).lifecycle.in_limbo());
 }
 

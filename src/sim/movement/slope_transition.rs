@@ -287,8 +287,11 @@ mod tests {
         }
 
         let mut mismatched = entity_with(EntityCategory::Unit, LocomotorKind::Drive);
-        mismatched.locomotor.as_mut().unwrap().runtime_payload =
-            LocomotorRuntimePayload::Walk(Default::default());
+        mismatched
+            .locomotor
+            .as_mut()
+            .unwrap()
+            .set_runtime_payload_for_test(LocomotorRuntimePayload::Walk(Default::default()));
         assert!(super::state_for_entity(&mismatched).is_none());
     }
 
@@ -336,9 +339,9 @@ mod tests {
                 .locomotor
                 .as_ref()
                 .unwrap()
-                .piggyback
+                .piggyback()
                 .as_deref()
-                .map(|stashed| &stashed.runtime_payload),
+                .map(|stashed| stashed.runtime_payload()),
             Some(LocomotorRuntimePayload::Drive(_))
         ));
         assert!(stashed_drive.locomotor.as_mut().unwrap().end_piggyback());

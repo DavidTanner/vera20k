@@ -338,7 +338,8 @@ pub(crate) fn all_to_hunt(
         let Some(techno) = sim.substrate.entities.get(id) else {
             continue;
         };
-        if techno.owner() != owner || !techno.lifecycle.cell_marked || techno.lifecycle.in_limbo() {
+        if techno.owner() != owner || !techno.lifecycle.cell_marked() || techno.lifecycle.in_limbo()
+        {
             continue;
         }
         let dominated_strength = (techno.mind_control.permanent() && !human)

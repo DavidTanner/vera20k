@@ -71,7 +71,7 @@ impl Simulation {
             height: air_movement::current_fly_height(entity, self.resolved_terrain.as_ref()),
             flight_level: air_movement::type_flight_level(entity, Some((rules, &self.interner))),
             team: self.team_script_vm.team_for_member(id).is_some(),
-            nav_com: entity.navigation.nav_com.is_some(),
+            nav_com: entity.navigation.nav_com().is_some(),
             weapon: object.is_some_and(|object| {
                 crate::sim::combat::combat_weapon::primary_for_tier(object, entity.veterancy.rank())
                     .is_some()
@@ -81,7 +81,7 @@ impl Simulation {
             ammo: entity
                 .aircraft_ammo
                 .as_ref()
-                .map_or(-1, |ammo| ammo.current),
+                .map_or(-1, |ammo| ammo.current()),
             type_ammo: object.map_or(0, |object| object.ammo),
             human: self.owner_is_human(entity.owner()),
         }

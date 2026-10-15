@@ -36,7 +36,16 @@ fn mission_only_aircraft_reveal_matches_original_flag_histories() {
         );
         let mut sim = Simulation::new();
         let id = sim
-            .construct_object_limbo_at_height("PLANE", "Americans", 10, 10, 0, 0, &rules)
+            .construct_object_limbo_at_height(
+                "PLANE",
+                "Americans",
+                10,
+                10,
+                0,
+                0,
+                &rules,
+                crate::sim::world::FrameEffects::default(),
+            )
             .unwrap();
         let entity = sim.substrate.entities.get_mut(id).unwrap();
         assert!(
@@ -122,7 +131,16 @@ fn mission_only_has_its_own_hash_fold() {
     let rules = rules(true, true, "gun", "none");
     let mut sim = Simulation::new();
     let id = sim
-        .construct_object_limbo_at_height("PLANE", "Americans", 10, 10, 0, 0, &rules)
+        .construct_object_limbo_at_height(
+            "PLANE",
+            "Americans",
+            10,
+            10,
+            0,
+            0,
+            &rules,
+            crate::sim::world::FrameEffects::default(),
+        )
         .unwrap();
     let before = sim.state_hash();
     sim.substrate
@@ -204,6 +222,7 @@ fn aircraft_unlimbo_height_and_tail_match_original_runs() {
                 0,
                 level,
                 &rules,
+                crate::sim::world::FrameEffects::default(),
             )
             .unwrap();
         let entity = sim.substrate.entities.get_mut(id).unwrap();
@@ -270,7 +289,7 @@ fn aircraft_unlimbo_height_and_tail_match_original_runs() {
             "{row}"
         );
         let z = row["unlimbo_coord"][2].as_i64().unwrap() as i32;
-        assert_eq!(entity.position.exact_z_leptons, Some(z), "{row}");
+        assert_eq!(entity.position.exact_z_leptons(), Some(z), "{row}");
         // GetHeight reads the committed Location Z.
         assert_eq!(
             crate::sim::movement::air_movement::current_fly_height(

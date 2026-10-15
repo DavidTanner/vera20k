@@ -107,7 +107,7 @@ impl Simulation {
             .unwrap()
             .fly_runtime_mut()
             .unwrap()
-            .target_speed = SIM_ZERO;
+            .set_target_speed(SIM_ZERO);
         let entity = self.substrate.entities.get(id).unwrap();
         let base = crate::sim::aircraft::landing_base::landing_base(
             entity,
@@ -218,7 +218,11 @@ impl Simulation {
             )
             .unwrap_or(0);
             if coord.z >= ground.wrapping_add(crate::util::lepton::BRIDGE_DECK_HEIGHT_LEPTONS) {
-                self.substrate.entities.get_mut(id).unwrap().on_bridge = true;
+                self.substrate
+                    .entities
+                    .get_mut(id)
+                    .unwrap()
+                    .set_on_bridge(true);
             }
         }
         self.set_object_height(id, base, rules, registry, frame_effects);
@@ -231,8 +235,8 @@ impl Simulation {
             .fly_runtime_mut()
             .unwrap();
         fly.finish_landing();
-        fly.target_speed = SIM_ZERO;
-        fly.current_speed = SIM_ZERO;
+        fly.set_target_speed(SIM_ZERO);
+        fly.set_current_speed(SIM_ZERO);
         entity.foot_speed.set_speed_fraction(SIM_ZERO);
         self.foot_neighbors_after_fly_landing(id);
         let entity = self.substrate.entities.get(id).unwrap();
@@ -408,7 +412,7 @@ impl Simulation {
                 && other.category() == EntityCategory::Aircraft
                 && other.lifecycle.object_alive()
                 && !other.lifecycle.in_limbo()
-                && match (object, other.navigation.nav_com) {
+                && match (object, other.navigation.nav_com()) {
                     (None, Some(NavTargetRef::Cell { rx, ry })) => {
                         self.resolved_terrain.as_ref().map_or(
                             (rx, ry) == (cell.0 as u16, cell.1 as u16),
@@ -469,8 +473,8 @@ impl Simulation {
             radio::broadcast(self, id, RadioMessage::Untether, rules, frame_effects);
             if self.substrate.entities.get(id).is_some_and(|e| {
                 !e.radio_contacts.is_empty()
-                    && e.navigation.nav_com.is_some()
-                    && match e.navigation.nav_com {
+                    && e.navigation.nav_com().is_some()
+                    && match e.navigation.nav_com() {
                         Some(
                             NavTargetRef::Entity { id }
                             | NavTargetRef::Object { id }
@@ -629,14 +633,15 @@ mod tests {
         let e = sim.substrate.entities.get_mut(id).unwrap();
         e.lifecycle.set_object_alive_for_test(true);
         e.lifecycle.set_in_limbo_for_test(false);
-        e.position.rx = 64;
-        e.position.ry = 64;
-        e.position.sub_x = SimFixed::from_num(128);
-        e.position.sub_y = SimFixed::from_num(128);
-        e.position.exact_z_leptons = Some(input["registration_z"].as_i64().unwrap_or(900) as i32);
+        e.position.set_rx(64);
+        e.position.set_ry(64);
+        e.position.set_sub_x(SimFixed::from_num(128));
+        e.position.set_sub_y(SimFixed::from_num(128));
+        e.position
+            .set_exact_z_leptons(Some(input["registration_z"].as_i64().unwrap_or(900) as i32));
         e.health
             .set_for_test(input["health"].as_i64().unwrap_or(100) as i32);
-        e.on_bridge = input["on_bridge"].as_bool().unwrap_or(false);
+        e.set_on_bridge(input["on_bridge"].as_bool().unwrap_or(false));
         e.locomotor = Some(LocomotorState::from_object_type(
             rules.object("TEST").unwrap(),
             0,
@@ -644,19 +649,22 @@ mod tests {
         let l = e.locomotor.as_mut().unwrap();
         *l.fly_runtime_mut().unwrap()=serde_json::from_value::<FlyRuntime>(serde_json::json!({"target_height":0,"taking_off":false,"landing":before["phase"][1]==1,"landing_effect_latched":before["phase"][2]==1,"airport_bound":input["airport_bound"].as_bool().unwrap_or(false),"moving":true,"destination":before["destination"]})).unwrap();
         let fly = l.fly_runtime_mut().unwrap();
-        fly.target_speed = SimFixed::lit("0.75");
-        fly.current_speed = SimFixed::lit("0.5");
+        fly.set_target_speed(SimFixed::lit("0.75"));
+        fly.set_current_speed(SimFixed::lit("0.5"));
         e.flight_attitude=serde_json::from_value::<FlightAttitude>(serde_json::json!({"pitch":SimFixed::from_num(input["owner_float_2e8"].as_f64().unwrap_or(0.0))})).unwrap();
         e.navigation.neighbor_state =
             serde_json::from_value(serde_json::json!({"cell": before["neighbor_cell"]})).unwrap();
-        e.navigation.path_runtime.blocked_timer = crate::sim::timer::CdTimer::from_raw(0, 0);
+        e.navigation
+            .path_runtime
+            .set_blocked_timer_for_test(crate::sim::timer::CdTimer::from_raw(0, 0));
         if input["air_registered"].as_bool().unwrap_or(true) {
             sim.aircraft_tracker_add(id);
         }
         sim.add_entity_occupancy(id);
         sim.submit_entity_display(id, Some(&rules), None);
         let e = sim.substrate.entities.get_mut(id).unwrap();
-        e.position.exact_z_leptons = Some(before["coordinates"][2].as_i64().unwrap() as i32);
+        e.position
+            .set_exact_z_leptons(Some(before["coordinates"][2].as_i64().unwrap() as i32));
         if input["blocking_unit"].as_bool().unwrap_or(false)
             || input["reserved"].as_bool().unwrap_or(false)
         {
@@ -673,13 +681,13 @@ mod tests {
             let e = sim.substrate.entities.get_mut(id).unwrap();
             e.lifecycle.set_object_alive_for_test(true);
             e.lifecycle.set_in_limbo_for_test(false);
-            e.position.rx = 64;
-            e.position.ry = 64;
-            e.position.sub_x = SimFixed::from_num(128);
-            e.position.sub_y = SimFixed::from_num(128);
-            e.position.exact_z_leptons = Some(0);
+            e.position.set_rx(64);
+            e.position.set_ry(64);
+            e.position.set_sub_x(SimFixed::from_num(128));
+            e.position.set_sub_y(SimFixed::from_num(128));
+            e.position.set_exact_z_leptons(Some(0));
             if input["reserved"].as_bool().unwrap_or(false) {
-                e.navigation.nav_com = Some(NavTargetRef::cell(64, 64));
+                e.navigation.set_nav_com(Some(NavTargetRef::cell(64, 64)));
             } else {
                 sim.add_entity_occupancy(id);
             }
@@ -702,7 +710,7 @@ mod tests {
             let (mut sim, rules) = fixture(&supplied);
             let e = sim.substrate.entities.get_mut(1).unwrap();
             let loco = e.locomotor.as_mut().unwrap();
-            loco.powered = input["powered"].as_bool().unwrap_or(true);
+            loco.set_powered_for_test(input["powered"].as_bool().unwrap_or(true));
             loco.set_fly_target_height(37);
             loco.fly_runtime_mut().unwrap().finish_destination();
             let facing = |initial, target| {
@@ -808,7 +816,8 @@ mod tests {
             let (mut sim, _) = fixture(&supplied);
             sim.session.game_mode_nonzero = input["game_mode"].as_u64().unwrap_or(0) != 0;
             let e = sim.substrate.entities.get_mut(1).unwrap();
-            e.discovery.owned_by_current_house = input["owned"].as_bool().unwrap_or(true);
+            e.discovery
+                .set_owned_by_current_house_for_test(input["owned"].as_bool().unwrap_or(true));
             if input["mission_only"].as_bool().unwrap_or(false) {
                 e.mark_mission_only();
             }
@@ -885,8 +894,8 @@ mod tests {
                 .cloned()
                 .unwrap_or(serde_json::json!([64, 64]));
             let e = sim.substrate.entities.get_mut(1).unwrap();
-            e.position.rx = query[0].as_u64().unwrap() as u16;
-            e.position.ry = query[1].as_u64().unwrap() as u16;
+            e.position.set_rx(query[0].as_u64().unwrap() as u16);
+            e.position.set_ry(query[1].as_u64().unwrap() as u16);
             let owner = e.owner();
             let occupant = input["occupant"].as_str();
             if occupant == Some("self") {
@@ -918,9 +927,9 @@ mod tests {
                 other
                     .lifecycle
                     .set_in_limbo_for_test(input["limbo"].as_bool().unwrap_or(false));
-                other.position.sub_x = SimFixed::from_num(128);
-                other.position.sub_y = SimFixed::from_num(128);
-                other.position.exact_z_leptons = Some(0);
+                other.position.set_sub_x(SimFixed::from_num(128));
+                other.position.set_sub_y(SimFixed::from_num(128));
+                other.position.set_exact_z_leptons(Some(0));
                 if input["spawn_manager"].as_bool().unwrap_or(false) {
                     other.spawn_manager = crate::sim::spawn_manager::init_spawn_manager(
                         rules.object("BLOCKER").unwrap(),
@@ -963,10 +972,10 @@ mod tests {
                     .get_mut(id)
                     .unwrap()
                     .navigation
-                    .nav_com = Some(NavTargetRef::cell(
-                    reserved[0].as_u64().unwrap() as u16,
-                    reserved[1].as_u64().unwrap() as u16,
-                ));
+                    .set_nav_com(Some(NavTargetRef::cell(
+                        reserved[0].as_u64().unwrap() as u16,
+                        reserved[1].as_u64().unwrap() as u16,
+                    )));
             }
             sim.substrate.raw_cell_occupation.mark_ground(
                 64,
@@ -1029,8 +1038,8 @@ mod tests {
             );
             assert_eq!(
                 serde_json::json!([
-                    l.fly_runtime().unwrap().target_speed.to_num::<f64>(),
-                    l.fly_runtime().unwrap().current_speed.to_num::<f64>()
+                    l.fly_runtime().unwrap().target_speed().to_num::<f64>(),
+                    l.fly_runtime().unwrap().current_speed().to_num::<f64>()
                 ]),
                 after["speeds"],
                 "{}",
@@ -1050,13 +1059,13 @@ mod tests {
                 row["input"]
             );
             assert_eq!(
-                e.on_bridge,
+                e.on_bridge(),
                 after["on_bridge"].as_bool().unwrap(),
                 "{}",
                 row["input"]
             );
             assert_eq!(
-                e.lifecycle.cell_marked,
+                e.lifecycle.cell_marked(),
                 after["marked"].as_bool().unwrap(),
                 "{}",
                 row["input"]
@@ -1067,7 +1076,7 @@ mod tests {
                 "{}",
                 row["input"]
             );
-            let timer = e.navigation.path_runtime.blocked_timer;
+            let timer = e.navigation.path_runtime.blocked_timer();
             assert_eq!(
                 serde_json::json!([timer.start_frame(), timer.duration()]),
                 after["path_timer"],
@@ -1154,7 +1163,7 @@ mod tests {
             assert_eq!(sim.state_hash(), restored.state_hash(), "frame{frame}");
         }
         let e = sim.substrate.entities.get(1).unwrap();
-        assert_eq!(e.position.exact_z_leptons, Some(0));
+        assert_eq!(e.position.exact_z_leptons(), Some(0));
         assert_eq!(e.air_spatial_bucket(), None);
         assert!(
             !e.locomotor

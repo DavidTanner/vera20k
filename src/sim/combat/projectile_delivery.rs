@@ -343,7 +343,7 @@ pub(crate) fn admit_fired_bullet(
                 .substrate
                 .entities
                 .get(id)
-                .is_some_and(|target| target.on_bridge),
+                .is_some_and(|target| target.on_bridge()),
             _ => false,
         };
         let placement = inviso_fire_placement(

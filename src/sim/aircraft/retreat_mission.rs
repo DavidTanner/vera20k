@@ -81,7 +81,7 @@ pub(super) fn retreat(
     frame_effects: FrameEffects<'_>,
 ) -> i32 {
     let entity = sim.substrate.entities.get(id).expect("aircraft dispatch");
-    let nav_com = match entity.navigation.nav_com {
+    let nav_com = match entity.navigation.nav_com() {
         None => RetreatNavCom::None,
         Some(nav_com) => {
             // GetCell: Map[coord] of the Location, whose miss is the dummy

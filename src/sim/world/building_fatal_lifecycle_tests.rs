@@ -270,7 +270,16 @@ impl Fixture {
         // damage before the admitted opening. Map import would open first
         // at full health, producing an extra normal ART birth.
         let building = sim
-            .construct_object_limbo_at_height("GAPOWR", "Second", 10, 10, 0, 0, &rules)
+            .construct_object_limbo_at_height(
+                "GAPOWR",
+                "Second",
+                10,
+                10,
+                0,
+                0,
+                &rules,
+                crate::sim::world::FrameEffects::default(),
+            )
             .unwrap();
         sim.reveal_constructed_object_at_height(
             building,
@@ -289,9 +298,9 @@ impl Fixture {
             // Supply that declared input only here. Main retains real Mark.
             let entity = sim.substrate.entities.get(building).unwrap();
             for (rx, ry) in crate::sim::crew_survival::foundation_cells(
-                entity.position.rx,
-                entity.position.ry,
-                &entity.foundation,
+                entity.position.rx(),
+                entity.position.ry(),
+                entity.type_facts.foundation(),
             ) {
                 sim.substrate.raw_cell_occupation.clear_ground(
                     rx,
@@ -386,11 +395,15 @@ impl Fixture {
                         int(&attacker["mission_timer"][2]),
                     ),
                 });
-            actor.rearm_timer = crate::sim::timer::CdTimer::from_raw(
-                int(&attacker["rearm_timer"][0]),
-                int(&attacker["rearm_timer"][2]),
-            );
-            actor.last_fire_frame = i64::from(int(&attacker["last_fire_frame"]));
+            actor
+                .rearm_timer
+                .set_for_test(crate::sim::timer::CdTimer::from_raw(
+                    int(&attacker["rearm_timer"][0]),
+                    int(&attacker["rearm_timer"][2]),
+                ));
+            actor
+                .last_fire_frame
+                .set_for_test(i64::from(int(&attacker["last_fire_frame"])));
         }
         sim.native_unique_ids = Some(NativeUniqueIdCursor::test_at_current_value(int(
             &prior["unique_id_cursor"],
@@ -486,7 +499,7 @@ impl Fixture {
             "{boundary}: queued Building body",
         );
         assert_eq!(
-            building.building_last_operational,
+            building.building_last_operational.is_operational(),
             native["building"]["old_operational"] == 1,
             "{boundary}: retained operational state",
         );
@@ -505,7 +518,7 @@ impl Fixture {
             "{boundary}: Building dispatch timer",
         );
         assert_eq!(
-            building.damage_fire_state_active,
+            building.damage_fires.is_active(),
             native["damage_fire_active_5e8"] == 1,
             "{boundary}: damage-fire state"
         );
@@ -584,7 +597,7 @@ impl Fixture {
         if let Some(building) = self.sim.substrate.entities.get(self.building) {
             for (slots, key) in [
                 (&building.building_art.anim_slots()[..], "slots"),
-                (&building.damage_fire_anim_ids[..], "damage_fire_slots"),
+                (&building.damage_fires.anim_ids()[..], "damage_fire_slots"),
             ] {
                 let expected = if key == "slots" {
                     &native["building"][key]
@@ -693,8 +706,8 @@ impl Fixture {
         );
         assert_eq!(
             [
-                attacker.passive_scan_timer.start_frame as i32,
-                attacker.passive_scan_timer.duration as i32
+                attacker.passive_scan.timer().start_frame() as i32,
+                attacker.passive_scan.timer().duration() as i32
             ],
             [
                 int(&expected["passive_scan_timer"][0]),
@@ -724,7 +737,7 @@ impl Fixture {
             "{boundary}: rearm timer"
         );
         assert_eq!(
-            attacker.last_fire_frame,
+            attacker.last_fire_frame.frame(),
             i64::from(int(&expected["last_fire_frame"])),
             "{boundary}: firing timestamp"
         );
@@ -775,7 +788,7 @@ impl Fixture {
             "{boundary}: limbo"
         );
         assert_eq!(
-            entity.lifecycle.cell_marked,
+            entity.lifecycle.cell_marked(),
             native["marked"] == 1,
             "{boundary}: cell mark"
         );

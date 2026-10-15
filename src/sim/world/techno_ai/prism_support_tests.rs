@@ -83,7 +83,7 @@ fn rules(support_range: i32, elite_range: Option<i32>) -> RuleSet {
         "Image=TWRART\nStrength=600\nArmor=steel\nFoundation=1x1\nPowered=yes\nPower=-75\n\
          Primary=PrismShot\nSecondary=PrismSupport\n{elite_key}"
     );
-    let rules_ini = IniFile::from_str(&format!(
+    let rules_ini = crate::sim::arena_fixture::clear_ground_ini(&format!(
         "[General]\nPrismType=TWR\nPrismSupportModifier=150%\nPrismSupportMax=8\n\
          PrismSupportDelay=45\n\
          [Guard]\nRate=.030\nAARate=.016\n\
@@ -127,16 +127,12 @@ fn mission_of(name: &str) -> MissionId {
 
 /// A delayed fire's mode (`+0x704`) and countdown (`+0x714`).
 fn delayed_fire(entity: &crate::sim::game_entity::GameEntity) -> (i64, i32) {
-    match entity.pending_building_fire {
+    match entity.pending_building_fire.pending() {
         None => (0, 0),
-        Some(PendingBuildingFire {
-            remaining_ticks,
-            fire: DelayedFire::Weapon(_),
-        }) => (1, remaining_ticks),
-        Some(PendingBuildingFire {
-            remaining_ticks,
-            fire: DelayedFire::SupportBeam { .. },
-        }) => (2, remaining_ticks),
+        Some(pending) => match pending.fire() {
+            DelayedFire::Weapon(_) => (1, pending.remaining_ticks()),
+            DelayedFire::SupportBeam { .. } => (2, pending.remaining_ticks()),
+        },
     }
 }
 
@@ -166,6 +162,7 @@ impl Fixture {
         );
         let mut sim = Simulation::new();
         sim.install_resolved_terrain_for_new_map(test_flat_ground_grid(48));
+        crate::sim::arena_fixture::supply_native_map(&mut sim);
         let owner = sim.interner.intern("Americans");
         sim.houses.insert(
             owner,
@@ -222,7 +219,9 @@ impl Fixture {
                 dispatch_timer: MissionDispatchTimer::from_raw(FRAME, 0),
             });
             entity.mission_leaf.set_building_ready_latch(1);
-            entity.rearm_timer = CdTimer::started(FRAME - 100, 0);
+            entity
+                .rearm_timer
+                .set_for_test(CdTimer::started(FRAME - 100, 0));
         }
         let mut fixture = Self {
             sim,
@@ -294,13 +293,15 @@ impl Fixture {
             let start = rearm[0]
                 .as_i64()
                 .map_or(PAUSED_START_FRAME, |relative| FRAME + relative as i32);
-            entity.rearm_timer = CdTimer::started(start, rearm[1].as_i64().unwrap() as i32);
+            entity
+                .rearm_timer
+                .set_for_test(CdTimer::started(start, rearm[1].as_i64().unwrap() as i32));
         }
         if state["drained"] == true {
             entity.drain.set_draining_me_for_test(Some(u64::MAX));
         }
         if let Some(count) = state["count"].as_i64() {
-            entity.prism_support_count = count as i32;
+            entity.prism_support_count.set_for_test(count as i32);
         }
         if let Some(veterancy) = state["veterancy"].as_f64() {
             entity
@@ -309,31 +310,33 @@ impl Fixture {
         }
         let countdown = state["countdown"].as_i64().unwrap_or(0) as i32;
         let payload = |axis: usize| state["payload"][axis].as_i64().unwrap_or(0) as i32;
-        entity.pending_building_fire = match state["mode"].as_i64().unwrap_or(0) {
-            0 if countdown == 0 => None,
-            0 => {
-                self.mode_unheld.insert(id);
-                Some(PendingBuildingFire {
-                    remaining_ticks: countdown,
-                    fire: DelayedFire::Weapon(WeaponSlot::Primary),
-                })
-            }
-            1 => Some(PendingBuildingFire {
-                remaining_ticks: countdown,
-                fire: DelayedFire::Weapon(if payload(0) == 1 {
-                    WeaponSlot::Secondary
-                } else {
-                    WeaponSlot::Primary
-                }),
-            }),
-            2 => Some(PendingBuildingFire {
-                remaining_ticks: countdown,
-                fire: DelayedFire::SupportBeam {
-                    to: ProjectileCoord::new(payload(0), payload(1), payload(2)),
-                },
-            }),
-            other => panic!("mode {other} has no VERA state"),
-        };
+        entity
+            .pending_building_fire
+            .set_for_test(match state["mode"].as_i64().unwrap_or(0) {
+                0 if countdown == 0 => None,
+                0 => {
+                    self.mode_unheld.insert(id);
+                    Some(PendingBuildingFire::new(
+                        countdown,
+                        DelayedFire::Weapon(WeaponSlot::Primary),
+                    ))
+                }
+                1 => Some(PendingBuildingFire::new(
+                    countdown,
+                    DelayedFire::Weapon(if payload(0) == 1 {
+                        WeaponSlot::Secondary
+                    } else {
+                        WeaponSlot::Primary
+                    }),
+                )),
+                2 => Some(PendingBuildingFire::new(
+                    countdown,
+                    DelayedFire::SupportBeam {
+                        to: ProjectileCoord::new(payload(0), payload(1), payload(2)),
+                    },
+                )),
+                other => panic!("mode {other} has no VERA state"),
+            });
     }
 
     /// The target's Location `east` leptons east of [`ORIGIN`].
@@ -362,7 +365,7 @@ impl Fixture {
         let name = self.name(id);
         let (mode, countdown) = delayed_fire(entity);
         assert_eq!(
-            i64::from(entity.prism_support_count),
+            i64::from(entity.prism_support_count.count()),
             native["count"].as_i64().unwrap(),
             "{at} {name} count"
         );
@@ -399,7 +402,7 @@ impl Fixture {
         );
         if let Some(counter) = native["turret_counter"].as_i64() {
             assert_eq!(
-                i64::from(entity.turret_anim_frame),
+                i64::from(entity.turret_anim_frame.frame()),
                 counter,
                 "{at} {name} +0x148"
             );
@@ -415,11 +418,11 @@ impl Fixture {
 fn place(sim: &mut Simulation, id: u64, offset: [i32; 3]) {
     let [x, y, z] = [0, 1, 2].map(|axis| ORIGIN[axis] + offset[axis]);
     let position = &mut sim.substrate.entities.get_mut(id).unwrap().position;
-    position.rx = (x >> 8) as u16;
-    position.ry = (y >> 8) as u16;
-    position.sub_x = SimFixed::from_num(x & 0xFF);
-    position.sub_y = SimFixed::from_num(y & 0xFF);
-    position.exact_z_leptons = Some(z);
+    position.set_rx((x >> 8) as u16);
+    position.set_ry((y >> 8) as u16);
+    position.set_sub_x(SimFixed::from_num(x & 0xFF));
+    position.set_sub_y(SimFixed::from_num(y & 0xFF));
+    position.set_exact_z_leptons(Some(z));
 }
 
 fn location(sim: &Simulation, id: u64) -> [i32; 3] {
@@ -484,7 +487,7 @@ fn prism_recruitment_matches_the_original() {
             .values()
             .map(|&id| {
                 let entity = fixture.sim.substrate.entities.get(id).unwrap();
-                (id, entity.pending_building_fire)
+                (id, entity.pending_building_fire.pending())
             })
             .collect();
         let target = TargetKind::Entity(fixture.target);
@@ -511,7 +514,7 @@ fn prism_recruitment_matches_the_original() {
 
         let armed_now = |id: u64| {
             let entity = fixture.sim.substrate.entities.get(id).unwrap();
-            let pending = entity.pending_building_fire;
+            let pending = entity.pending_building_fire.pending();
             pending.filter(|_| pending != pending_before[&id])
         };
         let recruited: Vec<&str> = fixture
@@ -533,10 +536,10 @@ fn prism_recruitment_matches_the_original() {
         );
         assert_eq!(
             armed_now(master)
-                == Some(PendingBuildingFire {
-                    remaining_ticks: DELAY,
-                    fire: DelayedFire::Weapon(WeaponSlot::Primary),
-                }),
+                == Some(PendingBuildingFire::new(
+                    DELAY,
+                    DelayedFire::Weapon(WeaponSlot::Primary)
+                )),
             row["armed"].as_bool().unwrap(),
             "{name} armed"
         );
@@ -562,7 +565,7 @@ fn prism_recruitment_matches_the_original() {
             .coord;
             let supporter = fixture.sim.substrate.entities.get(supporter).unwrap();
             assert_eq!(
-                supporter.pending_building_fire.unwrap().fire,
+                supporter.pending_building_fire.pending().unwrap().fire,
                 DelayedFire::SupportBeam { to: flh },
                 "{name} beam point"
             );
@@ -660,7 +663,9 @@ fn prism_support_bonus_matches_the_original() {
             Some(8) => fixture.move_target(OUT_OF_RANGE),
             Some(3) => {
                 let entity = fixture.sim.substrate.entities.get_mut(master).unwrap();
-                entity.rearm_timer = CdTimer::started(FRAME, ROF);
+                entity
+                    .rearm_timer
+                    .set_for_test(CdTimer::started(FRAME, ROF));
             }
             Some(6) => fixture.unpower(),
             Some(other) => panic!("{name}: GetFireError {other}"),
@@ -718,7 +723,7 @@ fn prism_support_bonus_matches_the_original() {
         let entity = fixture.sim.substrate.entities.get(master).unwrap();
         let native = &row["master"];
         assert_eq!(
-            i64::from(entity.prism_support_count),
+            i64::from(entity.prism_support_count.count()),
             native["count"].as_i64().unwrap(),
             "{name} count"
         );
@@ -805,7 +810,7 @@ fn pending_fires(fixture: &Fixture) -> BTreeMap<u64, Option<PendingBuildingFire>
         .values()
         .map(|&id| {
             let entity = fixture.sim.substrate.entities.get(id).unwrap();
-            (id, entity.pending_building_fire)
+            (id, entity.pending_building_fire.pending())
         })
         .collect()
 }
@@ -949,23 +954,17 @@ fn prism_cadence_matches_the_original() {
                 );
                 let arm = armed.contains(&(
                     id,
-                    PendingBuildingFire {
-                        remaining_ticks: DELAY,
-                        fire: DelayedFire::Weapon(WeaponSlot::Primary),
-                    },
+                    PendingBuildingFire::new(DELAY, DelayedFire::Weapon(WeaponSlot::Primary)),
                 ));
                 assert_eq!(arm, native_event("arm").is_some(), "{at} arm");
                 recruits += usize::from(recruit.is_some());
                 arms += usize::from(arm);
 
                 ready_commence(&mut fixture.sim, id, false);
-                let beaming = matches!(
-                    pending_after[&id],
-                    Some(PendingBuildingFire {
-                        remaining_ticks: ..=1,
-                        fire: DelayedFire::SupportBeam { .. },
-                    })
-                );
+                let beaming = pending_after[&id].is_some_and(|pending| {
+                    pending.remaining_ticks() <= 1
+                        && matches!(pending.fire(), DelayedFire::SupportBeam { .. })
+                });
                 let (_, calls) = with_building_fire_stub(Some(ROF), || {
                     process_delayed_fire(
                         &mut fixture.sim,

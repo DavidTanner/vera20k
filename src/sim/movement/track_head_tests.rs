@@ -64,13 +64,17 @@ fn first_process_publishes_raw_head_and_matching_progress_for_drive_and_ship() {
         let expected = coord(&case["output"]);
         let mut entity = GameEntity::test_default(1, "MTNK", "Americans", 8, 8);
         entity.locomotor = Some(LocomotorState::for_test_kind(kind));
-        entity.position.sub_x = SimFixed::from_num(initial.x % 256);
-        entity.position.sub_y = SimFixed::from_num(initial.y % 256);
-        entity.position.z = 1; // Deliberately differs from the retained raw Z.
-        entity.position.exact_z_leptons = Some(initial.z);
+        entity
+            .position
+            .set_sub_x(SimFixed::from_num(initial.x % 256));
+        entity
+            .position
+            .set_sub_y(SimFixed::from_num(initial.y % 256));
+        entity.position.set_z(1); // Deliberately differs from the retained raw Z.
+        entity.position.set_exact_z_leptons(Some(initial.z));
         entity.body_facing.snap(0x4000, 0);
         entity.lifecycle.set_in_limbo_for_test(false);
-        entity.lifecycle.cell_marked = true;
+        entity.lifecycle.set_cell_marked(true);
         let rules =
             crate::rules::ruleset::RuleSet::from_ini(&crate::rules::ini_parser::IniFile::from_str(
                 "[VehicleTypes]\n0=MTNK\n[MTNK]\nSpeed=0\n",
@@ -133,9 +137,9 @@ fn first_process_publishes_raw_head_and_matching_progress_for_drive_and_ship() {
             }
             _ => unreachable!(),
         };
-        assert_eq!(progress.turn_index, 18);
-        assert_eq!(progress.cursor, 0);
-        assert!(!progress.reversed);
+        assert_eq!(progress.turn_index(), 18);
+        assert_eq!(progress.cursor(), 0);
+        assert!(!progress.reversed());
     }
 }
 
@@ -202,14 +206,11 @@ fn destination_change_preserves_the_committed_head() {
 
 #[test]
 fn chained_queue_consumption_preserves_the_native_replay_reference() {
-    let mut queue = crate::sim::components::FootPathQueue {
-        directions: vec![2, 3, 4],
-        cursor: 2,
-        reference_cell: Some((10, 9)),
-    };
+    let mut queue =
+        crate::sim::components::FootPathQueue::for_test(vec![2, 3, 4], 2, Some((10, 9)));
     crate::sim::movement::path_markers::consume_path_replay(&mut queue, 1);
-    assert_eq!(queue.cursor, 3);
-    assert_eq!(queue.reference_cell, Some((10, 9)));
+    assert_eq!(queue.cursor(), 3);
+    assert_eq!(queue.reference_cell(), Some((10, 9)));
 }
 
 #[test]
@@ -229,9 +230,10 @@ fn committed_head_requires_active_family_head_and_selector_independently_of_driv
             .install_drive_state_for_test(Some(
                 DriveLocomotionRuntime::default()
                     .with_head_to_for_test(Some(head))
-                    .with_track_for_test(crate::sim::components::TrackProgress {
-                        turn_index: 18,
-                        ..Default::default()
+                    .with_track_for_test({
+                        let mut value = crate::sim::components::TrackProgress::default();
+                        value.set_turn_index(18);
+                        value
                     })
                     .with_track_valid_for_test(false)
             ))
@@ -253,7 +255,7 @@ fn committed_head_requires_active_family_head_and_selector_independently_of_driv
             .unwrap()
             .track_progress(crate::sim::movement::track_process::TrackFamily::Drive)
             .unwrap();
-        progress.turn_index = -1;
+        progress.set_turn_index(-1);
         assert!(entity.locomotor.as_mut().unwrap().store_track_progress(
             crate::sim::movement::track_process::TrackFamily::Drive,
             progress
@@ -267,7 +269,7 @@ fn committed_head_requires_active_family_head_and_selector_independently_of_driv
             .unwrap()
             .track_progress(crate::sim::movement::track_process::TrackFamily::Drive)
             .unwrap();
-        progress.turn_index = 18;
+        progress.set_turn_index(18);
         assert!(entity.locomotor.as_mut().unwrap().store_track_progress(
             crate::sim::movement::track_process::TrackFamily::Drive,
             progress
@@ -287,9 +289,10 @@ fn committed_head_requires_active_family_head_and_selector_independently_of_driv
             .install_ship_state_for_test(Some(
                 ShipLocomotionRuntime::default()
                     .with_head_to_for_test(Some(head))
-                    .with_track_for_test(crate::sim::components::TrackProgress {
-                        turn_index: 18,
-                        ..Default::default()
+                    .with_track_for_test({
+                        let mut value = crate::sim::components::TrackProgress::default();
+                        value.set_turn_index(18);
+                        value
                     })
             ))
     );
@@ -307,14 +310,15 @@ fn production_process_admission_uses_valid_selector_independently_of_head() {
                 for nonnull_head in [false, true] {
                     let mut entity = GameEntity::test_default(1, "MTNK", "Americans", 8, 8);
                     entity.lifecycle.set_in_limbo_for_test(false);
-                    entity.lifecycle.cell_marked = true;
+                    entity.lifecycle.set_cell_marked(true);
                     entity.locomotor = Some(LocomotorState::for_test_kind(kind));
-                    entity.drive_accelerates = false;
+                    entity.mover_facts.set_drive_accelerates_for_test(false);
                     entity.foot_speed.set_speed_fraction(SimFixed::lit("0.25"));
-                    let track = TrackProgress {
-                        turn_index: selector,
-                        cursor: 0,
-                        ..Default::default()
+                    let track = {
+                        let mut value = TrackProgress::default();
+                        value.set_turn_index(selector);
+                        value.set_cursor(0);
+                        value
                     };
                     let head_to = nonnull_head.then_some(DriveCoord::cell(8, 7, 0));
                     if kind == LocomotorKind::Drive {
@@ -395,9 +399,10 @@ fn retained_admission_matches_native_entry_cases_without_tube_or_turn_latch() {
         }
         let mut entity = GameEntity::test_default(1, "MTNK", "Americans", 8, 8);
         let valid = input["track_valid"].as_u64().unwrap() != 0;
-        let track = TrackProgress {
-            turn_index: input["selector"].as_i64().unwrap() as i32,
-            ..Default::default()
+        let track = {
+            let mut value = TrackProgress::default();
+            value.set_turn_index(input["selector"].as_i64().unwrap() as i32);
+            value
         };
         if input["family"] == "drive" {
             entity.locomotor = Some(LocomotorState::for_test_kind(LocomotorKind::Drive));

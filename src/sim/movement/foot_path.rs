@@ -58,6 +58,8 @@ struct FootSearchEntry<'a> {
     /// about that cell, so asking one marks the search.
     own_cell: Option<(i16, i16)>,
     read_own_cell: std::cell::Cell<bool>,
+    /// A Unit whose type is `Passive=`.
+    passive_unit: bool,
 }
 
 /// Whether Mark0 has lifted the searching mover off its cell.
@@ -130,6 +132,9 @@ impl crate::sim::pathfinding::SearchFootEntry for FootSearchEntry<'_> {
         &self,
     ) -> Option<std::cell::Ref<'_, crate::sim::pathfinding::SearchMarkerOverlay>> {
         self.markers.prepared()
+    }
+    fn is_passive_unit(&self) -> bool {
+        self.passive_unit
     }
     fn finishing_threat_coefficient(
         &self,
@@ -217,14 +222,14 @@ impl Simulation {
                 dir_from_facing16(foot.body_facing_current(frame))
             };
             let (dx, dy) = CELL_DELTAS[usize::from(direction)];
-            let own = (foot.position.rx as i16, foot.position.ry as i16);
+            let own = (foot.position.rx() as i16, foot.position.ry() as i16);
             let next = terrain.native_cell_identity((
                 own.0.wrapping_add(dx as i16),
                 own.1.wrapping_add(dy as i16),
             ));
             let level = |cell| i32::from(terrain.native_cell_ground_fields(cell).0 as i8);
             let bridge = terrain.native_cell_flags(next) & 0x100 != 0
-                && (foot.on_bridge || level(terrain.native_cell_identity(own)) - level(next) > 2);
+                && (foot.on_bridge() || level(terrain.native_cell_identity(own)) - level(next) > 2);
             list = match next {
                 NativeCellIdentity::Real(_) => {
                     let (x, y) = terrain.native_cell_coord(next);
@@ -286,7 +291,7 @@ fn query_foot_zone(
         .ok_or_else(|| "Foot precheck requires native zone topology".into())
 }
 
-pub(super) fn coord_cell(coord: DriveCoord) -> (i16, i16) {
+pub(crate) fn coord_cell(coord: DriveCoord) -> (i16, i16) {
     (
         crate::util::lepton::lepton_to_cell_packed(coord.x),
         crate::util::lepton::lepton_to_cell_packed(coord.y),
@@ -445,8 +450,8 @@ impl Simulation {
             match path {
                 SuppliedPath::FoundUnchanged => return Ok(FindPathResult::Route),
                 SuppliedPath::Found(words) => {
-                    queue.directions = words;
-                    queue.cursor = 0;
+                    queue.set_directions_for_test(words);
+                    queue.set_cursor(0);
                     return Ok(FindPathResult::Route);
                 }
                 SuppliedPath::Failed => return Ok(FindPathResult::Failed),
@@ -499,19 +504,20 @@ impl Simulation {
                     .navigation
                     .path_runtime
                     .start_movement(frame, rules.general.path_delay_ticks());
-                self.run_find_path_failed_receiver(id, rules, registry, frame_effects)?;
+                self.foot_stop_driver(id, rules, registry, frame_effects)?;
                 self.finish_find_path_failure(id, goal, rules, registry, frame_effects)?;
                 Ok(FindPathResult::Failed)
             }
         }
     }
 
-    /// `+0x500` at 0x4D4044, whose return value Find_Path ignores. Infantry
+    /// Shared virtual `+0x500` receiver, called by FindPath4D4044,
+    /// Infantry FireAt and first-Limbo4DB2FB. Infantry
     /// 0x0051DAF0 performs Do_Action and the current-cell answer before Foot
     /// 0x4D55C0; the Unit's and the Aircraft's slot IS 0x4D55C0, which only
     /// calls the active locomotor's Stop_Moving (+0x48,
     /// [`Self::locomotor_stop_moving`]).
-    pub(crate) fn run_find_path_failed_receiver(
+    pub(crate) fn foot_stop_driver(
         &mut self,
         id: u64,
         rules: &RuleSet,
@@ -522,7 +528,7 @@ impl Simulation {
             .substrate
             .entities
             .get(id)
-            .ok_or("retired failed-path receiver")?;
+            .ok_or("retired Foot Stop_Driver receiver")?;
         match actor.category() {
             EntityCategory::Infantry => {
                 self.infantry_stop_driver(id, rules, registry, frame_effects)
@@ -531,7 +537,7 @@ impl Simulation {
                 self.locomotor_stop_moving(id, Some(rules), registry, frame_effects)
             }
             EntityCategory::Structure => {
-                Err("Find_Path +0x500 receiver for this class is not represented".into())
+                Err("Foot +0x500 receiver for this class is not represented".into())
             }
         }
     }
@@ -582,8 +588,8 @@ impl Simulation {
                 let core_null = false;
                 if core_null {
                     Err(super::movement_path::MovePathFailure::Search(
-                        crate::sim::pathfinding::zone_search::PathSearchFailure::CellSearchExhausted,
-                    ))
+                crate::sim::pathfinding::zone_search::PathSearchFailure::CellSearchExhausted,
+            ))
                 } else {
                     self.foot_core_search(
                         request,
@@ -688,14 +694,14 @@ impl Simulation {
             .entities
             .get(id)
             .expect("live path requester");
-        let own_cell = (actor.position.rx, actor.position.ry);
+        let own_cell = (actor.position.rx(), actor.position.ry());
         let unlisted = (lift == MoverLift::Emulated).then_some(id);
         let marker_search = marker_context.defer_search(
             &self.substrate.occupancy,
             id,
             own_cell,
             actor.body_facing.current(frame),
-            actor.on_bridge,
+            actor.on_bridge(),
             request.urgency,
             unlisted,
         );
@@ -709,6 +715,10 @@ impl Simulation {
             unlisted,
             own_cell: unlisted.map(|_| (own_cell.0 as i16, own_cell.1 as i16)),
             read_own_cell: std::cell::Cell::new(false),
+            passive_unit: actor.category() == EntityCategory::Unit
+                && rules
+                    .object(self.interner.resolve(actor.type_ref()))
+                    .is_some_and(|object| object.passive),
         };
         let searched = request.search(
             goal,
@@ -720,7 +730,6 @@ impl Simulation {
                 playfield_bounds: self.playfield_bounds,
                 blocker_neighbor_counts: Some(counts),
             },
-            &self.terrain_costs,
             &entry,
         );
         (searched, entry.read_own_cell.get())
@@ -769,7 +778,7 @@ impl Simulation {
         //search that still fails measures against the redirected cell.
         let target = ((goal.x / 256) as i16, (goal.y / 256) as i16);
         if chebyshev(current, target) <= 1 {
-            if actor.on_bridge {
+            if actor.on_bridge() {
                 return Ok(());
             }
             let terrain = self
@@ -1048,7 +1057,7 @@ impl Simulation {
             terrain,
             (current.0 as u16, current.1 as u16),
             zone,
-            actor.on_bridge,
+            actor.on_bridge(),
         );
         let cells = NativeCellQuery::canonical(terrain);
         let grid = self.path_grid_snapshot();
@@ -1061,7 +1070,7 @@ impl Simulation {
                     speed_type: object.speed_type,
                     required_zone_id,
                     movement_zone: zone,
-                    bridge_aware_zone: actor.on_bridge,
+                    bridge_aware_zone: actor.on_bridge(),
                 },
                 footprint: NearbyFootprint::SINGLE,
                 allow_bridge_cells: true,
@@ -1285,7 +1294,7 @@ impl Simulation {
             .entities
             .get(id)
             .ok_or("missing Foot edge receiver")?;
-        if !actor.in_playfield {
+        if !actor.in_playfield() {
             return Ok(false);
         }
         if actor.is_mission_only() || actor.mission.effective().raw() == 4 {
@@ -1387,7 +1396,7 @@ impl Simulation {
                 current: ground_pose::position_world_coord(&actor.position),
                 destination,
                 movement_zone: object.movement_zone,
-                on_bridge: actor.on_bridge,
+                on_bridge: actor.on_bridge(),
                 in_tube: actor.low_bridge_tube_state.is_some(),
                 allow_destination_fringe,
             },
@@ -1445,7 +1454,11 @@ mod tests {
             let id = sim
                 .spawn_object("MTNK", "Americans", start.0, start.1, 0, &rules)
                 .unwrap();
-            sim.substrate.entities.get_mut(id).unwrap().in_playfield = in_playfield;
+            sim.substrate
+                .entities
+                .get_mut(id)
+                .unwrap()
+                .set_in_playfield(in_playfield);
             let mut split = sim.path_grid.as_deref().unwrap().clone();
             for y in 0..split.height() {
                 split.set_blocked(15, y, true);

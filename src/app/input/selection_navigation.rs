@@ -819,7 +819,11 @@ mod tests {
             input.type_select.across_map = true;
             input.selection_order = vec![20];
             // Deselect and its normal app reconciliation have no expiry fact.
-            sim.entities_mut().get_mut(20).unwrap().selected = false;
+            sim.entities_mut()
+                .get_mut(20)
+                .unwrap()
+                .selection
+                .set_selected_for_test(false);
             super::super::reconcile_selection_order_for_sim(&mut input, &sim, Some(&rules));
             assert_eq!(input.category_navigation.candidates, [10, 20, 30]);
 

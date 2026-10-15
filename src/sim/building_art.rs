@@ -26,6 +26,7 @@ mod power;
 mod storage;
 #[path = "building_art_super.rs"]
 mod super_anim;
+pub(crate) use admission::HasEngineer;
 pub(crate) use storage::BuildingStorage;
 
 /// A Building's animation art, owned by this module: its 21 AnimClass slots
@@ -246,7 +247,7 @@ impl Simulation {
         };
         let first_opening = !entity.building_art.actually_placed;
         let owner = entity.owner();
-        let cell = (entity.position.rx, entity.position.ry);
+        let cell = (entity.position.rx(), entity.position.ry());
         let refinery = object.refinery;
         let powered = object.powered;
         let damaged = requested_damage_state(
@@ -257,7 +258,7 @@ impl Simulation {
         let garrisoned = entity
             .passenger_role
             .cargo()
-            .is_some_and(|cargo| !cargo.passengers.is_empty());
+            .is_some_and(|cargo| !cargo.passengers().is_empty());
         // 0x00446382..0x004463B4: the built type's InfantryGainSelfHeal and
         // UnitsGainSelfHeal join the owner's house on every reached opening
         // (a capture counts), with the +0x6E4 test done by the entry guard
@@ -636,7 +637,7 @@ impl Simulation {
         let garrisoned = entity
             .passenger_role
             .cargo()
-            .is_some_and(|cargo| !cargo.passengers.is_empty());
+            .is_some_and(|cargo| !cargo.passengers().is_empty());
         let delayed_fire = self.building_anim_delayed_fire(owner, rules);
         self.clear_building_anim_reference(expired);
         let next = match slot {
@@ -695,7 +696,7 @@ impl Simulation {
                 .building_slot = Some((owner, slot));
         }
         for entity in self.substrate.entities.values() {
-            for (slot, id) in entity.damage_fire_anim_ids.iter().enumerate() {
+            for (slot, id) in entity.damage_fires.anim_ids().iter().enumerate() {
                 if let Some(id) = id {
                     self.substrate
                         .anims
@@ -835,7 +836,7 @@ pub(crate) fn receiver_body_frame(
                 entity
                     .passenger_role
                     .cargo()
-                    .map_or(0, |cargo| cargo.passengers.len() as i32),
+                    .map_or(0, |cargo| cargo.passengers().len() as i32),
             ),
             tech_level: object.tech_level,
             selling: false,
@@ -1115,18 +1116,18 @@ mod slot_tests {
         // coordinate commit and verify its already retained slot moves in place.
         let entity = sim.entities_mut().get_mut(id).unwrap();
         entity.lifecycle.set_in_limbo_for_test(true);
-        entity.lifecycle.cell_marked = false;
+        entity.lifecycle.set_cell_marked(false);
         let outcome = sim.try_reveal_entity_with_context(
             id,
             RevealRequest {
-                position: RevealPosition {
-                    exact_z_leptons: None,
-                    rx: 3,
-                    ry: 4,
-                    z: 0,
-                    sub_x: crate::util::fixed_math::SimFixed::from_num(128),
-                    sub_y: crate::util::fixed_math::SimFixed::from_num(128),
-                },
+                position: RevealPosition::new(
+                    3,
+                    4,
+                    0,
+                    None,
+                    crate::util::fixed_math::SimFixed::from_num(128),
+                    crate::util::fixed_math::SimFixed::from_num(128),
+                ),
                 placement: PlacementEvidence::MarkSucceeded,
                 logic_eligible: true,
             },

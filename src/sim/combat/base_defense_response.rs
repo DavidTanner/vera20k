@@ -17,6 +17,7 @@ use crate::sim::mission::authority::queue_entity_mission_deferred;
 use crate::sim::mission::{MissionId, MissionType};
 use crate::sim::movement::ground_pose;
 use crate::sim::pathfinding::zone_map::ZoneQueryCell;
+use crate::sim::timer::CdTimer;
 use crate::sim::world::FrameEffects;
 use crate::sim::world::Simulation;
 use crate::util::fixed_math::ra2_speed_to_leptons_per_frame;
@@ -322,6 +323,96 @@ use admission::{
     candidate_admitted, current_target_disposition, destination_cell, primary_range_leptons,
 };
 
+/// Persistent TechnoClass state used by the active House base-defence
+/// responder. The two recruitment admission bytes are constructor-true; an
+/// authored object's scenario line ([`Self::author_recruitable`]) and
+/// `TeamClass::Add_Member` ([`Self::set_team_recruitable`]) write them. Cooldown
+/// writes occur only after a responder assignment or strict budget overshoot. The
+/// ArchiveTarget (`+0x218`) stored here is the general Techno field, which
+/// responders, miners, the slave manager and the rally click all write.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+pub(crate) struct BaseDefenseResponseState {
+    /// `Techno+0x421`, RecruitableA.
+    recruitable_a: bool,
+    /// `Techno+0x422`, RecruitableB.
+    recruitable_b: bool,
+    archive_target: Option<TargetKind>,
+    /// `TechnoClass+0x650`/`+0x658`: the attacker's call-for-help cooldown
+    /// (`TechnoClass::RespondToBaseAttack @ 0x00708171..0x00708192`, written
+    /// at `0x0070879E..0x007087A9`); the constructor leaves it at `-1`, 0.
+    cooldown: CdTimer,
+}
+
+impl Default for BaseDefenseResponseState {
+    fn default() -> Self {
+        Self {
+            recruitable_a: true,
+            recruitable_b: true,
+            archive_target: None,
+            cooldown: CdTimer::from_raw(-1, 0),
+        }
+    }
+}
+
+impl BaseDefenseResponseState {
+    /// `Techno+0x421`, RecruitableA.
+    pub(crate) fn recruitable_a(&self) -> bool {
+        self.recruitable_a
+    }
+
+    /// `Techno+0x422`, RecruitableB.
+    pub(crate) fn recruitable_b(&self) -> bool {
+        self.recruitable_b
+    }
+
+    /// The scenario line's two recruitment bytes (Unit and Infantry trailing
+    /// fields 12 and 13, Aircraft 10 and 11), stored by the authored object's
+    /// construction.
+    pub(crate) fn author_recruitable(&mut self, recruitable_a: bool, recruitable_b: bool) {
+        self.recruitable_a = recruitable_a;
+        self.recruitable_b = recruitable_b;
+    }
+
+    /// `TeamClass::Add_Member @ 0x006EA500`'s store of the team type's
+    /// `AreTeamMembersRecruitable` into `+0x422`.
+    pub(crate) fn set_team_recruitable(&mut self, recruitable: bool) {
+        self.recruitable_b = recruitable;
+    }
+
+    /// The call-for-help cooldown; outside tests only
+    /// `respond_to_base_attack` reads and starts it.
+    #[cfg(test)]
+    pub(crate) fn cooldown(&self) -> CdTimer {
+        self.cooldown
+    }
+
+    /// ArchiveTarget (`+0x218`), read through `GameEntity::archive_target`.
+    pub(crate) fn archive_target(&self) -> Option<TargetKind> {
+        self.archive_target
+    }
+
+    /// `TechnoClass::Set_ArchiveTarget @ 0x0070C610`'s store, through
+    /// `GameEntity::set_archive_target`.
+    pub(crate) fn set_archive_target(&mut self, target: Option<TargetKind>) {
+        self.archive_target = target;
+    }
+
+    #[cfg(test)]
+    pub(crate) fn set_recruitable_a_for_test(&mut self, recruitable: bool) {
+        self.recruitable_a = recruitable;
+    }
+
+    #[cfg(test)]
+    pub(crate) fn set_recruitable_b_for_test(&mut self, recruitable: bool) {
+        self.recruitable_b = recruitable;
+    }
+
+    #[cfg(test)]
+    pub(crate) fn set_cooldown_for_test(&mut self, cooldown: CdTimer) {
+        self.cooldown = cooldown;
+    }
+}
+
 /// Execute one complete native response transaction after the receiver owner
 /// has selected the exact Building or protected-Techno call site.
 ///
@@ -471,7 +562,7 @@ pub(crate) fn respond_to_base_attack(
                 &cells,
                 navigation,
                 current,
-                candidate.on_bridge,
+                candidate.on_bridge(),
                 in_tube,
             ) else {
                 continue;

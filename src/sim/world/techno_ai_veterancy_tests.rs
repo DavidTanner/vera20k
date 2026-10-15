@@ -136,7 +136,7 @@ fn order_move(sim: &mut Simulation, rules: &RuleSet, id: u64) {
     sim.install_fixture_path_grid(Some(&grid));
     let (rx, ry) = {
         let e = sim.substrate.entities.get(id).expect("mover");
-        (e.position.rx, e.position.ry)
+        (e.position.rx(), e.position.ry())
     };
     let issued = sim.apply_command(
         "Soviet",

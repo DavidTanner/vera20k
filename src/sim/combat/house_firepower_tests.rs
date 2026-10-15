@@ -47,16 +47,20 @@ fn scene(damage: i32, firepower: u64) -> (Simulation, RuleSet) {
         entity.set_type_ref_for_test(sim.interner.intern(kind));
         // The estimator fixture's retained raw rank is2.0 (40000000).
         entity.veterancy.set_rank_for_test(200);
-        entity.firepower_multiplier = NativeF64Bits::from_bits(if id == 1 {
-            1f64.to_bits()
-        } else {
-            19f64.to_bits()
-        });
-        entity.armor_multiplier = NativeF64Bits::from_bits(if id == 1 {
-            1f64.to_bits()
-        } else {
-            23f64.to_bits()
-        });
+        entity
+            .crate_multipliers
+            .set_firepower_multiplier_for_test(NativeF64Bits::from_bits(if id == 1 {
+                1f64.to_bits()
+            } else {
+                19f64.to_bits()
+            }));
+        entity
+            .crate_multipliers
+            .set_armor_multiplier_for_test(NativeF64Bits::from_bits(if id == 1 {
+                1f64.to_bits()
+            } else {
+                23f64.to_bits()
+            }));
         sim.substrate.entities.insert(entity);
     }
     (sim, rules)

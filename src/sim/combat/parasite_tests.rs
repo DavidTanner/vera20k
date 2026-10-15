@@ -228,7 +228,7 @@ impl Arena {
 
     fn cell(&self, id: u64) -> (u16, u16) {
         let e = self.sim.substrate.entities.get(id).unwrap();
-        (e.position.rx, e.position.ry)
+        (e.position.rx(), e.position.ry())
     }
 
     /// Infect `victim` through a real launch and detonation.
@@ -290,7 +290,7 @@ fn dog_bite_kills_the_infantry_and_releases_the_dog_where_it_stood() {
     let dog_entity = arena.sim.substrate.entities.get(dog).unwrap();
     assert!(dog_entity.health.current() > 0, "the dog survives its kill");
     assert_eq!(
-        (dog_entity.position.rx, dog_entity.position.ry),
+        (dog_entity.position.rx(), dog_entity.position.ry()),
         (11, 10),
         "PointerExpired unlimboes the dog at the victim's cell"
     );
@@ -428,7 +428,7 @@ fn drone_bites_on_its_weapon_rate_until_the_host_dies_then_drops_off() {
     let drone_entity = arena.sim.substrate.entities.get(drone).unwrap();
     assert!(drone_entity.health.current() > 0);
     assert_eq!(
-        (drone_entity.position.rx, drone_entity.position.ry),
+        (drone_entity.position.rx(), drone_entity.position.ry()),
         (11, 10)
     );
     assert_eq!(drone_entity.category(), EntityCategory::Unit);
@@ -792,7 +792,8 @@ fn an_infected_unit_cannot_load_bunker_or_deploy() {
         .entities
         .get_mut(mcv)
         .unwrap()
-        .mcv_deploy_pending = true;
+        .mcv_deploy_pending
+        .set_for_test(true);
     assert!(!arena.sim.deploy_mcv(
         mcv,
         &rules,
@@ -807,6 +808,7 @@ fn an_infected_unit_cannot_load_bunker_or_deploy() {
             .get(mcv)
             .unwrap()
             .mcv_deploy_pending
+            .is_pending()
     );
 }
 
@@ -893,7 +895,14 @@ fn the_reselect_memo_stays_out_of_the_peer_hash() {
         let dog = arena.spawn(&rules, "DOG", "Russians", (10, 10));
         let gi = arena.spawn(&rules, "E1", "Americans", (11, 10));
         arena.sim.session.current_house = Some(arena.sim.interner.intern(local));
-        arena.sim.substrate.entities.get_mut(dog).unwrap().selected = selected;
+        arena
+            .sim
+            .substrate
+            .entities
+            .get_mut(dog)
+            .unwrap()
+            .selection
+            .set_selected_for_test(selected);
         arena.attack(dog, gi);
         arena.until(&rules, 100, |sim| {
             sim.substrate
@@ -948,9 +957,9 @@ fn a_dog_released_on_a_bridge_deck_stays_on_the_deck() {
     for id in [dog, gi] {
         arena.sim.remove_entity_occupancy(id);
         let entity = arena.sim.substrate.entities.get_mut(id).unwrap();
-        entity.on_bridge = true;
-        entity.position.z = 4;
-        entity.position.exact_z_leptons = Some(deck);
+        entity.set_on_bridge(true);
+        entity.position.set_z(4);
+        entity.position.set_exact_z_leptons(Some(deck));
         arena.sim.add_entity_occupancy(id);
     }
     arena.attack(dog, gi);
@@ -967,7 +976,7 @@ fn a_dog_released_on_a_bridge_deck_stays_on_the_deck() {
             .is_some_and(|d| !d.lifecycle.in_limbo())
     });
     let released = arena.sim.substrate.entities.get(dog).unwrap();
-    assert!(released.on_bridge);
+    assert!(released.on_bridge());
     assert_eq!(
         crate::sim::movement::ground_pose::position_world_coord(&released.position).z,
         deck
@@ -1019,7 +1028,7 @@ fn a_parasite_is_placed_at_a_falling_victim_below_the_air_line() {
             .get_mut(victim)
             .unwrap()
             .position
-            .exact_z_leptons = Some(height);
+            .set_exact_z_leptons(Some(height));
         arena
             .sim
             .parasite_can_place_at_victim(drone, victim, &rules)
@@ -1069,7 +1078,7 @@ fn naval_owner_water_gate_matches_original_can_infect() {
                 .get_mut(victim)
                 .unwrap()
                 .position
-                .rx = 200;
+                .set_rx(200);
         }
         assert_eq!(
             arena.sim.parasite_can_infect(owner, Some(victim), &rules),

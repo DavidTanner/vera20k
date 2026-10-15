@@ -35,7 +35,16 @@ fn factory_fixture(
         crate::sim::house_state::HouseState::new(owner, 0, None, true, 50_000, 10),
     );
     let parent = saved
-        .construct_object_limbo_at_height(type_name, "Americans", 0, 0, 0, 0, &rules)
+        .construct_object_limbo_at_height(
+            type_name,
+            "Americans",
+            0,
+            0,
+            0,
+            0,
+            &rules,
+            crate::sim::world::FrameEffects::default(),
+        )
         .expect("construct actual held graph");
     let type_id = saved.interner.get(type_name).unwrap();
     let cost = rules.object(type_name).unwrap().cost;
@@ -122,7 +131,7 @@ fn wallet_survives_prepared_load_and_active_cancellation() {
         false,
     );
     producer.lifecycle.set_in_limbo_for_test(false);
-    producer.in_playfield = true;
+    producer.set_in_playfield(true);
     producer.finish_building_construction_for_test();
     producer.building_art.set_actually_placed_for_test(true);
     saved.substrate.entities.insert(producer);
@@ -307,14 +316,23 @@ fn factory_restore_preserves_supported_held_states_and_constructor_graphs() {
                     .entities
                     .get_mut(parent)
                     .unwrap()
-                    .in_playfield = true;
+                    .set_in_playfield(true);
             }
             "absent-house" => {
                 saved.houses.remove(&owner);
             }
             "unrelated-limbo" => {
                 saved
-                    .construct_object_limbo_at_height("MTNK", "Americans", 0, 0, 0, 0, &rules)
+                    .construct_object_limbo_at_height(
+                        "MTNK",
+                        "Americans",
+                        0,
+                        0,
+                        0,
+                        0,
+                        &rules,
+                        crate::sim::world::FrameEffects::default(),
+                    )
                     .unwrap();
             }
             "empty-registry" => {
@@ -343,16 +361,16 @@ fn factory_restore_preserves_supported_held_states_and_constructor_graphs() {
                     entity.type_ref(),
                     entity.owner(),
                     entity.health.current(),
-                    entity.dying,
+                    entity.death.is_dying(),
                     entity.lifecycle,
-                    entity.in_playfield,
+                    entity.in_playfield(),
                     entity.techno_ctor_random_word(),
                     entity.spawn_owner_id,
                     entity.spawn_manager.as_ref().map(|manager| {
                         manager
-                            .slots
+                            .slots()
                             .iter()
-                            .map(|slot| slot.spawn)
+                            .map(|slot| slot.spawn())
                             .collect::<Vec<_>>()
                     }),
                     entity.slave.owner(),
@@ -393,15 +411,15 @@ fn factory_restore_preserves_supported_held_states_and_constructor_graphs() {
                     entity.type_ref(),
                     entity.owner(),
                     entity.health.current(),
-                    entity.dying,
+                    entity.death.is_dying(),
                     entity.lifecycle,
-                    entity.in_playfield,
+                    entity.in_playfield(),
                     entity.techno_ctor_random_word(),
                     entity.spawn_owner_id,
                     entity.spawn_manager.as_ref().map(|manager| manager
-                        .slots
+                        .slots()
                         .iter()
-                        .map(|slot| slot.spawn)
+                        .map(|slot| slot.spawn())
                         .collect::<Vec<_>>()),
                     entity.slave.owner(),
                     entity.slave_manager.clone(),
@@ -514,7 +532,7 @@ fn factory_restore_rejects_inconsistent_roots() {
                 .set_in_limbo_for_test(false),
             "marked-root" => {
                 let entity = saved.substrate.entities.get_mut(parent).unwrap();
-                entity.lifecycle.cell_marked = true;
+                entity.lifecycle.set_cell_marked(true);
             }
             "logic-root" => saved.set_logic_order_for_test(vec![parent]),
             "missing-entity" => {
@@ -579,14 +597,13 @@ fn factory_restore_rejects_inconsistent_roots() {
                     .unwrap()
                     .set_category_for_test(crate::map::entities::EntityCategory::Infantry);
             }
-            "manager-owned-root" => {
-                saved
-                    .substrate
-                    .entities
-                    .get_mut(parent)
-                    .unwrap()
-                    .spawn_owner_id = Some(parent)
-            }
+            "manager-owned-root" => saved
+                .substrate
+                .entities
+                .get_mut(parent)
+                .unwrap()
+                .spawn_owner_id
+                .set_for_test(Some(parent)),
             "child-root-alias" => {
                 let manager = saved
                     .substrate
@@ -597,7 +614,7 @@ fn factory_restore_rejects_inconsistent_roots() {
                     .as_mut()
                     .unwrap();
                 let mut nodes = manager.nodes().to_vec();
-                nodes[0].slave = Some(parent);
+                nodes[0].set_slave_for_test(Some(parent));
                 let (state, frame, timer) = (manager.state(), manager.frame(), manager.ai_timer());
                 manager.set_for_test(state, frame, nodes, timer);
             }

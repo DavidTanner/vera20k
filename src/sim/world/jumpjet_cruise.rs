@@ -110,7 +110,7 @@ impl JumpjetFlightHost for CruiseHost<'_> {
         self.owner().is_object_alive()
     }
     fn marked(&self) -> bool {
-        self.owner().lifecycle.cell_marked
+        self.owner().lifecycle.cell_marked()
     }
     fn replace_marked_byte(&mut self, marked: bool) -> bool {
         self.sim.replace_foot_marked_byte(self.stable_id, marked)
@@ -147,7 +147,7 @@ impl JumpjetFlightHost for CruiseHost<'_> {
         crate::sim::movement::air_movement::current_fly_height(self.owner(), self.terrain())
     }
     fn on_bridge(&self) -> bool {
-        self.owner().on_bridge
+        self.owner().on_bridge()
     }
     fn grounded_reset(&mut self) {
         let location = self.location();
@@ -165,7 +165,7 @@ impl JumpjetFlightHost for CruiseHost<'_> {
             .entities
             .get_mut(self.stable_id)
             .unwrap()
-            .on_bridge = false;
+            .set_on_bridge(false);
     }
     fn floor_height(&self, xy: [i32; 2]) -> i32 {
         ground_surface_z_at(xy, false, self.terrain(), None).unwrap_or(0)
@@ -221,16 +221,16 @@ impl JumpjetFlightHost for CruiseHost<'_> {
         })
     }
     fn balloon_hover(&self) -> bool {
-        self.owner().locomotor.as_ref().unwrap().balloon_hover
+        self.owner().locomotor.as_ref().unwrap().balloon_hover()
     }
     fn has_target(&self) -> bool {
         self.owner().attack_target.target().is_some()
     }
     fn piggyback_active(&self) -> bool {
-        self.owner().foot_locomotor_swap_active
+        self.owner().lift.swap_active()
     }
     fn piggyback_arrival(&mut self, runtime: &mut JumpjetRuntime) {
-        let Some(holder) = self.owner().locomotor_source else {
+        let Some(holder) = self.owner().lift.source() else {
             return;
         };
         let id = self.stable_id;
@@ -460,8 +460,8 @@ impl JumpjetFlightHost for CruiseHost<'_> {
         let id = self.stable_id;
         let deploy_to_land = self.owner_kind() == FlightOwnerKind::Unit && self.type_flag_6ad();
         let owner = self.sim.substrate.entities.get_mut(id).unwrap();
-        owner.lift_may_end = true;
-        owner.being_manipulated = false;
+        owner.lift.allow_end();
+        owner.drop_credit.land();
         owner.crash.lower();
         if deploy_to_land {
             owner.set_landing_for_deploy(false);
@@ -522,7 +522,7 @@ impl JumpjetFlightHost for CruiseHost<'_> {
         [x, y, z]
     }
     fn dropped(&self) -> bool {
-        self.owner().being_manipulated
+        self.owner().drop_credit.being_manipulated()
     }
     fn crush_below(&mut self, runtime: &mut JumpjetRuntime) -> bool {
         let Some(rules) = self.rules else {
@@ -592,8 +592,7 @@ impl JumpjetFlightHost for CruiseHost<'_> {
     }
     fn clear_drop_credit(&mut self) {
         let owner = self.sim.substrate.entities.get_mut(self.stable_id).unwrap();
-        owner.manipulated_by = None;
-        owner.warped_by_house = None;
+        owner.drop_credit.forget();
     }
     fn set_on_bridge(&mut self) {
         self.sim
@@ -601,13 +600,13 @@ impl JumpjetFlightHost for CruiseHost<'_> {
             .entities
             .get_mut(self.stable_id)
             .unwrap()
-            .on_bridge = true;
+            .set_on_bridge(true);
     }
 }
 
 fn jumpjet_locomotor(entity: &crate::sim::game_entity::GameEntity) -> bool {
     entity.locomotor.as_ref().is_some_and(|locomotor| {
-        locomotor.kind == LocomotorKind::Jumpjet && locomotor.jumpjet_runtime().is_some()
+        locomotor.active_kind() == LocomotorKind::Jumpjet && locomotor.jumpjet_runtime().is_some()
     })
 }
 
@@ -650,7 +649,7 @@ impl Simulation {
             return;
         };
         let archive = owner.archive_target();
-        let nav_com = owner.navigation.nav_com.map(TargetKind::from);
+        let nav_com = owner.navigation.nav_com().map(TargetKind::from);
         if let Some(archive) = archive.filter(|archive| Some(*archive) != nav_com) {
             // An archived object that is gone gives no coordinate.
             if let TargetKind::Entity(target) = archive
@@ -802,8 +801,8 @@ mod tests {
         let mut entity = GameEntity::test_default(1, "JUMPJETUNIT", "Americans", 10, 10);
         entity.set_category_for_test(EntityCategory::Unit);
         entity.body_facing.snap(u16::from(body_facing) << 8, 0);
-        entity.position.sub_x = SimFixed::from_num(128);
-        entity.position.sub_y = SimFixed::from_num(128);
+        entity.position.set_sub_x(SimFixed::from_num(128));
+        entity.position.set_sub_y(SimFixed::from_num(128));
         let mut locomotor = LocomotorState::for_test_kind(LocomotorKind::Jumpjet);
         locomotor
             .jumpjet_runtime_mut()
@@ -826,8 +825,8 @@ mod tests {
             // already applied (locomotor facing snapped to the body, both speed
             // doubles and the bob zero, `+0x80` at `JumpjetHeight=`).
             let mut flight = runtime.flight();
-            flight.facing.snap(u16::from(body_facing) << 8, 0);
-            flight.target_height = 500;
+            flight.facing_mut().snap(u16::from(body_facing) << 8, 0);
+            flight.set_target_height(500);
             *runtime = runtime
                 .clone()
                 .with_phase_for_test(STATE_TRANSLATE)
@@ -858,7 +857,7 @@ mod tests {
             .get_mut(1)
             .expect("jumpjet")
             .navigation
-            .nav_com = Some(crate::sim::components::NavTargetRef::cell(16, 10));
+            .set_nav_com(Some(crate::sim::components::NavTargetRef::cell(16, 10)));
         sim.jumpjet_move_to(1, request, None)
             .expect("Move_To on the fixture map");
     }
@@ -869,7 +868,7 @@ mod tests {
         {
             let entity = sim.substrate.entities.get_mut(1).expect("jumpjet");
             let locomotor = entity.locomotor.as_mut().expect("locomotor");
-            locomotor.balloon_hover = balloon_hover;
+            locomotor.set_balloon_hover_for_test(balloon_hover);
             let runtime = locomotor.jumpjet_runtime_mut().expect("runtime");
             *runtime = runtime
                 .clone()
@@ -902,8 +901,8 @@ mod tests {
         let mut sim = hovering_jumpjet(0x40);
         {
             let entity = sim.substrate.entities.get_mut(1).expect("jumpjet");
-            entity.foot_occupation_enabled = true;
-            entity.position.exact_z_leptons = Some(0);
+            entity.set_foot_occupation_enabled(true);
+            entity.position.set_exact_z_leptons(Some(0));
             let locomotor = entity.locomotor.as_mut().expect("locomotor");
             let runtime = locomotor.jumpjet_runtime_mut().expect("runtime");
             *runtime = runtime
@@ -926,8 +925,8 @@ mod tests {
             );
         }
         let entity = sim.substrate.entities.get(1).expect("jumpjet");
-        assert!(entity.position.exact_z_leptons.unwrap() >= 208);
-        let here = (entity.position.rx, entity.position.ry);
+        assert!(entity.position.exact_z_leptons().unwrap() >= 208);
+        let here = (entity.position.rx(), entity.position.ry());
         for (rx, ry) in [(10, 10), here] {
             assert!(!sim.substrate.occupancy.contains_entity(rx, ry, 1));
             assert_eq!(sim.substrate.raw_cell_occupation.ground_bits(rx, ry), 0);
@@ -955,7 +954,7 @@ mod tests {
             locomotor.jumpjet_runtime().map(|runtime| runtime.phase()),
             Some(jumpjet_flight::STATE_GROUND)
         );
-        assert_eq!((entity.position.rx, entity.position.ry), (10, 10));
+        assert_eq!((entity.position.rx(), entity.position.ry()), (10, 10));
     }
 
     /// Re-opening a cruise must not leave a claim behind on the cell the owner
@@ -1026,7 +1025,7 @@ mod tests {
             locomotor.jumpjet_runtime().map(|runtime| runtime.phase()),
             Some(STATE_HOLD)
         );
-        assert_eq!((entity.position.rx, entity.position.ry), (10, 10));
+        assert_eq!((entity.position.rx(), entity.position.ry()), (10, 10));
     }
 
     /// Fly a native row through the production air tick, comparing the owner
@@ -1147,8 +1146,8 @@ mod tests {
             "the order's Move_To placed the owner at the ordered cell's floor"
         );
         let entity = sim.substrate.entities.get_mut(1).expect("jumpjet");
-        assert!(entity.navigation.nav_com.is_some());
-        let here = (entity.position.rx, entity.position.ry);
+        assert!(entity.navigation.nav_com().is_some());
+        let here = (entity.position.rx(), entity.position.ry());
         assert!(here.0 < 16, "still on its way");
         sim.assign_null_destination(1, None, None, crate::sim::world::FrameEffects::default());
 
@@ -1170,7 +1169,7 @@ mod tests {
             }
         );
         let entity = sim.substrate.entities.get(1).expect("jumpjet");
-        assert!(entity.navigation.nav_com.is_none());
+        assert!(entity.navigation.nav_com().is_none());
 
         for frame in 0..400 {
             sim.session.binary_frame = 1022 + frame;
@@ -1185,8 +1184,8 @@ mod tests {
         assert_eq!(landed.phase(), jumpjet_flight::STATE_GROUND);
         assert!(!landed.moving());
         let entity = sim.substrate.entities.get(1).expect("jumpjet");
-        assert_eq!((entity.position.rx, entity.position.ry), here);
-        assert_eq!(entity.position.exact_z_leptons, Some(0));
+        assert_eq!((entity.position.rx(), entity.position.ry()), here);
+        assert_eq!(entity.position.exact_z_leptons(), Some(0));
     }
 
     /// State 4 admits a landing through the owner's own `Can_Enter_Cell`
@@ -1324,7 +1323,7 @@ mod tests {
                 .entities
                 .get(id)
                 .expect("live");
-            (entity.position.rx, entity.position.ry)
+            (entity.position.rx(), entity.position.ry())
         };
         let phase = |scenario: &HeadlessScenario, id: u64| {
             scenario
@@ -1473,7 +1472,7 @@ mod tests {
             let sim = &scenario.runtime.simulation;
             let entity = sim.substrate.entities.get(kirov).expect("Kirov lives");
             if frame == 1 {
-                assert_eq!(entity.navigation.nav_com, Some(goal_cell));
+                assert_eq!(entity.navigation.nav_com(), Some(goal_cell));
             }
             let at = center(sim, kirov);
             let off = ((at.x - goal.x) as f64).hypot((at.y - goal.y) as f64) as i32;
@@ -1563,7 +1562,7 @@ mod tests {
                 (goal.x / 256) as u16,
                 (goal.y / 256) as u16,
             );
-            if entity.navigation.nav_com == Some(goal_cell) {
+            if entity.navigation.nav_com() == Some(goal_cell) {
                 approached.entry(target).or_insert(i32::MAX);
             }
             if let Some(closest) = approached.get_mut(&target) {

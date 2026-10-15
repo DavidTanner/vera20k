@@ -79,7 +79,7 @@ fn gsi_04_12_cell_listed_entity(
 ) -> GameEntity {
     let mut entity = GameEntity::test_default(stable_id, type_ref, owner, rx, ry);
     entity.lifecycle.set_in_limbo_for_test(false);
-    entity.lifecycle.cell_marked = true;
+    entity.lifecycle.set_cell_marked(true);
     entity
 }
 
@@ -127,7 +127,7 @@ fn first_track_process_route(
             .is_empty(),
         "the order installs no route"
     );
-    let start = (entity.position.rx, entity.position.ry);
+    let start = (entity.position.rx(), entity.position.ry());
     // Its Foot precheck reads Map Size and the playfield; an unbounded
     // fixture's Map Size is its cell grid, inside generous LocalSize bounds.
     if sim.playfield_bounds.is_none() {
@@ -142,7 +142,7 @@ fn first_track_process_route(
     sim.process_ground_locomotor_for_test(id, rules, Some(grid), None)
         .expect("the first Process completes");
     let entity = sim.substrate.entities.get(id)?;
-    entity.navigation.nav_com?;
+    entity.navigation.nav_com()?;
     Some(installed_route(entity, start))
 }
 
@@ -150,7 +150,7 @@ fn first_track_process_route(
 /// Foot+5E0 words (consumed ones included); empty when none were installed.
 fn installed_route(entity: &GameEntity, start: (u16, u16)) -> Vec<(u16, u16)> {
     let queue = &entity.navigation.path_replay;
-    if queue.directions.is_empty() {
+    if queue.directions().is_empty() {
         Vec::new()
     } else {
         queue.installed_cells(start)
@@ -193,15 +193,12 @@ fn hierarchy_endpoint_path(
         &grid,
         start,
         goal,
-        None,
         Some(&zone_grid),
         MovementZone::Normal,
         Some(MovementZone::Normal),
         Some(terrain),
         None,
         None,
-        false,
-        false,
         true,
         Some(hierarchy_endpoint_bounds()),
     )
@@ -361,13 +358,10 @@ fn zoned_path_reachable_returns_path() {
         &grid,
         (0, 0),
         (4, 2),
-        None,
         Some(&zg),
         MovementZone::Normal,
         None,
         None,
-        false,
-        false,
     );
     assert!(path.is_some());
     let path = path.unwrap();
@@ -390,13 +384,10 @@ fn zoned_path_unreachable_returns_none_instantly() {
         &grid,
         (0, 0),
         (4, 0),
-        None,
         Some(&zg),
         MovementZone::Normal,
         None,
         None,
-        false,
-        false,
     );
     assert!(path.is_none());
 }
@@ -415,12 +406,9 @@ fn zoned_path_no_zone_grid_falls_through() {
         (0, 0),
         (4, 1),
         None,
-        None,
         MovementZone::Normal,
         None,
         None,
-        false,
-        false,
     );
     assert!(path.is_some());
 }
@@ -437,13 +425,10 @@ fn zoned_path_same_cell() {
         &grid,
         (2, 0),
         (2, 0),
-        None,
         Some(&zg),
         MovementZone::Normal,
         None,
         None,
-        false,
-        false,
     );
     // 0x00429BF3..0x00429C0A: no route for a goal in the start cell.
     assert!(path.is_none());
@@ -506,14 +491,11 @@ fn tube_hierarchy_precheck_rejects_unequal_base_labels_before_connected_graph() 
         (0, 0),
         (2, 0),
         None, // no native raw-row receipt in this compatibility fixture
-        None,
         Some(&zg),
         MovementZone::Normal,
         Some(MovementZone::Normal),
         None,
         None,
-        false,
-        false,
         Some(&blocker_counts),
     );
 
@@ -561,17 +543,14 @@ fn wrapper_rejection_precedes_the_marker_transaction() {
             (0, 0),
             (2, 0),
             &entry,
-            None,
             Some(&zones),
             MovementZone::Normal,
             Some(MovementZone::Normal),
             None,
             None,
             MoverSearchFacts {
-                foot_entry: Some(&MarkerBoundary),
+                foot_entry: &MarkerBoundary,
                 urgency: 2,
-                mover_is_crusher: false,
-                is_infantry: false,
             },
             Some(&counts),
         );
@@ -603,14 +582,11 @@ fn zone_precheck_failed_hierarchy_keeps_zone_map_same_zone_fallback() {
         (0, 0),
         (2, 0),
         None, // no native raw-row receipt in this compatibility fixture
-        None,
         Some(&zg),
         MovementZone::Normal,
         Some(MovementZone::Normal),
         None,
         None,
-        false,
-        false,
         Some(&blocker_counts),
     )
     .expect("same-zone ZoneMap fallback should survive incomplete hierarchy cell IDs");
@@ -676,9 +652,9 @@ fn gsi_04_12_layered_production_precheck_projects_only_hierarchy_coordinates() {
         let mut locomotor = crate::sim::movement::locomotor::LocomotorState::for_test_kind(
             crate::rules::locomotor_type::LocomotorKind::Drive,
         );
-        locomotor.layer = MovementLayer::Bridge;
+        locomotor.set_layer(MovementLayer::Bridge);
         mover.locomotor = Some(locomotor);
-        mover.on_bridge = true;
+        mover.set_on_bridge(true);
         assert!(
             mover
                 .locomotor
@@ -725,7 +701,7 @@ fn gsi_04_12_layered_production_precheck_projects_only_hierarchy_coordinates() {
         "projection must not mutate the A* start coordinate"
     );
     assert!(
-        sim.substrate.entities.get(1).expect("mover").on_bridge,
+        sim.substrate.entities.get(1).expect("mover").on_bridge(),
         "the Process search starts on the bridge layer: AStar 0x00429A90 takes the start height from the Foot's OnBridge byte"
     );
     assert_eq!(
@@ -830,13 +806,10 @@ fn caller_count_bridge_detour(
             goal,
             Some(&zones),
             mz,
-            None,
             Some(mz),
             Some(&terrain),
             None,
             counts,
-            false,
-            mz == MovementZone::Infantry,
             true,
             None,
         )
@@ -874,12 +847,16 @@ fn caller_count_bridge_detour(
 
 #[test]
 fn gsi_04_12_completed_ground_unit_clearance_rally_threads_exact_blocker_counts() {
-    let rules = RuleSet::from_ini(&IniFile::from_str(
+    // This routing fixture supplies an already-placed factory at (0,0).
+    // Native CanPlaceAt7161A0 rejects that sentinel before the cell bypass;
+    // the explicit synthetic PlaceAnywhere prior admits it without changing
+    // the bridge/path witness. This does not test retail building admission.
+    let rules = RuleSet::from_ini_with_fixed_art_for_test(&crate::sim::arena_fixture::clear_ground_ini(
         "[Countries]\n0=Americans\n1=Russians\n[VehicleTypes]\n0=MTNK\n\n\
          [BuildingTypes]\n0=GAWEAP\n\n\
          [MTNK]\nOwner=Americans\nStrength=300\nArmor=heavy\nSpeed=6\nLocomotor={4A582741-9839-11d1-B709-00A024DDAFD1}\n\n\
-         [GAWEAP]\nOwner=Americans\nWeaponsFactory=yes\nStrength=1000\nFoundation=1x1\nFactory=UnitType\nExitCoord=256,0,0\n",
-    ))
+         [GAWEAP]\nOwner=Americans\nWeaponsFactory=yes\nStrength=1000\nPlaceAnywhere=yes\nFactory=UnitType\nExitCoord=256,0,0\n",
+    ), &IniFile::from_str("[GAWEAP]\nFoundation=1x1\n"))
     .expect("ground-unit production rules should parse");
 
     // The real war-factory exit is ground cell (1,0); the rally is ground cell
@@ -895,7 +872,7 @@ fn gsi_04_12_completed_ground_unit_clearance_rally_threads_exact_blocker_counts(
         ..rectangular_spawn_bounds(6)
     });
     sim.playfield_size_height = Some(4);
-    sim.resolved_terrain = Some(terrain);
+    sim.install_resolved_terrain_for_new_map(terrain);
     sim.zone_grid = Some(zone_grid);
     let owner = sim.interner.intern("Americans");
     sim.houses.insert(
@@ -955,19 +932,19 @@ fn gsi_04_12_completed_ground_unit_clearance_rally_threads_exact_blocker_counts(
         .values()
         .find(|entity| entity.owner() == owner && entity.type_ref() == produced_type)
         .expect("completed MTNK should exist");
-    assert_eq!((produced.position.rx, produced.position.ry), (1, 0));
+    assert_eq!((produced.position.rx(), produced.position.ry()), (1, 0));
     let locomotor = produced.locomotor.as_ref().expect("produced locomotor");
     assert_eq!(
-        locomotor.kind,
+        locomotor.active_kind(),
         crate::rules::locomotor_type::LocomotorKind::Drive
     );
-    assert_eq!(locomotor.movement_zone, MovementZone::Normal);
-    assert!(!produced.on_bridge);
+    assert_eq!(locomotor.movement_zone(), MovementZone::Normal);
+    assert!(!produced.on_bridge());
     let produced_id = produced.stable_id();
     assert_eq!(produced.rally_cell(), Some((5, 0)));
-    assert!(produced.navigation.nav_com.is_none());
+    assert!(produced.navigation.nav_com().is_none());
     assert!(produced.has_live_contact_with(factory));
-    assert_eq!(produced.dock_entered_with, Some(factory));
+    assert_eq!(produced.tether.partner(), Some(factory));
     assert_eq!(
         sim.substrate
             .entities
@@ -993,7 +970,7 @@ fn gsi_04_12_completed_ground_unit_clearance_rally_threads_exact_blocker_counts(
     .expect("the supplied clear-exit arrival completes");
     let produced = sim.substrate.entities.get(produced_id).unwrap();
     assert!(!produced.has_live_contact_with(factory));
-    assert_eq!(produced.dock_entered_with, None);
+    assert_eq!(produced.tether.partner(), None);
     let route = first_track_process_route(&mut sim, produced_id, Some(&rules), &path_grid)
         .expect("completed MTNK should receive the hierarchy-backed rally route");
     assert_eq!(route.first().copied(), Some((1, 0)));
@@ -1011,13 +988,16 @@ fn gsi_04_12_completed_ground_unit_clearance_rally_threads_exact_blocker_counts(
 
 #[test]
 fn gsi_04_12_miner_dock_approach_threads_exact_blocker_counts() {
-    let rules = RuleSet::from_ini(&IniFile::from_str(
+    // The admitted refinery prior is at native CanPlaceAt's (0,0) sentinel.
+    // Only this synthetic type supplies PlaceAnywhere; its 1x1 ART and the
+    // existing bridge/path geometry stay fixed. Retail admission is excluded.
+    let rules = RuleSet::from_ini_with_fixed_art_for_test(&crate::sim::arena_fixture::clear_ground_ini(
         "[VehicleTypes]\n0=HARV\n1=BLOCK\n\n\
          [BuildingTypes]\n0=REFN\n\n\
          [HARV]\nStrength=600\nSpeed=4\nLocomotor={4A582741-9839-11d1-B709-00A024DDAFD1}\nMovementZone=Normal\nHarvester=yes\nDock=REFN\nStorage=20\n\n\
          [BLOCK]\nStrength=300\nSpeed=4\nLocomotor={4A582741-9839-11d1-B709-00A024DDAFD1}\nMovementZone=Normal\n\n\
-         [REFN]\nStrength=900\nFoundation=1x1\nRefinery=yes\nDockUnload=yes\n",
-    ))
+         [REFN]\nStrength=900\nPlaceAnywhere=yes\nRefinery=yes\nDockUnload=yes\n",
+    ), &IniFile::from_str("[REFN]\nFoundation=1x1\n"))
     .expect("dock-approach rules should parse");
 
     // The War Miner's dock approach and staging legs are Unit
@@ -1034,7 +1014,7 @@ fn gsi_04_12_miner_dock_approach_threads_exact_blocker_counts() {
         ..rectangular_spawn_bounds(6)
     });
     sim.playfield_size_height = Some(4);
-    sim.resolved_terrain = Some(terrain);
+    sim.install_resolved_terrain_for_new_map(terrain);
     sim.zone_grid = Some(zone_grid);
     let refinery_id = sim
         .spawn_object("REFN", "Americans", 0, 0, 0, &rules)
@@ -1065,14 +1045,14 @@ fn gsi_04_12_miner_dock_approach_threads_exact_blocker_counts() {
 
 #[test]
 fn gsi_04_12_interaction_order_entry_threads_exact_blocker_counts() {
-    let rules = RuleSet::from_ini(&IniFile::from_str(
+    let rules = RuleSet::from_ini_with_fixed_art_for_test(&crate::sim::arena_fixture::clear_ground_ini(
         "[InfantryTypes]\n0=ENGINEER\n\n\
          [VehicleTypes]\n0=BLOCK\n\n\
          [BuildingTypes]\n0=TARGET\n\n\
          [ENGINEER]\nStrength=75\nSpeed=4\nLocomotor={4A582744-9839-11d1-B709-00A024DDAFD1}\nMovementZone=Infantry\nEngineer=yes\n\n\
          [BLOCK]\nStrength=300\nSpeed=4\nLocomotor={4A582741-9839-11d1-B709-00A024DDAFD1}\nMovementZone=Normal\n\n\
-         [TARGET]\nStrength=500\nFoundation=1x1\nCapturable=yes\n",
-    ))
+         [TARGET]\nStrength=500\nCapturable=yes\n",
+    ), &IniFile::from_str("[TARGET]\nFoundation=1x1\n"))
     .expect("interaction-order rules should parse");
 
     let (path_grid, zone_grid, terrain) = caller_count_bridge_detour(MovementZone::Infantry, false);
@@ -1085,7 +1065,7 @@ fn gsi_04_12_interaction_order_entry_threads_exact_blocker_counts() {
         ..rectangular_spawn_bounds(6)
     });
     sim.playfield_size_height = Some(4);
-    sim.resolved_terrain = Some(terrain);
+    sim.install_resolved_terrain_for_new_map(terrain);
     sim.zone_grid = Some(zone_grid);
     let engineer_id = sim
         .spawn_object("ENGINEER", "Americans", 1, 0, 0, &rules)
@@ -1108,7 +1088,7 @@ fn gsi_04_12_interaction_order_entry_threads_exact_blocker_counts() {
 
     let engineer = sim.substrate.entities.get(engineer_id).unwrap();
     assert_eq!(
-        engineer.navigation.nav_com,
+        engineer.navigation.nav_com(),
         Some(NavTargetRef::building(target_id))
     );
     assert!(
@@ -1219,7 +1199,7 @@ fn gsi_04_12_interaction_order_entry_threads_exact_blocker_counts() {
 
     let engineer = sim.substrate.entities.get(engineer_id).unwrap();
     assert_eq!(
-        engineer.navigation.nav_com,
+        engineer.navigation.nav_com(),
         Some(NavTargetRef::building(target_id))
     );
     // Native Infantry 51C300/51C37D/51C71B admits the matching Building
@@ -1229,7 +1209,7 @@ fn gsi_04_12_interaction_order_entry_threads_exact_blocker_counts() {
     // The installed Foot+5E0 route runs from the start Cell to the building
     // Cell; its words carry no layer.
     let route = &engineer.navigation.path_replay;
-    assert_eq!(route.reference_cell, Some((1, 0)));
+    assert_eq!(route.reference_cell(), Some((1, 0)));
     assert_eq!(
         route.remaining_cells().last().copied(),
         Some((5, 0)),
@@ -1282,9 +1262,9 @@ fn gsi_04_12_attack_move_resume_threads_exact_blocker_counts() {
     let mut locomotor = crate::sim::movement::locomotor::LocomotorState::for_test_kind(
         crate::rules::locomotor_type::LocomotorKind::Drive,
     );
-    locomotor.layer = MovementLayer::Bridge;
+    locomotor.set_layer(MovementLayer::Bridge);
     mover.locomotor = Some(locomotor);
-    mover.on_bridge = true;
+    mover.set_on_bridge(true);
     assert!(
         mover
             .locomotor
@@ -1317,7 +1297,7 @@ fn gsi_04_12_attack_move_resume_threads_exact_blocker_counts() {
     let resumed = sim.substrate.entities.get(1).expect("resumed mover");
     assert_eq!(route.first().copied(), Some((1, 0)));
     assert!(
-        sim.substrate.entities.get(1).expect("mover").on_bridge,
+        sim.substrate.entities.get(1).expect("mover").on_bridge(),
         "the Process search starts on the bridge layer: AStar 0x00429A90 takes the start height from the Foot's OnBridge byte"
     );
     assert_eq!(route.last().copied(), Some((3, 0)));
@@ -1373,9 +1353,9 @@ fn gsi_04_12_drive_pending_continuation_keeps_hierarchy_context_and_raw_route() 
     let mut locomotor = crate::sim::movement::locomotor::LocomotorState::for_test_kind(
         crate::rules::locomotor_type::LocomotorKind::Drive,
     );
-    locomotor.layer = MovementLayer::Bridge;
+    locomotor.set_layer(MovementLayer::Bridge);
     mover.locomotor = Some(locomotor);
-    mover.on_bridge = true;
+    mover.set_on_bridge(true);
     assert!(
         mover
             .locomotor
@@ -1383,8 +1363,8 @@ fn gsi_04_12_drive_pending_continuation_keeps_hierarchy_context_and_raw_route() 
             .unwrap()
             .install_drive_state_for_test(Some(Default::default()))
     );
-    mover.navigation.nav_com = Some(NavTargetRef::cell(3, 0));
-    mover.navigation.pending_destination_setter = true;
+    mover.navigation.set_nav_com(Some(NavTargetRef::cell(3, 0)));
+    mover.navigation.set_pending_destination_setter(true);
     let blocker = gsi_04_12_cell_listed_entity(2, "MTNK", "Russians", 2, 0);
 
     // The pending pass on the production Simulation host, with the fixture's
@@ -1417,8 +1397,11 @@ fn gsi_04_12_drive_pending_continuation_keeps_hierarchy_context_and_raw_route() 
         .entities
         .get(1)
         .expect("continued Drive mover");
-    assert_eq!(continued.navigation.nav_com, Some(NavTargetRef::cell(3, 0)));
-    assert!(!continued.navigation.pending_destination_setter);
+    assert_eq!(
+        continued.navigation.nav_com(),
+        Some(NavTargetRef::cell(3, 0))
+    );
+    assert!(!continued.navigation.pending_destination_setter());
     assert!(
         crate::sim::movement::motion_query::is_moving(&continued) == Some(true),
         "pending Drive continuation should rebuild the hierarchy route"
@@ -1426,7 +1409,7 @@ fn gsi_04_12_drive_pending_continuation_keeps_hierarchy_context_and_raw_route() 
     let route = installed_route(continued, (1, 0));
     assert_eq!(route.first().copied(), Some((1, 0)));
     assert!(
-        continued.on_bridge,
+        continued.on_bridge(),
         "the Process search starts on the bridge layer: AStar 0x00429A90 takes the start height from the Foot's OnBridge byte"
     );
     assert_eq!(route.last().copied(), Some((3, 0)));
@@ -1482,9 +1465,9 @@ fn gsi_04_12_stock_miner_move_entry_threads_exact_world_context() {
         let mut locomotor = crate::sim::movement::locomotor::LocomotorState::for_test_kind(
             crate::rules::locomotor_type::LocomotorKind::Drive,
         );
-        locomotor.layer = MovementLayer::Bridge;
+        locomotor.set_layer(MovementLayer::Bridge);
         miner.locomotor = Some(locomotor);
-        miner.on_bridge = true;
+        miner.set_on_bridge(true);
         assert!(
             miner
                 .locomotor
@@ -1587,15 +1570,12 @@ fn tube_hierarchy_explicit_registry_keeps_flat_and_layered_corridor_active() {
         &grid,
         (0, 1),
         (39, 1),
-        None,
         Some(&zones),
         MovementZone::Normal,
         Some(MovementZone::Normal),
         Some(&terrain),
         None,
         Some(&counts),
-        false,
-        false,
         true,
         None,
     )
@@ -1608,15 +1588,12 @@ fn tube_hierarchy_explicit_registry_keeps_flat_and_layered_corridor_active() {
         &grid,
         (0, 1),
         (39, 1),
-        None,
         Some(&zones),
         MovementZone::Normal,
         Some(MovementZone::Normal),
         Some(&terrain),
         None,
         Some(&counts),
-        false,
-        false,
         false,
         None,
     )
@@ -1632,13 +1609,10 @@ fn tube_hierarchy_explicit_registry_keeps_flat_and_layered_corridor_active() {
         (39, 1),
         Some(&zones),
         MovementZone::Normal,
-        None,
         Some(MovementZone::Normal),
         Some(&terrain),
         None,
         Some(&counts),
-        false,
-        false,
         true,
         None,
     )
@@ -1700,15 +1674,12 @@ fn tube_hierarchy_gate_uses_raw_invalid_labels_and_flat_goal_bridge_flag() {
             &grid,
             (0, 0),
             (1, 0),
-            None,
             Some(zones),
             MovementZone::Normal,
             Some(MovementZone::Normal),
             Some(terrain),
             None,
             Some(&counts),
-            false,
-            false,
             true,
             None,
         )
@@ -1927,15 +1898,12 @@ fn tube_hierarchy_missing_record_sentinel_controls_actual_route_gate() {
             &grid,
             (4, 7),
             (5, 7),
-            None,
             Some(&zones),
             MovementZone::Normal,
             Some(MovementZone::Normal),
             Some(&terrain),
             None,
             Some(&counts),
-            false,
-            false,
             true,
             None
         )
@@ -1963,13 +1931,10 @@ fn tube_hierarchy_missing_record_sentinel_controls_actual_route_gate() {
             (6, 7),
             Some(&zones),
             MovementZone::Normal,
-            None,
             Some(MovementZone::Normal),
             Some(&terrain),
             None,
             Some(&counts),
-            false,
-            false,
             true,
             None
         )
@@ -2097,15 +2062,12 @@ fn tube_hierarchy_native_entry_prefix_matches_original_executable() {
                     &grid,
                     hole,
                     hole,
-                    None,
                     Some(&zones),
                     MovementZone::Normal,
                     Some(MovementZone::Normal),
                     Some(&terrain),
                     None,
                     None,
-                    false,
-                    false,
                     false,
                     None
                 )
@@ -2121,13 +2083,10 @@ fn tube_hierarchy_native_entry_prefix_matches_original_executable() {
                     hole,
                     Some(&zones),
                     MovementZone::Normal,
-                    None,
                     Some(MovementZone::Normal),
                     Some(&terrain),
                     None,
                     None,
-                    false,
-                    false,
                     false,
                     None
                 )

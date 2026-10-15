@@ -48,7 +48,7 @@ pub(crate) fn entity_layer(
     let raw = position_world_coord(&entity.position);
     let height = crate::sim::movement::air_movement::current_fly_height(entity, terrain);
     let mut adjusted_height = height;
-    if kind == Some(LocomotorKind::Jumpjet) && !entity.on_bridge {
+    if kind == Some(LocomotorKind::Jumpjet) && !entity.on_bridge() {
         // This map lookup precedes the high-flying gate even when +74 is false.
         let flags = terrain.map_or(0, |terrain| {
             let cell = terrain.native_cell_identity(((raw.x / 256) as i16, (raw.y / 256) as i16));
@@ -74,7 +74,7 @@ pub(crate) fn entity_layer(
             .and_then(|l| l.jumpjet_runtime())
             .expect("active Jumpjet owns its runtime")
             .params()
-            .height
+            .height()
     } else {
         // Object5F4260 uses Rules+420, not FlightLevel or a type's height.
         rules.map_or(400, |(rules, _)| rules.general.display_cruise_height)
@@ -338,8 +338,8 @@ mod tests {
                 5,
                 false,
             );
-            entity.position.sub_x = SimFixed::from_num(128);
-            entity.position.sub_y = SimFixed::from_num(128);
+            entity.position.set_sub_x(SimFixed::from_num(128));
+            entity.position.set_sub_y(SimFixed::from_num(128));
             assert_eq!(
                 entity_sort_key(&entity, rules.object(name)),
                 expected,
@@ -376,13 +376,17 @@ mod tests {
                 },
             );
             let entity = sim.substrate.entities.get_mut(1).unwrap();
-            entity.position.rx = 10;
-            entity.position.ry = 10;
-            entity.position.sub_x = SimFixed::from_num(128);
-            entity.position.sub_y = SimFixed::from_num(128);
-            entity.position.exact_z_leptons = Some(input["z"].as_i64().unwrap() as i32);
-            entity.lifecycle.cell_marked = input["marked"].as_bool().unwrap_or(true);
-            entity.on_bridge = input["on_bridge"].as_bool().unwrap_or(false);
+            entity.position.set_rx(10);
+            entity.position.set_ry(10);
+            entity.position.set_sub_x(SimFixed::from_num(128));
+            entity.position.set_sub_y(SimFixed::from_num(128));
+            entity
+                .position
+                .set_exact_z_leptons(Some(input["z"].as_i64().unwrap() as i32));
+            entity
+                .lifecycle
+                .set_cell_marked(input["marked"].as_bool().unwrap_or(true));
+            entity.set_on_bridge(input["on_bridge"].as_bool().unwrap_or(false));
             entity.set_falling_down_for_test(input["falling"].as_bool().unwrap_or(false));
             let loco_kind = match kind {
                 "walk" => Some(LocomotorKind::Walk),
@@ -399,7 +403,7 @@ mod tests {
                 .and_then(|l| l.jumpjet_runtime_mut())
             {
                 let mut params = runtime.params();
-                params.height = input["linked_height"].as_i64().unwrap_or(500) as i32;
+                params.set_height_for_test(input["linked_height"].as_i64().unwrap_or(500) as i32);
                 *runtime = runtime.clone().with_params_for_test(params);
             }
             let mut cell = super::super::common_raw_test_terrain_cell(
@@ -433,7 +437,7 @@ mod tests {
             // native answer is Ground, then the OnBridge one.
             assert_eq!(
                 crate::sim::occupancy::cell_list_layer_for_entity(entity, Some(&terrain)),
-                (row["layer"] == 2).then_some(if entity.on_bridge {
+                (row["layer"] == 2).then_some(if entity.on_bridge() {
                     crate::sim::movement::locomotor::MovementLayer::Bridge
                 } else {
                     crate::sim::movement::locomotor::MovementLayer::Ground
@@ -494,8 +498,8 @@ mod tests {
                 5,
                 false,
             );
-            entity.position.sub_x = SimFixed::from_num(128);
-            entity.position.sub_y = SimFixed::from_num(128);
+            entity.position.set_sub_x(SimFixed::from_num(128));
+            entity.position.set_sub_y(SimFixed::from_num(128));
             sim.entities_mut().insert(entity);
             sim.submit_object_display(id, DisplayLayer::GROUND, Some(&rules));
             units.push(id);
@@ -552,14 +556,22 @@ mod tests {
                 0 => {
                     let unit = units[next(4) as usize];
                     let entity = sim.substrate.entities.get_mut(unit).unwrap();
-                    entity.position.sub_x = SimFixed::from_num((128 + delta).rem_euclid(256));
-                    entity.position.ry = (entity.position.ry as i32 + delta.signum()) as u16;
+                    entity
+                        .position
+                        .set_sub_x(SimFixed::from_num((128 + delta).rem_euclid(256)));
+                    entity
+                        .position
+                        .set_ry((entity.position.ry() as i32 + delta.signum()) as u16);
                 }
                 1 => {
                     let unit = units[next(4) as usize];
                     let entity = sim.substrate.entities.get_mut(unit).unwrap();
-                    entity.position.rx = (entity.position.rx as i32 - delta.signum()) as u16;
-                    entity.position.sub_y = SimFixed::from_num((128 - delta).rem_euclid(256));
+                    entity
+                        .position
+                        .set_rx((entity.position.rx() as i32 - delta.signum()) as u16);
+                    entity
+                        .position
+                        .set_sub_y(SimFixed::from_num((128 - delta).rem_euclid(256)));
                 }
                 2 => {
                     let anim = anims[next(8) as usize];

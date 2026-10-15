@@ -14,9 +14,9 @@ fn coord(value: &Value) -> DriveCoord {
 }
 
 fn assert_progress(progress: &TrackProgress, expected: &Value) {
-    assert_eq!(progress.turn_index, integer(&expected["turn"]));
-    assert_eq!(progress.cursor, integer(&expected["cursor"]));
-    assert_eq!(progress.reversed, expected["reversed"].as_bool().unwrap());
+    assert_eq!(progress.turn_index(), integer(&expected["turn"]));
+    assert_eq!(progress.cursor(), integer(&expected["cursor"]));
+    assert_eq!(progress.reversed(), expected["reversed"].as_bool().unwrap());
 }
 
 #[test]
@@ -34,12 +34,12 @@ fn post_placement_gates_reload_cursor_and_preserve_the_paid_raw_descriptor() {
         for case in corpus[name]["cases"].as_array().unwrap() {
             let (input, output) = (&case["input"], &case["output"]);
             let initial = &input["initial"];
-            let mut progress = TrackProgress {
-                turn_index: integer(&initial["turn"]),
-                cursor: 0,
-                reversed: initial["reversed"].as_bool().unwrap(),
-                residual: 6,
-            };
+            let mut progress = TrackProgress::for_test(
+                integer(&initial["turn"]),
+                0,
+                initial["reversed"].as_bool().unwrap(),
+                6,
+            );
             let mut call = TrackProcess::begin(family, &progress, 9, false);
             let Some(TrackPayment::Sample(sample)) = call.pay_current(&progress) else {
                 panic!("native case pays the initial point: {name} {input}");
@@ -50,10 +50,10 @@ fn post_placement_gates_reload_cursor_and_preserve_the_paid_raw_descriptor() {
                 integer(&output["cached"]["raw"])
             );
             let mutation = &input["mutation"];
-            progress.turn_index = integer(&mutation["turn"]);
-            progress.cursor = integer(&mutation["cursor"]);
-            progress.reversed = mutation["reversed"].as_bool().unwrap();
-            progress.residual = integer(&mutation["residual"]);
+            progress.set_turn_index(integer(&mutation["turn"]));
+            progress.set_cursor(integer(&mutation["cursor"]));
+            progress.set_reversed(mutation["reversed"].as_bool().unwrap());
+            progress.set_residual(integer(&mutation["residual"]));
             assert_eq!(
                 call.is_at_occupation_handoff(&progress),
                 output["handoff"].as_bool().unwrap(),
@@ -61,9 +61,9 @@ fn post_placement_gates_reload_cursor_and_preserve_the_paid_raw_descriptor() {
             );
             assert_progress(&progress, &output["after_handoff"]);
             let chain_cursor = integer(&input["chain_cursor"]);
-            within_point_cursor_changes += usize::from(progress.cursor != chain_cursor);
-            selector_changes += usize::from(progress.turn_index != integer(&initial["turn"]));
-            progress.cursor = chain_cursor;
+            within_point_cursor_changes += usize::from(progress.cursor() != chain_cursor);
+            selector_changes += usize::from(progress.turn_index() != integer(&initial["turn"]));
+            progress.set_cursor(chain_cursor);
             assert_eq!(
                 call.is_at_chain_cursor(&progress),
                 output["chain"].as_bool().unwrap(),
@@ -71,7 +71,7 @@ fn post_placement_gates_reload_cursor_and_preserve_the_paid_raw_descriptor() {
             );
             assert_progress(&progress, &output["after_chain"]);
             assert_eq!(call.budget(), integer(&output["local_budget"]));
-            assert_eq!(progress.residual, integer(&output["retained_residual"]));
+            assert_eq!(progress.residual(), integer(&output["retained_residual"]));
             cases += 1;
         }
     }
@@ -147,13 +147,13 @@ fn retained_cursor_and_paid_samples_match_original_drive_and_ship() {
         }
         for case in data["samples"].as_array().unwrap() {
             let (input, output) = (&case["input"], &case["output"]);
-            let mut progress = TrackProgress {
-                turn_index: integer(&input["turn"]),
-                cursor: integer(&input["cursor"]),
-                reversed: input["reverse"].as_bool().unwrap(),
-                residual: integer(&input["budget"]),
-            };
-            let residual_before = progress.residual;
+            let mut progress = TrackProgress::for_test(
+                integer(&input["turn"]),
+                integer(&input["cursor"]),
+                input["reverse"].as_bool().unwrap(),
+                integer(&input["budget"]),
+            );
+            let residual_before = progress.residual();
             let mut call = TrackProcess::begin(family, &progress, 0, false);
             match call.pay_current(&progress).unwrap() {
                 TrackPayment::Exhausted => assert_eq!(output["kind"], "unpaid"),
@@ -163,7 +163,8 @@ fn retained_cursor_and_paid_samples_match_original_drive_and_ship() {
                         [integer(&output["xy"][0]), integer(&output["xy"][1])]
                     );
                     assert_eq!(
-                        sample.cursor, progress.cursor,
+                        sample.cursor,
+                        progress.cursor(),
                         "payment leaves cursor for callbacks"
                     );
                     if sample.terminal {
@@ -180,19 +181,15 @@ fn retained_cursor_and_paid_samples_match_original_drive_and_ship() {
             assert_progress(&progress, &output["after"]);
             assert_eq!(call.budget(), integer(&output["budget"]));
             assert_eq!(
-                progress.residual, residual_before,
+                progress.residual(),
+                residual_before,
                 "callback barrier cannot eagerly store local budget"
             );
             samples += 1;
         }
         for case in data["fresh"].as_array().unwrap() {
             let (input, output) = (&case["input"], &case["output"]);
-            let mut progress = TrackProgress {
-                turn_index: -7,
-                cursor: 77,
-                reversed: true,
-                residual: 123,
-            };
+            let mut progress = TrackProgress::for_test(-7, 77, true, 123);
             progress.select_fresh(drive_track::fresh_turn_index(
                 integer(&input["first"]) as u8,
                 integer(&input["second"]) as u8,
@@ -200,17 +197,12 @@ fn retained_cursor_and_paid_samples_match_original_drive_and_ship() {
             assert_progress(&progress, &output["selected"]);
             progress.accept_fresh();
             assert_progress(&progress, &output["accepted"]);
-            assert_eq!(progress.residual, 123);
+            assert_eq!(progress.residual(), 123);
             fresh += 1;
         }
         for case in data["chains"].as_array().unwrap() {
             let (input, output) = (&case["input"], &case["output"]);
-            let mut progress = TrackProgress {
-                turn_index: 9,
-                cursor: 45,
-                reversed: true,
-                residual: 971,
-            };
+            let mut progress = TrackProgress::for_test(9, 45, true, 971);
             // Like the native corpus, supply an already-reached chain callback
             // seam. This does not claim the preceding owner callbacks ran.
             let mut call = TrackProcess {
@@ -227,17 +219,12 @@ fn retained_cursor_and_paid_samples_match_original_drive_and_ship() {
             );
             assert_progress(&progress, &output["after"]);
             assert_eq!(call.budget(), integer(&output["budget"]));
-            assert_eq!(progress.residual, 971);
+            assert_eq!(progress.residual(), 971);
             chains += 1;
         }
         for case in data["terminals"].as_array().unwrap() {
             let (input, output) = (&case["input"], &case["output"]);
-            let mut progress = TrackProgress {
-                turn_index: 9,
-                cursor: 45,
-                reversed: true,
-                residual: 971,
-            };
+            let mut progress = TrackProgress::for_test(9, 45, true, 971);
             let mut call = TrackProcess {
                 family,
                 budget: integer(&input["budget"]),
@@ -252,7 +239,7 @@ fn retained_cursor_and_paid_samples_match_original_drive_and_ship() {
             );
             progress.clear_selector();
             assert_progress(&progress, &output["selectors_after_clear"]);
-            assert_eq!(progress.residual, 971);
+            assert_eq!(progress.residual(), 971);
             terminals += 1;
         }
     }
@@ -318,12 +305,7 @@ fn residual_scalar_and_cell_identity_gate_match_original_instructions() {
 
 #[test]
 fn rejected_chain_cannot_publish_the_null_raw_record_as_a_curve() {
-    let retained = TrackProgress {
-        turn_index: 1,
-        cursor: 37,
-        reversed: true,
-        residual: 971,
-    };
+    let retained = TrackProgress::for_test(1, 37, true, 971);
     for family in [TrackFamily::Drive, TrackFamily::Ship] {
         for rejected in [-1, 0, 3, 72] {
             let mut candidate = retained;
@@ -335,12 +317,7 @@ fn rejected_chain_cannot_publish_the_null_raw_record_as_a_curve() {
 
 #[test]
 fn accepted_chain_advances_refetched_cursor_and_preserves_old_residual_until_store() {
-    let mut progress = TrackProgress {
-        turn_index: 0,
-        cursor: 0,
-        reversed: false,
-        residual: 6,
-    };
+    let mut progress = TrackProgress::for_test(0, 0, false, 6);
     let mut call = TrackProcess::begin(TrackFamily::Drive, &progress, 9, false);
     let TrackPayment::Sample(sample) = call.pay_current(&progress).unwrap() else {
         panic!("paid first sample")
@@ -348,20 +325,20 @@ fn accepted_chain_advances_refetched_cursor_and_preserves_old_residual_until_sto
     assert_eq!(sample.xy, [0, 245]);
     assert_eq!(call.budget(), 8);
     assert!(call.accept_chain(&mut progress, 1));
-    assert_eq!(progress.cursor, 11);
+    assert_eq!(progress.cursor(), 11);
     // A native callback exit stops here, preserving entry-1 and old residual.
-    assert_eq!(progress.residual, 6);
+    assert_eq!(progress.residual(), 6);
     let callback_exit_state = progress;
     assert!(call.finish_surviving_point(&mut progress));
-    assert_eq!(progress.cursor, 12);
-    assert_eq!(callback_exit_state.cursor, 11);
+    assert_eq!(progress.cursor(), 12);
+    assert_eq!(callback_exit_state.cursor(), 11);
     let TrackPayment::Sample(next) = call.pay_current(&progress).unwrap() else {
         panic!("same-process successor")
     };
     assert_eq!(next.xy, [-256, 373]);
     assert!(!call.finish_surviving_point(&mut progress));
     call.store_residual(&mut progress);
-    assert_eq!(progress.residual, 1);
+    assert_eq!(progress.residual(), 1);
 }
 
 #[test]
@@ -377,12 +354,12 @@ fn callback_mutations_keep_paid_raw_cache_but_transform_and_residual_use_live_st
         for case in corpus[name].as_array().unwrap() {
             let (input, output) = (&case["input"], &case["output"]);
             let initial = &input["initial"];
-            let mut progress = TrackProgress {
-                turn_index: integer(&initial["turn"]),
-                cursor: integer(&initial["cursor"]),
-                reversed: initial["reversed"].as_bool().unwrap(),
-                residual: integer(&initial["residual"]),
-            };
+            let mut progress = TrackProgress::for_test(
+                integer(&initial["turn"]),
+                integer(&initial["cursor"]),
+                initial["reversed"].as_bool().unwrap(),
+                integer(&initial["residual"]),
+            );
             // The fixture enters after budget calculation with budget15.
             let mut call = TrackProcess::begin(family, &progress, 9, false);
             let TrackPayment::Sample(first) = call.pay_current(&progress).unwrap() else {
@@ -402,16 +379,16 @@ fn callback_mutations_keep_paid_raw_cache_but_transform_and_residual_use_live_st
             // this test does not claim a gameplay callback produces each one.
             let mutation = &input["mutation"];
             if let Some(turn) = mutation["turn"].as_i64() {
-                progress.turn_index = turn as i32;
+                progress.set_turn_index(turn as i32);
             }
             if let Some(cursor) = mutation["cursor"].as_i64() {
-                progress.cursor = cursor as i32;
+                progress.set_cursor(cursor as i32);
             }
             if let Some(reversed) = mutation["reversed"].as_bool() {
-                progress.reversed = reversed;
+                progress.set_reversed(reversed);
             }
             if let Some(residual) = mutation["residual"].as_i64() {
-                progress.residual = residual as i32;
+                progress.set_residual(residual as i32);
             }
             let head = coord(&mutation["head"]);
             assert_progress(&progress, &output["before_tail"]);
@@ -421,7 +398,7 @@ fn callback_mutations_keep_paid_raw_cache_but_transform_and_residual_use_live_st
             };
             assert_native_cached_sample(&call, second, &output["second"]);
             assert_progress(&progress, &output["after_payment"]);
-            assert_eq!(progress.residual, integer(&output["retained_residual"]));
+            assert_eq!(progress.residual(), integer(&output["retained_residual"]));
             let (xy, facing) = second.transform(family, &progress, head).unwrap();
             let transformed = &output["second"]["transformed"];
             assert_eq!(
@@ -440,7 +417,7 @@ fn callback_mutations_keep_paid_raw_cache_but_transform_and_residual_use_live_st
             call.store_residual(&mut progress);
             let expected = &output["residual"];
             assert_progress(&progress, &expected["progress"]);
-            assert_eq!(progress.residual, integer(&expected["budget"]));
+            assert_eq!(progress.residual(), integer(&expected["budget"]));
             let residual = progress.residual_step(family, head, head).unwrap();
             assert_eq!(
                 [residual.full.x, residual.full.y],
@@ -484,36 +461,36 @@ fn assert_native_cached_sample(call: &TrackProcess, sample: PaidSample, expected
 #[test]
 fn forced_selector_clearing_does_not_reconstruct_constructor_state() {
     let mut progress = TrackProgress::default();
-    assert_eq!((progress.turn_index, progress.cursor), (-1, -1));
-    progress.reversed = true;
-    progress.residual = 971;
+    assert_eq!((progress.turn_index(), progress.cursor()), (-1, -1));
+    progress.set_reversed(true);
+    progress.set_residual(971);
     progress.select_forced(-1);
     assert_eq!(
         (
-            progress.turn_index,
-            progress.cursor,
-            progress.reversed,
-            progress.residual
+            progress.turn_index(),
+            progress.cursor(),
+            progress.reversed(),
+            progress.residual()
         ),
         (-1, 0, true, 971)
     );
     progress.select_forced(71);
     assert_eq!(
         (
-            progress.turn_index,
-            progress.cursor,
-            progress.reversed,
-            progress.residual
+            progress.turn_index(),
+            progress.cursor(),
+            progress.reversed(),
+            progress.residual()
         ),
         (71, 0, true, 971)
     );
     progress.clear_selector();
     assert_eq!(
         (
-            progress.turn_index,
-            progress.cursor,
-            progress.reversed,
-            progress.residual
+            progress.turn_index(),
+            progress.cursor(),
+            progress.reversed(),
+            progress.residual()
         ),
         (-1, 0, true, 971)
     );
@@ -521,12 +498,7 @@ fn forced_selector_clearing_does_not_reconstruct_constructor_state() {
 
 #[test]
 fn residual_only_continuation_uses_current_pose_and_preserves_height_and_selectors() {
-    let progress = TrackProgress {
-        turn_index: 0,
-        cursor: 0,
-        reversed: false,
-        residual: 4,
-    };
+    let progress = TrackProgress::for_test(0, 0, false, 4);
     let head = DriveCoord {
         x: 2176,
         y: 1920,
@@ -556,11 +528,12 @@ fn residual_only_continuation_uses_current_pose_and_preserves_height_and_selecto
         "each residual-only pass starts from current XYZ"
     );
     assert_eq!(second.interpolated.z, 731);
-    assert_eq!(progress.cursor, 0);
+    assert_eq!(progress.cursor(), 0);
     assert!(
-        TrackProgress {
-            cursor: 23,
-            ..progress
+        {
+            let mut value = progress;
+            value.set_cursor(23);
+            value
         }
         .residual_step(TrackFamily::Drive, current, head)
         .is_none(),

@@ -118,15 +118,14 @@ fn supplied_world(rules: &RuleSet, case: &Value) -> Simulation {
             true,
         );
         entity.lifecycle.set_in_limbo_for_test(false);
-        entity.lifecycle.cell_marked = true;
-        entity.in_playfield = true;
+        entity.lifecycle.set_cell_marked(true);
+        entity.set_in_playfield(true);
         entity.locomotor = Some(LocomotorState::from_object_type(obj, 0));
-        entity.passive_scan_timer = MissionTimer {
-            start_frame: 0,
-            duration: 0,
-        };
-        entity.last_target_scan_frame = 0;
-        entity.position.exact_z_leptons = Some(624);
+        entity
+            .passive_scan
+            .set_passive_scan_timer_for_test(MissionTimer::armed(0, 0));
+        entity.passive_scan.set_last_target_scan_frame_for_test(0);
+        entity.position.set_exact_z_leptons(Some(624));
         sim.substrate.entities.insert(entity);
         sim.mission_assign_exact(id, MissionId::from_known(MissionType::Guard), 0)
             .unwrap();
@@ -146,12 +145,14 @@ fn supply_step(sim: &mut Simulation, rules: &RuleSet, input: &Value) {
         let cell = crate::map::cell_index::NativeCellIdentity::Real(20 * 25 + x);
         terrain.write_native_cell_flags(cell, flags);
         let entity = sim.substrate.entities.get_mut(id).unwrap();
-        entity.on_bridge = deck;
-        entity.position.rx = x as u16;
-        entity.position.ry = 20;
-        entity.position.sub_x = SimFixed::from_num(128);
-        entity.position.sub_y = SimFixed::from_num(128);
-        entity.position.exact_z_leptons = Some(if deck { 1040 } else { 624 });
+        entity.set_on_bridge(deck);
+        entity.position.set_rx(x as u16);
+        entity.position.set_ry(20);
+        entity.position.set_sub_x(SimFixed::from_num(128));
+        entity.position.set_sub_y(SimFixed::from_num(128));
+        entity
+            .position
+            .set_exact_z_leptons(Some(if deck { 1040 } else { 624 }));
         sim.substrate.occupancy.add(
             x as u16,
             20,
@@ -168,8 +169,8 @@ fn supply_step(sim: &mut Simulation, rules: &RuleSet, input: &Value) {
     if let Some(mode) = input["alternative"].as_str() {
         let y = if mode == "other_cell" { 21 } else { 20 };
         let alternate = sim.substrate.entities.get_mut(3).unwrap();
-        alternate.position.ry = y;
-        alternate.position.exact_z_leptons = Some(624);
+        alternate.position.set_ry(y);
+        alternate.position.set_exact_z_leptons(Some(624));
         let terrain = sim.resolved_terrain.as_mut().unwrap();
         terrain.write_native_cell_flags(
             crate::map::cell_index::NativeCellIdentity::Real(usize::from(y) * 25 + 12),
@@ -218,16 +219,18 @@ fn supply_step(sim: &mut Simulation, rules: &RuleSet, input: &Value) {
     }
     let source = sim.substrate.entities.get_mut(1).unwrap();
     if let Some(timer) = input["rearm"].as_array() {
-        source.rearm_timer = CdTimer::from_raw(
+        source.rearm_timer.set_for_test(CdTimer::from_raw(
             timer[0].as_i64().unwrap() as i32,
             timer[1].as_i64().unwrap() as i32,
-        );
+        ));
     }
     if let Some(timer) = input["timer"].as_array() {
-        source.passive_scan_timer = MissionTimer {
-            start_frame: timer[0].as_i64().unwrap() as u32,
-            duration: timer[2].as_i64().unwrap() as u32,
-        };
+        source
+            .passive_scan
+            .set_passive_scan_timer_for_test(MissionTimer::armed(
+                timer[0].as_i64().unwrap() as u32,
+                timer[2].as_i64().unwrap() as u32,
+            ));
     }
     if let Some(health) = input["health"].as_i64() {
         sim.substrate
@@ -251,22 +254,22 @@ fn assert_state(sim: &Simulation, state: &Value, label: &str) {
     };
     assert_eq!(json!(name), state["target"], "{label}: target");
     assert_eq!(
-        json!(u8::from(source.passively_acquired_target)),
+        json!(u8::from(source.passive_scan.acquired())),
         state["passive"],
         "{label}: passive"
     );
     assert_eq!(
-        json!(source.last_target_scan_frame as i32),
+        json!(source.passive_scan.last_scan_frame() as i32),
         state["last_scan"],
         "{label}: last_scan"
     );
     assert_eq!(
-        json!(source.passive_scan_timer.start_frame as i32),
+        json!(source.passive_scan.timer().start_frame() as i32),
         state["timer"][0],
         "{label}: timer anchor"
     );
     assert_eq!(
-        json!(source.passive_scan_timer.duration as i32),
+        json!(source.passive_scan.timer().duration() as i32),
         state["timer"][2],
         "{label}: timer duration"
     );
@@ -389,8 +392,11 @@ fn move_retail_fv(
         .entities
         .get_mut(id)
         .unwrap()
-        .passive_scan_timer =
-        MissionTimer::armed(runtime.simulation.session.binary_frame, 1_000_000);
+        .passive_scan
+        .set_passive_scan_timer_for_test(MissionTimer::armed(
+            runtime.simulation.session.binary_frame,
+            1_000_000,
+        ));
     let command = CommandEnvelope::new(
         owner,
         runtime.simulation.session.tick + 1,
@@ -412,7 +418,7 @@ fn move_retail_fv(
                 .substrate
                 .entities
                 .get(id)
-                .is_some_and(|e| (e.position.rx, e.position.ry) == stop_at))
+                .is_some_and(|e| (e.position.rx(), e.position.ry()) == stop_at))
         .then(|| {
             stop_sent = true;
             CommandEnvelope::new(
@@ -434,15 +440,16 @@ fn move_retail_fv(
             )
             .unwrap();
         let entity = runtime.simulation.substrate.entities.get(id).unwrap();
-        if (entity.position.rx, entity.position.ry) == stop_at
+        if (entity.position.rx(), entity.position.ry()) == stop_at
             && crate::sim::movement::motion_query::is_moving(&entity) != Some(true)
         {
             assert_eq!(
-                entity.on_bridge, deck,
+                entity.on_bridge(),
+                deck,
                 "ordinary Move selected wrong layer at {stop_at:?}"
             );
             assert_eq!(
-                entity.position.exact_z_leptons,
+                entity.position.exact_z_leptons(),
                 Some(if deck { 1040 } else { 624 })
             );
             assert!(
@@ -487,13 +494,13 @@ fn assert_retail_target_state_restored(live: &Simulation, restored: &Simulation,
         assert_eq!(before.is_some(), after.is_some(), "restored actor {id}");
         if let (Some(before), Some(after)) = (before, after) {
             assert_eq!(json!(before.position), json!(after.position));
-            assert_eq!(before.on_bridge, after.on_bridge);
-            assert_eq!(before.passive_scan_timer, after.passive_scan_timer);
-            assert_eq!(before.rearm_timer, after.rearm_timer);
+            assert_eq!(before.on_bridge(), after.on_bridge());
+            assert_eq!(before.passive_scan.timer(), after.passive_scan.timer());
+            assert_eq!(before.rearm_timer.timer(), after.rearm_timer.timer());
             assert_eq!(json!(before.attack_target), json!(after.attack_target));
             assert_eq!(
-                before.passively_acquired_target,
-                after.passively_acquired_target
+                before.passive_scan.acquired(),
+                after.passive_scan.acquired()
             );
             assert_eq!(before.estimated_health, after.estimated_health);
             assert_eq!(before.health.current(), after.health.current());
@@ -502,7 +509,7 @@ fn assert_retail_target_state_restored(live: &Simulation, restored: &Simulation,
                 after.lifecycle.object_alive()
             );
             assert_eq!(before.lifecycle.in_limbo(), after.lifecycle.in_limbo());
-            assert_eq!(before.dying, after.dying);
+            assert_eq!(before.death.is_dying(), after.death.is_dying());
         }
     }
     for xy in [(64, 69), (66, 69)] {
@@ -592,11 +599,14 @@ pub(super) fn retail_hills_collapsed_scene(
             .entities
             .get_mut(source)
             .unwrap();
-        entity.passive_scan_timer.clear();
+        entity.passive_scan.timer_mut_for_test().clear();
         // Native composed deck-to-ground rearm boundary: ready weapons
         // reject earlier in T58; the busy deck source reaches Evaluate's G27.
         // The reverse direction rejects in InRange before G27.
-        entity.rearm_timer = CdTimer::started(runtime.simulation.session.binary_frame as i32, 10);
+        entity.rearm_timer.set_for_test(CdTimer::started(
+            runtime.simulation.session.binary_frame as i32,
+            10,
+        ));
         passive_acquire_step(
             &mut runtime.simulation,
             source,
@@ -624,7 +634,8 @@ pub(super) fn retail_hills_collapsed_scene(
                 .entities
                 .get(source)
                 .unwrap()
-                .passively_acquired_target
+                .passive_scan
+                .acquired()
         );
     }
     let bytes = GameSnapshot::save_validated(
@@ -641,9 +652,9 @@ pub(super) fn retail_hills_collapsed_scene(
     for sim in [&first, &second] {
         for (id, deck, xy) in [(source, true, (64, 69)), (target, false, (66, 69))] {
             let e = sim.substrate.entities.get(id).unwrap();
-            assert_eq!(e.on_bridge, deck);
+            assert_eq!(e.on_bridge(), deck);
             assert_eq!(
-                e.position.exact_z_leptons,
+                e.position.exact_z_leptons(),
                 Some(if deck { 1040 } else { 624 })
             );
             assert!(

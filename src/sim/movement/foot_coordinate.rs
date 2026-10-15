@@ -1,5 +1,7 @@
 //! Foot4DBDF0 navigation coordinates and the active locomotor's retained head.
 //! Native witnesses: tools/spatial_oracle/foot_navigation_coordinate.{py,json}.
+//! Hover Head_To514D10 uses this same retained-head/null-current projection;
+//! locomotor_force_track.hover_mark_all executes it through the actual+9C caller.
 //! These are read projections; paths, selectors and lifecycle do not own them.
 
 use crate::map::resolved_terrain::ResolvedTerrainGrid;
@@ -53,7 +55,7 @@ pub(super) fn navigation_coordinate(
     // awaiting Uninit. Tube+28 is the exit, not the retained transit target.
     if let Some(state) = entity.low_bridge_tube_state {
         let tube = terrain
-            .and_then(|grid| grid.tube(state.tube_id))
+            .and_then(|grid| grid.tube(state.tube_id()))
             .ok_or("Foot coordinate references a missing active TubeClass")?;
         return Ok(DriveCoord {
             x: i32::from(tube.exit.0 as i16) * 256 + 128,

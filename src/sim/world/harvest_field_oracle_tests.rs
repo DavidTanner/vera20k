@@ -207,7 +207,7 @@ pub(super) fn row_scene_with(input: &Value, edit: impl FnOnce(&mut String, &mut 
             entity.set_archive_target(Some(TargetKind::Cell(x, y)));
         }
         if let Some(miner) = entity.miner.as_mut() {
-            miner.harvesting = input["harvesting"] == true;
+            miner.set_harvesting_for_test(input["harvesting"] == true);
         }
     }
     s.sim.scenario_rng = SimRng::new(input["seed"].as_u64().unwrap_or(1));
@@ -283,7 +283,7 @@ pub(super) fn compare_state(s: &Scene, row: &Value, context: &str) {
         "{context}: Scenario RNG cursors"
     );
     let entity = s.sim.substrate.entities.get(s.miner).unwrap();
-    let nav = match entity.navigation.nav_com {
+    let nav = match entity.navigation.nav_com() {
         Some(NavTargetRef::Cell { rx, ry }) => serde_json::json!([rx, ry]),
         None => Value::Null,
         Some(other) => panic!("{context}: NavCom {other:?}"),
@@ -307,7 +307,12 @@ pub(super) fn compare_state(s: &Scene, row: &Value, context: &str) {
         "{context}: StageClass"
     );
     assert_eq!(
-        u64::from(entity.miner.as_ref().is_some_and(|miner| miner.harvesting)),
+        u64::from(
+            entity
+                .miner
+                .as_ref()
+                .is_some_and(|miner| miner.harvesting())
+        ),
         native["harvesting"].as_u64().unwrap(),
         "{context}: Unit+0x6D2"
     );
@@ -316,7 +321,7 @@ pub(super) fn compare_state(s: &Scene, row: &Value, context: &str) {
             .miner
             .as_ref()
             .into_iter()
-            .flat_map(|miner| &miner.cargo)
+            .flat_map(|miner| miner.cargo())
             .filter(|bale| bale.resource_type == kind)
             .count() as f64
     };

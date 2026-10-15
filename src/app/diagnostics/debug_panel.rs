@@ -211,13 +211,15 @@ pub(crate) fn draw_debug_panel(ctx: &egui::Context, state: &AppState) {
                 );
             }
 
-            // Show terrain cost for common SpeedTypes at cursor cell.
-            // The active overlay SpeedType is highlighted.
-            if let Some(sim) = state
+            // Show the cursor cell's land row for common SpeedTypes: the
+            // value Can_Enter_Cell reads. The active overlay SpeedType is
+            // highlighted.
+            if let Some(cell) = state
                 .match_state
                 .sim_runtime
                 .as_ref()
-                .map(|rt| &rt.simulation)
+                .and_then(|rt| rt.simulation.resolved_terrain.as_ref())
+                .and_then(|terrain| terrain.cell(cursor_rx, cursor_ry))
             {
                 use crate::rules::locomotor_type::SpeedType;
                 let speed_types = [
@@ -228,25 +230,23 @@ pub(crate) fn draw_debug_panel(ctx: &egui::Context, state: &AppState) {
                     (SpeedType::Amphibious, "Amphibious"),
                 ];
                 for (st, name) in &speed_types {
-                    if let Some(cg) = sim.terrain_costs.get(st) {
-                        let cost = cg.cost_at(cursor_rx, cursor_ry);
-                        let label = if cost == 0 {
-                            format!("{}: BLOCKED", name)
+                    let cost = super::debug_overlays::land_row(cell, *st);
+                    let label = if cost == 0 {
+                        format!("{}: BLOCKED", name)
+                    } else {
+                        format!("{}: row={}%", name, cost)
+                    };
+                    let is_active = *st == active_st;
+                    let color = if is_active {
+                        if cost == 0 {
+                            egui::Color32::from_rgb(180, 0, 0)
                         } else {
-                            format!("{}: cost={}", name, cost)
-                        };
-                        let is_active = *st == active_st;
-                        let color = if is_active {
-                            if cost == 0 {
-                                egui::Color32::from_rgb(180, 0, 0)
-                            } else {
-                                egui::Color32::from_rgb(20, 120, 20)
-                            }
-                        } else {
-                            egui::Color32::from_rgb(130, 130, 130)
-                        };
-                        ui.colored_label(color, label);
-                    }
+                            egui::Color32::from_rgb(20, 120, 20)
+                        }
+                    } else {
+                        egui::Color32::from_rgb(130, 130, 130)
+                    };
+                    ui.colored_label(color, label);
                 }
             }
 
@@ -261,7 +261,7 @@ pub(crate) fn draw_debug_panel(ctx: &egui::Context, state: &AppState) {
             {
                 let mut found: Vec<String> = Vec::new();
                 for entity in sim.entities().values() {
-                    if entity.position.rx == cursor_rx && entity.position.ry == cursor_ry {
+                    if entity.position.rx() == cursor_rx && entity.position.ry() == cursor_ry {
                         let cat_str = match entity.category() {
                             EntityCategory::Unit => "Unit",
                             EntityCategory::Infantry => "Inf",
@@ -303,8 +303,8 @@ pub(crate) fn draw_debug_panel(ctx: &egui::Context, state: &AppState) {
                             .map(|obj| obj.foundation.as_str())
                             .unwrap_or("1x1");
                         let (fw, fh) = crate::rules::foundation::foundation_dimensions(foundation);
-                        let ex: u16 = entity.position.rx;
-                        let ey: u16 = entity.position.ry;
+                        let ex: u16 = entity.position.rx();
+                        let ey: u16 = entity.position.ry();
                         // Check if cursor is within this building's footprint.
                         if cursor_rx >= ex
                             && cursor_rx < ex + fw
@@ -339,7 +339,7 @@ pub(crate) fn draw_debug_panel(ctx: &egui::Context, state: &AppState) {
                 let selected: Vec<u64> = sim
                     .entities()
                     .values()
-                    .filter(|e| e.selected)
+                    .filter(|e| e.selection.is_selected())
                     .map(|e| e.stable_id())
                     .collect();
                 if selected.is_empty() {
@@ -350,10 +350,10 @@ pub(crate) fn draw_debug_panel(ctx: &egui::Context, state: &AppState) {
                             ui.label(format!(
                                 "Sel: {} @ ({},{}) sub=({},{})",
                                 sim.interner.resolve(entity.type_ref()),
-                                entity.position.rx,
-                                entity.position.ry,
-                                entity.position.sub_x,
-                                entity.position.sub_y,
+                                entity.position.rx(),
+                                entity.position.ry(),
+                                entity.position.sub_x(),
+                                entity.position.sub_y(),
                             ));
                             if crate::sim::movement::motion_query::is_moving(entity) == Some(true) {
                                 // The Foot+5E0 words from the reference cell.
@@ -367,7 +367,7 @@ pub(crate) fn draw_debug_panel(ctx: &egui::Context, state: &AppState) {
                                 ui.label(format!(
                                     "Path: {} steps left, blocked={}",
                                     path.len(),
-                                    entity.navigation.path_runtime.path_blocked,
+                                    entity.navigation.path_runtime.path_blocked(),
                                 ));
                                 if let Some(goal) = crate::sim::movement::movement_goal_cell(entity)
                                 {
@@ -410,7 +410,11 @@ pub(crate) fn draw_debug_panel(ctx: &egui::Context, state: &AppState) {
                 .as_ref()
                 .map(|rt| &rt.simulation)
             {
-                for entity in sim.entities().values().filter(|e| e.selected) {
+                for entity in sim
+                    .entities()
+                    .values()
+                    .filter(|e| e.selection.is_selected())
+                {
                     let Some(ref miner) = entity.miner else {
                         continue;
                     };
@@ -419,7 +423,7 @@ pub(crate) fn draw_debug_panel(ctx: &egui::Context, state: &AppState) {
                         egui::RichText::new(format!(
                             "Miner: {} ({:?})",
                             sim.interner.resolve(entity.type_ref()),
-                            miner.kind
+                            miner.kind()
                         ))
                         .strong(),
                     );
@@ -447,16 +451,16 @@ pub(crate) fn draw_debug_panel(ctx: &egui::Context, state: &AppState) {
                     ui.colored_label(state_color, format!("State: {miner_state:?}"));
                     ui.label(format!(
                         "Cargo: {}/{}",
-                        miner.cargo.len(),
-                        miner.capacity_bales
+                        miner.cargo().len(),
+                        miner.capacity_bales()
                     ));
                     ui.label(format!(
                         "Stage: {} (rate {}) harvesting: {}",
                         entity.native_stage().value(),
                         entity.native_stage().rate(),
-                        miner.harvesting
+                        miner.harvesting()
                     ));
-                    if let Some(ref_id) = miner.reserved_refinery {
+                    if let Some(ref_id) = miner.reserved_refinery() {
                         let ref_type = sim
                             .entities()
                             .get(ref_id)
@@ -508,7 +512,11 @@ pub(crate) fn draw_event_history_panel(ctx: &egui::Context, state: &AppState) {
         .show(ctx, |ui| {
             apply_light_text(ui);
 
-            let selected: Vec<_> = sim.entities().values().filter(|e| e.selected).collect();
+            let selected: Vec<_> = sim
+                .entities()
+                .values()
+                .filter(|e| e.selection.is_selected())
+                .collect();
             if selected.is_empty() {
                 ui.label(
                     egui::RichText::new("Select a unit to inspect")
@@ -519,7 +527,7 @@ pub(crate) fn draw_event_history_panel(ctx: &egui::Context, state: &AppState) {
             }
 
             for entity in &selected {
-                if let Some(ref log) = entity.debug_log {
+                if let Some(ref log) = entity.debug_log() {
                     ui.label(
                         egui::RichText::new(format!(
                             "{} (id={})",
@@ -531,7 +539,7 @@ pub(crate) fn draw_event_history_panel(ctx: &egui::Context, state: &AppState) {
                     );
                     ui.separator();
 
-                    if log.events.is_empty() {
+                    if log.events().is_empty() {
                         ui.label(
                             egui::RichText::new("(no events recorded)")
                                 .color(egui::Color32::from_rgb(140, 140, 140)),
@@ -540,7 +548,7 @@ pub(crate) fn draw_event_history_panel(ctx: &egui::Context, state: &AppState) {
                         egui::ScrollArea::vertical()
                             .max_height(400.0)
                             .show(ui, |ui| {
-                                let events: Vec<_> = log.events.iter().rev().take(30).collect();
+                                let events: Vec<_> = log.events().iter().rev().take(30).collect();
                                 for event in events {
                                     let (color, text) = format_debug_event_light(event);
                                     ui.colored_label(color, text);

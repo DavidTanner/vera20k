@@ -256,7 +256,7 @@ fn compare_after(sim: &Simulation, row: &Value, unread_mission: Option<i64>, con
                 let destination = destination(int(&event["args"][0]))
                     .unwrap_or_else(|| panic!("{context}: destination token"));
                 assert_eq!(
-                    entity.navigation.nav_com,
+                    entity.navigation.nav_com(),
                     destination.map(NavTargetRef::from),
                     "{context}: Set_Destination"
                 );

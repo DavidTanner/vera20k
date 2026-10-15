@@ -18,6 +18,40 @@ use crate::sim::movement::ScatterFlags;
 use crate::sim::world::FrameEffects;
 use crate::sim::world::Simulation;
 
+/// Unit+0x68C, the runtime Deploy continuation (not the type's
+/// DeployToFire). `UnitClass::Deploy @ 0x007393C0` raises it when the unit
+/// must turn first (`0x0073965F`, [`Self::raise`]) and clears it on a refusal
+/// (`0x0073957A`, `0x00739AA7`, [`Self::clear`]), as do the port's own
+/// unavailable-prerequisite exits and a refused retry ([`finish_retry`]).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(transparent)]
+pub(crate) struct DeployContinuation {
+    pending: bool,
+}
+
+impl DeployContinuation {
+    /// The deploy continues after the turn.
+    pub(crate) const fn is_pending(self) -> bool {
+        self.pending
+    }
+
+    /// Deploy's write when the unit must turn first.
+    pub(crate) fn raise(&mut self) {
+        self.pending = true;
+    }
+
+    /// Deploy's and the retry's clear.
+    pub(crate) fn clear(&mut self) {
+        self.pending = false;
+    }
+
+    /// Install a fixture's latch.
+    #[cfg(test)]
+    pub(crate) fn set_for_test(&mut self, pending: bool) {
+        self.pending = pending;
+    }
+}
+
 /// TryToDeploy's fallback sites (`0x00B1D010..0x00B1D09C`), offsets from the
 /// unit's cell in visit order: north first, then south, then west and east
 /// along the row. A function-local static filled on first use
@@ -153,7 +187,7 @@ pub(crate) fn mission_hunt_deploy(
         }
         Some(1) => {
             if let Some(entity) = sim.substrate.entities.get_mut(id)
-                && !entity.mcv_deploy_pending
+                && !entity.mcv_deploy_pending.is_pending()
             {
                 entity.mission.set_handler_state(0);
             }
@@ -184,7 +218,7 @@ pub(crate) fn try_to_deploy(
     let Some((yard, cell, owner)) = sim.substrate.entities.get(id).and_then(|entity| {
         Some((
             deploys_into(sim, entity, rules)?,
-            (entity.position.rx as i16, entity.position.ry as i16),
+            (entity.position.rx() as i16, entity.position.ry() as i16),
             entity.owner(),
         ))
     }) else {
@@ -194,7 +228,7 @@ pub(crate) fn try_to_deploy(
         sim.substrate
             .entities
             .get(id)
-            .is_some_and(|e| e.navigation.nav_com.is_some())
+            .is_some_and(|e| e.navigation.nav_com().is_some())
     };
     let origin_of = |cell: (i16, i16)| (cell.0.wrapping_sub(1), cell.1.wrapping_sub(1));
     sim.foot_mark_remove(id, Some(rules), registry, effects);
@@ -320,12 +354,13 @@ pub(crate) fn mission_unload(
             effects,
         );
         if let Some(e) = sim.substrate.entities.get_mut(id) {
-            e.navigation.path_replay.cursor = e
-                .navigation
-                .path_replay
-                .directions
-                .len()
-                .min(u16::MAX as usize) as u16;
+            e.navigation.path_replay.set_cursor(
+                e.navigation
+                    .path_replay
+                    .directions()
+                    .len()
+                    .min(u16::MAX as usize) as u16,
+            );
             e.mission.set_handler_state(1);
         }
         // Native state 0 falls through to state 1 in this same invocation.
@@ -359,7 +394,7 @@ pub(crate) fn mission_unload(
                 .substrate
                 .entities
                 .get(id)
-                .is_some_and(|e| e.mcv_deploy_pending);
+                .is_some_and(|e| e.mcv_deploy_pending.is_pending());
             if pending {
                 let accepted = sim.deploy_mcv(id, rules, registry, effects);
                 finish_retry(sim, id, accepted);
@@ -381,8 +416,13 @@ pub(crate) fn mission_unload(
 /// pending deploy moves to state 2; otherwise a computer house in a nonzero
 /// game mode hunts and everyone else guards.
 pub(crate) fn finish_initial_attempt(sim: &mut Simulation, id: u64) {
-    if let Some(e) = sim.substrate.entities.get(id).filter(|e| !e.dying) {
-        if e.mcv_deploy_pending {
+    if let Some(e) = sim
+        .substrate
+        .entities
+        .get(id)
+        .filter(|e| !e.death.is_dying())
+    {
+        if e.mcv_deploy_pending.is_pending() {
             sim.substrate
                 .entities
                 .get_mut(id)
@@ -410,9 +450,9 @@ pub(crate) fn finish_initial_attempt(sim: &mut Simulation, id: u64) {
 pub(crate) fn finish_retry(sim: &mut Simulation, id: u64, accepted: bool) {
     if !accepted
         && let Some(e) = sim.substrate.entities.get_mut(id)
-        && e.navigation.nav_com.is_some()
+        && e.navigation.nav_com().is_some()
     {
-        e.mcv_deploy_pending = false;
+        e.mcv_deploy_pending.clear();
     }
 }
 
@@ -429,7 +469,7 @@ pub(crate) fn per_cell_process(
         .substrate
         .entities
         .get(id)
-        .is_some_and(|e| !e.dying && e.mcv_deploy_pending)
+        .is_some_and(|e| !e.death.is_dying() && e.mcv_deploy_pending.is_pending())
     {
         sim.deploy_mcv(id, rules, registry, effects);
     }

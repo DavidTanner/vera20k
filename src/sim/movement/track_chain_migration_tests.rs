@@ -55,7 +55,7 @@ fn chain_fixture(passive: bool) -> (Simulation, RuleSet, TrackInvocation) {
     mover.locomotor = Some(LocomotorState::for_test_kind(LocomotorKind::Drive));
     mover.lifecycle.set_object_alive_for_test(true);
     mover.lifecycle.set_in_limbo_for_test(false);
-    mover.lifecycle.cell_marked = true;
+    mover.lifecycle.set_cell_marked(true);
     assert!(
         mover
             .locomotor
@@ -65,27 +65,18 @@ fn chain_fixture(passive: bool) -> (Simulation, RuleSet, TrackInvocation) {
                 DriveLocomotionRuntime::default()
                     .with_head_to_for_test(Some(head))
                     .with_track_valid_for_test(true)
-                    .with_track_for_test(TrackProgress {
-                        turn_index: 1,
-                        cursor: 37,
-                        reversed: false,
-                        residual: 0,
-                    })
+                    .with_track_for_test(TrackProgress::for_test(1, 37, false, 0))
             ))
     );
-    mover.navigation.path_replay = FootPathQueue {
-        directions: vec![2, 3],
-        cursor: 0,
-        reference_cell: Some((10, 10)),
-    };
+    mover.navigation.path_replay = FootPathQueue::for_test(vec![2, 3], 0, Some((10, 10)));
     // Stand at the actual raw3 chain sample, keeping unrelated crossing effects
     // outside these chain-dispatch fixtures.
     let point = super::super::drive_track::raw_track_points(3)[37];
     let xy = [head.x + i32::from(point.x), head.y + i32::from(point.y)];
-    mover.position.rx = (xy[0] / 256) as u16;
-    mover.position.ry = (xy[1] / 256) as u16;
-    mover.position.sub_x = SimFixed::from_num(xy[0] % 256);
-    mover.position.sub_y = SimFixed::from_num(xy[1] % 256);
+    mover.position.set_rx((xy[0] / 256) as u16);
+    mover.position.set_ry((xy[1] / 256) as u16);
+    mover.position.set_sub_x(SimFixed::from_num(xy[0] % 256));
+    mover.position.set_sub_y(SimFixed::from_num(xy[1] % 256));
     sim.substrate.entities.insert(mover);
     sim.interner = test_interner();
     sim.substrate.occupancy = OccupancyGrid::rebuild(&sim.substrate.entities);
@@ -109,11 +100,13 @@ fn add_blocker(sim: &mut Simulation, moving: bool) {
     blocker.locomotor = Some(LocomotorState::for_test_kind(LocomotorKind::Drive));
     blocker.lifecycle.set_object_alive_for_test(true);
     blocker.lifecycle.set_in_limbo_for_test(false);
-    blocker.lifecycle.cell_marked = true;
+    blocker.lifecycle.set_cell_marked(true);
     if moving {
         // Unit Can_Enter_Cell's code2 body arm (0x73F86B) sees a NavCom and
         // retains Foot+6B6 while moving.
-        blocker.navigation.nav_com = Some(NavTargetRef::cell(20, 9));
+        blocker
+            .navigation
+            .set_nav_com(Some(NavTargetRef::cell(20, 9)));
         assert!(
             blocker
                 .locomotor
@@ -124,7 +117,7 @@ fn add_blocker(sim: &mut Simulation, moving: bool) {
                         .with_destination_for_test(Some(DriveCoord::cell(20, 9, 0)))
                 ))
         );
-        blocker.foot_occupation_enabled = true;
+        blocker.set_foot_occupation_enabled(true);
     }
     sim.substrate.entities.insert(blocker);
     sim.interner = test_interner();
@@ -139,15 +132,15 @@ fn assert_old_chain_continues(sim: &Simulation) {
         .and_then(|l| l.selected_drive_runtime())
         .and_then(|r| r.retained())
         .unwrap();
-    assert_eq!(drive.track().turn_index, 1);
+    assert_eq!(drive.track().turn_index(), 1);
     assert_eq!(
-        drive.track().cursor,
+        drive.track().cursor(),
         38,
         "a refused chain still completes its paid point"
     );
-    assert_eq!(drive.track().residual, 1);
+    assert_eq!(drive.track().residual(), 1);
     assert_eq!(drive.head_to(), Some(DriveCoord::cell(10, 9, 0)));
-    assert_eq!(mover.navigation.path_replay.cursor, 0);
+    assert_eq!(mover.navigation.path_replay.cursor(), 0);
 }
 
 #[test]
@@ -164,7 +157,7 @@ fn production_chain_code3_opens_gate_without_consuming_the_queue() {
     gate.building_gate = Some(BuildingGateRuntime::default());
     gate.lifecycle.set_object_alive_for_test(true);
     gate.lifecycle.set_in_limbo_for_test(false);
-    gate.lifecycle.cell_marked = true;
+    gate.lifecycle.set_cell_marked(true);
     sim.substrate.entities.insert(gate);
     sim.interner = test_interner();
     sim.substrate.occupancy = OccupancyGrid::rebuild(&sim.substrate.entities);
@@ -194,7 +187,7 @@ fn production_chain_code6_scatters_once_without_adopting_the_candidate() {
     sim.run_track_points(invocation, 8, Some(&rules), None);
     let blocker = sim.substrate.entities.get(2).unwrap();
     assert!(
-        blocker.navigation.nav_com.is_some(),
+        blocker.navigation.nav_com().is_some(),
         "the Unit receiver sets a destination"
     );
     assert_eq!(
@@ -266,14 +259,14 @@ fn production_chain_clear_and_code2_share_admission_and_never_scatter_or_repath(
                     .unwrap();
                 let selected =
                     super::super::drive_track::select_drive_track(32, 64, false).unwrap();
-                assert_eq!(drive.track().turn_index, selected.turn_track_index as i32);
-                assert_eq!(drive.track().cursor, i32::from(selected.entry_index));
-                assert_eq!(drive.track().residual, 1);
+                assert_eq!(drive.track().turn_index(), selected.turn_track_index as i32);
+                assert_eq!(drive.track().cursor(), i32::from(selected.entry_index));
+                assert_eq!(drive.track().residual(), 1);
                 assert_eq!(
                     drive.head_to(),
                     Some(DriveCoord::cell(CANDIDATE.0, CANDIDATE.1, 0))
                 );
-                assert_eq!(mover.navigation.path_replay.cursor, 1);
+                assert_eq!(mover.navigation.path_replay.cursor(), 1);
                 assert_eq!(per_cell, 1);
             } else {
                 assert_old_chain_continues(&sim);
@@ -312,21 +305,23 @@ fn accepted_chain_per_cell_crush_finishes_lifecycle_in_list_order_before_continu
         .entities
         .get_mut(MOVER)
         .unwrap()
-        .regular_crusher = true;
+        .mover_facts
+        .set_regular_crusher_for_test(true);
     // Two victims prove the saved list successor survives removal of the first.
     for id in [20, 10] {
-        let mut victim = GameEntity::test_default(id, "E1", "Soviets", position.rx, position.ry);
+        let mut victim =
+            GameEntity::test_default(id, "E1", "Soviets", position.rx(), position.ry());
         victim.set_category_for_test(EntityCategory::Infantry);
         victim.mission_leaf = crate::sim::mission::leaf::MissionLeafState::for_entity_category(
             EntityCategory::Infantry,
         );
-        victim.is_voxel = false;
-        victim.sub_cell = Some(0);
+        victim.set_is_voxel_for_test(false);
+        victim.set_sub_cell(Some(0));
         victim.position = position;
-        victim.crushable = true;
+        victim.crushable_facts.set_crushable_for_test(true);
         victim.lifecycle.set_object_alive_for_test(true);
         victim.lifecycle.set_in_limbo_for_test(false);
-        victim.lifecycle.cell_marked = true;
+        victim.lifecycle.set_cell_marked(true);
         sim.substrate.entities.insert(victim);
     }
     sim.interner = test_interner();
@@ -334,7 +329,7 @@ fn accepted_chain_per_cell_crush_finishes_lifecycle_in_list_order_before_continu
     let expected = sim
         .substrate
         .occupancy
-        .get(position.rx, position.ry)
+        .get(position.rx(), position.ry())
         .unwrap()
         .iter_layer(MovementLayer::Ground)
         .map(|entry| entry.entity_id)
@@ -352,12 +347,12 @@ fn accepted_chain_per_cell_crush_finishes_lifecycle_in_list_order_before_continu
                     .get(id)
                     .expect("UnInit retains identity until drain");
                 assert!(!victim.lifecycle.object_alive());
-                assert!(!victim.lifecycle.cell_marked);
+                assert!(!victim.lifecycle.cell_marked());
                 assert!(victim.lifecycle.in_limbo());
                 assert!(
                     !sim.substrate
                         .occupancy
-                        .contains_entity(position.rx, position.ry, id)
+                        .contains_entity(position.rx(), position.ry(), id)
                 );
                 assert!(sim.substrate.pending_delete.contains_object(&id));
             }
@@ -401,7 +396,7 @@ fn accepted_chain_per_cell_crush_finishes_lifecycle_in_list_order_before_continu
         Some(DriveCoord::cell(CANDIDATE.0, CANDIDATE.1, 0))
     );
     assert_eq!(
-        drive.track().residual,
+        drive.track().residual(),
         1,
         "the same paid call resumes after both removals"
     );

@@ -62,12 +62,12 @@ impl Simulation {
         match object {
             CellObjectMember::Entity(id) => {
                 let entity = self.substrate.entities.get(id)?;
-                let cell = (entity.position.rx, entity.position.ry);
+                let cell = (entity.position.rx(), entity.position.ry());
                 // Object+30 links the list the object's Mark put it in, which
                 // follows the object's own layer query, not its path layer:
                 // a landed Jumpjet is listed on the ground.
                 let layer = self.substrate.occupancy.listed_layer(cell.0, cell.1, id)?;
-                entity.lifecycle.cell_marked.then_some((cell, layer))
+                entity.lifecycle.cell_marked().then_some((cell, layer))
             }
             CellObjectMember::Terrain(id) => {
                 let terrain = self.production.terrain_objects.get(&id)?;

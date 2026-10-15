@@ -17,19 +17,13 @@ pub(super) enum RotationResult {
 ///
 /// A vehicle holds position while its hull turns: gamemd's Drive/Ship Process
 /// returns through its tail while `FacingClass::Is_Rotating` answers true on
-/// the body (`0x004B0788`), whoever started the turn. `desired` is a turn this
-/// visit issues first — the fresh arm's `Do_Turn` (`0x004B343B`), one
-/// `FacingClass::Set` at the body's constructor rate (duration
-/// `abs(delta) / rate` native frames; a non-positive rate is instant). Infantry
-/// are excluded by the caller.
+/// the body (`0x004B0788`), whoever started the turn. The fresh arm issues
+/// Do_Turn through the shared locomotor slot owner before this query.
+/// Infantry are excluded by the caller.
 pub(super) fn handle_vehicle_rotation(
-    body_facing: &mut super::facing_class::FacingClass,
-    desired: Option<u16>,
+    body_facing: &super::facing_class::FacingClass,
     native_frame: u32,
 ) -> RotationResult {
-    if let Some(desired) = desired {
-        body_facing.set(desired, native_frame);
-    }
     if !body_facing.is_rotating(native_frame) {
         return RotationResult::ReadyToMove;
     }
@@ -50,7 +44,7 @@ pub(super) fn completed_walk_head(
 ) -> Option<crate::sim::components::DriveCoord> {
     let loco = locomotor
         .as_ref()
-        .filter(|l| l.kind == LocomotorKind::Walk)?;
+        .filter(|l| l.active_kind() == LocomotorKind::Walk)?;
     let head = loco.step_head()?;
     let [x, y] = super::ground_pose::position_world_xy(position);
     (crate::util::native_x87::sqrt_approx_length([x.wrapping_sub(head.x), y.wrapping_sub(head.y)])
@@ -69,6 +63,6 @@ pub(super) fn walk_boundary_crossing(
     position: &Position,
 ) -> Option<crate::sim::components::DriveCoord> {
     let [x, y] = super::ground_pose::position_world_xy(position);
-    (((x / 256) as u16, (y / 256) as u16) != (position.rx, position.ry))
+    (((x / 256) as u16, (y / 256) as u16) != (position.rx(), position.ry()))
         .then(|| super::ground_pose::position_world_coord(position))
 }

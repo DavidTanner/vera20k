@@ -69,7 +69,6 @@ impl Simulation {
             .unwrap()
             .write_finalized_map_cell(coord.0, coord.1, outcome.finalized);
         if let Err(error) = (NavigationCaches {
-            terrain_costs: &mut self.terrain_costs,
             zones: &mut self.zone_grid,
             path: &mut self.path_grid,
             playfield_bounds: self.playfield_bounds,

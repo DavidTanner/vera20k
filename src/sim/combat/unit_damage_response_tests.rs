@@ -154,7 +154,7 @@ fn queued(sim: &Simulation, id: u64) -> MissionId {
 }
 
 fn nav_com(sim: &Simulation, id: u64) -> Option<NavTargetRef> {
-    sim.substrate.entities.get(id).unwrap().navigation.nav_com
+    sim.substrate.entities.get(id).unwrap().navigation.nav_com()
 }
 
 const MOVE: MissionId = MissionId::from_known(MissionType::Move);
@@ -229,7 +229,8 @@ fn computer_crusher_charges_a_crushable_attacker() {
             .entities
             .get_mut(rhino)
             .unwrap()
-            .dock_entered_with = Some(gi);
+            .tether
+            .set_for_test(Some(gi));
         gi
     }));
 
@@ -287,7 +288,7 @@ fn gassed_computer_fortress_charges_the_chaos_drone() {
         false,
     );
     let unit = sim.substrate.entities.get(fortress).unwrap();
-    assert!(unit.berserk.active);
+    assert!(unit.berserk.is_active());
     assert_eq!(
         unit.health.current(),
         rules.object("BFRT").unwrap().strength
@@ -317,13 +318,13 @@ fn damaged_computer_miner_heads_for_its_refinery() {
         let tank = spawn(&mut sim, &rules, "MTNK", "Americans", (12, 14));
         let entity = sim.substrate.entities.get_mut(miner).unwrap();
         entity.health.set_for_test(health);
-        entity.miner.as_mut().unwrap().cargo = vec![
+        entity.miner.as_mut().unwrap().set_cargo_for_test(vec![
             CargoBale {
                 resource_type: ResourceType::Ore,
                 value: 25,
             };
             bales
-        ];
+        ]);
         setup(&mut sim, miner, refinery);
         hit(&mut sim, &rules, miner, tank, 1);
         let contact = sim
@@ -372,8 +373,8 @@ fn vehicle_inside_its_war_factory_takes_no_hit() {
             Some(factory)
         );
         let entity = sim.substrate.entities.get_mut(rhino).unwrap();
-        entity.position.rx = inside.0;
-        entity.position.ry = inside.1;
+        entity.position.set_rx(inside.0);
+        entity.position.set_ry(inside.1);
         entity.radio_contacts.insert(factory).unwrap();
         let before = entity.health.current();
         hit_with(&mut sim, &rules, rhino, gi, 50, ignore_defenses);

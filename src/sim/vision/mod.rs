@@ -9,8 +9,8 @@
 //! visibility grid so each cell lookup is O(1) instead of iterating all owners.
 
 mod cell_reveal;
-mod gap_source;
 mod map_reveal;
+pub(crate) use map_reveal::MapTransition;
 mod shroud_knowledge;
 pub use cell_reveal::SHROUD_EDGE_LUT;
 #[cfg(test)]
@@ -18,10 +18,9 @@ pub(crate) use cell_reveal::tests::{
     assert_native_cell_history, discovery_corpus, native_map_cell_fixture,
 };
 use cell_reveal::{DummyVisibility, MapCellEdgeCache};
-pub(crate) use gap_source::GapGeneratorRuntime;
 use shroud_knowledge::ShroudKnowledge;
 pub(crate) use shroud_knowledge::SightAdmission;
-pub(crate) use shroud_knowledge::SightRefreshTimers;
+pub(crate) use shroud_knowledge::{SightFacts, SightRefreshTimers};
 
 use std::collections::BTreeMap;
 
@@ -175,15 +174,15 @@ fn entity_height_leptons(
     let rocket = entity
         .locomotor
         .as_ref()
-        .is_some_and(|loco| loco.kind == LocomotorKind::Rocket);
+        .is_some_and(|loco| loco.active_kind() == LocomotorKind::Rocket);
     if (rocket || entity.is_falling_down())
-        && let Some(z) = entity.position.exact_z_leptons
+        && let Some(z) = entity.position.exact_z_leptons()
     {
         return z;
     }
-    let level: i32 = i32::from(entity.position.z) * LEPTONS_PER_HEIGHT_LEVEL;
+    let level: i32 = i32::from(entity.position.z()) * LEPTONS_PER_HEIGHT_LEVEL;
     let above_ground: i32 = match entity.locomotor.as_ref() {
-        Some(loco) if loco.layer == MovementLayer::Air && !rocket => {
+        Some(loco) if loco.layer() == MovementLayer::Air && !rocket => {
             crate::sim::movement::air_movement::current_fly_height(entity, terrain)
         }
         _ => 0,
@@ -1727,9 +1726,9 @@ pub fn recompute_owner_visibility_in_place(
     let admitted: Vec<_> = entities
         .values()
         .filter(|entity| {
-            !entity.dying
+            !entity.death.is_dying()
                 && !entity.lifecycle.in_limbo()
-                && (!config.require_playfield_membership || entity.in_playfield)
+                && (!config.require_playfield_membership || entity.in_playfield())
                 && !entity.passenger_role.is_inside_transport()
         })
         .collect();
@@ -2080,7 +2079,7 @@ fn entity_sight_geometry(
     // Elevation raises sight MULTIPLICATIVELY, off the object's world Z in
     // leptons, not additively off its terrain level:
     //   sight = trunc(Sight * (1 + 0.10 * trunc(Z_leptons / LeptonsPerSightIncrease)))
-    let base_range: i32 = entity.vision_range as i32;
+    let base_range: i32 = entity.sight.range() as i32;
     let elev_steps: i32 = if config.leptons_per_sight_increase > 0 {
         height_leptons / config.leptons_per_sight_increase
     } else {
@@ -2101,7 +2100,7 @@ fn entity_sight_geometry(
         .min(MAX_SIGHT_RANGE);
     SightGeometry {
         owner: revealer,
-        origin: (entity.position.rx, entity.position.ry, height_leptons),
+        origin: (entity.position.rx(), entity.position.ry(), height_leptons),
         radius: effective,
     }
 }
@@ -2202,8 +2201,8 @@ fn resolve_bounds(entities: &EntityStore, path_grid: Option<&PathGrid>) -> (u16,
             continue;
         }
         found = true;
-        max_x = max_x.max(entity.position.rx);
-        max_y = max_y.max(entity.position.ry);
+        max_x = max_x.max(entity.position.rx());
+        max_y = max_y.max(entity.position.ry());
     }
     if found {
         (max_x.saturating_add(1), max_y.saturating_add(1))

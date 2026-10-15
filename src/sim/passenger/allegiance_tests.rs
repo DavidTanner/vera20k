@@ -132,10 +132,7 @@ fn fixture(input: &Value) -> (Simulation, RuleSet, u64, Vec<InternedId>) {
         );
         passenger.set_type_ref_for_test(sim.interner.intern("E1"));
         passenger.set_owner_for_test(houses[owner.as_u64().unwrap() as usize]);
-        passenger.passenger_role = PassengerRole::Inside {
-            transport_id: id,
-            open_topped: false,
-        };
+        passenger.passenger_role = PassengerRole::inside_for_test(id, false);
         passenger.lifecycle.set_in_limbo_for_test(true);
         passenger.locomotor = Some(
             crate::sim::movement::locomotor::LocomotorState::for_test_kind(
@@ -145,7 +142,7 @@ fn fixture(input: &Value) -> (Simulation, RuleSet, u64, Vec<InternedId>) {
         cargo.add_occupant(passenger_id, 1);
         sim.substrate.entities.insert(passenger);
     }
-    building.passenger_role = PassengerRole::Transport { cargo };
+    building.passenger_role = PassengerRole::transport(cargo);
     sim.substrate.entities.insert(building);
     assert!(matches!(
         sim.reveal_entity_with_rules(id, &rules),
@@ -349,7 +346,7 @@ fn zero_capacity_map_garrison_abandons_without_allocated_cargo() {
     use crate::rules::sound_ini::SoundRegistry;
     use std::sync::Arc;
 
-    let root = IniFile::from_str(
+    let root = crate::sim::arena_fixture::clear_ground_ini(
         "[Countries]\n0=Player\n1=Town\n[Player]\n[Town]\n\
          [BuildingTypes]\n0=B\n[Sides]\nAllied=Player\nCivilian=Town\n\
          [B]\nStrength=100\nTechLevel=-1\nCanBeOccupied=yes\nMaxNumberOccupants=10\n\

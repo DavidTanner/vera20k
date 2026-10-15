@@ -446,7 +446,7 @@ impl Simulation {
             && current.is_some_and(|house| house == entity.owner())
         {
             entity.parasite.limbo_reselect = false;
-            entity.selected = true;
+            entity.selection.select();
         }
     }
 
@@ -613,8 +613,8 @@ impl Simulation {
             raw.wrapping_sub(0x3FFF)
         };
         let victim_cell = (
-            victim_entity.position.rx as i16,
-            victim_entity.position.ry as i16,
+            victim_entity.position.rx() as i16,
+            victim_entity.position.ry() as i16,
         );
         if !naval && suppressed {
             // 0x0062A89B: the owner dies with its host.
@@ -797,7 +797,7 @@ impl Simulation {
             .entities
             .get(owner)
             .is_some_and(|o| o.category() == EntityCategory::Unit);
-        let victim_on_bridge = victim_entity.on_bridge;
+        let victim_on_bridge = victim_entity.on_bridge();
         if self.parasite_can_place_at_victim(owner, victim, rules) {
             let victim_entity = self.substrate.entities.get(victim)?;
             let mut coords = ground_pose::position_world_coord(&victim_entity.position);
@@ -811,14 +811,17 @@ impl Simulation {
                         .wrapping_add(crate::util::lepton::BRIDGE_DECK_HEIGHT_LEPTONS);
                 }
             }
-            self.substrate.entities.get_mut(owner)?.on_bridge = victim_on_bridge;
+            self.substrate
+                .entities
+                .get_mut(owner)?
+                .set_on_bridge(victim_on_bridge);
             return Some(coords);
         }
         let frame = self.session.binary_frame;
         let raw = victim_entity.body_facing_current(frame);
         let victim_cell = (
-            victim_entity.position.rx as i16,
-            victim_entity.position.ry as i16,
+            victim_entity.position.rx() as i16,
+            victim_entity.position.ry() as i16,
         );
         let (dx, dy) = CELL_DELTAS[dir8(raw)];
         let adjacent = (
@@ -879,7 +882,10 @@ impl Simulation {
         } else {
             false
         };
-        self.substrate.entities.get_mut(owner)?.on_bridge = on_bridge;
+        self.substrate
+            .entities
+            .get_mut(owner)?
+            .set_on_bridge(on_bridge);
         Some(coords)
     }
 
@@ -897,8 +903,8 @@ impl Simulation {
             return false;
         }
         let cell = (
-            victim_entity.position.rx as i16,
-            victim_entity.position.ry as i16,
+            victim_entity.position.rx() as i16,
+            victim_entity.position.ry() as i16,
         );
         let owner_entity = self.substrate.entities.get(owner);
         let naval = owner_entity
@@ -1078,20 +1084,13 @@ impl Simulation {
             (None, sub_x, sub_y)
         };
         if let Some(entity) = self.substrate.entities.get_mut(owner) {
-            entity.sub_cell = sub_cell;
+            entity.set_sub_cell(sub_cell);
         }
         let revealed = matches!(
             self.try_reveal_entity_with_context(
                 owner,
                 crate::sim::world::RevealRequest {
-                    position: crate::sim::world::RevealPosition {
-                        exact_z_leptons: None,
-                        rx,
-                        ry,
-                        z,
-                        sub_x,
-                        sub_y,
-                    },
+                    position: crate::sim::world::RevealPosition::new(rx, ry, z, None, sub_x, sub_y),
                     placement: crate::sim::world::PlacementEvidence::MarkSucceeded,
                     logic_eligible: true,
                 },
@@ -1139,7 +1138,7 @@ impl Simulation {
         // 0x006FF763..0x006FF79C: ReselectIfLimboed memo for a selected,
         // locally controlled firer jumping an Infantry target.
         let reselect = object.reselect_if_limboed
-            && entity.selected
+            && entity.selection.is_selected()
             && self.session.current_house == Some(entity.owner())
             && target_infantry;
         if reselect {

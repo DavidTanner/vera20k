@@ -183,7 +183,7 @@ fn retail_legionnaire_attacks_distant_object_after_teleport_recovery() {
             if actor.temporal.warp_target() == Some(target) {
                 assert!(!actor.is_warping_in(), "cannot fire before recovery");
                 assert_ne!(
-                    (actor.position.rx, actor.position.ry),
+                    (actor.position.rx(), actor.position.ry()),
                     (target_x, 10),
                     "approach must choose a firing position, not the occupied target cell"
                 );
@@ -402,9 +402,9 @@ fn approach_retargets_a_destroyable_cliff_cell_to_its_nearest_imaged_cell() {
     let tank = sim.substrate.entities.get(tank).unwrap();
     assert_eq!(tank.attack_target.target(), Some(TargetKind::Cell(8, 10)));
     assert!(
-        matches!(tank.navigation.nav_com, Some(NavTargetRef::Cell { .. })),
+        matches!(tank.navigation.nav_com(), Some(NavTargetRef::Cell { .. })),
         "{:?}",
-        tank.navigation.nav_com
+        tank.navigation.nav_com()
     );
 }
 
@@ -427,7 +427,7 @@ fn approach_takes_the_first_queued_destination_of_any_kind() {
     actor
         .attack_target
         .set_for_test(Some(combat::TargetKind::Entity(enemy)));
-    actor.navigation.nav_queue = queued.to_vec();
+    actor.navigation.set_nav_queue_for_test(queued.to_vec());
 
     let answer = sim
         .approach_foot_target(tank, &rules, None, FrameEffects::default())
@@ -435,6 +435,6 @@ fn approach_takes_the_first_queued_destination_of_any_kind() {
 
     let actor = sim.substrate.entities.get(tank).unwrap();
     assert_eq!(answer, Some(queued[0]));
-    assert_eq!(actor.navigation.nav_com, Some(queued[0]));
-    assert_eq!(actor.navigation.nav_queue, queued[1..]);
+    assert_eq!(actor.navigation.nav_com(), Some(queued[0]));
+    assert_eq!(actor.navigation.nav_queue(), &queued[1..]);
 }

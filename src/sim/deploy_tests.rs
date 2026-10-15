@@ -232,10 +232,9 @@ fn deploy_mcv_uses_gamemd_large_foundation_origin_offset() {
         .get("GACNST")
         .expect("GACNST should be interned after deploy");
     assert!(
-        sim.substrate
-            .entities
-            .values()
-            .any(|e| { e.type_ref() == gacnst_id && e.position.rx == 19 && e.position.ry == 21 })
+        sim.substrate.entities.values().any(|e| {
+            e.type_ref() == gacnst_id && e.position.rx() == 19 && e.position.ry() == 21
+        })
     );
 }
 
@@ -302,7 +301,7 @@ fn deploy_then_undeploy_returns_the_mcv_to_its_original_cell() {
         .entities
         .values()
         .find(|e| e.type_ref() == amcv_id)
-        .map(|e| (e.position.rx, e.position.ry))
+        .map(|e| (e.position.rx(), e.position.ry()))
         .expect("MCV should exist again after undeploy");
     assert_eq!(
         landed, start,
@@ -405,10 +404,9 @@ fn deploy_mcv_accepts_mixed_height_clear_foundation() {
         .get("GACNST")
         .expect("GACNST should be interned after deploy");
     assert!(
-        sim.substrate
-            .entities
-            .values()
-            .any(|e| { e.type_ref() == gacnst_id && e.position.rx == 19 && e.position.ry == 21 }),
+        sim.substrate.entities.values().any(|e| {
+            e.type_ref() == gacnst_id && e.position.rx() == 19 && e.position.ry() == 21
+        }),
         "Construction Yard should spawn at gamemd's deploy foundation origin"
     );
 }
@@ -670,7 +668,7 @@ fn deployed_type<'a>(sim: &'a Simulation, type_name: &str) -> &'a GameEntity {
     sim.substrate
         .entities
         .values()
-        .find(|entity| entity.type_ref() == type_id && !entity.dying)
+        .find(|entity| entity.type_ref() == type_id && !entity.death.is_dying())
         .expect("deployed target exists")
 }
 
@@ -695,9 +693,12 @@ fn base_plan_recalc_deploy_generates_and_anchors_nonhuman_conyard() {
     ));
 
     let yard = deployed_type(&sim, "GACNST");
-    assert_eq!((yard.position.rx, yard.position.ry), (19, 21));
+    assert_eq!((yard.position.rx(), yard.position.ry()), (19, 21));
     assert!(yard.building_up());
-    assert!(yard.ai_repairable, "a computer's yard is AI-repairable");
+    assert!(
+        yard.ai_sell_repair.ai_repairable(),
+        "a computer's yard is AI-repairable"
+    );
     let owner = sim.interner.get("Americans").unwrap();
     let house = &sim.houses[&owner];
     assert_eq!(house.base_center, Some((19, 21)));
@@ -758,7 +759,7 @@ fn a_damaged_computer_yard_starts_its_repair_as_its_build_up_completes() {
         frames.push((
             frame,
             entity.building_up(),
-            entity.repairing,
+            entity.repairing.is_on(),
             house.repair_start_latch,
         ));
     }
@@ -801,7 +802,10 @@ fn base_plan_recalc_deploy_skips_human_campaign_and_non_conyard_targets() {
         assert!(deployed_type(&sim, "GACNST").building_up());
         // UnitClass::Deploy marks a computer's building AI-repairable in a
         // campaign too (`0x007397E4..0x007397F4`); Unlimbo does not there.
-        assert_eq!(deployed_type(&sim, "GACNST").ai_repairable, !is_human);
+        assert_eq!(
+            deployed_type(&sim, "GACNST").ai_sell_repair.ai_repairable(),
+            !is_human
+        );
         let house = &sim.houses[&owner];
         assert_eq!(house.base_center, None);
         assert_eq!(house.base_plan_center, (0, 0));
@@ -833,7 +837,7 @@ fn base_plan_recalc_deploy_skips_human_campaign_and_non_conyard_targets() {
         crate::sim::world::FrameEffects::default()
     ));
     assert!(deployed_type(&sim, "YAREFN").building_up());
-    assert!(deployed_type(&sim, "YAREFN").ai_repairable);
+    assert!(deployed_type(&sim, "YAREFN").ai_sell_repair.ai_repairable());
     assert_eq!(sim.houses[&owner].base_center, None);
     assert_eq!(sim.houses[&owner].base_plan_center, (0, 0));
     assert!(sim.houses[&owner].base_plan.nodes.is_empty());
@@ -919,7 +923,7 @@ fn base_plan_recalc_deploy_countryless_empty_plan_fails_before_removal() {
         crate::sim::world::FrameEffects::default()
     ));
 
-    assert!(!sim.substrate.entities.get(mcv).unwrap().dying);
+    assert!(!sim.substrate.entities.get(mcv).unwrap().death.is_dying());
     let house = &sim.houses[&owner];
     assert_eq!(house.base_center, None);
     assert_eq!(house.base_plan_center, (0, 0));
@@ -950,7 +954,7 @@ fn base_plan_recalc_deploy_failures_preserve_source_rng_plan_and_centers() {
         let rng_before = sim.scenario_rng.state();
 
         assert!(!sim.deploy_mcv(mcv, rules, None, crate::sim::world::FrameEffects::default()));
-        assert!(!sim.substrate.entities.get(mcv).unwrap().dying);
+        assert!(!sim.substrate.entities.get(mcv).unwrap().death.is_dying());
         let house = &sim.houses[&owner];
         assert_eq!(house.base_center, None);
         assert_eq!(house.base_plan_center, (0, 0));
@@ -1163,11 +1167,11 @@ fn supplied_world_position(
     use crate::util::fixed_math::SimFixed;
     let x = xyz[0].as_i64().unwrap() as i32;
     let y = xyz[1].as_i64().unwrap() as i32;
-    position.rx = (x / 256).clamp(0, i32::from(u16::MAX)) as u16;
-    position.ry = (y / 256).clamp(0, i32::from(u16::MAX)) as u16;
-    position.sub_x = SimFixed::from_num(x - i32::from(position.rx) * 256);
-    position.sub_y = SimFixed::from_num(y - i32::from(position.ry) * 256);
-    position.exact_z_leptons = Some(xyz[2].as_i64().unwrap() as i32);
+    position.set_rx((x / 256).clamp(0, i32::from(u16::MAX)) as u16);
+    position.set_ry((y / 256).clamp(0, i32::from(u16::MAX)) as u16);
+    position.set_sub_x(SimFixed::from_num(x - i32::from(position.rx()) * 256));
+    position.set_sub_y(SimFixed::from_num(y - i32::from(position.ry()) * 256));
+    position.set_exact_z_leptons(Some(xyz[2].as_i64().unwrap() as i32));
 }
 
 pub(crate) fn native_deploy_fixture(row: &serde_json::Value) -> (Simulation, RuleSet, u64) {
@@ -1217,19 +1221,26 @@ pub(crate) fn native_deploy_fixture(row: &serde_json::Value) -> (Simulation, Rul
     actor
         .health
         .set_for_test(input["health"].as_i64().unwrap_or(100) as i32);
-    actor.position.sub_x = SimFixed::from_num(128);
-    actor.position.sub_y = SimFixed::from_num(128);
-    actor.position.exact_z_leptons = Some(0);
+    actor.position.set_sub_x(SimFixed::from_num(128));
+    actor.position.set_sub_y(SimFixed::from_num(128));
+    actor.position.set_exact_z_leptons(Some(0));
     if input["position"].is_array() {
         supplied_world_position(&mut actor.position, &input["position"]);
     }
-    actor.infantry.as_mut().unwrap().is_prone = before["prone"] != 0;
+    actor
+        .infantry
+        .as_mut()
+        .unwrap()
+        .set_is_prone_for_test(before["prone"] != 0);
     if before["idle_timer"].is_array() {
-        actor.infantry.as_mut().unwrap().idle_action_timer =
-            crate::sim::mission::MissionTimer::armed(
+        actor
+            .infantry
+            .as_mut()
+            .unwrap()
+            .set_idle_action_timer_for_test(crate::sim::mission::MissionTimer::armed(
                 before["idle_timer"][0].as_i64().unwrap() as u32,
                 before["idle_timer"][1].as_i64().unwrap() as u32,
-            );
+            ));
     }
     actor.set_falling_down_for_test(input["falling"].as_i64().unwrap_or(0) != 0);
     actor
@@ -1253,10 +1264,12 @@ pub(crate) fn native_deploy_fixture(row: &serde_json::Value) -> (Simulation, Rul
         before["stage"][2].as_i64().unwrap() as i32,
         before["stage"][3].as_i64().unwrap() as i32,
     ));
-    actor.passive_scan_timer = crate::sim::mission::MissionTimer::armed(
-        before["reload"][0].as_i64().unwrap() as u32,
-        before["reload"][1].as_i64().unwrap() as u32,
-    );
+    actor
+        .passive_scan
+        .set_passive_scan_timer_for_test(crate::sim::mission::MissionTimer::armed(
+            before["reload"][0].as_i64().unwrap() as u32,
+            before["reload"][1].as_i64().unwrap() as u32,
+        ));
     let mut loco = crate::sim::movement::locomotor::LocomotorState::from_object_type(
         rules
             .object(input["type_id"].as_str().unwrap_or("E1"))
@@ -1266,18 +1279,21 @@ pub(crate) fn native_deploy_fixture(row: &serde_json::Value) -> (Simulation, Rul
     // Supplied raw prior bytes are independent: a retained destination need
     // not have moving34 set, and motion36 can survive a paid-head release.
     // MoveTo would invent a transition instead of transporting the fixture.
-    loco.runtime_payload =
+    loco.set_runtime_payload_for_test(
         crate::sim::movement::locomotion::piggyback::LocomotorRuntimePayload::Walk(
-            crate::sim::movement::locomotion::piggyback::WalkRuntime {
-                head: native_coord(&before["head"]),
-                destination: native_coord(&before["destination"]),
-                moving: before["moving"] != 0,
-                animation_moving: before["motion"] != 0,
-            },
-        );
+            crate::sim::movement::locomotion::piggyback::WalkRuntime::for_test(
+                native_coord(&before["head"]),
+                native_coord(&before["destination"]),
+                before["moving"] != 0,
+                before["motion"] != 0,
+            ),
+        ),
+    );
     actor.locomotor = Some(loco);
     if before["nav"].as_i64().unwrap_or(0) != 0 {
-        actor.navigation.nav_com = Some(crate::sim::components::NavTargetRef::cell(11, 10));
+        actor
+            .navigation
+            .set_nav_com(Some(crate::sim::components::NavTargetRef::cell(11, 10)));
     }
     if before["target"].as_i64().unwrap_or(0) != 0 {
         actor
@@ -1324,15 +1340,15 @@ pub(crate) fn assert_native_deploy_state(sim: &Simulation, id: u64, row: &serde_
         "{name}: crush2A4"
     );
     assert_eq!(
-        actor.infantry.as_ref().unwrap().is_prone,
+        actor.infantry.as_ref().unwrap().is_prone(),
         expected["prone"] != 0,
         "{name}: prone6DB"
     );
     let stage = actor.native_stage();
     if expected["idle_timer"].is_array() {
-        let timer = actor.infantry.as_ref().unwrap().idle_action_timer;
+        let timer = actor.infantry.as_ref().unwrap().idle_action_timer();
         assert_eq!(
-            serde_json::json!([timer.start_frame as i32, timer.duration as i32]),
+            serde_json::json!([timer.start_frame() as i32, timer.duration() as i32]),
             expected["idle_timer"],
             "{name}: IdleActionTimer168/170"
         );
@@ -1359,8 +1375,8 @@ pub(crate) fn assert_native_deploy_state(sim: &Simulation, id: u64, row: &serde_
     );
     assert_eq!(
         serde_json::json!([
-            actor.passive_scan_timer.start_frame as i32,
-            actor.passive_scan_timer.duration as i32
+            actor.passive_scan.timer().start_frame() as i32,
+            actor.passive_scan.timer().duration() as i32
         ]),
         expected["reload"],
         "{name}: passive targeting timer180/188",
@@ -1430,7 +1446,7 @@ pub(crate) fn assert_native_deploy_state(sim: &Simulation, id: u64, row: &serde_
             "{name}: assignment frame"
         );
         assert_eq!(
-            actor.navigation.nav_com.is_some(),
+            actor.navigation.nav_com().is_some(),
             expected["nav"] != 0,
             "{name}: NavCom"
         );
@@ -1676,7 +1692,7 @@ fn synchronized_deploy_queues_unload_before_handler_action_and_sound() {
         serde_json::to_value(actor.native_stage()).unwrap(),
         before_stage
     );
-    assert!(actor.navigation.nav_com.is_none());
+    assert!(actor.navigation.nav_com().is_none());
     let locomotor = actor.locomotor.as_ref().unwrap();
     assert!(locomotor.walk_destination().is_none());
     assert_eq!(locomotor.walk_is_moving(), Some(false));

@@ -38,7 +38,7 @@ fn marked_probe_survives_modern_foot_search_and_mark_restoration() {
                 .get(id)
                 .unwrap()
                 .lifecycle
-                .cell_marked
+                .cell_marked()
         );
         assert!(
             sim.substrate
@@ -57,7 +57,10 @@ fn marked_probe_survives_modern_foot_search_and_mark_restoration() {
         ));
         assert_eq!(sim.rng_state(), rng);
         let actor = sim.substrate.entities.get(id).unwrap();
-        assert!(actor.lifecycle.cell_marked, "Mark1 must restore the actor");
+        assert!(
+            actor.lifecycle.cell_marked(),
+            "Mark1 must restore the actor"
+        );
         assert!(
             sim.substrate
                 .occupancy

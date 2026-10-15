@@ -140,7 +140,7 @@ impl Simulation {
             Some(&cells),
         );
         let controllable = self.techno_player_controllable(id, rules);
-        let mut action = if entity.berserk.active
+        let mut action = if entity.berserk.is_active()
             || entity.is_warped_out()
             || entity.is_warping_in()
             || !controllable
@@ -389,7 +389,7 @@ impl Simulation {
             },
             MoveAction::Move => false,
         };
-        if refused || entity.berserk.active {
+        if refused || entity.berserk.is_active() {
             return Ok(None);
         }
         let target_entity = self
@@ -487,8 +487,8 @@ impl Simulation {
         Ok(ClickMover {
             current: self.foot_current_coordinate(id)?,
             coordinate: self.foot_navigation_coordinate(id)?,
-            marked: entity.lifecycle.cell_marked,
-            on_bridge: entity.on_bridge,
+            marked: entity.lifecycle.cell_marked(),
+            on_bridge: entity.on_bridge(),
             in_tube: entity.low_bridge_tube_state.is_some(),
             special_type: object.movement_zone == MovementZone::Subterranean
                 || entity.category() == EntityCategory::Aircraft

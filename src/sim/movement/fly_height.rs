@@ -46,11 +46,33 @@ pub struct FlyRuntime {
     /// (`air_movement::write_fly_target_speed`), the takeoff callback and the
     /// landing write it.
     #[serde(default)]
-    pub(crate) target_speed: SimFixed,
+    target_speed: SimFixed,
     /// Fly+48, the current speed fraction, chasing `target_speed` by 0.1 a
     /// frame (`0x004CE441..0x004CE495`).
     #[serde(default)]
-    pub(crate) current_speed: SimFixed,
+    current_speed: SimFixed,
+}
+
+impl FlyRuntime {
+    /// See the field.
+    pub(crate) const fn target_speed(&self) -> SimFixed {
+        self.target_speed
+    }
+
+    /// Store the field.
+    pub(crate) fn set_target_speed(&mut self, target_speed: SimFixed) {
+        self.target_speed = target_speed;
+    }
+
+    /// See the field.
+    pub(crate) const fn current_speed(&self) -> SimFixed {
+        self.current_speed
+    }
+
+    /// Store the field.
+    pub(crate) fn set_current_speed(&mut self, current_speed: SimFixed) {
+        self.current_speed = current_speed;
+    }
 }
 
 /// Techno-owned approach pitch. Native stores f32; the engine uses SimFixed.

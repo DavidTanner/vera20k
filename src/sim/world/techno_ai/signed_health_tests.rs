@@ -44,13 +44,19 @@ fn original_selfheal_tail_and_192_height_rows_retain_art_and_mark_smoke() {
             use crate::map::resolved_terrain::{ResolvedTerrainGrid, test_flat_cell};
             let x = xy[0].as_i64().unwrap() as i32;
             let y = xy[1].as_i64().unwrap() as i32;
-            entity.position.rx = (x >> 8) as u16;
-            entity.position.ry = (y >> 8) as u16;
-            entity.position.sub_x = crate::util::fixed_math::SimFixed::from_num(x & 255);
-            entity.position.sub_y = crate::util::fixed_math::SimFixed::from_num(y & 255);
-            entity.position.exact_z_leptons = Some(input["z"].as_i64().unwrap() as i32);
-            entity.on_bridge = input["on_bridge"].as_bool().unwrap();
-            let mut cell = test_flat_cell(entity.position.rx, entity.position.ry);
+            entity.position.set_rx((x >> 8) as u16);
+            entity.position.set_ry((y >> 8) as u16);
+            entity
+                .position
+                .set_sub_x(crate::util::fixed_math::SimFixed::from_num(x & 255));
+            entity
+                .position
+                .set_sub_y(crate::util::fixed_math::SimFixed::from_num(y & 255));
+            entity
+                .position
+                .set_exact_z_leptons(Some(input["z"].as_i64().unwrap() as i32));
+            entity.set_on_bridge(input["on_bridge"].as_bool().unwrap());
+            let mut cell = test_flat_cell(entity.position.rx(), entity.position.ry());
             cell.level = input["level"].as_u64().unwrap() as u8;
             cell.slope_type = input["slope"].as_u64().unwrap() as u8;
             sim.resolved_terrain = Some(ResolvedTerrainGrid::from_cells(8, 8, vec![cell]));
@@ -72,7 +78,8 @@ fn original_selfheal_tail_and_192_height_rows_retain_art_and_mark_smoke() {
             .entities
             .get_mut(1)
             .unwrap()
-            .damage_smoke_system_id = Some(smoke_id);
+            .damage_smoke_system_id
+            .set_for_test(Some(smoke_id));
         let before_rng = sim.scenario_rng.logical_state();
         self_heal_step(&mut sim, 1, &rules);
         let entity = sim.substrate.entities.get(1).unwrap();
@@ -86,7 +93,7 @@ fn original_selfheal_tail_and_192_height_rows_retain_art_and_mark_smoke() {
             row["output"]["retained_flag"] == 1,
             "{row}"
         );
-        assert_eq!(entity.damage_smoke_system_id, Some(smoke_id));
+        assert_eq!(entity.damage_smoke_system_id.system(), Some(smoke_id));
         assert_eq!(
             sim.particle_systems().get(smoke_id).unwrap().done_spawning,
             row["output"]["smoke_done"] == 1,
@@ -241,10 +248,10 @@ fn building_damage_fire_runs_before_yellow_crossing_selfheal() {
     let building = sim.entities().get(id).unwrap();
     assert_eq!(building.health.current(), 51);
     assert!(
-        building.damage_fire_state_active,
+        building.damage_fires.is_active(),
         "43FC39 precedes6FA756 INC"
     );
     sim.session.binary_frame = 901;
     sim.object_ai_stage(Some(&rules));
-    assert!(!sim.entities().get(id).unwrap().damage_fire_state_active);
+    assert!(!sim.entities().get(id).unwrap().damage_fires.is_active());
 }

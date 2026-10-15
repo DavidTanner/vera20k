@@ -48,7 +48,9 @@ use crate::rules::locomotor_type::LocomotorKind;
 use crate::rules::overlay_types::OverlayTypeRegistry;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::combat::combat_aoe::AreaDamageReceiver;
-use crate::sim::combat::{EntityDamageEvent, KillCallback, ReceiverCallFlags, TerrainDamageEvent};
+use crate::sim::combat::{
+    EntityDamageEvent, KillCallback, KillSource, ReceiverCallFlags, TerrainDamageEvent,
+};
 use crate::sim::components::{DriveCoord, NavTargetRef};
 use crate::sim::lifecycle_request::{LifecycleRequest, UninitReason};
 use crate::sim::mission::authority::EntityReadyInputProvider;
@@ -72,6 +74,169 @@ pub(crate) struct DroppedImpact {
     /// It came down on a Unit or a Building, which crashes it.
     pub(crate) crash: bool,
     pub(crate) bridge_state_changed: bool,
+}
+
+/// The Magnetron lift on both ends. On the held Foot: the swap latch
+/// (`Foot+0x6AD`, constructor `0x004D3414` zero), the end latch (`+0x6AE`,
+/// constructor `0x004D341A` zero) and its holder (`Techno+0x2B0`
+/// LocomotorSource, `0x00710318`). On the Magnetron: what it holds aloft
+/// (`Techno+0x2AC` LocomotorTarget, `0x00710307`).
+///
+/// `TechnoClass::ImbueLocomotor @ 0x00710000` raises the swap latch
+/// (`0x00710352`) and links both ends; the release, Foot's null destination
+/// and pointer expiry in this module unlink them. A release on the ground
+/// (`0x0070FFBB`), Foot's null destination with a holder (`0x004D9538`) and
+/// every Jumpjet touchdown (`0x0054C9FE`, [`Self::allow_end`]) raise the end
+/// latch; Jumpjet `Is_Ok_To_End @ 0x0054DB00` reads it and only Jumpjet
+/// `End_Piggyback @ 0x0054DA50` clears both latches ([`Self::end`]). The swap
+/// latch is independent of MCV Unit+68C and the infantry deploy animation.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub(crate) struct LocomotorLift {
+    #[serde(default)]
+    swap_active: bool,
+    #[serde(default)]
+    may_end: bool,
+    #[serde(default)]
+    target: Option<u64>,
+    #[serde(default)]
+    source: Option<u64>,
+}
+
+impl LocomotorLift {
+    /// `+0x6AD`: a Magnetron lifted this object.
+    pub(crate) const fn swap_active(self) -> bool {
+        self.swap_active
+    }
+
+    /// `+0x6AE`: the lift may end.
+    pub(crate) const fn may_end(self) -> bool {
+        self.may_end
+    }
+
+    /// `+0x2AC`: the object this Magnetron holds aloft.
+    pub(crate) const fn target(self) -> Option<u64> {
+        self.target
+    }
+
+    /// `+0x2B0`: the Magnetron holding this object.
+    pub(crate) const fn source(self) -> Option<u64> {
+        self.source
+    }
+
+    /// A Jumpjet touchdown's write (`0x0054C9FE`).
+    pub(crate) fn allow_end(&mut self) {
+        self.may_end = true;
+    }
+
+    /// Jumpjet `End_Piggyback`'s clear of both latches. Answers whether
+    /// either was set, that is whether a lift ended.
+    pub(crate) fn end(&mut self) -> bool {
+        let lifted = self.swap_active || self.may_end;
+        self.swap_active = false;
+        self.may_end = false;
+        lifted
+    }
+
+    /// Install a fixture's swap latch.
+    #[cfg(test)]
+    pub(crate) fn set_swap_active_for_test(&mut self, swap_active: bool) {
+        self.swap_active = swap_active;
+    }
+
+    /// Install a fixture's end latch.
+    #[cfg(test)]
+    pub(crate) fn set_may_end_for_test(&mut self, may_end: bool) {
+        self.may_end = may_end;
+    }
+
+    /// Install a fixture's held object.
+    #[cfg(test)]
+    pub(crate) fn set_target_for_test(&mut self, target: Option<u64>) {
+        self.target = target;
+    }
+
+    /// Install a fixture's holder.
+    #[cfg(test)]
+    pub(crate) fn set_source_for_test(&mut self, source: Option<u64>) {
+        self.source = source;
+    }
+}
+
+/// The kill credit a fall carries: IsBeingManipulated (`Techno+0x427`,
+/// constructor `0x006F3005` zero), BeingManipulatedBy (`+0x428`) and
+/// ChronoWarpedByHouse (`+0x42C`).
+///
+/// A Magnetron that lets its object go in the air sets all three
+/// (`0x0070FF32`, `0x0070FF3F`, `0x0070FF51`), so its Jumpjet State 5 lands it
+/// on whatever is below (`0x0054CC39`) and the Magnetron and its house are
+/// credited with what the fall kills; a Chronosphere warp credits the house
+/// alone (`0x006CCC67`, [`Self::credit_warp`]). Every Jumpjet touchdown clears
+/// `+0x427` (`0x0054CA08`, [`Self::land`]). The fall's end, `End_Piggyback`
+/// (Jumpjet and Teleport) and the Chrono Warp's arrival drop `+0x428` and
+/// `+0x42C` ([`Self::forget`]); pointer expiry drops the Magnetron
+/// (`0x0070783B`).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub(crate) struct DropCredit {
+    #[serde(default)]
+    being_manipulated: bool,
+    #[serde(default)]
+    manipulated_by: Option<u64>,
+    #[serde(default)]
+    warped_by_house: Option<crate::sim::intern::InternedId>,
+}
+
+impl DropCredit {
+    /// `+0x427`: a Magnetron let this object go in the air.
+    pub(crate) const fn being_manipulated(self) -> bool {
+        self.being_manipulated
+    }
+
+    /// `+0x428`: the Magnetron that dropped this object.
+    pub(crate) const fn manipulated_by(self) -> Option<u64> {
+        self.manipulated_by
+    }
+
+    /// `+0x42C`: the house credited with this object's death on landing.
+    pub(crate) const fn warped_by_house(self) -> Option<crate::sim::intern::InternedId> {
+        self.warped_by_house
+    }
+
+    /// The Chronosphere warp's credit (`0x006CCC67`): the Super's owner.
+    pub(crate) fn credit_warp(&mut self, house: crate::sim::intern::InternedId) {
+        self.warped_by_house = Some(house);
+    }
+
+    /// A Jumpjet touchdown's clear of `+0x427` (`0x0054CA08`).
+    pub(crate) fn land(&mut self) {
+        self.being_manipulated = false;
+    }
+
+    /// The drop and warp credits go (`+0x428`, `+0x42C`).
+    pub(crate) fn forget(&mut self) {
+        self.manipulated_by = None;
+        self.warped_by_house = None;
+    }
+
+    /// Install a fixture's drop latch.
+    #[cfg(test)]
+    pub(crate) fn set_being_manipulated_for_test(&mut self, being_manipulated: bool) {
+        self.being_manipulated = being_manipulated;
+    }
+
+    /// Install a fixture's dropping Magnetron.
+    #[cfg(test)]
+    pub(crate) fn set_manipulated_by_for_test(&mut self, manipulated_by: Option<u64>) {
+        self.manipulated_by = manipulated_by;
+    }
+
+    /// Install a fixture's credited house.
+    #[cfg(test)]
+    pub(crate) fn set_warped_by_house_for_test(
+        &mut self,
+        warped_by_house: Option<crate::sim::intern::InternedId>,
+    ) {
+        self.warped_by_house = warped_by_house;
+    }
 }
 
 impl Simulation {
@@ -121,18 +286,18 @@ impl Simulation {
             LocomotorShotTarget::Cell | LocomotorShotTarget::None => None,
         };
         let holds_target = match target {
-            LocomotorShotTarget::Object(id) => firer.locomotor_target == Some(id),
+            LocomotorShotTarget::Object(id) => firer.lift.target() == Some(id),
             LocomotorShotTarget::Cell => false,
-            LocomotorShotTarget::None => firer.locomotor_target.is_none(),
+            LocomotorShotTarget::None => firer.lift.target().is_none(),
         };
         if holds_target
-            || firer.locomotor_source.is_some()
-            || (firer.category().is_foot() && firer.foot_locomotor_swap_active)
+            || firer.lift.source().is_some()
+            || (firer.category().is_foot() && firer.lift.swap_active())
         {
             return;
         }
         let in_factory = object.is_some_and(|id| self.unit_in_its_factory(id, rules));
-        if firer.locomotor_target.is_some() {
+        if firer.lift.target().is_some() {
             self.release_locomotor(owner, false, Some(rules), registry, effects);
         }
         let Some(victim_id) = object.filter(|_| !in_factory) else {
@@ -153,7 +318,7 @@ impl Simulation {
                 frame,
             )
             && victim.category() == EntityCategory::Unit
-            && !victim.foot_locomotor_swap_active
+            && !victim.lift.swap_active()
             && self
                 .object_type(victim.type_ref(), rules)
                 .is_some_and(|object| f64::from(strength) > f64::from(object.size));
@@ -271,7 +436,7 @@ impl Simulation {
         let gatherer = object.resource_gatherer;
         let now = self.session.binary_frame;
         if gatherer
-            && entity.locomotor_source.is_none()
+            && entity.lift.source().is_none()
             && entity
                 .locomotor
                 .as_ref()
@@ -296,7 +461,7 @@ impl Simulation {
             }
             return;
         }
-        self.locomotor_mark_all_occupation_bits_up(target);
+        self.locomotor_mark_all_occupation_bits(target, false);
         let _ = self.force_track(
             target,
             -1,
@@ -313,7 +478,7 @@ impl Simulation {
             self.object_raw_receiver_at(target, coords, false);
         }
         if let Some(entity) = self.substrate.entities.get_mut(target) {
-            entity.foot_occupation_enabled = true;
+            entity.set_foot_occupation_enabled(true);
         }
         self.reset_orders_to_guard(target, rules, effects);
         if matches!(
@@ -326,7 +491,7 @@ impl Simulation {
             .substrate
             .entities
             .get(firer)
-            .is_some_and(|entity| entity.locomotor_target.is_some())
+            .is_some_and(|entity| entity.lift.target().is_some())
         {
             self.release_locomotor(firer, false, Some(rules), registry, effects);
         }
@@ -334,7 +499,7 @@ impl Simulation {
             .substrate
             .entities
             .get(target)
-            .is_some_and(|entity| entity.locomotor_target.is_some())
+            .is_some_and(|entity| entity.lift.target().is_some())
         {
             self.release_locomotor(target, true, Some(rules), registry, effects);
         }
@@ -348,9 +513,9 @@ impl Simulation {
         if !installed {
             return;
         }
-        entity.locomotor_source = Some(firer);
+        entity.lift.source = Some(firer);
         if let Some(firer) = self.substrate.entities.get_mut(firer) {
-            firer.locomotor_target = Some(target);
+            firer.lift.target = Some(target);
         }
         if let Err(error) = self.assign_destination_represented(
             target,
@@ -362,13 +527,13 @@ impl Simulation {
             log::debug!("lifted {target} destination: {error:?}");
         }
         if let Some(entity) = self.substrate.entities.get_mut(target) {
-            entity.selected = false;
+            entity.selection.deselect();
         }
         self.leave_team(target, false, Some(rules), effects);
         let Some(entity) = self.substrate.entities.get_mut(target) else {
             return;
         };
-        entity.foot_locomotor_swap_active = true;
+        entity.lift.swap_active = true;
         let building_contact = entity.radio_contacts.slot(0).is_some_and(|contact| {
             self.substrate
                 .entities
@@ -435,7 +600,7 @@ impl Simulation {
         let Some(firer_entity) = self.substrate.entities.get(firer) else {
             return;
         };
-        let Some(held) = firer_entity.locomotor_target else {
+        let Some(held) = firer_entity.lift.target() else {
             return;
         };
         let firer_house = firer_entity.owner();
@@ -447,15 +612,15 @@ impl Simulation {
                 .then(|| crate::sim::movement::air_movement::current_fly_height(entity, terrain))
         });
         if let Some(entity) = self.substrate.entities.get_mut(held) {
-            entity.locomotor_source = None;
+            entity.lift.source = None;
         }
         match held_height {
             Some(height) if height > 0 => {
                 if let Some(entity) = self.substrate.entities.get_mut(held) {
                     entity.crash.raise();
-                    entity.being_manipulated = true;
-                    entity.manipulated_by = Some(firer);
-                    entity.warped_by_house = Some(firer_house);
+                    entity.drop_credit.being_manipulated = true;
+                    entity.drop_credit.manipulated_by = Some(firer);
+                    entity.drop_credit.warped_by_house = Some(firer_house);
                 }
                 self.techno_death_stun(
                     held,
@@ -466,14 +631,14 @@ impl Simulation {
             Some(_) => {
                 self.assign_null_destination(held, rules, registry, effects);
                 if let Some(entity) = self.substrate.entities.get_mut(held) {
-                    entity.lift_may_end = true;
+                    entity.lift.may_end = true;
                 }
                 self.assign_null_destination(held, rules, registry, effects);
             }
             None => {}
         }
         if let Some(firer) = self.substrate.entities.get_mut(firer) {
-            firer.locomotor_target = None;
+            firer.lift.target = None;
         }
         if clear_target {
             let _ = self.assign_target_represented(firer, None, rules, registry, effects);
@@ -487,22 +652,22 @@ impl Simulation {
         let Some(entity) = self.substrate.entities.get(id) else {
             return;
         };
-        if !entity.foot_locomotor_swap_active {
+        if !entity.lift.swap_active() {
             return;
         }
-        let Some(holder) = entity.locomotor_source else {
+        let Some(holder) = entity.lift.source() else {
             return;
         };
         if let Some(holder) = self.substrate.entities.get_mut(holder) {
-            holder.locomotor_target = None;
+            holder.lift.target = None;
         }
         let entity = self
             .substrate
             .entities
             .get_mut(id)
             .expect("same lifted object");
-        entity.locomotor_source = None;
-        entity.lift_may_end = true;
+        entity.lift.source = None;
+        entity.lift.may_end = true;
     }
 
     /// The listener's Magnetron fields in `TechnoClass::PointerExpired`:
@@ -528,12 +693,13 @@ impl Simulation {
         let Some(entity) = self.substrate.entities.get(listener) else {
             return;
         };
-        let holds = entity.locomotor_target == Some(expired);
-        if entity.manipulated_by == Some(expired) {
+        let holds = entity.lift.target() == Some(expired);
+        if entity.drop_credit.manipulated_by() == Some(expired) {
             self.substrate
                 .entities
                 .get_mut(listener)
                 .expect("same listener")
+                .drop_credit
                 .manipulated_by = None;
         }
         if holds {
@@ -542,13 +708,13 @@ impl Simulation {
                 .substrate
                 .entities
                 .get(listener)
-                .and_then(|entity| entity.locomotor_target)
+                .and_then(|entity| entity.lift.target())
             {
                 if let Some(held) = self.substrate.entities.get_mut(held) {
-                    held.locomotor_source = None;
+                    held.lift.source = None;
                 }
                 if let Some(entity) = self.substrate.entities.get_mut(listener) {
-                    entity.locomotor_target = None;
+                    entity.lift.target = None;
                 }
             }
         }
@@ -556,7 +722,7 @@ impl Simulation {
             .substrate
             .entities
             .get(listener)
-            .and_then(|entity| entity.locomotor_source)
+            .and_then(|entity| entity.lift.source())
             .filter(|&holder| holder == expired);
         if let Some(holder) = holder {
             self.release_locomotor(holder, true, rules, registry, effects);
@@ -564,13 +730,13 @@ impl Simulation {
                 .substrate
                 .entities
                 .get(listener)
-                .and_then(|entity| entity.locomotor_source)
+                .and_then(|entity| entity.lift.source())
             {
                 if let Some(holder) = self.substrate.entities.get_mut(holder) {
-                    holder.locomotor_target = None;
+                    holder.lift.target = None;
                 }
                 if let Some(entity) = self.substrate.entities.get_mut(listener) {
-                    entity.locomotor_source = None;
+                    entity.lift.source = None;
                 }
             }
         }
@@ -588,29 +754,31 @@ impl Simulation {
         &mut self,
         victim: u64,
         dropped: u64,
-        rules: &RuleSet,
+        context: UninitContext<'_>,
     ) -> bool {
         let Some(entity) = self.substrate.entities.get(dropped) else {
             return false;
         };
-        match (entity.manipulated_by, entity.warped_by_house) {
+        match (
+            entity.drop_credit.manipulated_by(),
+            entity.drop_credit.warped_by_house(),
+        ) {
             (Some(killer), _) => {
-                let killer_owner = self
-                    .substrate
-                    .entities
-                    .get(killer)
-                    .map(|killer| killer.owner());
                 self.record_the_kill(
                     victim,
-                    Some(killer),
-                    killer_owner,
+                    KillSource::Techno(Some(killer)),
                     KillCallback::Terminal,
-                    rules,
+                    context,
                 );
                 true
             }
             (None, Some(house)) => {
-                self.record_the_kill(victim, None, Some(house), KillCallback::Terminal, rules);
+                self.record_the_kill(
+                    victim,
+                    KillSource::House(Some(house)),
+                    KillCallback::Terminal,
+                    context,
+                );
                 true
             }
             (None, None) => false,
@@ -710,7 +878,6 @@ impl Simulation {
                 return;
             };
             let location = crate::sim::movement::ground_pose::position_world_coord(&owner.position);
-            let owner_house = owner.owner();
             if let Some(entity) = self.substrate.entities.get(victim) {
                 crate::sim::movement::bump_crush::emit_crush_kill_sounds_at(
                     entity,
@@ -720,13 +887,13 @@ impl Simulation {
                     &mut self.sound_events,
                 );
             }
-            if !self.record_manipulated_kill(victim, id, rules) {
+            let context = UninitContext::new(Some(rules), registry).with_effects(effects);
+            if !self.record_manipulated_kill(victim, id, context) {
                 self.record_the_kill(
                     victim,
-                    Some(id),
-                    Some(owner_house),
+                    KillSource::Techno(Some(id)),
                     KillCallback::Terminal,
-                    rules,
+                    context,
                 );
             }
             self.apply_lifecycle_request_with_rules(
@@ -754,9 +921,9 @@ impl Simulation {
         let Some(owner) = self.substrate.entities.get(id) else {
             return false;
         };
-        let (attacker, house) = match owner.manipulated_by {
+        let (attacker, house) = match owner.drop_credit.manipulated_by() {
             Some(magnetron) => (magnetron, None),
-            None => (id, owner.warped_by_house),
+            None => (id, owner.drop_credit.warped_by_house()),
         };
         let warhead = self.interner.intern(&rules.bridge_warheads.crush_name);
         let receiver = match target {
@@ -819,9 +986,13 @@ impl Simulation {
             .substrate
             .entities
             .get(id)
-            .and_then(|entity| entity.manipulated_by);
+            .and_then(|entity| entity.drop_credit.manipulated_by());
         self.free_slaves(id, killer, None, rules, registry, effects);
-        self.record_manipulated_kill(id, id, rules);
+        self.record_manipulated_kill(
+            id,
+            id,
+            UninitContext::new(Some(rules), registry).with_effects(effects),
+        );
     }
 }
 

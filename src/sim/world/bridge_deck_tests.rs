@@ -43,8 +43,13 @@ fn structural_fallout_retires_effect_only_ground_victim() {
         &[(4, 3), (4, 4), (4, 5)],
         0xD4,
     );
-    assert!(!sim.substrate.entities.get(victim).unwrap().on_bridge);
-    sim.substrate.entities.get_mut(victim).unwrap().selected = true;
+    assert!(!sim.substrate.entities.get(victim).unwrap().on_bridge());
+    sim.substrate
+        .entities
+        .get_mut(victim)
+        .unwrap()
+        .selection
+        .set_selected_for_test(true);
     // Supplied structural47DD70 callback. Concrete ground overlays205..232
     // do not call this owner; the former hut fixture invented that dependency.
     blow_up_bridge_cell_fallout(
@@ -56,9 +61,9 @@ fn structural_fallout_retires_effect_only_ground_victim() {
         crate::sim::world::FrameEffects::default(),
     );
     let object = sim.substrate.entities.get(victim).unwrap();
-    assert!(object.infantry_terminal.is_none());
+    assert!(object.death.infantry_terminal().is_none());
     assert!(!object.lifecycle.object_alive());
-    assert!(object.dying && !object.selected);
+    assert!(object.death.is_dying() && !object.selection.is_selected());
     assert!(!sim.substrate.occupancy.contains_entity(4, 4, victim));
     assert!(!sim.live_object_order_snapshot().contains(&victim));
     assert_eq!(
@@ -119,7 +124,16 @@ fn structural_drop_in_owns_order_footprints_and_restore_without_teardown_side_ef
     sim.bridge_state = Some(BridgeRuntimeState::default());
     let mut construct = |name: &str, x: u16, marked: bool| {
         let id = sim
-            .construct_object_limbo_at_height(name, "Americans", x, 4, 0, 4, &rules)
+            .construct_object_limbo_at_height(
+                name,
+                "Americans",
+                x,
+                4,
+                0,
+                4,
+                &rules,
+                crate::sim::world::FrameEffects::default(),
+            )
             .unwrap();
         {
             let actor = sim.substrate.entities.get_mut(id).unwrap();
@@ -133,8 +147,8 @@ fn structural_drop_in_owns_order_footprints_and_restore_without_teardown_side_ef
             );
             // The unmarked twin retains the supplied legacy level as well as
             // exact Location; it deliberately never enters Unlimbo below.
-            actor.position.z = 4;
-            actor.on_bridge = true;
+            actor.position.set_z(4);
+            actor.set_on_bridge(true);
         }
         if marked {
             sim.reveal(id);
@@ -151,7 +165,7 @@ fn structural_drop_in_owns_order_footprints_and_restore_without_teardown_side_ef
             .get(building)
             .unwrap()
             .lifecycle
-            .cell_marked
+            .cell_marked()
     );
     assert_eq!(
         sim.substrate
@@ -220,7 +234,7 @@ fn structural_drop_in_owns_order_footprints_and_restore_without_teardown_side_ef
         .entities
         .get_mut(newer)
         .unwrap()
-        .foot_occupation_enabled = false;
+        .set_foot_occupation_enabled(false);
     sim.substrate.cell_occupation.reconcile_entity(
         sim.substrate.entities.get(newer).unwrap(),
         &sim.substrate.occupancy,
@@ -254,21 +268,22 @@ fn structural_drop_in_owns_order_footprints_and_restore_without_teardown_side_ef
     }
     for id in [newer, older, building] {
         let object = sim.substrate.entities.get(id).unwrap();
-        assert!(!object.on_bridge && object.lifecycle.cell_marked);
+        assert!(!object.on_bridge() && object.lifecycle.cell_marked());
         assert_eq!(
-            object.position.z, 4,
+            object.position.z(),
+            4,
             "DropAsBomb retains the stored Location level"
         );
         assert_eq!(
-            object.position.exact_z_leptons,
+            object.position.exact_z_leptons(),
             Some(if id == building { 0 } else { 416 })
         );
         assert!(object.was_dropped_as_bomb() && object.is_falling_down());
     }
     assert_eq!(sim.substrate.next_air_tracker_order.current(), next_order);
     let twin = sim.substrate.entities.get(unmarked).unwrap();
-    assert!(twin.on_bridge && twin.lifecycle.in_limbo() && !twin.lifecycle.cell_marked);
-    assert_eq!(twin.position.z, 4);
+    assert!(twin.on_bridge() && twin.lifecycle.in_limbo() && !twin.lifecycle.cell_marked());
+    assert_eq!(twin.position.z(), 4);
     assert_ne!(
         sim.substrate.raw_cell_occupation, raw_before,
         "the stationary Unit's raw receiver clears its old deck occupation"
@@ -313,7 +328,7 @@ fn structural_drop_in_owns_order_footprints_and_restore_without_teardown_side_ef
             .entities
             .get(newer)
             .unwrap()
-            .foot_occupation_enabled
+            .foot_occupation_enabled()
     );
     assert_eq!(
         sim.substrate
@@ -351,7 +366,7 @@ fn structural_drop_in_owns_order_footprints_and_restore_without_teardown_side_ef
             .entities
             .get(newer)
             .unwrap()
-            .foot_occupation_enabled
+            .foot_occupation_enabled()
     );
     assert_eq!(
         restored.substrate.cell_occupation.vehicle_bits_ignoring(

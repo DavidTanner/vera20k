@@ -1578,6 +1578,8 @@ pub(crate) fn populate_special_houses(
             sim.session.game_options.starting_credits,
             sim.session.game_options.tech_level,
         );
+        // The House constructor builds its whole Supers vector.
+        crate::sim::superweapon::construct_house_supers(sim, rules, name_id, false);
         // Stock Neutral/Special are MultiplayPassive, which keeps them out of
         // defeat evaluation and out of the game-over alive scan. `country_name`
         // is always concrete here — the roster's `Country=` when the map named
@@ -1614,6 +1616,8 @@ pub(crate) fn populate_launch_houses(
             sim.session.game_options.starting_credits,
             sim.session.game_options.tech_level,
         );
+        // The House constructor builds its whole Supers vector.
+        crate::sim::superweapon::construct_house_supers(sim, rules, name_id, false);
         // `ScenarioClass::Create_Houses` passes every launch house through
         // `HouseClass::SetDifficulty` (humans with 1, `0x00688132`; computer
         // slots with their own, `0x006882B9`); Neutral and Special are never
@@ -1805,7 +1809,14 @@ fn place_starting_object_near_base(
     // one constructor draw therefore precedes every placement-search draw and
     // remains spent even when every attempt fails.
     let stable_id = sim.construct_object_limbo_at_height(
-        type_id, owner, base_rx, base_ry, facing, initial_z, rules,
+        type_id,
+        owner,
+        base_rx,
+        base_ry,
+        facing,
+        initial_z,
+        rules,
+        crate::sim::world::FrameEffects::default(),
     )?;
     if starting_object_cell_placeable(sim, resolved_terrain, base_rx, base_ry, category)
         && sim
@@ -2658,29 +2669,25 @@ pub(crate) fn initialize_map_roster_houses(
             sim.session.game_options.starting_credits,
             sim.session.game_options.tech_level,
         );
+        let campaign_house_id = campaign_difficulties.map(|_| {
+            sim.next_native_load_id()
+                .expect("admitted campaign native-ID cursor")
+        });
+        // Every native House constructs its whole Supers vector before map
+        // objects. Only the admitted campaign prefix has a measured ID cursor.
+        if let Some(rules) = rules {
+            crate::sim::superweapon::construct_house_supers(
+                sim,
+                rules,
+                name_id,
+                campaign_house_id.is_some(),
+            );
+        }
         if let Some((_, computer_difficulty)) = campaign_difficulties {
             let rules = rules.expect("admitted campaign rules");
-            let house_id = sim
-                .next_native_load_id()
-                .expect("admitted campaign native-ID cursor");
-            let mut supers = std::collections::BTreeMap::new();
-            for name in &rules.super_weapon_order {
-                let type_id = sim.interner.intern(name);
-                let super_id = sim
-                    .next_native_load_id()
-                    .expect("admitted campaign native-ID cursor");
-                let mut instance =
-                    crate::sim::superweapon::SuperWeaponInstance::new(type_id, name_id, frame);
-                instance.bind_native_identity(super_id);
-                assert!(
-                    supers.insert(type_id, instance).is_none(),
-                    "distinct Super type registry"
-                );
-            }
-            sim.super_weapons.insert(name_id, supers);
             let draw = draw_house_constructor_timer(&mut sim.scenario_rng);
             house_state.bind_native_construction(
-                house_id,
+                campaign_house_id.expect("admitted campaign House ID"),
                 computer_difficulty,
                 frame,
                 draw,
@@ -3241,7 +3248,10 @@ mod tests {
         .expect("exact PostMap placement");
         let exact_entity = exact.substrate.entities.get(exact_id).unwrap();
         assert_eq!(exact_entity.techno_ctor_random_word(), exact_word);
-        assert_eq!((exact_entity.position.rx, exact_entity.position.ry), (6, 5));
+        assert_eq!(
+            (exact_entity.position.rx(), exact_entity.position.ry()),
+            (6, 5)
+        );
         assert_eq!(
             exact.scenario_rng.logical_state(),
             exact_expected.logical_state()
@@ -3281,7 +3291,7 @@ mod tests {
         let fallback_entity = fallback.substrate.entities.get(fallback_id).unwrap();
         assert_eq!(fallback_entity.techno_ctor_random_word(), fallback_word);
         assert_ne!(
-            (fallback_entity.position.rx, fallback_entity.position.ry),
+            (fallback_entity.position.rx(), fallback_entity.position.ry()),
             (6, 5)
         );
         assert_eq!(
@@ -3378,7 +3388,7 @@ mod tests {
 
         let placed = sim.substrate.entities.get(stable_id).unwrap();
         assert_eq!(placed.techno_ctor_random_word(), expected_word);
-        assert_ne!((placed.position.rx, placed.position.ry), base);
+        assert_ne!((placed.position.rx(), placed.position.ry()), base);
         assert_eq!(stable_id, 1, "fallback must retain the first identity");
         assert_eq!(sim.scenario_rng.logical_state(), expected.logical_state());
     }
@@ -3434,7 +3444,7 @@ mod tests {
         let entity = sim.substrate.entities.get(2).unwrap();
         assert_eq!(sim.interner.resolve(entity.type_ref()), expected_type);
         assert_eq!(entity.techno_ctor_random_word(), expected_word);
-        assert_ne!((entity.position.rx, entity.position.ry), (6, 5));
+        assert_ne!((entity.position.rx(), entity.position.ry()), (6, 5));
         assert_eq!(sim.scenario_rng.logical_state(), expected.logical_state());
     }
 

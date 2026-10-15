@@ -121,12 +121,12 @@ fn retained(native: &Value) -> DriveLocomotionRuntime {
     DriveLocomotionRuntime::default()
         .with_destination_for_test(nonnull_coord(&native["destination"]))
         .with_head_to_for_test(nonnull_coord(&native["head"]))
-        .with_track_for_test(TrackProgress {
-            turn_index: integer(&native["selector"]),
-            cursor: integer(&native["cursor"]),
-            reversed: byte(&native["flags_60_67"][0]) != 0,
-            residual: integer(&native["residual"]),
-        })
+        .with_track_for_test(TrackProgress::for_test(
+            integer(&native["selector"]),
+            integer(&native["cursor"]),
+            byte(&native["flags_60_67"][0]) != 0,
+            integer(&native["residual"]),
+        ))
         .with_track_valid_for_test(byte(&native["flags_60_67"][3]) != 0)
         .with_turn_latched_for_test(byte(&native["flags_60_67"][2]) != 0)
         .with_end_permitted_for_test(byte(&native["flags_60_67"][5]) != 0)
@@ -176,35 +176,43 @@ fn prepare(row: &Value) -> Scene {
     let entity = scene.sim.substrate.entities.get_mut(scene.miner).unwrap();
     // dress_cmin already owns list placement and XY. Publish the measured Z too.
     ground_pose::put_location(&mut entity.position, coord(&native["physical"]));
-    entity.on_bridge = byte(&native["on_bridge"]) != 0;
+    entity.set_on_bridge(byte(&native["on_bridge"]) != 0);
     entity
         .foot_speed
         .set_speed_fraction(fraction(&native["applied_speed_bits"]));
-    entity.navigation.path_replay = FootPathQueue {
-        directions: path(&native["path"]),
-        cursor: 0,
-        reference_cell: Some((
+    entity.navigation.path_replay = FootPathQueue::for_test(
+        path(&native["path"]),
+        0,
+        Some((
             i16::try_from(integer(&native["reference_cell"][0])).unwrap(),
             i16::try_from(integer(&native["reference_cell"][1])).unwrap(),
         )),
-    };
+    );
     let runtime = &mut entity.navigation.path_runtime;
-    runtime.movement_timer = CdTimer::from_raw(
+    runtime.set_movement_timer_for_test(CdTimer::from_raw(
         integer(&native["movement_timer"][0]),
         integer(&native["movement_timer"][2]),
-    );
-    runtime.blocked_timer = CdTimer::from_raw(
+    ));
+    runtime.set_blocked_timer_for_test(CdTimer::from_raw(
         integer(&native["blocked_timer"][0]),
         integer(&native["blocked_timer"][2]),
-    );
-    runtime.path_blocked = byte(&native["path_blocked"]) != 0;
+    ));
+    runtime.set_path_blocked(byte(&native["path_blocked"]) != 0);
     // Foot+64C is supplied independently as 7 by the same fixture. The
     // accepted setter4D96C2..4D9707 preserves it; FindPath owns its reset.
-    runtime.retries_left = u32::try_from(integer(&native["retries"])).unwrap();
-    entity.navigation.nav_com = native_nav(row, &native["nav"]);
-    entity.navigation.nav_com_aux = native_nav(row, &native["aux"]);
-    entity.setter_force_reassign = byte(&native["force_reassign"]) != 0;
-    entity.foot_locomotor_swap_active = byte(&native["swap_6ad"]) != 0;
+    runtime.set_retries_left(u32::try_from(integer(&native["retries"])).unwrap());
+    entity
+        .navigation
+        .set_nav_com(native_nav(row, &native["nav"]));
+    entity
+        .navigation
+        .set_nav_com_aux(native_nav(row, &native["aux"]));
+    entity
+        .setter_force_reassign
+        .set_for_test(byte(&native["force_reassign"]) != 0);
+    entity
+        .lift
+        .set_swap_active_for_test(byte(&native["swap_6ad"]) != 0);
     // Preserve unrelated Rust scheduler fields while supplying the recorded words.
     let mission = &mut entity.mission;
     mission.apply_test_fixture(MissionTestFixture {
@@ -241,17 +249,17 @@ fn assert_boundary(scene: &Scene, row: &Value, expected: &Value, context: &str) 
         "{context}: independent Foot applied speed"
     );
     assert_eq!(
-        entity.on_bridge,
+        entity.on_bridge(),
         byte(&foot["on_bridge"]) != 0,
         "{context}: OnBridge"
     );
     assert_eq!(
-        entity.navigation.nav_com,
+        entity.navigation.nav_com(),
         native_nav(row, &foot["nav"]),
         "{context}: NavCom"
     );
     assert_eq!(
-        entity.navigation.nav_com_aux,
+        entity.navigation.nav_com_aux(),
         native_nav(row, &foot["aux"]),
         "{context}: aux"
     );
@@ -261,7 +269,7 @@ fn assert_boundary(scene: &Scene, row: &Value, expected: &Value, context: &str) 
         "{context}: Foot queue"
     );
     assert_eq!(
-        entity.navigation.path_replay.reference_cell,
+        entity.navigation.path_replay.reference_cell(),
         Some((
             i16::try_from(integer(&foot["reference_cell"][0])).unwrap(),
             i16::try_from(integer(&foot["reference_cell"][1])).unwrap(),
@@ -270,7 +278,7 @@ fn assert_boundary(scene: &Scene, row: &Value, expected: &Value, context: &str) 
     );
     let runtime = entity.navigation.path_runtime;
     assert_eq!(
-        runtime.movement_timer,
+        runtime.movement_timer(),
         CdTimer::from_raw(
             integer(&foot["movement_timer"][0]),
             integer(&foot["movement_timer"][2])
@@ -278,7 +286,7 @@ fn assert_boundary(scene: &Scene, row: &Value, expected: &Value, context: &str) 
         "{context}: movement timer"
     );
     assert_eq!(
-        runtime.blocked_timer,
+        runtime.blocked_timer(),
         CdTimer::from_raw(
             integer(&foot["blocked_timer"][0]),
             integer(&foot["blocked_timer"][2])
@@ -286,22 +294,22 @@ fn assert_boundary(scene: &Scene, row: &Value, expected: &Value, context: &str) 
         "{context}: blocked timer"
     );
     assert_eq!(
-        runtime.retries_left,
+        runtime.retries_left(),
         u32::try_from(integer(&foot["retries"])).unwrap(),
         "{context}: retries"
     );
     assert_eq!(
-        runtime.path_blocked,
+        runtime.path_blocked(),
         byte(&foot["path_blocked"]) != 0,
         "{context}: path latch"
     );
     assert_eq!(
-        entity.setter_force_reassign,
+        entity.setter_force_reassign.is_raised(),
         byte(&foot["force_reassign"]) != 0,
         "{context}: force"
     );
     assert_eq!(
-        entity.foot_locomotor_swap_active,
+        entity.lift.swap_active(),
         byte(&foot["swap_6ad"]) != 0,
         "{context}: Foot swap"
     );
@@ -321,7 +329,7 @@ fn assert_boundary(scene: &Scene, row: &Value, expected: &Value, context: &str) 
         "{context}: mission cursor"
     );
     assert_eq!(
-        entity.navigation.nav_queue.len(),
+        entity.navigation.nav_queue().len(),
         usize::try_from(foot["nav_queue"]["count"].as_u64().unwrap()).unwrap(),
         "{context}: NavQueue count"
     );
@@ -341,7 +349,7 @@ fn assert_boundary(scene: &Scene, row: &Value, expected: &Value, context: &str) 
             LocomotorKind::Teleport,
             "{context}: restored class"
         );
-        assert!(loco.piggyback.is_none(), "{context}: transferred stash");
+        assert!(loco.piggyback().is_none(), "{context}: transferred stash");
         assert!(
             loco.selected_drive_runtime().is_none(),
             "{context}: retired complete Drive"
@@ -362,7 +370,7 @@ fn assert_boundary(scene: &Scene, row: &Value, expected: &Value, context: &str) 
             context,
         );
         assert_eq!(
-            loco.piggyback.as_deref().unwrap().active_kind(),
+            loco.piggyback().as_deref().unwrap().active_kind(),
             LocomotorKind::Teleport,
             "{context}: complete suspended primary"
         );
@@ -372,7 +380,7 @@ fn assert_boundary(scene: &Scene, row: &Value, expected: &Value, context: &str) 
         LocomotorKind::Teleport,
         "{context}: constructed family"
     );
-    let primary = loco.piggyback.as_deref().unwrap_or(loco);
+    let primary = loco.piggyback().as_deref().unwrap_or(loco);
     let teleport = primary.teleport_runtime().unwrap();
     let native_teleport = &expected["state"]["teleport"];
     assert_eq!(
@@ -399,7 +407,7 @@ fn owned_state(entity: &GameEntity) -> Value {
         &entity.foot_speed,
         ground_pose::position_world_coord(&entity.position),
         &entity.mission,
-        entity.foot_locomotor_swap_active,
+        entity.lift.swap_active(),
     ))
     .unwrap()
 }
@@ -432,7 +440,9 @@ fn replay(row: &Value) {
                 ));
             }
             "swap_end_refusal" | "successful_end" => {
-                entity.foot_locomotor_swap_active = byte(&before["state"]["foot"]["swap_6ad"]) != 0;
+                entity
+                    .lift
+                    .set_swap_active_for_test(byte(&before["state"]["foot"]["swap_6ad"]) != 0);
             }
             _ => {}
         }

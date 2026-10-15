@@ -9,7 +9,6 @@ use crate::rules::art_data::ArtRegistry;
 use crate::rules::ini_parser::IniFile;
 use crate::rules::retail_ini_fixture::{RetailBattleRules, retail_battle_rules_for_map};
 use crate::rules::ruleset::RuleSet;
-use crate::sim::game_entity::{DelayedFire, PendingBuildingFire};
 use crate::sim::house_state::HouseState;
 use crate::sim::mission::state::MissionTestFixture;
 use crate::sim::mission::{MissionDispatchTimer, MissionId, MissionType};
@@ -17,7 +16,7 @@ use crate::sim::native_identity::NativeUniqueIdCursor;
 use crate::sim::projectile::ProjectileCoord;
 use crate::sim::rng::SimRng;
 use crate::sim::timer::CdTimer;
-use crate::sim::world::{LifecycleOutput, Simulation, TickLane};
+use crate::sim::world::{DelayedFire, LifecycleOutput, PendingBuildingFire, Simulation, TickLane};
 use serde_json::{Value, json};
 
 fn native() -> &'static Value {
@@ -141,7 +140,7 @@ fn scene(rules: &RuleSet, input: &Value) -> (Simulation, u64, u64) {
             .unwrap();
         let entity = sim.substrate.entities.get_mut(id).unwrap();
         crate::sim::movement::ground_pose::set_position_world_xy(&mut entity.position, [x, y]);
-        entity.position.exact_z_leptons = Some(z);
+        entity.position.set_exact_z_leptons(Some(z));
         id
     };
     let source = place("TESLA", "Russians", &input["location"]);
@@ -413,7 +412,7 @@ fn fatal_coil_bolt_releases_navigation_before_the_next_logic_reader() {
     sim.resolve_type_handles(rules);
     let victim = sim.substrate.entities.get_mut(target).unwrap();
     victim.health.set_for_test(1);
-    let anchor = (victim.position.rx, victim.position.ry);
+    let anchor = (victim.position.rx(), victim.position.ry());
     assert!(sim.rebuild_dynamic_navigation(rules));
     let blocked_before = sim.path_grid_snapshot().unwrap();
     let cells: Vec<_> = crate::sim::production::building_base_foundation_cells(
@@ -440,10 +439,13 @@ fn fatal_coil_bolt_releases_navigation_before_the_next_logic_reader() {
     assert!(sim.object_ai_visit_one(bullet, Some(rules), Default::default()));
     let victim = sim.substrate.entities.get(target).unwrap();
     assert!(
-        !victim.lifecycle.cell_marked,
+        !victim.lifecycle.cell_marked(),
         "fatal receiver already unmarked"
     );
-    assert!(!victim.in_logic_vector, "fatal receiver already left Logic");
+    assert!(
+        !victim.in_logic_vector.is_member(),
+        "fatal receiver already left Logic"
+    );
     for &(x, y) in &cells {
         assert!(
             sim.path_grid().unwrap().is_walkable(x, y),
@@ -494,11 +496,13 @@ fn delayed_building_fire_skips_spark_after_bullet_compaction_until_the_next_pass
     restore_rng(&mut sim, &row["rng_before"]);
     let now = sim.session.binary_frame as i32;
     let entity = sim.substrate.entities.get_mut(source).unwrap();
-    entity.pending_building_fire = Some(PendingBuildingFire {
-        remaining_ticks: 1,
-        fire: DelayedFire::Weapon(WeaponSlot::Primary),
-    });
-    entity.rearm_timer = CdTimer::started(100, 0);
+    entity
+        .pending_building_fire
+        .set_for_test(Some(PendingBuildingFire::new(
+            1,
+            DelayedFire::Weapon(WeaponSlot::Primary),
+        )));
+    entity.rearm_timer.set_for_test(CdTimer::started(100, 0));
     entity.mission_leaf.set_building_ready_latch(1);
     entity.mission.apply_test_fixture(MissionTestFixture {
         current: MissionId::from_known(MissionType::Attack),
@@ -604,6 +608,7 @@ fn delayed_building_fire_skips_spark_after_bullet_compaction_until_the_next_pass
             .get(source)
             .unwrap()
             .pending_building_fire
+            .pending()
             .is_none()
     );
 
@@ -778,11 +783,15 @@ fn natural_charge_expiry_preserves_native_bullet_and_spark_visit_order() {
             "{name}"
         );
         let entity = sim.substrate.entities.get_mut(source).unwrap();
-        entity.pending_building_fire = Some(PendingBuildingFire {
-            remaining_ticks: 1,
-            fire: DelayedFire::Weapon(WeaponSlot::Primary),
-        });
-        entity.rearm_timer = CdTimer::started(sim.session.binary_frame as i32, 0);
+        entity
+            .pending_building_fire
+            .set_for_test(Some(PendingBuildingFire::new(
+                1,
+                DelayedFire::Weapon(WeaponSlot::Primary),
+            )));
+        entity
+            .rearm_timer
+            .set_for_test(CdTimer::started(sim.session.binary_frame as i32, 0));
         let health_before = sim.substrate.entities.get(target).unwrap().health.current();
         let mut previous_light_count = 0;
         for (visit_index, key) in ["first_logic_visit", "second_logic_visit"]

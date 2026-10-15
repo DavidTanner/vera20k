@@ -433,9 +433,11 @@ mod map_wall_owner_candidate_tests {
             ry,
             EntityCategory::Structure,
         );
-        entity.foundation = foundation.to_string();
+        entity
+            .type_facts
+            .set_foundation_for_test(foundation.to_string());
         entity.lifecycle.set_object_alive_for_test(true);
-        entity.lifecycle.cell_marked = true;
+        entity.lifecycle.set_cell_marked(true);
         entity
     }
 
@@ -667,7 +669,7 @@ mod map_wall_owner_candidate_tests {
                 );
                 lamp.lifecycle.set_object_alive_for_test(true);
                 lamp.lifecycle.set_in_limbo_for_test(false);
-                lamp.lifecycle.cell_marked = true;
+                lamp.lifecycle.set_cell_marked(true);
                 sim.entities_mut().insert(lamp);
                 sim.allocate_building_light(id, &rules);
                 id += 1;
@@ -1334,7 +1336,7 @@ mod map_wall_owner_candidate_tests {
         );
         lamp.lifecycle.set_object_alive_for_test(true);
         lamp.lifecycle.set_in_limbo_for_test(false);
-        lamp.lifecycle.cell_marked = false;
+        lamp.lifecycle.set_cell_marked(false);
         lamp.install_building_up(BuildingUp::completing_in_ticks(9, 0), 0);
         sim.entities_mut().insert(lamp);
         sim.add_entity_occupancy(41);
@@ -2237,8 +2239,8 @@ impl MapLoadInitial {
                     .entities()
                     .values()
                     .find(|entity| {
-                        entity.position.rx == map_entity.cell_x
-                            && entity.position.ry == map_entity.cell_y
+                        entity.position.rx() == map_entity.cell_x
+                            && entity.position.ry() == map_entity.cell_y
                             && simulation
                                 .interner
                                 .resolve(entity.type_ref())
@@ -3387,7 +3389,7 @@ pub(crate) fn load_map_from_initial(
                 .into_iter()
                 .filter_map(|id| sim.substrate.entities.get(id))
                 .find(|e| e.owner() == owner_id)
-                .map(|e| (e.position.rx, e.position.ry))
+                .map(|e| (e.position.rx(), e.position.ry()))
         });
     let (camera_anchor_x, camera_anchor_y): (f32, f32) =
         if let Some((rx, ry)) = opening_view_cell.or(local_start_cell) {

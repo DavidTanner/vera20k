@@ -139,7 +139,9 @@ fn planes(sim: &Simulation) -> Vec<u64> {
         .substrate
         .entities
         .values()
-        .filter(|entity| sim.interner.resolve(entity.type_ref()) == "PDPLANE" && !entity.dying)
+        .filter(|entity| {
+            sim.interner.resolve(entity.type_ref()) == "PDPLANE" && !entity.death.is_dying()
+        })
         .map(|entity| entity.stable_id())
         .collect();
     planes.sort_unstable();
@@ -154,7 +156,7 @@ fn cargo(sim: &Simulation, plane: u64) -> Vec<u64> {
         .unwrap()
         .passenger_role
         .cargo()
-        .map_or_else(Vec::new, |cargo| cargo.passengers.clone())
+        .map_or_else(Vec::new, |cargo| cargo.passengers().to_vec())
 }
 
 /// A PDPLANE as SendParadropPlanes builds one (mission-only before its
@@ -163,7 +165,16 @@ fn cargo(sim: &Simulation, plane: u64) -> Vec<u64> {
 fn plane_at(sim: &mut Simulation, rules: &RuleSet, at: (u16, u16), passengers: u32) -> u64 {
     let id = sim
         .with_object_placement_scope(|sim| {
-            sim.construct_object_limbo_at_height("PDPLANE", "Americans", 0, 0, 0, 0, rules)
+            sim.construct_object_limbo_at_height(
+                "PDPLANE",
+                "Americans",
+                0,
+                0,
+                0,
+                0,
+                rules,
+                crate::sim::world::FrameEffects::default(),
+            )
         })
         .unwrap();
     sim.substrate
@@ -184,13 +195,21 @@ fn plane_at(sim: &mut Simulation, rules: &RuleSet, at: (u16, u16), passengers: u
         )
     })
     .unwrap();
-    board_passengers(sim, rules, id, "Americans", "E1", passengers);
+    board_passengers(
+        sim,
+        rules,
+        id,
+        "Americans",
+        "E1",
+        passengers,
+        Default::default(),
+    );
     sim.substrate
         .entities
         .get_mut(id)
         .unwrap()
         .position
-        .exact_z_leptons = Some(1500);
+        .set_exact_z_leptons(Some(1500));
     id
 }
 
@@ -203,10 +222,13 @@ fn fill_spots(sim: &mut Simulation, cell: (u16, u16)) {
         blocker.set_owner_for_test(sim.interner.intern("Americans"));
         blocker.set_type_ref_for_test(sim.interner.intern("E1"));
         blocker.set_category_for_test(EntityCategory::Infantry);
-        blocker.is_voxel = false;
-        blocker.sub_cell = Some(spot);
-        (blocker.position.sub_x, blocker.position.sub_y) =
-            lepton::subcell_lepton_offset(Some(spot));
+        blocker.set_is_voxel_for_test(false);
+        blocker.set_sub_cell(Some(spot));
+        {
+            let (sub_x, sub_y) = lepton::subcell_lepton_offset(Some(spot));
+            blocker.position.set_sub_x(sub_x);
+            blocker.position.set_sub_y(sub_y);
+        }
         sim.substrate.entities.insert(blocker);
         assert!(matches!(sim.reveal(id), RevealOutcome::Revealed { .. }));
     }
@@ -590,10 +612,14 @@ fn send_paradrop_planes_matches_native() {
             entity.attack_target.target(),
             Some(TargetKind::Cell(TARGET.0, TARGET.1))
         );
-        assert_eq!(entity.navigation.nav_com, None);
-        assert_eq!((entity.position.rx, entity.position.ry), expected, "{row}");
+        assert_eq!(entity.navigation.nav_com(), None);
         assert_eq!(
-            (entity.position.sub_x, entity.position.sub_y),
+            (entity.position.rx(), entity.position.ry()),
+            expected,
+            "{row}"
+        );
+        assert_eq!(
+            (entity.position.sub_x(), entity.position.sub_y()),
             (SimFixed::from_num(128), SimFixed::from_num(128))
         );
         assert_eq!(entity.body_facing_current(sim.session.binary_frame), 0);
@@ -650,10 +676,10 @@ fn mission_plane(sim: &mut Simulation, rules: &RuleSet, row: &Value, target: (u1
         for dx in (distance - 4).max(0)..distance + 8 {
             let (x, y) = (centre(target.0) + dx, centre(target.1) + dy);
             let plane = sim.substrate.entities.get_mut(id).unwrap();
-            plane.position.rx = (x / 256) as u16;
-            plane.position.ry = (y / 256) as u16;
-            plane.position.sub_x = SimFixed::from_num(x % 256);
-            plane.position.sub_y = SimFixed::from_num(y % 256);
+            plane.position.set_rx((x / 256) as u16);
+            plane.position.set_ry((y / 256) as u16);
+            plane.position.set_sub_x(SimFixed::from_num(x % 256));
+            plane.position.set_sub_y(SimFixed::from_num(y % 256));
             let entities = &sim.substrate.entities;
             let plane = entities.get(id).unwrap();
             if crate::sim::combat::object_distance_to(plane, &goal, entities) == Some(distance) {
@@ -673,7 +699,7 @@ fn mission_plane(sim: &mut Simulation, rules: &RuleSet, row: &Value, target: (u1
         .attack_target
         .set_for_test(flag(row, "target").then(|| TargetKind::Cell(target.0, target.1)));
     if !flag(row, "nav_com") {
-        plane.navigation.nav_com = None;
+        plane.navigation.set_nav_com(None);
     }
     let passes = i8::try_from(int(&row["passes"])).unwrap();
     plane.mission_leaf.set_paradrop_passes_for_test(passes);
@@ -746,7 +772,7 @@ fn paradrop_missions_match_native() {
             Some(call) if call[1] == "null" => None,
             Some(_) => Some(NavTargetRef::cell(target.0, target.1)),
         };
-        assert_eq!(plane.navigation.nav_com, nav, "{row}");
+        assert_eq!(plane.navigation.nav_com(), nav, "{row}");
         let targeted = flag(row, "target") && events(row, "target").all(|call| call[1] != "null");
         assert_eq!(
             plane.attack_target.target(),
@@ -789,10 +815,14 @@ fn drop_payload_matches_native() {
         entity
             .body_facing
             .snap(u16::try_from(int(&row["facing"])).unwrap(), 0);
-        entity.aircraft_ammo.as_mut().unwrap().current = int(&row["ammo"]);
+        entity
+            .aircraft_ammo
+            .as_mut()
+            .unwrap()
+            .set_current_for_test(int(&row["ammo"]));
         let passes = i8::try_from(int(&row["passes"])).unwrap();
         entity.mission_leaf.set_paradrop_passes_for_test(passes);
-        let rearm = entity.rearm_timer;
+        let rearm = entity.rearm_timer.timer();
         if flag(row, "team") {
             crate::sim::team_script_vm::join_team_for_test(&mut sim, &[plane], false, false);
         }
@@ -907,7 +937,7 @@ fn drop_payload_matches_native() {
 
         let entity = sim.substrate.entities.get(plane).unwrap();
         assert_eq!(
-            entity.aircraft_ammo.as_ref().unwrap().current,
+            entity.aircraft_ammo.as_ref().unwrap().current(),
             int(&row["ammo_after"]),
             "{row}"
         );
@@ -922,7 +952,7 @@ fn drop_payload_matches_native() {
         } else {
             rearm
         };
-        assert_eq!(entity.rearm_timer, rearm, "{row}");
+        assert_eq!(entity.rearm_timer.timer(), rearm, "{row}");
         let chain: Vec<u64> = row["cargo"][1]
             .as_array()
             .unwrap()
@@ -1085,10 +1115,10 @@ fn assert_landed(
         assert!(!entity.lifecycle.in_limbo() && !entity.is_falling_down());
         let off = |at: u16, centre: u16| (i32::from(at) - i32::from(centre)).abs();
         assert!(
-            off(entity.position.rx, around.0) <= 5 && off(entity.position.ry, around.1) <= 5,
+            off(entity.position.rx(), around.0) <= 5 && off(entity.position.ry(), around.1) <= 5,
             "{id} landed at ({}, {})",
-            entity.position.rx,
-            entity.position.ry
+            entity.position.rx(),
+            entity.position.ry()
         );
         let (queued, current) = missions.expect("left the plane");
         assert!(
@@ -1132,7 +1162,7 @@ fn retail_paradrops_land_their_lists_around_the_target() {
             entity.attack_target.target(),
             Some(TargetKind::Cell(TARGET.0, TARGET.1))
         );
-        assert_eq!(entity.position.rx + entity.position.ry, 36);
+        assert_eq!(entity.position.rx() + entity.position.ry(), 36);
         let passengers = cargo(&sim, plane);
         assert_eq!(passengers.len(), count, "{name}");
         for &id in &passengers {

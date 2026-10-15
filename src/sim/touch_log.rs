@@ -3,8 +3,9 @@
 //!
 //! A store that routes every `&mut` to its objects through itself notes each
 //! hand-out, so a product derived from those objects (the movement pass's
-//! blocker plane, the kept Ground display sort keys) re-derives only what
-//! was noted instead of walking the world. A log records the hand-out, not a
+//! blocker plane, the kept Ground display sort keys, the pointer-expiry
+//! listener index) re-derives only what was noted instead of walking the
+//! world. A log records the hand-out, not a
 //! change, so it over-reports, which is harmless. Transient: never saved,
 //! never hashed, and no simulation result reads it.
 
@@ -74,7 +75,8 @@ impl TouchLog {
 }
 
 /// Whether debug builds compare each read of a kept product (the movement
-/// pass's derived inputs, the kept Ground sort keys) with a fresh derivation.
+/// pass's derived inputs, the kept Ground sort keys, the pointer-expiry
+/// listeners) with a fresh derivation.
 /// Never in release. On in debug unless `VERA20K_SKIP_LIVE_READ_CHECK` is set,
 /// which scale instruments use to time without the rebuilds the checks cost.
 /// It only removes assertions, so it cannot change a result.

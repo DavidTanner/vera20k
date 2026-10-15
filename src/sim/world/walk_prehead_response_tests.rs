@@ -145,16 +145,17 @@ fn fixture(row: &Value) -> (Simulation, RuleSet, OverlayTypeRegistry, u64, Optio
         z: 260,
     });
     let e = sim.substrate.entities.get_mut(id).unwrap();
-    e.position.rx = (current.x / 256) as u16;
-    e.position.ry = (current.y / 256) as u16;
-    e.position.sub_x = SimFixed::from_num(current.x % 256);
-    e.position.sub_y = SimFixed::from_num(current.y % 256);
-    e.position.exact_z_leptons = Some(current.z);
-    e.on_bridge = false;
-    e.in_playfield = input["in_playfield"].as_bool().unwrap_or(false);
+    e.position.set_rx((current.x / 256) as u16);
+    e.position.set_ry((current.y / 256) as u16);
+    e.position.set_sub_x(SimFixed::from_num(current.x % 256));
+    e.position.set_sub_y(SimFixed::from_num(current.y % 256));
+    e.position.set_exact_z_leptons(Some(current.z));
+    e.set_on_bridge(false);
+    e.set_in_playfield(input["in_playfield"].as_bool().unwrap_or(false));
     e.lifecycle.set_object_alive_for_test(true);
-    e.lifecycle.cell_marked = true;
-    e.dock_entered_with = input["tethered"].as_bool().unwrap_or(false).then_some(999);
+    e.lifecycle.set_cell_marked(true);
+    e.tether
+        .set_for_test(input["tethered"].as_bool().unwrap_or(false).then_some(999));
     e.mission.apply_test_fixture(MissionTestFixture {
         current: MissionId::from_raw(before["mission"].as_i64().unwrap() as i32),
         queued: MissionId::from_raw(before["queued_mission"].as_i64().unwrap() as i32),
@@ -179,28 +180,32 @@ fn fixture(row: &Value) -> (Simulation, RuleSet, OverlayTypeRegistry, u64, Optio
     }
     loco.set_step_head(None);
     e.foot_speed.set_speed_fraction(SIM_ZERO);
-    e.navigation.nav_com = Some(NavTargetRef::Cell { rx: 10, ry: 10 });
-    e.navigation.suspended_nav_com = None;
+    e.navigation
+        .set_nav_com(Some(NavTargetRef::Cell { rx: 10, ry: 10 }));
+    e.navigation.set_suspended_nav_com(None);
     e.attack_target
         .set_for_test((input["attack_target"] == true).then_some(TargetKind::Cell(11, 10)));
-    e.suspended_attack_target = None;
-    e.navigation.path_replay.directions = vec![2, 3, 4, 5];
-    e.navigation.path_replay.cursor = 0;
-    e.navigation.path_replay.reference_cell =
-        Some(input.get("path_reference").map_or((9, 8), |p| {
+    e.suspended_attack_target.set_for_test(None);
+    e.navigation
+        .path_replay
+        .set_directions_for_test(vec![2, 3, 4, 5]);
+    e.navigation.path_replay.set_cursor(0);
+    e.navigation.path_replay.set_reference_cell(Some(
+        input.get("path_reference").map_or((9, 8), |p| {
             (p[0].as_i64().unwrap() as i16, p[1].as_i64().unwrap() as i16)
-        }));
+        }),
+    ));
     let p = &mut e.navigation.path_runtime;
-    p.movement_timer = CdTimer::from_raw(
+    p.set_movement_timer_for_test(CdTimer::from_raw(
         before["movement_timer"][0].as_i64().unwrap() as i32,
         before["movement_timer"][2].as_i64().unwrap() as i32,
-    );
-    p.blocked_timer = CdTimer::from_raw(
+    ));
+    p.set_blocked_timer_for_test(CdTimer::from_raw(
         before["blockage_timer"][0].as_i64().unwrap() as i32,
         before["blockage_timer"][2].as_i64().unwrap() as i32,
-    );
-    p.path_blocked = before["blocked"] == 1;
-    p.retries_left = before["retries"].as_i64().unwrap() as u32;
+    ));
+    p.set_path_blocked(before["blocked"] == 1);
+    p.set_retries_left(before["retries"].as_i64().unwrap() as u32);
     p.set_scold_latch_for_test(before["flag68a"].as_u64().unwrap() as u8);
     if input["radio"] == true {
         e.radio_contacts.insert(999);
@@ -222,21 +227,21 @@ fn fixture(row: &Value) -> (Simulation, RuleSet, OverlayTypeRegistry, u64, Optio
     );
     if let Some(other) = other {
         let e = sim.substrate.entities.get_mut(other).unwrap();
-        e.position.sub_x = SimFixed::from_num(current.x % 256);
-        e.position.sub_y = SimFixed::from_num(current.y % 256);
-        e.position.exact_z_leptons = Some(current.z);
+        e.position.set_sub_x(SimFixed::from_num(current.x % 256));
+        e.position.set_sub_y(SimFixed::from_num(current.y % 256));
+        e.position.set_exact_z_leptons(Some(current.z));
         e.lifecycle
             .set_object_alive_for_test(input["obstacle_alive"].as_bool().unwrap_or(true));
-        e.lifecycle.cell_marked = true;
-        e.on_bridge = input["obstacle_deck"] == true;
+        e.lifecycle.set_cell_marked(true);
+        e.set_on_bridge(input["obstacle_deck"] == true);
         let mut cloak = CloakRuntime::new(0);
-        cloak.state = input["cloak"].as_i64().unwrap_or(0) as i32;
+        cloak.set_state_for_test(input["cloak"].as_i64().unwrap_or(0) as i32);
         e.cloak = Some(cloak);
         sim.substrate.occupancy.add(
             10,
             10,
             other,
-            if e.on_bridge {
+            if e.on_bridge() {
                 MovementLayer::Bridge
             } else {
                 MovementLayer::Ground
@@ -271,8 +276,8 @@ fn compare(sim: &Simulation, id: u64, other: Option<u64>, expected: &Value, row:
     let q = &e.navigation.path_replay;
     let words: Vec<i32> = (0..4)
         .map(|i| {
-            q.directions
-                .get(usize::from(q.cursor) + i)
+            q.directions()
+                .get(usize::from(q.cursor()) + i)
                 .map_or(-1, |&w| if w == u8::MAX { -1 } else { i32::from(w) })
         })
         .collect();
@@ -294,18 +299,21 @@ fn compare(sim: &Simulation, id: u64, other: Option<u64>, expected: &Value, row:
             "speed",
             json!(e.foot_speed.applied_fraction().to_num::<f64>()),
         ),
-        ("blocked", json!(u8::from(p.path_blocked))),
-        ("retries", json!(p.retries_left as i32)),
+        ("blocked", json!(u8::from(p.path_blocked()))),
+        ("retries", json!(p.retries_left() as i32)),
         ("flag68a", json!(p.scold_latch_raw())),
-        ("nav", json!(nav(e.navigation.nav_com))),
+        ("nav", json!(nav(e.navigation.nav_com()))),
         (
             "target",
             json!(native_target(e.attack_target.target(), other)),
         ),
-        ("suspended_nav", json!(nav(e.navigation.suspended_nav_com))),
+        (
+            "suspended_nav",
+            json!(nav(e.navigation.suspended_nav_com())),
+        ),
         (
             "suspended_target",
-            json!(native_target(e.suspended_attack_target, other)),
+            json!(native_target(e.suspended_attack_target.target(), other)),
         ),
         ("mission", json!(e.mission.current().raw())),
         ("queued_mission", json!(e.mission.queued().raw())),
@@ -315,8 +323,8 @@ fn compare(sim: &Simulation, id: u64, other: Option<u64>, expected: &Value, row:
         assert_eq!(actual, expected[key], "{key}: {}", row["input"]);
     }
     for (key, timer) in [
-        ("movement_timer", p.movement_timer),
-        ("blockage_timer", p.blocked_timer),
+        ("movement_timer", p.movement_timer()),
+        ("blockage_timer", p.blocked_timer()),
     ] {
         assert_eq!(
             [timer.start_frame(), timer.duration()],
@@ -341,12 +349,12 @@ fn compare(sim: &Simulation, id: u64, other: Option<u64>, expected: &Value, row:
     let cloak = other.map(|other| sim.substrate.entities.get(other).unwrap().cloak.unwrap());
     let logical = cloak.map_or([0; 6], |c| {
         [
-            c.state,
-            c.depth as i32,
-            c.step_timer.timer.start_frame(),
-            c.step_timer.timer.duration(),
-            c.step_timer.speed,
-            c.step_delta,
+            c.state(),
+            c.depth() as i32,
+            c.step_timer().timer().start_frame(),
+            c.step_timer().timer().duration(),
+            c.step_timer().speed(),
+            c.step_delta(),
         ]
     });
     let expected_cloak: Vec<i32> = [0, 1, 3, 5, 6, 7]

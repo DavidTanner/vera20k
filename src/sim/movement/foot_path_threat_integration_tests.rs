@@ -49,7 +49,10 @@ fn request_move(
         "ordinary search and finishing draw no RNG"
     );
     let actor = sim.substrate.entities.get(mover).unwrap();
-    assert!(actor.lifecycle.cell_marked, "Mark1 restores the live Foot");
+    assert!(
+        actor.lifecycle.cell_marked(),
+        "Mark1 restores the live Foot"
+    );
     assert!(sim.substrate.occupancy.contains_entity(13, 15, mover));
     // Find_Path installed the finished route as Foot+5E0 words from the
     // current cell; no layer is kept per route cell.

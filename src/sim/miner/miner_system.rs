@@ -63,12 +63,12 @@ fn return_exceeds_too_far_threshold(
 ) -> Option<bool> {
     let miner = sim.substrate.entities.get(miner_sid)?;
     let refinery = sim.substrate.entities.get(refinery_sid)?;
-    if refinery.dying || refinery.health.current() == 0 {
+    if refinery.death.is_dying() || refinery.health.current() == 0 {
         return None;
     }
 
-    let miner_x = i64::from(miner.position.rx) * 256 + miner.position.sub_x.to_num::<i64>();
-    let miner_y = i64::from(miner.position.ry) * 256 + miner.position.sub_y.to_num::<i64>();
+    let miner_x = i64::from(miner.position.rx()) * 256 + miner.position.sub_x().to_num::<i64>();
+    let miner_y = i64::from(miner.position.ry()) * 256 + miner.position.sub_y().to_num::<i64>();
     // Both GetCoords (vt+0x48): the refinery's foundation centre
     // (`0x00447AC0`) at its Location's Z.
     let terrain = sim.resolved_terrain.as_ref();
@@ -122,7 +122,9 @@ mod gsi_04_03b_tests {
         );
         refinery.set_type_ref_for_test(refinery_type);
         // Construction stamps the type's `Foundation=4x3`.
-        refinery.foundation = "4x3".to_string();
+        refinery
+            .type_facts
+            .set_foundation_for_test("4x3".to_string());
         sim.substrate.entities.insert(refinery);
 
         // East of the building: NW distance is sqrt(37) cells (far), centre
@@ -156,12 +158,12 @@ mod gsi_04_03b_tests {
     fn too_far_threshold_follows_sqrt_approx_table_edge() {
         let mut sim = Simulation::new();
         let mut refinery = GameEntity::test_default(2, "GAREFN", "Allies", 0, 0);
-        refinery.position.sub_x = SimFixed::from_num(0);
-        refinery.position.sub_y = SimFixed::from_num(0);
+        refinery.position.set_sub_x(SimFixed::from_num(0));
+        refinery.position.set_sub_y(SimFixed::from_num(0));
         sim.substrate.entities.insert(refinery);
         let mut miner = GameEntity::test_default(1, "HARV", "Allies", 5, 0);
-        miner.position.sub_x = SimFixed::from_num(1);
-        miner.position.sub_y = SimFixed::from_num(0);
+        miner.position.set_sub_x(SimFixed::from_num(1));
+        miner.position.set_sub_y(SimFixed::from_num(0));
         sim.substrate.entities.insert(miner);
 
         assert_eq!(
@@ -169,7 +171,12 @@ mod gsi_04_03b_tests {
             Some(false),
             "d = 1281 leptons: Sqrt_Approx yields 1280.9995, ftol 1280, close"
         );
-        sim.substrate.entities.get_mut(1).unwrap().position.sub_x = SimFixed::from_num(2);
+        sim.substrate
+            .entities
+            .get_mut(1)
+            .unwrap()
+            .position
+            .set_sub_x(SimFixed::from_num(2));
         assert_eq!(
             return_exceeds_too_far_threshold(&sim, 1, 2, 5),
             Some(true),
@@ -192,9 +199,9 @@ mod gsi_04_03b_tests {
     fn gsi_04_03b_miner_return_distance_uses_terrain_bridge_and_altitude_z() {
         let mut sim = Simulation::new();
         let mut miner = GameEntity::test_default(1, "CMIN", "Allies", 0, 0);
-        miner.position.sub_x = SimFixed::from_num(0);
+        miner.position.set_sub_x(SimFixed::from_num(0));
         let mut refinery = GameEntity::test_default(2, "GAOREP", "Allies", 0, 0);
-        refinery.position.sub_x = SimFixed::from_num(255);
+        refinery.position.set_sub_x(SimFixed::from_num(255));
         sim.substrate.entities.insert(miner);
         sim.substrate.entities.insert(refinery);
         sim.resolved_terrain = Some(ResolvedTerrainGrid::from_cells(1, 1, vec![sloped_cell()]));
@@ -205,11 +212,25 @@ mod gsi_04_03b_tests {
             "255 horizontal leptons plus the slope Z delta exceeds one cell"
         );
 
-        sim.substrate.entities.get_mut(1).unwrap().position.sub_x = SimFixed::from_num(0);
-        sim.substrate.entities.get_mut(2).unwrap().position.sub_x = SimFixed::from_num(0);
+        sim.substrate
+            .entities
+            .get_mut(1)
+            .unwrap()
+            .position
+            .set_sub_x(SimFixed::from_num(0));
+        sim.substrate
+            .entities
+            .get_mut(2)
+            .unwrap()
+            .position
+            .set_sub_x(SimFixed::from_num(0));
         assert_eq!(return_exceeds_too_far_threshold(&sim, 1, 2, 1), Some(false));
 
-        sim.substrate.entities.get_mut(1).unwrap().on_bridge = true;
+        sim.substrate
+            .entities
+            .get_mut(1)
+            .unwrap()
+            .set_on_bridge(true);
         assert_eq!(
             return_exceeds_too_far_threshold(&sim, 1, 2, 1),
             Some(true),
@@ -217,7 +238,7 @@ mod gsi_04_03b_tests {
         );
 
         let miner = sim.substrate.entities.get_mut(1).unwrap();
-        miner.on_bridge = false;
+        miner.set_on_bridge(false);
         miner.locomotor = Some(LocomotorState::for_test_kind(LocomotorKind::Fly));
         sim.set_object_height_unmarked(1, 300);
         assert_eq!(
@@ -231,11 +252,11 @@ mod gsi_04_03b_tests {
     fn gsi_04_03b_miner_return_distance_falls_back_to_level_z_without_resolved_terrain() {
         let mut sim = Simulation::new();
         let mut miner = GameEntity::test_default(1, "CMIN", "Allies", 0, 0);
-        miner.position.sub_x = SimFixed::from_num(0);
-        miner.position.z = 0;
+        miner.position.set_sub_x(SimFixed::from_num(0));
+        miner.position.set_z(0);
         let mut refinery = GameEntity::test_default(2, "GAOREP", "Allies", 0, 0);
-        refinery.position.sub_x = SimFixed::from_num(255);
-        refinery.position.z = 0;
+        refinery.position.set_sub_x(SimFixed::from_num(255));
+        refinery.position.set_z(0);
         sim.substrate.entities.insert(miner);
         sim.substrate.entities.insert(refinery);
         assert!(sim.resolved_terrain.is_none());
@@ -246,7 +267,7 @@ mod gsi_04_03b_tests {
         // cell — and the decision is still made rather than refused.
         assert_eq!(return_exceeds_too_far_threshold(&sim, 1, 2, 1), Some(false));
 
-        sim.substrate.entities.get_mut(2).unwrap().position.z = 3;
+        sim.substrate.entities.get_mut(2).unwrap().position.set_z(3);
         assert_eq!(
             return_exceeds_too_far_threshold(&sim, 1, 2, 1),
             Some(true),
@@ -414,7 +435,7 @@ pub(super) fn build_miner_snapshot(sim: &Simulation, id: u64) -> Option<MinerSna
     let entity = sim.substrate.entities.get(id)?;
     // A Dying miner corpse (sold/captured this tick, awaiting the end-of-tick
     // drain) must not move, harvest, or deposit.
-    if entity.dying {
+    if entity.death.is_dying() {
         return None;
     }
     // A Slave Miner's own Mission_Harvest is HandleReturnedSlaves
@@ -434,8 +455,8 @@ pub(super) fn build_miner_snapshot(sim: &Simulation, id: u64) -> Option<MinerSna
         entity_id: id,
         owner: entity.owner(),
         type_id: entity.type_ref(),
-        rx: entity.position.rx,
-        ry: entity.position.ry,
+        rx: entity.position.rx(),
+        ry: entity.position.ry(),
         miner: miner.clone(),
         state: cursor.unwrap_or(MinerState::SearchOre),
         dispatch_delay: DISPATCH_NEXT_FRAME,
@@ -470,14 +491,8 @@ pub(super) fn commit_miner_snapshot(sim: &mut Simulation, snap: &MinerSnapshot) 
 /// Unit body animation uses Foot+0x538 through the shared body-counter owner.
 fn sync_harvest_visuals(entity: &mut crate::sim::game_entity::GameEntity) {
     let is_harvesting = entity.miner.as_ref().is_some_and(|miner| miner.harvesting);
-    if let Some(ref mut ho) = entity.harvest_overlay {
-        if is_harvesting && !ho.visible {
-            ho.visible = true;
-            ho.frame = 0;
-        } else if !is_harvesting && ho.visible {
-            ho.visible = false;
-            ho.frame = 0;
-        }
+    if let Some(overlay) = entity.harvest_overlay.as_mut() {
+        overlay.follow(is_harvesting);
     }
 }
 
@@ -497,7 +512,7 @@ pub(crate) fn unit_ai_clear_harvesting(sim: &mut Simulation, id: u64) {
     let Some(entity) = sim.substrate.entities.get_mut(id) else {
         return;
     };
-    if entity.dying
+    if entity.death.is_dying()
         || entity.category() != EntityCategory::Unit
         || native_mission_is_harvest(entity)
         || !entity.miner.as_ref().is_some_and(|miner| miner.harvesting)
@@ -673,7 +688,7 @@ fn harvest_looking(
     }
     snap.miner.harvesting = false;
     let teleport_with_nav = sim.substrate.entities.get(id).is_some_and(|entity| {
-        entity.navigation.nav_com.is_some()
+        entity.navigation.nav_com().is_some()
             && entity
                 .locomotor
                 .as_ref()
@@ -700,7 +715,7 @@ fn harvest_looking(
         .substrate
         .entities
         .get(id)
-        .is_some_and(|entity| entity.navigation.nav_com.is_some());
+        .is_some_and(|entity| entity.navigation.nav_com().is_some());
     if !driving {
         let archive = sim
             .substrate
@@ -828,7 +843,7 @@ fn harvest_cutting(
         .substrate
         .entities
         .get(id)
-        .is_some_and(|entity| entity.navigation.nav_com.is_some());
+        .is_some_and(|entity| entity.navigation.nav_com().is_some());
     if !found && !driving {
         if let Some(entity) = sim.substrate.entities.get_mut(id) {
             entity.set_archive_target(None);
@@ -887,7 +902,7 @@ fn harvest_ore_tick(
         .substrate
         .entities
         .get(id)
-        .is_some_and(|entity| entity.navigation.nav_com.is_some())
+        .is_some_and(|entity| entity.navigation.nav_com().is_some())
     {
         return true;
     }
@@ -971,7 +986,7 @@ fn handle_return(
         .substrate
         .entities
         .get(id)
-        .is_some_and(|entity| entity.navigation.nav_com.is_some());
+        .is_some_and(|entity| entity.navigation.nav_com().is_some());
     if driving && !teleporter {
         return;
     }
@@ -984,7 +999,7 @@ fn handle_return(
             .entities
             .get(bay)
             .filter(|entity| {
-                !entity.dying
+                !entity.death.is_dying()
                     && entity.health.current() != 0
                     && entity.radio_contacts.has_free_or(id)
             })
@@ -1067,8 +1082,8 @@ fn refinery_staging_cell(sim: &Simulation, rules: &RuleSet, bay: u64) -> Option<
         .object_type(building.type_ref(), rules)
         .map_or([0, 0], |object| object.queueing_cell);
     let seed = (
-        i32::from((building.position.rx as i16).wrapping_add(queueing[0] as i16)),
-        i32::from((building.position.ry as i16).wrapping_add(queueing[1] as i16)),
+        i32::from((building.position.rx() as i16).wrapping_add(queueing[0] as i16)),
+        i32::from((building.position.ry() as i16).wrapping_add(queueing[1] as i16)),
     );
     let (width, height) = sim
         .playfield_bounds
@@ -1251,7 +1266,7 @@ fn refinery_building_in_cell(sim: &Simulation, rules: &RuleSet, cell: (u16, u16)
     occupancy.blockers(MovementLayer::Ground).find(|&sid| {
         sim.substrate.entities.get(sid).is_some_and(|entity| {
             entity.category() == EntityCategory::Structure
-                && !entity.dying
+                && !entity.death.is_dying()
                 && sim
                     .object_type(entity.type_ref(), rules)
                     .is_some_and(|obj| obj.refinery)
@@ -1440,11 +1455,11 @@ fn scan_docking_type(
             entity.owner(),
             coords.x,
             coords.y,
-            (entity.position.rx, entity.position.ry),
+            (entity.position.rx(), entity.position.ry()),
             entity
                 .locomotor
                 .as_ref()
-                .map(|loc| loc.movement_zone)
+                .map(|loc| loc.movement_zone())
                 .unwrap_or(MovementZone::Normal),
             entity.category() == EntityCategory::Aircraft,
         )
@@ -1476,14 +1491,14 @@ fn scan_docking_type(
         }
         // gamemd removes a dead building from the house list through
         // Limbo; VERA keeps the entity through its death animation.
-        if entity.dying || entity.health.current() == 0 {
+        if entity.death.is_dying() || entity.health.current() == 0 {
             continue;
         }
         if !wide && !entity.radio_contacts.has_free_or(requester) {
             continue;
         }
         if !aircraft {
-            let dock = refinery_dock_cell(entity.position.rx, entity.position.ry);
+            let dock = refinery_dock_cell(entity.position.rx(), entity.position.ry());
             if !refinery_zone_reachable(
                 sim,
                 sim.substrate.entities.get(requester)?,
@@ -1687,7 +1702,7 @@ pub(crate) fn counts_as_purifier(
     // A Dying purifier corpse (sold/destroyed this tick) must not keep paying
     // its deposit bonus until the end-of-tick drain; a limbo'd one already
     // took the native Limbo `DEC`.
-    !e.dying
+    !e.death.is_dying()
         && !e.lifecycle.in_limbo()
         && !e.building_up()
         && e.category() == EntityCategory::Structure
@@ -1809,7 +1824,7 @@ mod harvest_scan_dispatch_tests {
         );
         ge.lifecycle.set_in_limbo_for_test(false);
         // Construction stamps the type's `Foundation=4x3`.
-        ge.foundation = "4x3".to_string();
+        ge.type_facts.set_foundation_for_test("4x3".to_string());
         sim.substrate.entities.insert(ge);
         // Unlimbo's House+0x68 append.
         register_house(sim);
@@ -1928,7 +1943,7 @@ mod harvest_scan_dispatch_tests {
 
         let entity = sim.substrate.entities.get(MINER_ID).expect("miner");
         assert_eq!(
-            entity.navigation.nav_com,
+            entity.navigation.nav_com(),
             Some(crate::sim::components::NavTargetRef::cell(10, 14))
         );
         assert!(
@@ -1996,7 +2011,8 @@ mod harvest_scan_dispatch_tests {
         let entity = sim.substrate.entities.get(MINER_ID).expect("miner");
         assert_eq!(entity.miner_state(), Some(MinerState::WaitNoOre));
         assert_eq!(
-            entity.navigation.nav_com, None,
+            entity.navigation.nav_com(),
+            None,
             "no whole-map fallback target"
         );
         assert!(
@@ -2051,7 +2067,7 @@ mod harvest_scan_dispatch_tests {
             Some(MinerState::WaitNoOre),
             "state 4 re-runs until Guard commences; no return to the scan"
         );
-        assert_eq!(entity.navigation.nav_com, None);
+        assert_eq!(entity.navigation.nav_com(), None);
         assert!(
             crate::sim::movement::motion_query::is_moving(&entity) != Some(true),
             "not on a refinery cell: no exit drive"
@@ -2074,7 +2090,7 @@ mod harvest_scan_dispatch_tests {
         tick_miners(&mut sim, &rules, &config);
         let entity = sim.substrate.entities.get(MINER_ID).expect("miner");
         assert_eq!(entity.mission.current().known(), Some(MissionType::Guard));
-        assert_eq!(entity.navigation.nav_com, None);
+        assert_eq!(entity.navigation.nav_com(), None);
         assert!(crate::sim::movement::motion_query::is_moving(&entity) != Some(true));
         assert!(
             sim.houses[&owner].harvester_no_ore,
@@ -2134,7 +2150,7 @@ mod harvest_scan_dispatch_tests {
             "state 0 holds through the drive"
         );
         assert_eq!(
-            entity.navigation.nav_com,
+            entity.navigation.nav_com(),
             Some(crate::sim::components::NavTargetRef::cell(10, 14))
         );
         assert!(
@@ -2163,7 +2179,8 @@ mod harvest_scan_dispatch_tests {
         assert_eq!(entity.mission.queued().known(), Some(MissionType::Guard));
         assert_eq!(entity.mission.dispatch_timer().delay(), DISPATCH_NEXT_FRAME);
         assert_eq!(
-            entity.navigation.nav_com, None,
+            entity.navigation.nav_com(),
+            None,
             "the switch (and its scan) is never entered"
         );
         assert_eq!(
@@ -2263,7 +2280,7 @@ mod harvest_scan_dispatch_tests {
             crate::sim::mission::MissionId::from_known(MissionType::Harvest)
         );
         assert_eq!(
-            entity.navigation.nav_com,
+            entity.navigation.nav_com(),
             Some(crate::sim::components::NavTargetRef::cell(10, 14)),
             "the order hands the clicked cell to the class setter"
         );
@@ -2340,12 +2357,12 @@ mod harvest_scan_dispatch_tests {
             crate::sim::miner::miner_dock::has_contact(&sim, REFINERY_ID, MINER_ID),
             "HELLO accepted on the same dispatch"
         );
-        assert_eq!((entity.position.rx, entity.position.ry), (16, 11));
+        assert_eq!((entity.position.rx(), entity.position.ry()), (16, 11));
         let pad = sim
             .substrate
             .entities
             .get(REFINERY_ID)
-            .map(|refinery| refinery_dock_cell(refinery.position.rx, refinery.position.ry))
+            .map(|refinery| refinery_dock_cell(refinery.position.rx(), refinery.position.ry()))
             .unwrap();
         assert!(
             pad.0.abs_diff(16) > 1,
@@ -2419,7 +2436,7 @@ mod harvest_scan_dispatch_tests {
         // 4.5 cells out: Assign_Destination(FNPC(NW + QueueingCell 4,1)); the
         // seed (14, 11) is free, so the search answers it.
         assert_eq!(
-            entity.navigation.nav_com,
+            entity.navigation.nav_com(),
             Some(crate::sim::components::NavTargetRef::cell(14, 11))
         );
     }

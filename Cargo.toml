@@ -49,9 +49,16 @@ name = "inspect-water-tiles"
 path = "src/bin/inspect-water-tiles.rs"
 
 [features]
-default = []
-# Optional in-engine diagnostic overlay. Player UI uses the retail UI owners.
-dev-ui = ["dep:egui", "dep:egui-wgpu", "dep:egui-winit"]
+# Development builds carry the Ctrl+Shift dev chord. The release workflow builds
+# with `--no-default-features`, so shipped binaries do not.
+default = ["dev-overlays"]
+# The Ctrl+Shift dev chord: renderer-native diagnostic overlays (grid, heightmap,
+# pathgrid, inspector, fog), the debug pause and quicksave/quickload. Captures
+# rely on it (literal Ctrl+Shift+M/N quicksave/quickload). It needs no egui.
+dev-overlays = []
+# Optional in-engine diagnostic overlay (egui panels). Player UI uses the retail
+# UI owners. Implies `dev-overlays` so a dev build keeps its world overlays.
+dev-ui = ["dep:egui", "dep:egui-wgpu", "dep:egui-winit", "dev-overlays"]
 # Standalone asset/video tools; this does not enable the engine overlay.
 tools-ui = ["dep:eframe", "dep:rfd"]
 

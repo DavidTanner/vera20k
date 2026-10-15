@@ -52,7 +52,7 @@ impl crate::sim::world::Simulation {
         let Some(entity) = self.substrate.entities.get(id) else {
             return;
         };
-        let (rx, ry) = (entity.position.rx, entity.position.ry);
+        let (rx, ry) = (entity.position.rx(), entity.position.ry());
         let object = self.object_type(entity.type_ref(), rules);
         let name = match sound {
             WarpSound::Out => object
@@ -510,7 +510,7 @@ impl crate::sim::world::Simulation {
                 .get_mut(id)
                 .unwrap()
                 .navigation
-                .nav_com = None;
+                .set_nav_com(None);
             return Ok(false);
         }
         let infantry = actor.category() == EntityCategory::Infantry;
@@ -559,7 +559,7 @@ impl crate::sim::world::Simulation {
         if infantry
             && !self.infantry_destination_inputs_available(
                 id,
-                actor.navigation.nav_com.unwrap_or_else(|| {
+                actor.navigation.nav_com().unwrap_or_else(|| {
                     crate::sim::components::NavTargetRef::cell(target.0, target.1)
                 }),
                 rules,
@@ -630,7 +630,7 @@ impl crate::sim::world::Simulation {
                     ) {
                         return false;
                     }
-                    let Some(reference) = actor.navigation.nav_com else {
+                    let Some(reference) = actor.navigation.nav_com() else {
                         return false;
                     };
                     let target_id = match reference {
@@ -645,7 +645,7 @@ impl crate::sim::world::Simulation {
                     let cell = ((input.x / 256) as u16, (input.y / 256) as u16);
                     match target.category() {
                         EntityCategory::Unit | EntityCategory::Aircraft => {
-                            (target.position.rx, target.position.ry) == cell
+                            (target.position.rx(), target.position.ry()) == cell
                         }
                         EntityCategory::Structure => {
                             self.substrate.occupancy.first_building_on_layer(
@@ -1051,28 +1051,23 @@ impl crate::sim::world::Simulation {
                         (destination.x / 256) as i16,
                         (destination.y / 256) as i16,
                     ));
-                    entity.on_bridge = terrain.native_cell_flags(cell) & 0x100 != 0;
-                    entity.position.z = super::movement_bridge::stored_level(
+                    entity.set_on_bridge(terrain.native_cell_flags(cell) & 0x100 != 0);
+                    entity.position.set_z(super::movement_bridge::stored_level(
                         terrain.native_cell_ground_fields(cell).0,
-                        entity.on_bridge,
-                    );
+                        entity.on_bridge(),
+                    ));
                 }
-                super::ground_pose::set_height(
-                    &mut entity.position,
-                    entity.on_bridge,
-                    0,
-                    terrain,
-                    None,
-                );
+                let on_bridge = entity.on_bridge();
+                super::ground_pose::set_height(&mut entity.position, on_bridge, 0, terrain, None);
                 // The path layer follows the destination's OnBridge. The cell
                 // lists move through the caller's Mark pair around this
                 // relocation (`0x007195D4` UP, `0x007196B8` DOWN).
                 if let Some(locomotor) = entity.locomotor.as_mut() {
-                    locomotor.layer = if entity.on_bridge {
+                    locomotor.set_layer(if on_bridge {
                         crate::sim::movement::locomotor::MovementLayer::Bridge
                     } else {
                         crate::sim::movement::locomotor::MovementLayer::Ground
-                    };
+                    });
                 }
                 // Harvester instant-warp: when chrono delay is 0, finish in one
                 // frame (cleanup runs at end of this frame) — no post-warp lock.
@@ -1155,10 +1150,8 @@ mod tests {
                 .lifecycle
                 .set_in_limbo_for_test(input["in_limbo"].as_bool().unwrap());
             if input["in_open_transport"].as_bool().unwrap() {
-                actor.passenger_role = crate::sim::passenger::PassengerRole::Inside {
-                    transport_id: 3,
-                    open_topped: true,
-                };
+                actor.passenger_role =
+                    crate::sim::passenger::PassengerRole::inside_for_test(3, true);
             }
             // Like the native control, a non-null TarCom avoids the separate
             // scan/idle callback path. Production boarding tests cover it.
@@ -1192,7 +1185,7 @@ mod tests {
                 actor.attack_target.target().unwrap(),
                 crate::sim::combat::TargetKind::Entity(2)
             );
-            assert_eq!((actor.position.rx, actor.position.ry), (5, 5));
+            assert_eq!((actor.position.rx(), actor.position.ry()), (5, 5));
             assert_eq!(
                 actor.lifecycle.in_limbo(),
                 input["in_limbo"].as_bool().unwrap()
@@ -1237,7 +1230,7 @@ mod tests {
     fn test_teleport_issues_and_completes() {
         let mut sim = crate::sim::world::Simulation::new();
         let mut e = teleport_owner(1, "CLEG", 5, 5);
-        e.position.z = 0;
+        e.position.set_z(0);
         sim.substrate.entities.insert(e);
         let rules = default_rules();
 
@@ -1260,8 +1253,8 @@ mod tests {
         sim.process_teleport(1, None, crate::sim::world::ObjectAiCtx::default());
 
         let entity = sim.substrate.entities.get(1).expect("should exist");
-        assert_eq!(entity.position.rx, 20, "Should have relocated to target");
-        assert_eq!(entity.position.ry, 20);
+        assert_eq!(entity.position.rx(), 20, "Should have relocated to target");
+        assert_eq!(entity.position.ry(), 20);
         let ts = entity.teleport_state().expect("still warping");
         assert_eq!(
             ts.phase(),
@@ -1327,7 +1320,7 @@ mod tests {
                 &mut entity.position,
                 [owner[0], owner[1]],
             );
-            entity.position.exact_z_leptons = Some(owner[2]);
+            entity.position.set_exact_z_leptons(Some(owner[2]));
             let [x, y, z] = destination;
             assert!(arm_teleport(
                 &mut entity,
@@ -1398,8 +1391,8 @@ mod tests {
         sim.process_teleport(1, None, crate::sim::world::ObjectAiCtx::default());
 
         let entity = sim.substrate.entities.get(1).expect("should exist");
-        assert_eq!(entity.position.rx, 20);
-        assert_eq!(entity.position.ry, 20);
+        assert_eq!(entity.position.rx(), 20);
+        assert_eq!(entity.position.ry(), 20);
         assert!(
             entity.teleport_state().is_none(),
             "harvester teleport should clean up in one frame"

@@ -183,8 +183,8 @@ mod tests {
                 false,
             );
             actor.lifecycle.set_in_limbo_for_test(false);
-            actor.position.sub_x = SimFixed::from_num(64);
-            actor.position.sub_y = SimFixed::from_num(64);
+            actor.position.set_sub_x(SimFixed::from_num(64));
+            actor.position.set_sub_y(SimFixed::from_num(64));
             actor.set_archive_target(Some(TargetKind::Cell(6, 5)));
             sim.substrate.entities.insert(actor);
             sim.resolved_terrain = Some(terrain);

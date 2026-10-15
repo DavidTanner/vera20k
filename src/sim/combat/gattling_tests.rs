@@ -380,7 +380,9 @@ fn original_unit_fire_update_rows() {
                 i32_of(&field("unit", "value")),
                 int(&field("unit", "latch")) != 0,
             );
-            entity.turret_anim_frame = i32_of(&field("unit", "turret_anim"));
+            entity
+                .turret_anim_frame
+                .set_for_test(i32_of(&field("unit", "turret_anim")));
             if elite_of(&field("unit", "veterancy")) {
                 entity.veterancy.set_elite();
             }
@@ -411,7 +413,7 @@ fn original_unit_fire_update_rows() {
             "{name}: latch"
         );
         assert_eq!(
-            i64::from(entity.turret_anim_frame),
+            i64::from(entity.turret_anim_frame.frame()),
             int(&row["turret_anim"]),
             "{name}: +0x148"
         );
@@ -724,7 +726,8 @@ fn a_gattling_tank_boards_with_its_spin_reset() {
     {
         let tank = spin.sim.substrate.entities.get_mut(spin.tank).unwrap();
         tank.gattling = GattlingState::from_fields(2, 600, true);
-        tank.navigation.nav_com = Some(crate::sim::components::NavTargetRef::object(hover));
+        tank.navigation
+            .set_nav_com(Some(crate::sim::components::NavTargetRef::object(hover)));
         tank.mission.set_current_for_test(
             crate::sim::mission::MissionId::from_known(crate::sim::mission::MissionType::Enter),
             0,

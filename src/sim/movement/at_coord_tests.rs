@@ -14,14 +14,14 @@ fn active_walk_and_hover_queries_retain_committed_xyz_after_other_coordinate_wri
         };
         set_head(&mut loco, Some(head));
         e.locomotor = Some(loco);
-        e.position.exact_z_leptons = Some(0);
+        e.position.set_exact_z_leptons(Some(0));
         assert!(AtCoordQuery::from_entity(&e).unwrap().matches(head));
         assert!(
             !AtCoordQuery::from_entity(&e)
                 .unwrap()
                 .matches(DriveCoord { z: 0, ..head })
         );
-        e.position.exact_z_leptons = Some(832);
+        e.position.set_exact_z_leptons(Some(832));
         assert!(
             AtCoordQuery::from_entity(&e).unwrap().matches(head),
             "Stop/path retirement must not reconstruct Head_To"

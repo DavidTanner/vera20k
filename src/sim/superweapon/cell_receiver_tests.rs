@@ -46,7 +46,7 @@ fn fixture_with_art(extra: &str, art: Option<&IniFile>) -> (Simulation, RuleSet)
          [BRUTE]\nImage=GI\nStrength=200\nSpeed=4\n\
          [MTNK]\nStrength=300\nSpeed=6\n\
          [GAPILE]\nStrength=1000\nFoundation=1x1\nFactory=InfantryType\nOwner=Americans\n";
-    let mut ini = IniFile::from_str(base);
+    let mut ini = crate::sim::arena_fixture::clear_ground_ini(base);
     ini.merge(&IniFile::from_str(extra));
     let mut rules = if let Some(art) = art {
         RuleSet::from_ini_with_fixed_art_for_test(&ini, art).unwrap()
@@ -83,6 +83,7 @@ fn fixture_with_art(extra: &str, art: Option<&IniFile>) -> (Simulation, RuleSet)
         test_terrain_cell(x, y)
     }));
     sim.playfield_bounds = Some(test_playfield_bounds());
+    crate::sim::arena_fixture::supply_native_map(&mut sim);
     sim.spawn_object_at_height("GAPILE", "Americans", 10, 10, 0, 0, &rules)
         .unwrap();
     (sim, rules)
@@ -93,7 +94,9 @@ fn launch_command(sim: &mut Simulation, rules: &RuleSet, name: &str, rx: u16, ry
     let sw_type_id = sim.interner.intern(name);
     // Charged on a running timer: ClickFire refuses a stopped one.
     let mut instance = SuperWeaponInstance::new(sw_type_id, owner, 0);
-    instance.activate(1, sim.session.binary_frame);
+    instance.is_active = true;
+    instance.charge_start_tick = (sim.session.binary_frame) as i32;
+    instance.charge_duration = 1;
     instance.is_ready = true;
     sim.super_weapons
         .entry(owner)
@@ -138,7 +141,16 @@ fn held_infantry_survives_launch(name: &str) {
         .entity_id
         .unwrap();
     let twin = sim
-        .construct_object_limbo_at_height("E1", "Americans", 0, 0, 0, 0, &rules)
+        .construct_object_limbo_at_height(
+            "E1",
+            "Americans",
+            0,
+            0,
+            0,
+            0,
+            &rules,
+            crate::sim::world::FrameEffects::default(),
+        )
         .unwrap();
     // Supplied unmarked Cell0,0 pose, independent of the fresh constructor.
     ground_pose::put_location(
@@ -158,7 +170,7 @@ fn held_infantry_survives_launch(name: &str) {
             .get(marked)
             .unwrap()
             .lifecycle
-            .cell_marked
+            .cell_marked()
     );
     assert!(
         sim.substrate
@@ -197,9 +209,11 @@ fn held_infantry_survives_launch(name: &str) {
             100,
             "{name} must use marked cell membership: {id}"
         );
-        assert!(!object.dying);
+        assert!(!object.death.is_dying());
         assert!(
-            object.lifecycle.in_limbo() && !object.lifecycle.cell_marked && !object.in_logic_vector
+            object.lifecycle.in_limbo()
+                && !object.lifecycle.cell_marked()
+                && !object.in_logic_vector.is_member()
         );
     }
     assert!(
@@ -254,7 +268,7 @@ fn animated_mutation_victim_retires(explosion: bool) {
     let object = sim.substrate.entities.get(victim).unwrap();
     assert_eq!(object.infantry_sprite_pose(), Some((-1, 0)));
     assert!(object.animation.is_none(), "Doing owns the Infantry pose");
-    assert!(object.lifecycle.cell_marked && object.in_logic_vector);
+    assert!(object.lifecycle.cell_marked() && object.in_logic_vector.is_member());
     launch_command(&mut sim, &rules, "GM", 5, 5);
     // InfDeath 9's admitted arm UnInits the victim inside its receiver
     // (`0x005185F1`); no death sequence keeps a corpse.
@@ -301,8 +315,8 @@ fn infantry_terminal_effect_only_cleanup_follows_recursive_deaths() {
     assert_eq!(uninit_order, [child, parent]);
     for id in [parent, child] {
         let entity = sim.substrate.entities.get(id).unwrap();
-        assert!(entity.lifecycle.in_limbo() && !entity.in_logic_vector);
-        assert!(entity.infantry_terminal.is_none());
+        assert!(entity.lifecycle.in_limbo() && !entity.in_logic_vector.is_member());
+        assert!(entity.death.infantry_terminal().is_none());
     }
     sim.advance_tick(&[], Some(&rules), None, None, 100);
     assert!(!sim.substrate.entities.contains(parent));
@@ -349,10 +363,10 @@ fn infantry_terminal_same_frame_firer_death_keeps_electric_consequences() {
             5,
             crate::util::lepton::CELL_CENTER_LEPTON,
             crate::util::lepton::CELL_CENTER_LEPTON,
-            target_position.rx,
-            target_position.ry,
-            target_position.sub_x,
-            target_position.sub_y,
+            target_position.rx(),
+            target_position.ry(),
+            target_position.sub_x(),
+            target_position.sub_y(),
         ) >> 8) as u8;
         let tesla = sim
             .spawn_object_at_height("TESLA", "Russians", 6, 5, tesla_facing, 0, &rules)
@@ -441,7 +455,7 @@ fn infantry_terminal_receiver_sequences_finish_through_production_frames() {
             .unwrap();
         launch_command(&mut sim, &rules, "IC", 5, 5);
         let object = sim.substrate.entities.get(victim).unwrap();
-        assert!(object.dying && object.infantry_terminal.is_some());
+        assert!(object.death.is_dying() && object.death.infantry_terminal().is_some());
         assert_eq!(object.infantry_sprite_pose(), Some((doing, 0)));
         assert_eq!(object.native_stage().rate(), 1);
         assert_eq!(object.native_stage().timer().start_frame(), 0);
@@ -456,7 +470,7 @@ fn infantry_terminal_receiver_sequences_finish_through_production_frames() {
             if frame < 3 {
                 let object = sim.substrate.entities.get(victim).unwrap();
                 assert_eq!(object.infantry_sprite_pose(), Some((doing, frame)));
-                assert!(object.lifecycle.cell_marked && object.in_logic_vector);
+                assert!(object.lifecycle.cell_marked() && object.in_logic_vector.is_member());
             }
         }
         assert!(!sim.substrate.occupancy.contains_entity(5, 5, victim));
@@ -488,7 +502,11 @@ fn infantry_terminal_zero_count_death_request_retains_the_previous_action() {
     // longer invents immediate retirement for a refused class action.
     assert_eq!(object.infantry_sprite_pose(), Some((0, before.value())));
     assert_eq!(*object.native_stage(), before);
-    assert!(object.dying && object.lifecycle.cell_marked && object.in_logic_vector);
+    assert!(
+        object.death.is_dying()
+            && object.lifecycle.cell_marked()
+            && object.in_logic_vector.is_member()
+    );
 }
 
 #[test]
@@ -557,7 +575,16 @@ fn genetic_converter_command_uses_selected_bridge_membership() {
     let mut deck = Vec::new();
     for _ in 0..2 {
         let id = sim
-            .construct_object_limbo_at_height("E1", "Americans", 5, 5, 0, 4, &rules)
+            .construct_object_limbo_at_height(
+                "E1",
+                "Americans",
+                5,
+                5,
+                0,
+                4,
+                &rules,
+                crate::sim::world::FrameEffects::default(),
+            )
             .unwrap();
         {
             let actor = sim.substrate.entities.get_mut(id).unwrap();
@@ -569,8 +596,8 @@ fn genetic_converter_command_uses_selected_bridge_membership() {
                     z: 416,
                 },
             );
-            actor.position.z = 4;
-            actor.on_bridge = true;
+            actor.position.set_z(4);
+            actor.set_on_bridge(true);
         }
         assert!(matches!(
             sim.reveal(id),
@@ -611,10 +638,28 @@ fn iron_curtain_command_forces_authored_strength_and_attributes_retained_deaths(
         .spawn_object_at_height("MTNK", "Americans", 5, 5, 0, 0, &rules)
         .unwrap();
     let over_strength = sim
-        .construct_object_limbo_at_height("E1", "Soviet", 5, 5, 0, 0, &rules)
+        .construct_object_limbo_at_height(
+            "E1",
+            "Soviet",
+            5,
+            5,
+            0,
+            0,
+            &rules,
+            crate::sim::world::FrameEffects::default(),
+        )
         .unwrap();
     let wounded = sim
-        .construct_object_limbo_at_height("E1", "Soviet", 5, 5, 0, 0, &rules)
+        .construct_object_limbo_at_height(
+            "E1",
+            "Soviet",
+            5,
+            5,
+            0,
+            0,
+            &rules,
+            crate::sim::world::FrameEffects::default(),
+        )
         .unwrap();
     // Supplied already-present mixed membership isolates the IC damage
     // receiver. Ordinary Infantry Unlimbo refuses a tank's raw vehicle bit;
@@ -657,9 +702,11 @@ fn iron_curtain_command_forces_authored_strength_and_attributes_retained_deaths(
         0,
         "forced C4 bypasses prior invulnerability"
     );
-    assert!(dead.dying && dead.lifecycle.cell_marked && dead.in_logic_vector);
+    assert!(
+        dead.death.is_dying() && dead.lifecycle.cell_marked() && dead.in_logic_vector.is_member()
+    );
     assert_eq!(dead.infantry_sprite_pose(), Some((12, 0)));
-    assert_eq!(dead.killed_by, Some(owner));
+    assert_eq!(dead.kill_record.killer(), Some(owner));
     // The ordinary sequence still owns the object; the existing shared UnInit
     // terminal owns score publication. Verify the attributed receipt survives it.
     sim.uninit_with_rules(wounded, &rules);
@@ -695,7 +742,16 @@ fn iron_curtain_command_selects_deck_members_and_overlapping_foundation() {
         cell.bridge_deck_level = 4;
     }
     let deck = sim
-        .construct_object_limbo_at_height("MTNK", "Americans", 5, 5, 0, 4, &rules)
+        .construct_object_limbo_at_height(
+            "MTNK",
+            "Americans",
+            5,
+            5,
+            0,
+            4,
+            &rules,
+            crate::sim::world::FrameEffects::default(),
+        )
         .unwrap();
     {
         let actor = sim.substrate.entities.get_mut(deck).unwrap();
@@ -707,8 +763,8 @@ fn iron_curtain_command_selects_deck_members_and_overlapping_foundation() {
                 z: 416,
             },
         );
-        actor.position.z = 4;
-        actor.on_bridge = true;
+        actor.position.set_z(4);
+        actor.set_on_bridge(true);
     }
     sim.reveal(deck);
     let big = sim
@@ -718,7 +774,16 @@ fn iron_curtain_command_selects_deck_members_and_overlapping_foundation() {
         .spawn_object_at_height("MTNK", "Americans", 7, 7, 0, 0, &rules)
         .unwrap();
     let twin = sim
-        .construct_object_limbo_at_height("MTNK", "Americans", 4, 4, 0, 0, &rules)
+        .construct_object_limbo_at_height(
+            "MTNK",
+            "Americans",
+            4,
+            4,
+            0,
+            0,
+            &rules,
+            crate::sim::world::FrameEffects::default(),
+        )
         .unwrap();
     ground_pose::put_location(
         &mut sim.substrate.entities.get_mut(twin).unwrap().position,
@@ -737,7 +802,7 @@ fn iron_curtain_command_selects_deck_members_and_overlapping_foundation() {
             .any(|member| member.entity_id == deck)
     );
     assert!(sim.substrate.occupancy.contains_entity(4, 4, big));
-    assert_eq!(sim.substrate.entities.get(big).unwrap().position.rx, 2);
+    assert_eq!(sim.substrate.entities.get(big).unwrap().position.rx(), 2);
     launch_command(&mut sim, &rules, "IC", 5, 5);
     for id in [deck, big] {
         assert!(
@@ -840,7 +905,7 @@ fn command_uses_packed_aliases_and_stamps_missing_cells(name: &str, object_type:
         launch_command(&mut sim, &rules, name, 5, 5);
         let object = sim.substrate.entities.get(victim).unwrap();
         assert_eq!(object.health.current(), original_hp);
-        assert!(!object.dying && object.invulnerability.is_none());
+        assert!(!object.death.is_dying() && object.invulnerability.is_none());
         assert_eq!(
             sim.effective_shared_cell_dummy().snapshot().coord,
             if mapless { (6, 6) } else { (5, 5) },
@@ -897,7 +962,16 @@ fn iron_curtain_command_observes_native_deck_order_after_nested_bridge_drop_in()
     sim.bridge_state = Some(state);
     // Older deck recipient is visited only after the newer Infantry's callback.
     let tank = sim
-        .construct_object_limbo_at_height("MTNK", "Americans", 5, 5, 0, 7, &rules)
+        .construct_object_limbo_at_height(
+            "MTNK",
+            "Americans",
+            5,
+            5,
+            0,
+            7,
+            &rules,
+            crate::sim::world::FrameEffects::default(),
+        )
         .unwrap();
     {
         let actor = sim.substrate.entities.get_mut(tank).unwrap();
@@ -909,8 +983,8 @@ fn iron_curtain_command_observes_native_deck_order_after_nested_bridge_drop_in()
                 z: 728,
             },
         );
-        actor.position.z = 7;
-        actor.on_bridge = true;
+        actor.position.set_z(7);
+        actor.set_on_bridge(true);
     }
     sim.reveal(tank);
     // Keep it alive through the nested DeathWeapon without setting IC first.
@@ -921,7 +995,16 @@ fn iron_curtain_command_observes_native_deck_order_after_nested_bridge_drop_in()
         .health
         .set_for_test(10_000);
     let boomer = sim
-        .construct_object_limbo_at_height("BOOM", "Americans", 5, 5, 0, 7, &rules)
+        .construct_object_limbo_at_height(
+            "BOOM",
+            "Americans",
+            5,
+            5,
+            0,
+            7,
+            &rules,
+            crate::sim::world::FrameEffects::default(),
+        )
         .unwrap();
     {
         let actor = sim.substrate.entities.get_mut(boomer).unwrap();
@@ -933,8 +1016,8 @@ fn iron_curtain_command_observes_native_deck_order_after_nested_bridge_drop_in()
                 z: 728,
             },
         );
-        actor.position.z = 7;
-        actor.on_bridge = true;
+        actor.position.set_z(7);
+        actor.set_on_bridge(true);
     }
     sim.reveal(boomer);
     assert_eq!(
@@ -946,7 +1029,16 @@ fn iron_curtain_command_observes_native_deck_order_after_nested_bridge_drop_in()
         vec![boomer, tank]
     );
     let unmarked = sim
-        .construct_object_limbo_at_height("MTNK", "Americans", 5, 5, 0, 7, &rules)
+        .construct_object_limbo_at_height(
+            "MTNK",
+            "Americans",
+            5,
+            5,
+            0,
+            7,
+            &rules,
+            crate::sim::world::FrameEffects::default(),
+        )
         .unwrap();
     {
         let actor = sim.substrate.entities.get_mut(unmarked).unwrap();
@@ -958,17 +1050,17 @@ fn iron_curtain_command_observes_native_deck_order_after_nested_bridge_drop_in()
                 z: 728,
             },
         );
-        actor.position.z = 7;
-        actor.on_bridge = true;
+        actor.position.set_z(7);
+        actor.set_on_bridge(true);
     }
     launch_command(&mut sim, &rules, "IC", 5, 5);
     let current = sim.substrate.entities.get(boomer).unwrap();
     assert!(
-        current.dying && !current.on_bridge,
+        current.death.is_dying() && !current.on_bridge(),
         "nested fallout relayers the retained current receiver"
     );
     let recipient = sim.substrate.entities.get(tank).unwrap();
-    assert!(!recipient.on_bridge && recipient.health.current() > 0);
+    assert!(!recipient.on_bridge() && recipient.health.current() > 0);
     assert!(
         recipient.invulnerability.is_none(),
         "native deck traversal prepends tank after boomer; current boomer then has no successor"
@@ -981,9 +1073,10 @@ fn iron_curtain_command_observes_native_deck_order_after_nested_bridge_drop_in()
         .snapshot_layer(MovementLayer::Ground);
     assert_eq!(ground, vec![tank, boomer]);
     let twin = sim.substrate.entities.get(unmarked).unwrap();
-    assert!(twin.on_bridge && twin.lifecycle.in_limbo() && !twin.lifecycle.cell_marked);
+    assert!(twin.on_bridge() && twin.lifecycle.in_limbo() && !twin.lifecycle.cell_marked());
     assert_eq!(
-        twin.position.z, 7,
+        twin.position.z(),
+        7,
         "unmarked deck coordinate is not a DropIn recipient"
     );
     assert_eq!(

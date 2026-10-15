@@ -33,7 +33,7 @@ impl Simulation {
         let Some(loco) = actor
             .locomotor
             .as_ref()
-            .filter(|l| l.kind == crate::rules::locomotor_type::LocomotorKind::Walk)
+            .filter(|l| l.active_kind() == crate::rules::locomotor_type::LocomotorKind::Walk)
         else {
             return Ok(());
         };
@@ -79,7 +79,7 @@ impl Simulation {
             .substrate
             .entities
             .get(id)
-            .map(|e| (e.position.rx, e.position.ry))
+            .map(|e| (e.position.rx(), e.position.ry()))
         else {
             return;
         };
@@ -95,37 +95,35 @@ impl Simulation {
         let Some(e) = self.substrate.entities.get_mut(id) else {
             return;
         };
-        let cell = (e.position.rx, e.position.ry);
+        let cell = (e.position.rx(), e.position.ry());
         // Recalc may replace the canonical PathGrid. Read its current cell
         // flags after REMOVE, then SetHeight samples current resolved terrain.
+        let mut on_bridge = e.on_bridge();
         let update = super::movement_bridge::resolve_cell_transition_bridge_state(
             &mut e.position,
             self.path_grid.as_deref(),
             old_cell,
             cell,
-            e.on_bridge,
+            on_bridge,
         );
-        super::movement_bridge::apply_bridge_layer_state(
-            &mut e.locomotor,
-            &mut e.on_bridge,
-            update,
-        );
+        super::movement_bridge::apply_bridge_layer_state(&mut e.locomotor, &mut on_bridge, update);
+        e.set_on_bridge(on_bridge);
         ground_pose::set_height(
             &mut e.position,
-            e.on_bridge,
+            on_bridge,
             0,
             self.resolved_terrain.as_ref(),
             self.path_grid.as_deref(),
         );
         // OccupancyGrid is a list projection, not an independent subcell
         // reservation chooser. The current coordinate supplies its slot.
-        e.sub_cell = Some(crate::sim::cell_kernel::infantry_preferred_spot(
+        e.set_sub_cell(Some(crate::sim::cell_kernel::infantry_preferred_spot(
             crate::sim::cell_kernel::CellQueryPoint {
                 x: coord.x,
                 y: coord.y,
             },
-        ));
-        e.navigation.path_runtime.path_blocked = false;
+        )));
+        e.navigation.path_runtime.set_path_blocked(false);
         self.foot_mark_put(id, rules, registry, effects);
         //75C1EA: the boundary placement tail clears +68A after Mark(PUT).
         //This is not the post-PerCell dead/limbo/falling exit at75C1F1.
@@ -163,23 +161,25 @@ impl Simulation {
         let Some(e) = self.substrate.entities.get_mut(id) else {
             return Ok(false);
         };
-        e.navigation.path_replay.reference_cell =
-            Some((e.position.rx as i16, e.position.ry as i16));
+        e.navigation
+            .path_replay
+            .set_reference_cell(Some((e.position.rx() as i16, e.position.ry() as i16)));
         //Infantry+1CC=5F5FA0; marked is already false, so the SetHeight0
         //receiver samples current ground+OnBridge without nested Mark calls.
+        let on_bridge = e.on_bridge();
         ground_pose::set_height(
             &mut e.position,
-            e.on_bridge,
+            on_bridge,
             0,
             self.resolved_terrain.as_ref(),
             self.path_grid.as_deref(),
         );
         //75BE11 clears only the paid-step latch before head retirement/PerCell.
-        e.navigation.path_runtime.path_blocked = false;
-        e.sub_cell = Some(super::bump_crush::priority_sub_cell(
-            e.position.sub_x,
-            e.position.sub_y,
-        ));
+        e.navigation.path_runtime.set_path_blocked(false);
+        e.set_sub_cell(Some(super::bump_crush::priority_sub_cell(
+            e.position.sub_x(),
+            e.position.sub_y(),
+        )));
         //75BE18: FindSubCellDest(null) retires the head, clearing its raw
         //bits and marking the Foot's own.
         self.walk_find_sub_cell_dest(id, None, rules, registry, effects)

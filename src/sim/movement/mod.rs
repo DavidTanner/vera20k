@@ -33,9 +33,6 @@
 //! - Part of sim/ — depends on sim/entity_store, sim/game_entity, sim/pathfinding.
 //! - sim/ NEVER depends on render/, ui/, audio/, net/.
 
-#[cfg(test)]
-use std::collections::BTreeMap;
-
 use crate::map::entities::EntityCategory;
 #[cfg(test)]
 use crate::map::houses::HouseAllianceMap;
@@ -47,8 +44,6 @@ use crate::sim::entity_store::EntityStore;
 #[cfg(test)]
 use crate::sim::lifecycle_request::LifecycleRequest;
 use crate::sim::pathfinding::PathGrid;
-#[cfg(test)]
-use crate::sim::pathfinding::terrain_cost::TerrainCostGrid;
 #[cfg(test)]
 use crate::sim::pathfinding::terrain_speed::TerrainSpeedConfig;
 use crate::sim::pathfinding::zone_map::ZoneGrid;
@@ -67,9 +62,11 @@ mod foot_approach;
 mod foot_coordinate;
 mod foot_mark;
 mod foot_path;
+pub(crate) use drive_locomotion::drive_do_turn;
 #[cfg(test)]
 pub(crate) use foot_path::FindPathResult;
 pub(crate) use foot_path::FootPathOutcome;
+pub(crate) use foot_path::coord_cell;
 pub(crate) use track_fresh::{BlockingObject, ProcessMovementArgs};
 mod foot_range_stop;
 mod foot_speed;
@@ -79,6 +76,8 @@ pub(crate) mod infantry_entry;
 mod infantry_scatter;
 pub(crate) mod locomotor_owner;
 pub(crate) mod locomotor_ready;
+mod locomotor_turn;
+pub(crate) use locomotor_turn::locomotor_do_turn;
 pub(crate) mod motion_query;
 pub(crate) mod movement_bridge;
 mod movement_commands;
@@ -110,6 +109,7 @@ mod track_fresh_dispatch;
 pub(crate) mod track_head;
 mod track_host;
 mod track_path;
+pub(crate) use track_path::SetterForceReassign;
 pub(crate) mod track_process;
 mod track_speed;
 pub(crate) mod track_turn;
@@ -139,7 +139,6 @@ pub mod turret;
 
 pub use facing_class::FacingClass;
 
-pub(crate) use drive_locomotion::drive_do_turn;
 #[cfg(test)]
 pub(crate) use drive_locomotion::{DriveLocomotionRuntime, ShipLocomotionRuntime};
 #[cfg(test)]
@@ -204,54 +203,6 @@ pub(super) struct PathfindingContext<'a> {
     pub blocker_neighbor_counts: Option<&'a crate::sim::pathfinding::BlockerNeighborCounts>,
 }
 
-/// The mover's own facts a path search needs, carried as one value.
-///
-/// They used to travel as loose positional arguments through the search
-/// entries. Ledger row I9c records what that shape cost: a mover fact derived
-/// independently per call site, where the callers without context quietly
-/// passed `false` and crushers detoured around sandbags they would have driven
-/// through.
-///
-/// So they travel together and are derived from the mover itself
-/// (`from_snapshot`). No caller supplies a fact.
-///
-/// `mover_is_crusher` (`Crusher=` or `OmniCrusher=`) reaches only searches
-/// without a Foot receiver, whose reduced terrain entry uses it for the
-/// crushable-wall admission; the live Foot search answers walls through its
-/// receiver. The runtime crossing keys the wall admission on `Crusher=` alone
-/// (`CrushCapability::wall_arm_crusher`, native `0x0073F438`).
-#[derive(Clone, Copy)]
-pub(super) struct MoverPathFacts {
-    pub urgency: u8,
-    pub mover_is_crusher: bool,
-    pub is_infantry: bool,
-    pub speed_type: Option<SpeedType>,
-}
-
-impl MoverPathFacts {
-    /// Derive every fact from the mover. `urgency` is the request's, not the
-    /// mover's — it is the code-2 escalation level of this particular search.
-    pub fn from_snapshot(snap: &MoverSnapshot, urgency: u8) -> Self {
-        Self {
-            urgency,
-            mover_is_crusher: snap.crush_capability().can_crush_units(),
-            is_infantry: snap.category == EntityCategory::Infantry,
-            speed_type: snap.speed_type,
-        }
-    }
-
-    /// Hand-built facts for a search fixture with no entity behind it.
-    #[cfg(test)]
-    pub fn fixture(urgency: u8, mover_is_crusher: bool, is_infantry: bool) -> Self {
-        Self {
-            urgency,
-            mover_is_crusher,
-            is_infantry,
-            speed_type: None,
-        }
-    }
-}
-
 /// Snapshot of mover properties taken before the inner movement loop.
 /// Avoids repeated `entities.get()` calls and survives across the mutable/immutable
 /// borrow boundary (lines ~211–920 hold `&mut GameEntity`, lines ~920–1230 release
@@ -268,14 +219,6 @@ pub(super) struct MoverSnapshot {
     /// byte. False under live MapClass authority bypasses hierarchy and uses
     /// flat A*; headless fixtures without authority retain hierarchy.
     pub allow_zone_hierarchy: bool,
-}
-
-impl MoverSnapshot {
-    /// The mover's crush authority, as [`bump_crush::CrushCapability::of`]
-    /// reads it from the live object.
-    pub(super) const fn crush_capability(&self) -> bump_crush::CrushCapability {
-        bump_crush::CrushCapability::new(self.regular_crusher, self.omni_crusher)
-    }
 }
 
 /// Per-tick movement diagnostics — returned by `tick_movement_with_grids`.
@@ -315,14 +258,12 @@ pub(crate) fn tick_movement(
     interner: &mut crate::sim::intern::StringInterner,
     lifecycle_requests: &mut Vec<LifecycleRequest>,
 ) {
-    let empty_costs: BTreeMap<SpeedType, TerrainCostGrid> = BTreeMap::new();
     let empty_alliances: HouseAllianceMap = HouseAllianceMap::new();
     let mut rng: SimRng = SimRng::new(0);
     let mut empty_occupancy = crate::sim::occupancy::OccupancyGrid::new();
     let _ = tick_movement_with_grid(
         entities,
         None,
-        &empty_costs,
         &empty_alliances,
         &mut empty_occupancy,
         &mut rng,
@@ -333,15 +274,10 @@ pub(crate) fn tick_movement(
 }
 
 /// Advance movement and perform deterministic blocked-cell recovery.
-///
-/// `terrain_costs` is the per-SpeedType land-row map. When provided, path
-/// searches read it as a passability predicate — retail's search does not
-/// prefer roads or avoid rough terrain.
 #[cfg(test)]
 pub(crate) fn tick_movement_with_grid(
     entities: &mut EntityStore,
     path_grid: Option<&PathGrid>,
-    terrain_costs: &BTreeMap<SpeedType, TerrainCostGrid>,
     alliances: &HouseAllianceMap,
     occupancy: &mut crate::sim::occupancy::OccupancyGrid,
     rng: &mut SimRng,
@@ -357,7 +293,6 @@ pub(crate) fn tick_movement_with_grid(
         entities,
         None,
         path_grid,
-        terrain_costs,
         alliances,
         occupancy,
         &mut cell_occupation,

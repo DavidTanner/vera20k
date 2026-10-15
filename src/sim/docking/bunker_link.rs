@@ -1,22 +1,97 @@
 //! Tank-bunker reciprocal link helpers (install / break / release trio).
 //!
-//! Owns the writes to both sides of the bunker link (`GameEntity.bunker_link` on
-//! the unit, `GameEntity.bunker_occupant` on the building) plus the three distinct
-//! teardown helpers, the admission predicate and the entry adapter
-//! ([`begin_entry`]).
+//! Owns both sides of the bunker link ([`BunkerLinks`]: the unit's link and the
+//! building's occupant) plus the three distinct teardown helpers, the admission
+//! predicate and the entry adapter ([`begin_entry`]).
 //!
 //! sim/ only — never render/ui/audio/net.
 use crate::map::entities::EntityCategory;
 use crate::rules::overlay_types::OverlayTypeRegistry;
 use crate::rules::ruleset::RuleSet;
-use crate::sim::docking::bunker_install::{BunkerRuntime, BunkerState};
-use crate::sim::game_entity::BunkerLink;
+use crate::sim::docking::bunker_install::BunkerRuntime;
 use crate::sim::mission::authority::{EntityReadyInputProvider, LiveReadyInputProvider};
 use crate::sim::mission::{MissionId, MissionType};
 use crate::sim::movement::ground_pose::object_get_coords;
 use crate::sim::radio::{RadioMessage, RadioPayload, RadioResponse, transmit};
 use crate::sim::world::{FrameEffects, SimSoundEvent, Simulation};
 use crate::util::fixed_math::SIM_ONE;
+
+/// The unit side of the tank-bunker reciprocal link (the pre-install approach
+/// state plus the installed link, folded into one hashed field). Distinct from
+/// `PassengerRole` cargo: a bunker is a single reciprocal link, never cargo.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize,
+)]
+pub enum BunkerLink {
+    /// Not heading to or inside any bunker.
+    #[default]
+    None,
+    /// Ordered into bunker `id`, still approaching (pre-install); the install
+    /// machine resets once this marker no longer names its bunker. Cleared by
+    /// the install and by either side's despawn
+    /// (`bunker_link::break_links_on_despawn`); a retask leaves it
+    /// (`sim::building_entry` residual).
+    Approaching(u64),
+    /// Installed inside bunker `id` (reciprocal of the building's occupant).
+    Installed(u64),
+}
+
+impl BunkerLink {
+    /// The bunker this unit is installed in, if any.
+    pub fn installed_in(self) -> Option<u64> {
+        match self {
+            BunkerLink::Installed(id) => Some(id),
+            _ => None,
+        }
+    }
+    /// The bunker this unit is approaching, if any.
+    pub fn approaching(self) -> Option<u64> {
+        match self {
+            BunkerLink::Approaching(id) => Some(id),
+            _ => None,
+        }
+    }
+}
+
+/// Both ends of the tank-bunker reciprocal link:
+/// - `occupant`: the unit installed in a `Bunker=yes` building. It mirrors
+///   the live `BuildingClass+0x2E4` role for tank bunkers: an empty bunker
+///   can be skipped by the NumberImpassableRows helper, while an occupied
+///   bunker remains a normal building blocker.
+/// - `link`: the unit side, approaching or installed ([`BunkerLink`]).
+///
+/// This module's install, break and release helpers write both.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub(crate) struct BunkerLinks {
+    #[serde(default)]
+    occupant: Option<u64>,
+    #[serde(default)]
+    link: BunkerLink,
+}
+
+impl BunkerLinks {
+    /// The unit installed in this bunker.
+    pub(crate) const fn occupant(self) -> Option<u64> {
+        self.occupant
+    }
+
+    /// This unit's link to a bunker.
+    pub(crate) const fn link(self) -> BunkerLink {
+        self.link
+    }
+
+    /// Install a fixture's occupant.
+    #[cfg(test)]
+    pub(crate) fn set_bunker_occupant_for_test(&mut self, occupant: Option<u64>) {
+        self.occupant = occupant;
+    }
+
+    /// Install a fixture's link.
+    #[cfg(test)]
+    pub(crate) fn set_bunker_link_for_test(&mut self, link: BunkerLink) {
+        self.link = link;
+    }
+}
 
 /// Exit-search ring limit for the normal release (mirrors the refinery exit).
 const BUNKER_EXIT_SEARCH_MAX_RADIUS: i32 = 16;
@@ -88,14 +163,14 @@ pub(crate) fn begin_entry(
     );
     retask(sim);
     if let Some(unit) = sim.substrate.entities.get_mut(unit_id) {
-        unit.bunker_link = BunkerLink::Approaching(bunker_id);
+        unit.bunker.link = BunkerLink::Approaching(bunker_id);
     }
     // The approach to the bunker's cell, through the Unit's class setter.
     let bunker_cell = sim
         .substrate
         .entities
         .get(bunker_id)
-        .map(|bunker| (bunker.position.rx, bunker.position.ry));
+        .map(|bunker| (bunker.position.rx(), bunker.position.ry()));
     if let Some((brx, bry)) = bunker_cell
         && let Err(cause) = sim.assign_destination_represented(
             unit_id,
@@ -126,11 +201,11 @@ pub fn install_bunker_link(sim: &mut Simulation, building_id: u64, unit_id: u64,
         return;
     }
     if let Some(b) = sim.substrate.entities.get_mut(building_id) {
-        b.bunker_occupant = Some(unit_id);
+        b.bunker.occupant = Some(unit_id);
     }
     if let Some(u) = sim.substrate.entities.get_mut(unit_id) {
-        u.bunker_link = BunkerLink::Installed(building_id);
-        u.selected = false;
+        u.bunker.link = BunkerLink::Installed(building_id);
+        u.selection.deselect();
     }
     if let Some(rt) = sim
         .substrate
@@ -138,8 +213,7 @@ pub fn install_bunker_link(sim: &mut Simulation, building_id: u64, unit_id: u64,
         .get_mut(building_id)
         .and_then(|b| b.bunker_runtime.as_mut())
     {
-        rt.state = BunkerState::Occupied;
-        rt.installing_unit = None;
+        rt.occupy();
     }
     let now = sim.session.binary_frame;
     let _ = sim.mission_queue_exact(
@@ -160,7 +234,7 @@ pub(crate) fn break_bunker_link(
     building_id: u64,
     effects: FrameEffects<'_>,
 ) -> Option<u64> {
-    let unit_id = sim.substrate.entities.get(building_id)?.bunker_occupant?;
+    let unit_id = sim.substrate.entities.get(building_id)?.bunker.occupant()?;
     // BREAK over the bus (clears any bus-level radio contact both ways).
     transmit(
         sim,
@@ -172,10 +246,10 @@ pub(crate) fn break_bunker_link(
         effects,
     );
     if let Some(u) = sim.substrate.entities.get_mut(unit_id) {
-        u.bunker_link = BunkerLink::None;
+        u.bunker.link = BunkerLink::None;
     }
     if let Some(b) = sim.substrate.entities.get_mut(building_id) {
-        b.bunker_occupant = None;
+        b.bunker.occupant = None;
     }
     Some(unit_id)
 }
@@ -187,7 +261,7 @@ pub(crate) fn emit_bunker_wall_sound(sim: &mut Simulation, building_id: u64, up:
     let Some(b) = sim.substrate.entities.get(building_id) else {
         return;
     };
-    let (rx, ry) = (b.position.rx, b.position.ry);
+    let (rx, ry) = (b.position.rx(), b.position.ry());
     sim.sound_events.push(if up {
         SimSoundEvent::BunkerWallsUp { rx, ry }
     } else {
@@ -212,7 +286,7 @@ pub(crate) fn release_normal(
         .substrate
         .entities
         .get(building_id)
-        .and_then(|building| building.bunker_occupant)
+        .and_then(|building| building.bunker.occupant())
     else {
         reset_bunker_idle(sim, building_id);
         queue_guard(sim, building_id);
@@ -223,7 +297,7 @@ pub(crate) fn release_normal(
     }
     //4596E6 precedes Power_On; the building link survives until459814.
     if let Some(unit) = sim.substrate.entities.get_mut(unit_id) {
-        unit.bunker_link = BunkerLink::None;
+        unit.bunker.link = BunkerLink::None;
     }
     #[cfg(test)]
     release_tests::record(sim, building_id, unit_id, "unit-link");
@@ -249,7 +323,7 @@ pub(crate) fn release_normal(
     #[cfg(test)]
     release_tests::record(sim, building_id, unit_id, "move");
     if let Some(building) = sim.substrate.entities.get_mut(building_id) {
-        building.bunker_occupant = None;
+        building.bunker.occupant = None;
     }
     reset_bunker_idle(sim, building_id);
     queue_guard(sim, building_id);
@@ -274,7 +348,7 @@ pub(crate) fn release_sell_destroy(
         .substrate
         .entities
         .get(building_id)
-        .and_then(|building| building.bunker_occupant)
+        .and_then(|building| building.bunker.occupant())
     else {
         return;
     };
@@ -283,12 +357,12 @@ pub(crate) fn release_sell_destroy(
     }
     power_and_force_release(sim, building_id, unit_id, None, effects);
     if let Some(u) = sim.substrate.entities.get_mut(unit_id) {
-        u.bunker_link = BunkerLink::None;
+        u.bunker.link = BunkerLink::None;
     }
     #[cfg(test)]
     release_tests::record(sim, building_id, unit_id, "unit-link");
     if let Some(b) = sim.substrate.entities.get_mut(building_id) {
-        b.bunker_occupant = None;
+        b.bunker.occupant = None;
     }
     #[cfg(test)]
     release_tests::record(sim, building_id, unit_id, "building-link");
@@ -395,7 +469,7 @@ pub(crate) fn clear_bunker(
         .substrate
         .entities
         .get(building_id)
-        .and_then(|b| b.bunker_occupant);
+        .and_then(|b| b.bunker.occupant());
     let Some(unit_id) = occupant else {
         sim.clear_building_anim_slot(building_id, 10);
         sim.clear_building_anim_slot(building_id, 11);
@@ -405,10 +479,10 @@ pub(crate) fn clear_bunker(
     emit_bunker_wall_sound(sim, building_id, false);
     break_first_contact(sim, building_id, effects);
     if let Some(u) = sim.substrate.entities.get_mut(unit_id) {
-        u.bunker_link = BunkerLink::None;
+        u.bunker.link = BunkerLink::None;
     }
     if let Some(b) = sim.substrate.entities.get_mut(building_id) {
-        b.bunker_occupant = None;
+        b.bunker.occupant = None;
     }
     reset_bunker_idle(sim, building_id);
     queue_guard(sim, building_id);
@@ -425,25 +499,27 @@ pub fn break_links_on_despawn(sim: &mut Simulation, id: u64) {
     let Some(e) = sim.substrate.entities.get(id) else {
         return;
     };
-    let occupant = e.bunker_occupant;
-    let host = e.bunker_link.installed_in();
-    let approaching = e.bunker_runtime.and_then(|runtime| runtime.installing_unit);
-    let approached = e.bunker_link.approaching();
+    let occupant = e.bunker.occupant();
+    let host = e.bunker.link().installed_in();
+    let approaching = e
+        .bunker_runtime
+        .and_then(|runtime| runtime.installing_unit());
+    let approached = e.bunker.link().approaching();
     if let Some(unit_id) = occupant
         && let Some(u) = sim.substrate.entities.get_mut(unit_id)
     {
-        u.bunker_link = BunkerLink::None;
+        u.bunker.link = BunkerLink::None;
     }
     if let Some(unit_id) = approaching
         && let Some(u) = sim.substrate.entities.get_mut(unit_id)
-        && u.bunker_link == BunkerLink::Approaching(id)
+        && u.bunker.link() == BunkerLink::Approaching(id)
     {
-        u.bunker_link = BunkerLink::None;
+        u.bunker.link = BunkerLink::None;
     }
     if let Some(building_id) = host
         && let Some(b) = sim.substrate.entities.get_mut(building_id)
     {
-        b.bunker_occupant = None;
+        b.bunker.occupant = None;
         if let Some(rt) = b.bunker_runtime.as_mut() {
             *rt = BunkerRuntime::idle();
         }
@@ -454,7 +530,7 @@ pub fn break_links_on_despawn(sim: &mut Simulation, id: u64) {
             .entities
             .get_mut(building_id)
             .and_then(|b| b.bunker_runtime.as_mut())
-        && rt.installing_unit == Some(id)
+        && rt.installing_unit() == Some(id)
     {
         *rt = BunkerRuntime::idle();
     }
@@ -476,8 +552,8 @@ fn reset_bunker_idle(sim: &mut Simulation, building_id: u64) {
 /// the anchor cell when no path grid is available (headless tests).
 fn bunker_exit_cell(sim: &Simulation, building_id: u64) -> Option<(u16, u16)> {
     let b = sim.substrate.entities.get(building_id)?;
-    let ax = b.position.rx as i32 - 1;
-    let ay = b.position.ry as i32 + 1;
+    let ax = b.position.rx() as i32 - 1;
+    let ay = b.position.ry() as i32 + 1;
     match sim.path_grid() {
         Some(g) => crate::sim::miner::find_nearby_passable_cell_with_index(
             ax,
@@ -488,7 +564,7 @@ fn bunker_exit_cell(sim: &Simulation, building_id: u64) -> Option<(u16, u16)> {
             sim.session.binary_frame as u64,
         ),
         None if ax >= 0 && ay >= 0 => Some((ax as u16, ay as u16)),
-        None => Some((b.position.rx, b.position.ry)),
+        None => Some((b.position.rx(), b.position.ry())),
     }
 }
 
@@ -539,6 +615,7 @@ mod tests {
     use crate::rules::ini_parser::IniFile;
     use crate::sim::combat::Health;
     use crate::sim::docking::bunker_install::BunkerRuntime;
+    use crate::sim::docking::bunker_install::BunkerState;
     use crate::sim::game_entity::GameEntity;
     use crate::sim::mission::MissionId;
     use crate::sim::world::RevealOutcome;
@@ -699,20 +776,31 @@ mod tests {
         // Native deselection preserves this live membership.
         assert!(matches!(sim.reveal(1), RevealOutcome::Revealed { .. }));
 
-        sim.substrate.entities.get_mut(1).unwrap().selected = true;
+        sim.substrate
+            .entities
+            .get_mut(1)
+            .unwrap()
+            .selection
+            .set_selected_for_test(true);
         install_bunker_link(&mut sim, 2, 1, &rules);
 
         let bunker = sim.substrate.entities.get(2).unwrap();
-        assert_eq!(bunker.bunker_occupant, Some(1));
-        assert_eq!(bunker.bunker_runtime.unwrap().state, BunkerState::Occupied);
+        assert_eq!(bunker.bunker.occupant(), Some(1));
+        assert_eq!(
+            bunker.bunker_runtime.unwrap().state(),
+            BunkerState::Occupied
+        );
 
         let unit = sim.substrate.entities.get(1).unwrap();
-        assert_eq!(unit.bunker_link, BunkerLink::Installed(2));
-        assert!(unit.in_logic_vector, "install leaves the unit active");
+        assert_eq!(unit.bunker.link(), BunkerLink::Installed(2));
+        assert!(
+            unit.in_logic_vector.is_member(),
+            "install leaves the unit active"
+        );
         assert!(unit.lifecycle.object_alive());
         assert!(!unit.lifecycle.in_limbo());
-        assert!(unit.lifecycle.cell_marked);
-        assert!(!unit.selected);
+        assert!(unit.lifecycle.cell_marked());
+        assert!(!unit.selection.is_selected());
         assert_eq!(
             unit.mission.current(),
             MissionId::from_known(MissionType::Guard)
@@ -737,9 +825,12 @@ mod tests {
 
         let released = break_bunker_link(&mut sim, 2, crate::sim::world::FrameEffects::default());
         assert_eq!(released, Some(1));
-        assert_eq!(sim.substrate.entities.get(2).unwrap().bunker_occupant, None);
         assert_eq!(
-            sim.substrate.entities.get(1).unwrap().bunker_link,
+            sim.substrate.entities.get(2).unwrap().bunker.occupant(),
+            None
+        );
+        assert_eq!(
+            sim.substrate.entities.get(1).unwrap().bunker.link(),
             BunkerLink::None
         );
     }
@@ -772,15 +863,15 @@ mod tests {
             crate::sim::world::FrameEffects::default(),
         );
         let unit = sim.substrate.entities.get(1).unwrap();
-        assert_eq!(unit.bunker_link, BunkerLink::None);
-        assert!(unit.in_logic_vector, "unit revealed");
+        assert_eq!(unit.bunker.link(), BunkerLink::None);
+        assert!(unit.in_logic_vector.is_member(), "unit revealed");
         assert!(unit.lifecycle.object_alive());
         assert!(!unit.lifecycle.in_limbo());
-        assert!(unit.lifecycle.cell_marked);
-        assert_eq!((unit.position.rx, unit.position.ry), (12, 12));
+        assert!(unit.lifecycle.cell_marked());
+        assert_eq!((unit.position.rx(), unit.position.ry()), (12, 12));
         // The existing exit-search adapter supplies NavCom; Force moves later.
         assert_eq!(
-            unit.navigation.nav_com,
+            unit.navigation.nav_com(),
             Some(crate::sim::components::NavTargetRef::cell(9, 11))
         );
         assert_eq!(
@@ -790,7 +881,7 @@ mod tests {
                 .and_then(|runtime| runtime.retained())
                 .unwrap()
                 .track()
-                .turn_index,
+                .turn_index(),
             0x47
         );
         // Release queues Move (the host's Ready→Commence promotes it next pass).
@@ -798,7 +889,10 @@ mod tests {
             unit.mission.queued(),
             MissionId::from_known(MissionType::Move)
         );
-        assert_eq!(sim.substrate.entities.get(2).unwrap().bunker_occupant, None);
+        assert_eq!(
+            sim.substrate.entities.get(2).unwrap().bunker.occupant(),
+            None
+        );
         assert_eq!(down_sounds(&sim), 1, "one walls-down on normal eject");
     }
 
@@ -807,12 +901,12 @@ mod tests {
         let mut sim = installed_sim();
         release_sell_destroy(&mut sim, 2, crate::sim::world::FrameEffects::default());
         let unit = sim.substrate.entities.get(1).unwrap();
-        assert_eq!(unit.bunker_link, BunkerLink::None);
-        assert!(unit.in_logic_vector, "unit remains active");
+        assert_eq!(unit.bunker.link(), BunkerLink::None);
+        assert!(unit.in_logic_vector.is_member(), "unit remains active");
         assert!(unit.lifecycle.object_alive());
         assert!(!unit.lifecycle.in_limbo());
-        assert!(unit.lifecycle.cell_marked);
-        assert_eq!((unit.position.rx, unit.position.ry), (12, 12));
+        assert!(unit.lifecycle.cell_marked());
+        assert_eq!((unit.position.rx(), unit.position.ry()), (12, 12));
         assert_eq!(unit.body_facing.destination(), 0);
         assert_eq!(
             unit.locomotor
@@ -821,7 +915,7 @@ mod tests {
                 .and_then(|runtime| runtime.retained())
                 .unwrap()
                 .track()
-                .turn_index,
+                .turn_index(),
             0x47
         );
         assert_eq!(
@@ -842,18 +936,24 @@ mod tests {
             crate::sim::world::FrameEffects::default(),
         );
         let unit = sim.substrate.entities.get(1).unwrap();
-        assert_eq!(unit.bunker_link, BunkerLink::None);
-        assert!(unit.in_logic_vector, "clear preserves live membership");
+        assert_eq!(unit.bunker.link(), BunkerLink::None);
+        assert!(
+            unit.in_logic_vector.is_member(),
+            "clear preserves live membership"
+        );
         assert!(unit.lifecycle.object_alive());
         assert!(!unit.lifecycle.in_limbo());
-        assert!(unit.lifecycle.cell_marked);
+        assert!(unit.lifecycle.cell_marked());
         assert_eq!(
-            (unit.position.rx, unit.position.ry),
+            (unit.position.rx(), unit.position.ry()),
             (12, 12),
             "not repositioned"
         );
         assert_eq!(down_sounds(&sim), 1, "one walls-down on clear");
-        assert_eq!(sim.substrate.entities.get(2).unwrap().bunker_occupant, None);
+        assert_eq!(
+            sim.substrate.entities.get(2).unwrap().bunker.occupant(),
+            None
+        );
     }
 
     #[test]
@@ -862,14 +962,17 @@ mod tests {
         let mut sim = installed_sim();
         break_links_on_despawn(&mut sim, 2);
         assert_eq!(
-            sim.substrate.entities.get(1).unwrap().bunker_link,
+            sim.substrate.entities.get(1).unwrap().bunker.link(),
             BunkerLink::None
         );
 
         // Unit despawns → the surviving building's back-pointer is cleared.
         let mut sim = installed_sim();
         break_links_on_despawn(&mut sim, 1);
-        assert_eq!(sim.substrate.entities.get(2).unwrap().bunker_occupant, None);
+        assert_eq!(
+            sim.substrate.entities.get(2).unwrap().bunker.occupant(),
+            None
+        );
     }
 
     #[test]
@@ -878,7 +981,7 @@ mod tests {
         let mut sim = installed_sim();
         sim.uninit(2);
         assert_eq!(
-            sim.substrate.entities.get(1).unwrap().bunker_link,
+            sim.substrate.entities.get(1).unwrap().bunker.link(),
             BunkerLink::None
         );
     }
@@ -967,9 +1070,12 @@ mod tests {
             &mut sim, &rules, 2
         ));
         let unit = sim.substrate.entities.get(1).unwrap();
-        assert_eq!(unit.bunker_link, BunkerLink::None);
-        assert!(unit.in_logic_vector, "occupant remains active after sell");
-        assert_eq!((unit.position.rx, unit.position.ry), (12, 12));
+        assert_eq!(unit.bunker.link(), BunkerLink::None);
+        assert!(
+            unit.in_logic_vector.is_member(),
+            "occupant remains active after sell"
+        );
+        assert_eq!((unit.position.rx(), unit.position.ry()), (12, 12));
         assert_eq!(
             unit.locomotor
                 .as_ref()
@@ -977,7 +1083,7 @@ mod tests {
                 .and_then(|runtime| runtime.retained())
                 .unwrap()
                 .track()
-                .turn_index,
+                .turn_index(),
             0x47
         );
         assert_eq!(down_sounds(&sim), 0, "sell is silent (UndockUnit)");

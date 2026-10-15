@@ -22,6 +22,7 @@ mod production_placement;
 mod production_queue;
 mod production_refinery;
 mod production_repair;
+pub(crate) use production_repair::{AiSellRepair, RepairByte};
 mod production_sell;
 mod production_spawn;
 mod production_tech;
@@ -81,7 +82,9 @@ pub use self::production_types::*;
 pub(crate) use self::can_build::{
     CanBuild, can_build, find_factory, initialize_factory_primary, object_find_factory,
 };
-pub(crate) use self::factory_ai::{detach_all as detach_building_factory, factory_ai};
+pub(crate) use self::factory_ai::{
+    AiPlacementTimer, detach_all as detach_building_factory, factory_ai,
+};
 #[cfg(test)]
 pub(crate) use self::factory_lifecycle::complete_held_building_for_test;
 #[cfg(test)]

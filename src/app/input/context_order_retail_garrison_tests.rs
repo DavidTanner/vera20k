@@ -11,7 +11,6 @@ use crate::app::input::cursor::{
 };
 use crate::app::types::CursorFeedbackKind;
 use crate::map::entities::EntityCategory;
-use crate::sim::passenger::PassengerRole;
 use crate::sim::world::TickLane;
 use serde_json::Value;
 
@@ -39,7 +38,7 @@ fn retail_garrison_scene() -> Option<(crate::headless_scenario::HeadlessScenario
             e.category() == EntityCategory::Structure && sim.resolve(e.type_ref()) == "CASTL03"
         })
         .expect("XMP03T4 places one CASTL03");
-    assert_eq!((castle.position.rx, castle.position.ry), (82, 112));
+    assert_eq!((castle.position.rx(), castle.position.ry()), (82, 112));
     assert_eq!(sim.resolve(castle.owner()), "Neutral");
     let castle = castle.stable_id();
     Some((scene, castle))
@@ -82,7 +81,7 @@ fn retail_gi_group_boards_a_4x4_garrison_from_its_far_side() {
     let owner_name = runtime.simulation.resolve(owner).to_owned();
     let rules = &runtime.resources.rules;
     let position = &runtime.simulation.entities().get(castle).unwrap().position;
-    let (rx, ry) = (position.rx, position.ry);
+    let (rx, ry) = (position.rx(), position.ry());
 
     let mut gis = Vec::new();
     for (dx, dy) in [(6, 6), (5, 5), (6, 5), (7, 5), (5, 6)] {
@@ -182,7 +181,7 @@ fn retail_gi_group_boards_a_4x4_garrison_from_its_far_side() {
                 let e = sim.entities().get(gi).unwrap();
                 (
                     gi,
-                    (e.position.rx, e.position.ry),
+                    (e.position.rx(), e.position.ry()),
                     e.mission.effective().known(),
                 )
             })
@@ -190,13 +189,10 @@ fn retail_gi_group_boards_a_4x4_garrison_from_its_far_side() {
     );
     for &gi in &gis {
         let occupant = sim.entities().get(gi).unwrap();
-        assert!(matches!(
-            occupant.passenger_role,
-            PassengerRole::Inside { transport_id, .. } if transport_id == castle
-        ));
+        assert_eq!(occupant.passenger_role.inside_transport_id(), Some(castle));
         assert!(occupant.lifecycle.in_limbo());
-        assert!(!occupant.lifecycle.cell_marked);
-        assert!(!occupant.in_logic_vector);
+        assert!(!occupant.lifecycle.cell_marked());
+        assert!(!occupant.in_logic_vector.is_member());
         assert!(!sim.live_object_order_snapshot().contains(&gi));
     }
     let castle_entity = sim.entities().get(castle).unwrap();
@@ -233,9 +229,9 @@ fn retail_capture_walk_rechecks_admission_and_respects_a_replacement_order() {
             actor.mission.effective().known(),
             Some(crate::sim::mission::MissionType::Capture)
         );
-        assert!(matches!(actor.passenger_role, PassengerRole::None));
+        assert!(actor.passenger_role.is_none());
         assert_eq!(
-            actor.navigation.nav_com,
+            actor.navigation.nav_com(),
             Some(crate::sim::components::NavTargetRef::Building { id: castle })
         );
 
@@ -296,12 +292,9 @@ fn retail_capture_walk_rechecks_admission_and_respects_a_replacement_order() {
                 !actor.lifecycle.in_limbo(),
                 "{control}: refused GI stays visible"
             );
-            assert!(
-                matches!(actor.passenger_role, PassengerRole::None),
-                "{control}"
-            );
-            let outside =
-                !(82..86).contains(&actor.position.rx) || !(112..116).contains(&actor.position.ry);
+            assert!(actor.passenger_role.is_none(), "{control}");
+            let outside = !(82..86).contains(&actor.position.rx())
+                || !(112..116).contains(&actor.position.ry());
             if actor.mission.effective().known() != Some(crate::sim::mission::MissionType::Capture)
                 && outside
             {
@@ -313,10 +306,11 @@ fn retail_capture_walk_rechecks_admission_and_respects_a_replacement_order() {
         assert!(
             left_order,
             "{control}: GI must leave Capture and the foundation; at {:?}, NavCom {:?}",
-            actor.position, actor.navigation.nav_com
+            actor.position,
+            actor.navigation.nav_com()
         );
         assert!(
-            actor.lifecycle.cell_marked && actor.in_logic_vector,
+            actor.lifecycle.cell_marked() && actor.in_logic_vector.is_member(),
             "{control}"
         );
         assert!(

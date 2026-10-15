@@ -250,8 +250,8 @@ fn impact_z_byte_saturates_in_the_signed_domain_the_projection_decodes() {
 fn entity_launch_uses_the_object_coordinate() {
     let mut entities = EntityStore::new();
     let mut on_deck = GameEntity::test_default(1, "MTNK", "Americans", 7, 9);
-    on_deck.position.z = 6;
-    on_deck.on_bridge = true;
+    on_deck.position.set_z(6);
+    on_deck.set_on_bridge(true);
     entities.insert(on_deck);
     let terrain = terrain_at_level(RAISED_LEVEL);
 

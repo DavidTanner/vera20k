@@ -10,7 +10,7 @@ use super::*;
 use crate::map::resolved_terrain::{ResolvedTerrainGrid, test_flat_cell};
 use crate::rules::locomotor_type::LocomotorKind;
 use crate::sim::docking::bunker_install::{BunkerRuntime, BunkerState, tick_bunker_install};
-use crate::sim::game_entity::BunkerLink;
+use crate::sim::docking::bunker_link::BunkerLink;
 use crate::sim::movement::{DriveLocomotionRuntime, FacingClass, ShipLocomotionRuntime};
 use crate::util::fixed_math::SimFixed;
 use serde_json::{Value, json};
@@ -90,10 +90,10 @@ fn mirrored_state(entity: &GameEntity) -> Value {
             }
         };
     json!({
-        "turn": track.turn_index,
-        "cursor": track.cursor,
-        "reversed": u8::from(track.reversed),
-        "residual": track.residual,
+        "turn": track.turn_index(),
+        "cursor": track.cursor(),
+        "reversed": u8::from(track.reversed()),
+        "residual": track.residual(),
         "head": coord_array(head),
         "destination": coord_array(destination),
         "track_valid": u8::from(valid),
@@ -157,8 +157,8 @@ fn fixture(case: &Value) -> Simulation {
     entity
         .lifecycle
         .set_in_limbo_for_test(integer(&before["owner_limbo"]) != 0);
-    entity.lifecycle.cell_marked = false;
-    entity.foot_occupation_enabled = input["occupation_enabled"].as_bool().unwrap_or(false);
+    entity.lifecycle.set_cell_marked(false);
+    entity.set_foot_occupation_enabled(input["occupation_enabled"].as_bool().unwrap_or(false));
     entity
         .foot_speed
         .set_speed_fraction(fraction(&before["applied_fraction_bits"]));
@@ -170,12 +170,12 @@ fn fixture(case: &Value) -> Simulation {
             z: 312,
         },
     );
-    let track = TrackProgress {
-        turn_index: integer(&before["turn"]),
-        cursor: integer(&before["cursor"]),
-        reversed: integer(&before["reversed"]) != 0,
-        residual: integer(&before["residual"]),
-    };
+    let track = TrackProgress::for_test(
+        integer(&before["turn"]),
+        integer(&before["cursor"]),
+        integer(&before["reversed"]) != 0,
+        integer(&before["residual"]),
+    );
     let locomotor = entity.locomotor.as_mut().unwrap();
     assert!(if is_ship(case) {
         locomotor.install_ship_state_for_test(Some(
@@ -435,7 +435,9 @@ fn bunker_dispatch_matches_separate_native_force_then_owner_speed_write() {
                 z: 312,
             },
         );
-        entity.bunker_link = BunkerLink::Approaching(2);
+        entity
+            .bunker
+            .set_bunker_link_for_test(BunkerLink::Approaching(2));
         let current = match selector {
             67 => 0x2000,
             68 => 0x6000,
@@ -456,9 +458,11 @@ fn bunker_dispatch_matches_separate_native_force_then_owner_speed_write() {
         building.set_owner_for_test(sim.intern("Americans"));
         building.set_type_ref_for_test(sim.intern("NATBNK"));
         crate::sim::movement::ground_pose::put_location(&mut building.position, supplied(case));
-        building.bunker_runtime = Some(BunkerRuntime {
-            state: BunkerState::TurnToBuilding,
-            installing_unit: Some(UNIT),
+        building.bunker_runtime = Some({
+            let mut runtime = BunkerRuntime::idle();
+            runtime.set_state_for_test(BunkerState::TurnToBuilding);
+            runtime.set_installing_unit_for_test(Some(UNIT));
+            runtime
         });
         sim.substrate.entities.insert(building);
         tick_bunker_install(
@@ -482,7 +486,7 @@ fn bunker_dispatch_matches_separate_native_force_then_owner_speed_write() {
                 .unwrap()
                 .bunker_runtime
                 .unwrap()
-                .state,
+                .state(),
             BunkerState::TrackStep
         );
         assert_raw_cells(&sim, case);
@@ -505,7 +509,9 @@ fn special_process_selectors_preserve_or_copy_applied_fraction_like_native_prefi
         }
         let mut sim = fixture(case);
         let entity = sim.substrate.entities.get_mut(UNIT).unwrap();
-        entity.drive_accelerates = case["input"]["accelerates"].as_bool().unwrap();
+        entity
+            .mover_facts
+            .set_drive_accelerates_for_test(case["input"]["accelerates"].as_bool().unwrap());
         super::super::track_speed::advance(entity, None, None, &Default::default(), None, None);
         assert_eq!(
             mirrored_state(entity),

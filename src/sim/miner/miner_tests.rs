@@ -9,8 +9,8 @@ use crate::map::entities::EntityCategory;
 use crate::rules::ini_parser::IniFile;
 use crate::rules::locomotor_type::LocomotorKind;
 use crate::rules::ruleset::RuleSet;
+use crate::sim::animation::HarvestOverlay;
 use crate::sim::combat::Health;
-use crate::sim::components::HarvestOverlay;
 use crate::sim::game_entity::GameEntity;
 use crate::sim::house_state::HouseState;
 use crate::sim::intern::InternedId;
@@ -29,13 +29,13 @@ fn has_bunker_release_track(entity: &GameEntity) -> bool {
     entity
         .locomotor
         .as_ref()
-        .is_some_and(|state| state.kind == LocomotorKind::Drive)
+        .is_some_and(|state| state.active_kind() == LocomotorKind::Drive)
         && entity
             .locomotor
             .as_ref()
             .and_then(|l| l.selected_drive_runtime())
             .and_then(|r| r.retained())
-            .is_some_and(|drive| drive.track().turn_index == 0x47 && drive.head_to().is_some())
+            .is_some_and(|drive| drive.track().turn_index() == 0x47 && drive.head_to().is_some())
 }
 
 /// Minimal rules that know about HARV, CMIN, and GAREFN.
@@ -223,9 +223,9 @@ fn spawn_refinery(sim: &mut Simulation, sid: u64, rx: u16, ry: u16) {
     );
     // Placed in its cells' lists: on the map, out of limbo and marked.
     ge.lifecycle.set_in_limbo_for_test(false);
-    ge.lifecycle.cell_marked = true;
+    ge.lifecycle.set_cell_marked(true);
     // Construction stamps the type's `Foundation=4x3`.
-    ge.foundation = "4x3".to_string();
+    ge.type_facts.set_foundation_for_test("4x3".to_string());
     sim.substrate.entities.insert(ge);
     occupy_structure_cells(sim, sid, rx, ry, 4, 3);
     join_house_list(sim, sid, owner_id);
@@ -494,7 +494,13 @@ impl std::ops::DerefMut for MinerView {
 /// Read the Miner component + FSM cursor from an entity by stable_id.
 /// The miner's NavCom cell, the destination Mission_Harvest's scan gave it.
 fn nav_cell(sim: &Simulation, entity_id: u64) -> Option<(u16, u16)> {
-    match sim.substrate.entities.get(entity_id)?.navigation.nav_com? {
+    match sim
+        .substrate
+        .entities
+        .get(entity_id)?
+        .navigation
+        .nav_com()?
+    {
         crate::sim::components::NavTargetRef::Cell { rx, ry } => Some((rx, ry)),
         _ => None,
     }
@@ -652,7 +658,11 @@ fn war_miner_does_not_teleport() {
         .expect("entity")
         .position;
     // War miner should NOT have teleported — still at (30, 30).
-    assert_eq!((pos.rx, pos.ry), (30, 30), "War Miner should not teleport");
+    assert_eq!(
+        (pos.rx(), pos.ry()),
+        (30, 30),
+        "War Miner should not teleport"
+    );
 }
 
 // ==========================================================================
@@ -1829,10 +1839,7 @@ fn filling_extraction_waits_for_full_gate_before_war_return() {
                 value: config.ore_bale_value,
             });
         }
-        entity.harvest_overlay = Some(HarvestOverlay {
-            frame: 6,
-            visible: true,
-        });
+        entity.harvest_overlay = Some(HarvestOverlay::for_test(6, true));
     }
     arm_cutting(&mut sim, miner_id);
 
@@ -1859,8 +1866,8 @@ fn filling_extraction_waits_for_full_gate_before_war_return() {
         assert!(crate::sim::movement::motion_query::is_moving(&entity) != Some(true));
         assert!(entity.teleport_state().is_none());
         let overlay = entity.harvest_overlay.expect("harvest overlay");
-        assert!(overlay.visible);
-        assert_eq!(overlay.frame, 6);
+        assert!(overlay.visible());
+        assert_eq!(overlay.frame(), 6);
     }
 
     tick_miners_n(&mut sim, &rules, GATE - 1);
@@ -1885,9 +1892,10 @@ fn filling_extraction_waits_for_full_gate_before_war_return() {
         assert_eq!(miner.reserved_refinery, None);
         assert!(crate::sim::movement::motion_query::is_moving(&entity) != Some(true));
         let overlay = entity.harvest_overlay.expect("harvest overlay");
-        assert!(overlay.visible);
+        assert!(overlay.visible());
         assert_eq!(
-            overlay.frame, 6,
+            overlay.frame(),
+            6,
             "nonzero overlay state remains live through F+18"
         );
     }
@@ -1918,8 +1926,8 @@ fn filling_extraction_waits_for_full_gate_before_war_return() {
         assert!(crate::sim::movement::motion_query::is_moving(&entity) != Some(true));
         assert!(entity.teleport_state().is_none());
         let overlay = entity.harvest_overlay.expect("harvest overlay");
-        assert!(!overlay.visible);
-        assert_eq!(overlay.frame, 0);
+        assert!(!overlay.visible());
+        assert_eq!(overlay.frame(), 0);
     }
 
     open_playfield(&mut sim);
@@ -1932,7 +1940,7 @@ fn filling_extraction_waits_for_full_gate_before_war_return() {
             "no HELLO beyond the too-far distance"
         );
         assert_eq!(
-            entity.navigation.nav_com,
+            entity.navigation.nav_com(),
             Some(crate::sim::components::NavTargetRef::cell(14, 11)),
             "F+20 state-2 dispatch stages the far return at NW + QueueingCell"
         );
@@ -2126,7 +2134,12 @@ fn dying_corpse_break_frees_the_dock_before_its_animation_ends() {
     crate::sim::miner::miner_dock::test_support::enter_dock(&mut sim, occupant, 2);
 
     // What the damage receiver does for a unit with a death animation.
-    sim.substrate.entities.get_mut(occupant).unwrap().dying = true;
+    sim.substrate
+        .entities
+        .get_mut(occupant)
+        .unwrap()
+        .death
+        .set_dying_for_test(true);
     crate::sim::radio::broadcast_break(
         &mut sim,
         occupant,
@@ -2136,7 +2149,7 @@ fn dying_corpse_break_frees_the_dock_before_its_animation_ends() {
 
     let corpse = sim.substrate.entities.get(occupant).expect("corpse stays");
     assert!(!corpse.radio_contacts.contains(2));
-    assert_eq!(corpse.dock_entered_with, None);
+    assert_eq!(corpse.tether.partner(), None);
     assert!(crate::sim::miner::miner_dock::test_support::dock_test_hello(&mut sim, 2, waiter));
 }
 
@@ -2181,7 +2194,7 @@ fn megamission_before_the_unload_breaks_the_refinery_contact() {
             let entity = sim.substrate.entities.get_mut(id).unwrap();
             entity.radio_contacts.set_slot(0, partner);
             if tethered {
-                entity.dock_entered_with = Some(partner);
+                entity.tether.set_for_test(Some(partner));
             }
         }
 
@@ -2196,13 +2209,13 @@ fn megamission_before_the_unload_breaks_the_refinery_contact() {
 
         let entity = sim.substrate.entities.get(miner_id).unwrap();
         assert!(!entity.radio_contacts.contains(2), "tethered={tethered}");
-        assert_eq!(entity.dock_entered_with, None, "tethered={tethered}");
+        assert_eq!(entity.tether.partner(), None, "tethered={tethered}");
         let refinery = sim.substrate.entities.get(2).unwrap();
         assert!(
             !refinery.radio_contacts.contains(miner_id),
             "tethered={tethered}"
         );
-        assert_eq!(refinery.dock_entered_with, None, "tethered={tethered}");
+        assert_eq!(refinery.tether.partner(), None, "tethered={tethered}");
         assert!(
             crate::sim::miner::miner_dock::test_support::dock_test_hello(&mut sim, 2, waiter),
             "tethered={tethered}"
@@ -2257,7 +2270,8 @@ fn megamission_mid_unload_abandons_the_unload_and_commences_the_order() {
     let miner = entity.miner.as_ref().unwrap();
     assert!(!miner.unload_active, "the unload latch is dropped");
     assert_eq!(
-        entity.display_type_override, None,
+        entity.display_type_override.image(),
+        None,
         "and the unload image with it"
     );
     assert_eq!(
@@ -2295,8 +2309,8 @@ fn harvest_order_mid_unload_drops_the_unload_latch_and_image() {
     let entity = sim.substrate.entities.get(miner_id).unwrap();
     let miner = entity.miner.as_ref().unwrap();
     assert!(!miner.unload_active);
-    assert_eq!(entity.display_type_override, None);
-    assert_eq!(entity.dock_entered_with, None);
+    assert_eq!(entity.display_type_override.image(), None);
+    assert_eq!(entity.tether.partner(), None);
     assert!(!crate::sim::miner::miner_dock::has_contact(
         &sim, 2, miner_id
     ));
@@ -2351,7 +2365,12 @@ fn full_miner_return_passes_over_a_dying_refinery() {
     spawn_refinery(&mut sim, 2, 10, 10);
     spawn_refinery(&mut sim, 3, 24, 10);
     fill_and_return(&mut sim, miner_id);
-    sim.substrate.entities.get_mut(2).expect("refinery").dying = true;
+    sim.substrate
+        .entities
+        .get_mut(2)
+        .expect("refinery")
+        .death
+        .set_dying_for_test(true);
 
     for wide in [false, true] {
         assert_eq!(
@@ -2890,7 +2909,7 @@ fn refinery_selection_wide_pass_when_free_refinery_is_beyond_too_far() {
     );
     assert_eq!(entity.miner_state(), Some(MinerState::ReturnToRefinery));
     assert_eq!(
-        entity.navigation.nav_com,
+        entity.navigation.nav_com(),
         Some(crate::sim::components::NavTargetRef::cell(12, 11)),
         "staged at the nearest refinery's NW + QueueingCell (4, 1)",
     );
@@ -3115,7 +3134,7 @@ fn dock_for_unload(sim: &mut Simulation, miner: u64, refinery: u64) {
     for (id, partner) in [(miner, refinery), (refinery, miner)] {
         let entity = sim.substrate.entities.get_mut(id).expect("dock end");
         entity.radio_contacts.set_slot(0, partner);
-        entity.dock_entered_with = Some(partner);
+        entity.tether.set_for_test(Some(partner));
     }
     let entity = sim.substrate.entities.get_mut(miner).expect("miner");
     let mut hull = crate::sim::movement::FacingClass::new(DOCK_FACING, 5);
@@ -3445,7 +3464,7 @@ fn refinery_death_drops_the_unloading_miner_at_the_kill() {
         sim.substrate
             .entities
             .get(2)
-            .is_none_or(|refinery| refinery.dying || refinery.health.current() == 0),
+            .is_none_or(|refinery| refinery.death.is_dying() || refinery.health.current() == 0),
         "the refinery died"
     );
     let miner_entity = sim
@@ -3481,7 +3500,7 @@ fn refinery_death_drops_the_unloading_miner_at_the_kill() {
     );
     assert_eq!(miner.cargo, cargo_before);
     assert!(!miner.unload_active, "RUN_AWAY dropped the latch");
-    assert_eq!(miner_entity.display_type_override, None);
+    assert_eq!(miner_entity.display_type_override.image(), None);
     assert!(
         miner_entity.mission.current()
             == crate::sim::mission::MissionId::from_known(
@@ -3906,7 +3925,7 @@ fn captured_harvesting_miner_requeues_harvest_for_the_new_owner() {
         "the idle-mode harvester arm re-queues Harvest on ore"
     );
     assert!(miner.attack_target.target().is_none());
-    assert!(miner.navigation.nav_com.is_none());
+    assert!(miner.navigation.nav_com().is_none());
     assert!(crate::sim::movement::motion_query::is_moving(&miner) != Some(true));
 }
 

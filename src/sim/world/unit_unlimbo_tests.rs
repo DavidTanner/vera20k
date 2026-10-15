@@ -160,8 +160,11 @@ fn assert_actor(sim: &Simulation, id: u64, native: &Value, name: &str) {
     for (label, actual) in [
         ("alive", u8::from(actor.lifecycle.object_alive())),
         ("limbo", u8::from(actor.lifecycle.in_limbo())),
-        ("marked", u8::from(actor.lifecycle.cell_marked)),
-        ("logic_registered", u8::from(actor.in_logic_vector)),
+        ("marked", u8::from(actor.lifecycle.cell_marked())),
+        (
+            "logic_registered",
+            u8::from(actor.in_logic_vector.is_member()),
+        ),
     ] {
         assert_eq!(json!(actual), native[label], "{name}: {label}");
     }
@@ -332,15 +335,15 @@ fn assert_radio_pair(sim: &Simulation, ids: (u64, u64), native: &Value, name: &s
             "{name}: {role} Contacts"
         );
         assert_eq!(
-            endpoint.dock_entered_with,
+            endpoint.tether.partner(),
             (expected["tether"] == 1).then_some(peer),
             "{name}: {role} tether owner"
         );
         for (label, actual) in [
             ("alive", i32::from(endpoint.lifecycle.object_alive())),
             ("limbo", i32::from(endpoint.lifecycle.in_limbo())),
-            ("marked", i32::from(endpoint.lifecycle.cell_marked)),
-            ("in_playfield", i32::from(endpoint.in_playfield)),
+            ("marked", i32::from(endpoint.lifecycle.cell_marked())),
+            ("in_playfield", i32::from(endpoint.in_playfield())),
             ("health", endpoint.health.current()),
             ("mission", endpoint.mission.current().raw()),
             ("queued", endpoint.mission.queued().raw()),
@@ -509,7 +512,16 @@ fn retail_unit_unlimbo_matches_original_admission_and_caller_pose() {
         let name = input["name"].as_str().unwrap();
         let mut sim = retail_world(&rules, &terrain_rules);
         let id = sim
-            .construct_object_limbo_at_height("MTNK", "Americans", 0, 0, 0, 0, &rules)
+            .construct_object_limbo_at_height(
+                "MTNK",
+                "Americans",
+                0,
+                0,
+                0,
+                0,
+                &rules,
+                crate::sim::world::FrameEffects::default(),
+            )
             .unwrap();
         assert_actor(&sim, id, &row["before"]["actor"], name);
         assert_stage(&sim, id, &row["stage_before"], name);
@@ -524,8 +536,11 @@ fn retail_unit_unlimbo_matches_original_admission_and_caller_pose() {
         let requested = coord(&row["before"]["requested_xyz"]);
         let cell = ((requested.x / 256) as u16, (requested.y / 256) as u16);
         apply_cell_inputs(&mut sim, cell, input);
-        sim.substrate.entities.get_mut(id).unwrap().on_bridge =
-            input["caller_on_bridge"].as_bool().unwrap();
+        sim.substrate
+            .entities
+            .get_mut(id)
+            .unwrap()
+            .set_on_bridge(input["caller_on_bridge"].as_bool().unwrap());
         let prior_rng = sim.rng_state();
         let placed = in_scopes(
             &mut sim,
@@ -555,7 +570,9 @@ fn retail_unit_unlimbo_matches_original_admission_and_caller_pose() {
         assert_actor(&sim, id, &native["actor"], name);
         assert_stage(&sim, id, &row["stage_after"], name);
         assert_eq!(
-            json!(u8::from(sim.substrate.entities.get(id).unwrap().on_bridge)),
+            json!(u8::from(
+                sim.substrate.entities.get(id).unwrap().on_bridge()
+            )),
             native["on_bridge"],
             "{name}: caller OnBridge"
         );
@@ -648,12 +665,24 @@ fn retail_authored_unit_high_matches_original_pose_scope_and_lists() {
             refused += 1;
             assert_eq!(input["scope"], 0);
             let id = sim
-                .construct_object_limbo_at_height("MTNK", "Americans", 0, 0, 0, 0, &rules)
+                .construct_object_limbo_at_height(
+                    "MTNK",
+                    "Americans",
+                    0,
+                    0,
+                    0,
+                    0,
+                    &rules,
+                    crate::sim::world::FrameEffects::default(),
+                )
                 .unwrap();
             assert_actor(&sim, id, &row["before"], name);
             assert_rng(&sim, &row["rng"], "before_hex", name);
-            sim.substrate.entities.get_mut(id).unwrap().on_bridge =
-                row["pre_unlimbo"]["actor"]["on_bridge"] != 0;
+            sim.substrate
+                .entities
+                .get_mut(id)
+                .unwrap()
+                .set_on_bridge(row["pre_unlimbo"]["actor"]["on_bridge"] != 0);
             let result = sim.reveal_constructed_object_at_coord_with_overlay_context(
                 id,
                 requested,
@@ -678,12 +707,12 @@ fn retail_authored_unit_high_matches_original_pose_scope_and_lists() {
         assert_stage(&sim, id, &row["stage_after"], name);
         let actor = sim.substrate.entities.get(id).unwrap();
         assert_eq!(
-            json!(u8::from(actor.on_bridge)),
+            json!(u8::from(actor.on_bridge())),
             row["after"]["on_bridge"],
             "{name}: HIGH owns OnBridge"
         );
         assert_eq!(
-            json!(u8::from(actor.in_playfield)),
+            json!(u8::from(actor.in_playfield())),
             row["after"]["in_playfield"],
             "{name}: retained Techno3D5"
         );
@@ -724,7 +753,16 @@ fn exact_unit_placement_input_z_matches_existing_original_ramp_controls() {
         assert_eq!(case["missing"], false, "{name}: supplied real cell");
         let mut sim = retail_world(&rules, &terrain_rules);
         let id = sim
-            .construct_object_limbo_at_height("MTNK", "Americans", 0, 0, 0, 0, &rules)
+            .construct_object_limbo_at_height(
+                "MTNK",
+                "Americans",
+                0,
+                0,
+                0,
+                0,
+                &rules,
+                crate::sim::world::FrameEffects::default(),
+            )
             .unwrap();
         let on_bridge = case["on_bridge"].as_bool().unwrap();
         {
@@ -741,7 +779,11 @@ fn exact_unit_placement_input_z_matches_existing_original_ramp_controls() {
             target.bridge_walkable = on_bridge;
             target.bridge_deck_level = target.level.wrapping_add(if on_bridge { 4 } else { 0 });
         }
-        sim.substrate.entities.get_mut(id).unwrap().on_bridge = on_bridge;
+        sim.substrate
+            .entities
+            .get_mut(id)
+            .unwrap()
+            .set_on_bridge(on_bridge);
         assert!(
             sim.with_object_placement_scope(|sim| {
                 sim.reveal_constructed_object_at_coord_with_overlay_context(
@@ -877,7 +919,16 @@ fn retail_reused_unit_unlimbo_matches_original_stage_and_rng_tail() {
         assert_eq!(flags(&rules), json!([u8::from(small), u8::from(large)]));
         let mut sim = retail_world(&base_rules, &terrain_rules);
         let id = sim
-            .construct_object_limbo_at_height("MTNK", "Americans", 0, 0, 0, 0, &base_rules)
+            .construct_object_limbo_at_height(
+                "MTNK",
+                "Americans",
+                0,
+                0,
+                0,
+                0,
+                &base_rules,
+                crate::sim::world::FrameEffects::default(),
+            )
             .unwrap();
         let initial = &row["initial_placement"];
         assert_stage(&sim, id, &initial["stage_before"], name);
@@ -1048,13 +1099,22 @@ fn retail_land_factory_delivery_matches_original_unit_unlimbo_suffix() {
         // The existing Rust constructor spends the same two Scenario draws;
         // no fixture RNG draw or alternate RNG implementation is needed.
         let producer_id = sim
-            .construct_object_limbo_at_height("GAWEAP", "Americans", 0, 0, 0, 0, &rules)
+            .construct_object_limbo_at_height(
+                "GAWEAP",
+                "Americans",
+                0,
+                0,
+                0,
+                0,
+                &rules,
+                crate::sim::world::FrameEffects::default(),
+            )
             .unwrap();
         let producer_coord = coord(&input["producer_xyz"]);
         {
             let producer = sim.substrate.entities.get_mut(producer_id).unwrap();
             ground_pose::put_location(&mut producer.position, producer_coord);
-            producer.position.z = 4;
+            producer.position.set_z(4);
         }
         sim.mission_assign_exact(producer_id, MissionId::from_known(MissionType::Guard), 0)
             .unwrap();
@@ -1204,12 +1264,12 @@ fn retail_land_factory_delivery_matches_original_unit_unlimbo_suffix() {
             "{name}: original ExitObject rearm timer"
         );
         assert_eq!(
-            json!(u8::from(actor.on_bridge)),
+            json!(u8::from(actor.on_bridge())),
             row["after"]["on_bridge"],
             "{name}: caller OnBridge"
         );
         assert_eq!(
-            json!(u8::from(actor.in_playfield)),
+            json!(u8::from(actor.in_playfield())),
             row["after"]["in_playfield"],
             "{name}: retained Techno3D5"
         );
@@ -1218,7 +1278,7 @@ fn retail_land_factory_delivery_matches_original_unit_unlimbo_suffix() {
             "{name}: Radio HELLO contact"
         );
         assert_eq!(
-            actor.dock_entered_with,
+            actor.tether.partner(),
             Some(producer_id),
             "{name}: Radio TETHER receiver"
         );
@@ -1310,10 +1370,28 @@ fn retail_factory_exit_radio_matches_original_reciprocal_cleanup() {
         // Original constructor order supplies Scenario cursor2, while Main
         // and MapGen stay at their full original seed0 buffers.
         let unit = sim
-            .construct_object_limbo_at_height("MTNK", "Americans", 0, 0, 0, 0, &rules)
+            .construct_object_limbo_at_height(
+                "MTNK",
+                "Americans",
+                0,
+                0,
+                0,
+                0,
+                &rules,
+                crate::sim::world::FrameEffects::default(),
+            )
             .unwrap();
         let producer = sim
-            .construct_object_limbo_at_height("GAWEAP", "Americans", 0, 0, 0, 0, &rules)
+            .construct_object_limbo_at_height(
+                "GAWEAP",
+                "Americans",
+                0,
+                0,
+                0,
+                0,
+                &rules,
+                crate::sim::world::FrameEffects::default(),
+            )
             .unwrap();
         let ids = (unit, producer);
         {
@@ -1443,7 +1521,7 @@ fn unit_entry_scope_and_actual_game_mode_match_independent_original_controls() {
         actor.set_type_ref_for_test(sim.interner.intern("MOVER"));
         actor.set_owner_for_test(owner);
         actor.set_category_for_test(crate::map::entities::EntityCategory::Unit);
-        actor.in_playfield = input["fixture"]["in_playfield"].as_bool().unwrap();
+        actor.set_in_playfield(input["fixture"]["in_playfield"].as_bool().unwrap());
         actor.locomotor = Some(LocomotorState::for_test_kind(LocomotorKind::Drive));
         sim.substrate.entities.insert(actor);
         sim.mission_assign_exact(90, MissionId::from_known(MissionType::Guard), 100)

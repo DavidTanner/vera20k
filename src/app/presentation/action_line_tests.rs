@@ -97,24 +97,27 @@ fn fixture(row: &Value) -> (Simulation, TargetLineState, TacticalViewport) {
             GameEntity::test_default(construction_index as u64 + 1, "MTNK", "Americans", 20, 20);
         actor.set_owner_for_test(owner);
         actor.set_type_ref_for_test(sim.interner.intern("MTNK"));
-        actor.selected = actor_input["selected"].as_bool().unwrap_or(true);
-        actor.on_bridge = actor_input["on_bridge"].as_bool().unwrap_or(false);
+        actor
+            .selection
+            .set_selected_for_test(actor_input["selected"].as_bool().unwrap_or(true));
+        actor.set_on_bridge(actor_input["on_bridge"].as_bool().unwrap_or(false));
         let [x, y, z] = point(&actor_input["source"]);
         crate::sim::movement::ground_pose::put_location(
             &mut actor.position,
             DriveCoord { x, y, z },
         );
         let [tx, ty] = point(&actor_input["target_cell"]);
-        actor.navigation.nav_com = (!actor_input["nav_null"].as_bool().unwrap_or(false))
-            .then_some(NavTargetRef::cell(tx as u16, ty as u16));
+        actor.navigation.set_nav_com(
+            (!actor_input["nav_null"].as_bool().unwrap_or(false))
+                .then_some(NavTargetRef::cell(tx as u16, ty as u16)),
+        );
         let mut target_cells = vec![[tx, ty]];
         if let Some(queue) = actor_input["queue_cells"].as_array() {
             for target in queue {
                 let [x, y] = point(target);
                 actor
                     .navigation
-                    .nav_queue
-                    .push(NavTargetRef::cell(x as u16, y as u16));
+                    .push_nav_queue_for_test(NavTargetRef::cell(x as u16, y as u16));
                 target_cells.push([x, y]);
             }
         }
@@ -278,7 +281,7 @@ fn drawing_fixture(
     let mut target = GameEntity::test_default(2, "MTNK", "Americans", 20, 20);
     target.set_owner_for_test(owner);
     target.set_type_ref_for_test(type_ref);
-    target.selected = false;
+    target.selection.set_selected_for_test(false);
     let [x, y, z] = point(&input["target_xyz"]);
     crate::sim::movement::ground_pose::put_location(&mut target.position, DriveCoord { x, y, z });
     let mut locomotor = LocomotorState::for_test_kind(LocomotorKind::Drive);
@@ -784,8 +787,11 @@ fn original_action_timer_wrap_sentinel_and_positive_remainder() {
 #[test]
 fn move_line_query_leaves_the_simulation_dummy_unchanged() {
     let (mut sim, state, view) = fixture(baseline_rows().next().unwrap());
-    sim.entities_mut().get_mut(1).unwrap().navigation.nav_com =
-        Some(NavTargetRef::cell(u16::MAX, u16::MAX));
+    sim.entities_mut()
+        .get_mut(1)
+        .unwrap()
+        .navigation
+        .set_nav_com(Some(NavTargetRef::cell(u16::MAX, u16::MAX)));
     let terrain = sim.resolved_terrain.as_ref().unwrap();
     let query = NativeCellQuery::canonical(terrain);
     let before = query.dummy().snapshot().coord;

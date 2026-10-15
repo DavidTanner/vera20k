@@ -168,19 +168,19 @@ impl Simulation {
         }
         let metadata = team.team_type_id.and_then(|id| vm.team_type_ini.get(&id));
         let autocreate = metadata.is_some_and(|metadata| metadata.autocreate);
-        if !entity.base_defense_response.recruitable_a && !autocreate {
+        if !entity.base_defense_response.recruitable_a() && !autocreate {
             return None;
         }
         let unloading = script_action_at(vm.scripts.get(&team.script_id), team.cursor)
             .is_some_and(|action| action.action_id == 8);
-        if !entity.base_defense_response.recruitable_b && autocreate && !(unloading || aircraft) {
+        if !entity.base_defense_response.recruitable_b() && autocreate && !(unloading || aircraft) {
             return None;
         }
         // `0x006EA79B..0x006EA7A4`: one seeking a building's entry.
         if entity.building_entry.seeking() {
             return None;
         }
-        if entity.drain.target().is_some() || entity.bunker_link.installed_in().is_some() {
+        if entity.drain.target().is_some() || entity.bunker.link().installed_in().is_some() {
             return None;
         }
         if let Some(current) = current_team.and_then(|id| vm.teams.get(&id))
@@ -198,14 +198,14 @@ impl Simulation {
             && entity
                 .aircraft_ammo
                 .as_ref()
-                .is_some_and(|ammo| ammo.current == 0)
+                .is_some_and(|ammo| ammo.current() == 0)
         {
             return None;
         }
         if !constrained && team.slot_counts[slot] >= entries[slot].count {
             return None;
         }
-        if entity.locomotor_source.is_some() {
+        if entity.lift.source().is_some() {
             return None;
         }
         Some(slot)
@@ -282,7 +282,9 @@ impl Simulation {
             team.just_altered = true;
         }
         if let Some(entity) = self.substrate.entities.get_mut(entity_id) {
-            entity.base_defense_response.recruitable_b = recruitable;
+            entity
+                .base_defense_response
+                .set_team_recruitable(recruitable);
         }
         true
     }
@@ -347,8 +349,8 @@ impl Simulation {
             .get_mut(entity_id)
             .is_some_and(|entity| {
                 entity.mission.clear_suspended();
-                entity.navigation.suspended_nav_com = None;
-                entity.suspended_attack_target = None;
+                entity.navigation.set_suspended_nav_com(None);
+                entity.suspended_attack_target.clear();
                 entity.lifecycle.object_alive()
                     && !entity.crash.is_crashing()
                     && !entity.lifecycle.in_limbo()
@@ -377,7 +379,7 @@ impl Simulation {
                 self.substrate
                     .entities
                     .get(member)
-                    .is_some_and(|entity| entity.in_playfield)
+                    .is_some_and(|entity| entity.in_playfield())
             })
         })
     }
@@ -524,6 +526,34 @@ impl Simulation {
         self.clear_team_trigger_tag(team_id);
         self.team_script_vm.teams.remove(&team_id);
         self.team_script_vm.forget_team_to_rejoin(team_id);
+    }
+
+    /// TeamTypeClass::DestroyAll6F0A70, called by TAction5 at6DEB9A.
+    /// The original walks the live array forward and revisits the index
+    /// after deletion. Member release and AI feedback stay with destroy_team.
+    /// This caller adds no RNG draws, timer writes or object-detach calls.
+    pub(crate) fn destroy_teams_of_type(
+        &mut self,
+        team_type: crate::sim::intern::InternedId,
+        rules: &RuleSet,
+        frame_effects: FrameEffects<'_>,
+    ) {
+        let mut index = 0;
+        loop {
+            let Some((id, type_id)) = self
+                .team_script_vm
+                .teams_in_order()
+                .nth(index)
+                .map(|team| (team.id, team.team_type_id()))
+            else {
+                break;
+            };
+            if type_id == Some(team_type) {
+                self.destroy_team(id, rules, frame_effects);
+            } else {
+                index += 1;
+            }
+        }
     }
 
     /// `0x006EC250`, called by `TechnoClass::RespondToBaseAttack @

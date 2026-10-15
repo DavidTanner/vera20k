@@ -41,7 +41,7 @@ const CUE: &str = "GrandCannonRotate";
 fn rules() -> RuleSet {
     let base = "Strength=1000\nArmor=concrete\nFoundation=1x1\n\
                 CanPassiveAquire=no\nHasStupidGuardMode=no\n";
-    let layers = RulesLayerStack::new(IniFile::from_str(&format!(
+    let layers = RulesLayerStack::new(crate::sim::arena_fixture::clear_ground_ini(&format!(
         "[BuildingTypes]\n0=GTGCAN\n1=NOKEY\n2=NOTURRET\n\
          [GTGCAN]\n{base}Turret=yes\nROT=1\nTurretRotateSound={CUE}\n\
          [NOKEY]\n{base}Turret=yes\nROT=1\n\
@@ -62,6 +62,7 @@ fn scene(type_name: &str) -> (Simulation, RuleSet, u64) {
     let rules = rules();
     let mut sim = Simulation::new();
     sim.install_resolved_terrain_for_new_map(test_flat_ground_grid(16));
+    crate::sim::arena_fixture::supply_native_map(&mut sim);
     let id = sim
         .spawn_object(type_name, "Americans", 10, 10, 0, &rules)
         .expect("fixture building");
@@ -92,7 +93,12 @@ fn turret_events(sim: &Simulation, id: u64) -> Vec<String> {
 }
 
 fn latch(sim: &Simulation, id: u64) -> bool {
-    sim.substrate.entities.get(id).unwrap().turret_rotate_latch
+    sim.substrate
+        .entities
+        .get(id)
+        .unwrap()
+        .turret_rotate_latch
+        .is_armed()
 }
 
 fn tick(sim: &mut Simulation, rules: &RuleSet) {
@@ -324,13 +330,15 @@ fn the_latch_is_hashed_state_and_load_rebuilds_the_handle() {
         .entities
         .get_mut(id)
         .unwrap()
-        .turret_rotate_latch = true;
+        .turret_rotate_latch
+        .set_for_test(true);
     assert_ne!(sim.state_hash(), live, "the loop's latch is hashed");
     sim.substrate
         .entities
         .get_mut(id)
         .unwrap()
-        .turret_rotate_latch = false;
+        .turret_rotate_latch
+        .set_for_test(false);
     assert_eq!(sim.state_hash(), live);
 
     // TechnoClass::Load rebuilds +0x488 but retains the saved +0x49C.
@@ -343,7 +351,8 @@ fn the_latch_is_hashed_state_and_load_rebuilds_the_handle() {
             .entities
             .get(id)
             .unwrap()
-            .turret_rotate_latch,
+            .turret_rotate_latch
+            .is_armed(),
         "the saved bit itself round-trips"
     );
     restored
@@ -356,7 +365,8 @@ fn the_latch_is_hashed_state_and_load_rebuilds_the_handle() {
             .entities
             .get(id)
             .unwrap()
-            .turret_rotate_latch,
+            .turret_rotate_latch
+            .is_armed(),
         "Load must preserve the saved unarmed latch"
     );
     tick(&mut restored, &rules);
@@ -553,12 +563,13 @@ fn turret_rotate_sound_matches_native_control_corpus() {
         let z = coord[2].as_i64().unwrap() as i32;
         let entity = sim.substrate.entities.get_mut(id).unwrap();
         crate::sim::movement::ground_pose::set_position_world_xy(&mut entity.position, xy);
-        entity.position.exact_z_leptons = Some(z);
+        entity.position.set_exact_z_leptons(Some(z));
         sim.substrate
             .entities
             .get_mut(id)
             .unwrap()
-            .turret_rotate_latch = history["initial_latch"].as_bool().unwrap();
+            .turret_rotate_latch
+            .set_for_test(history["initial_latch"].as_bool().unwrap());
         for visit in history["visits"].as_array().unwrap() {
             let prior = latch(&sim, id);
             sim.sound_events.clear();
@@ -679,6 +690,7 @@ fn retail_grand_cannon_starts_and_releases_its_retail_cue() {
     };
     let mut sim = Simulation::new();
     sim.install_resolved_terrain_for_new_map(test_flat_ground_grid(32));
+    crate::sim::arena_fixture::supply_native_map(&mut sim);
     let id = sim
         .spawn_object("GTGCAN", "French", 10, 10, 0, &rules)
         .expect("retail Grand Cannon");
@@ -720,6 +732,7 @@ fn a_retail_grand_cannons_mission_aim_starts_and_releases_the_retail_cue() {
     };
     let mut sim = Simulation::new();
     sim.install_resolved_terrain_for_new_map(test_flat_ground_grid(32));
+    crate::sim::arena_fixture::supply_native_map(&mut sim);
     let id = sim
         .spawn_object("GTGCAN", "French", 8, 10, 0, &rules)
         .expect("retail Grand Cannon");

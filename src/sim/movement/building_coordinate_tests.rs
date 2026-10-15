@@ -127,11 +127,11 @@ fn building_navigation_matches_all_native_dispatch_and_direction_rows() {
 }
 
 fn position(entity: &mut GameEntity, c: DriveCoord) {
-    entity.position.rx = (c.x / 256) as u16;
-    entity.position.ry = (c.y / 256) as u16;
-    entity.position.sub_x = SimFixed::from_num(c.x % 256);
-    entity.position.sub_y = SimFixed::from_num(c.y % 256);
-    entity.position.exact_z_leptons = Some(c.z);
+    entity.position.set_rx((c.x / 256) as u16);
+    entity.position.set_ry((c.y / 256) as u16);
+    entity.position.set_sub_x(SimFixed::from_num(c.x % 256));
+    entity.position.set_sub_y(SimFixed::from_num(c.y % 256));
+    entity.position.set_exact_z_leptons(Some(c.z));
 }
 
 #[test]
@@ -152,7 +152,9 @@ fn building_navigation_capture_command_preserves_the_native_dock_coordinate() {
         6,
         EntityCategory::Structure,
     );
-    building.foundation = rules.object("BUILDING").unwrap().foundation.clone();
+    building
+        .type_facts
+        .set_foundation_for_test(rules.object("BUILDING").unwrap().foundation.clone());
     building.radio_contacts = contacts(input);
     building.lifecycle.set_in_limbo_for_test(false);
     position(&mut building, coord(&input["current"]));
@@ -192,7 +194,7 @@ fn building_navigation_capture_command_preserves_the_native_dock_coordinate() {
     assert!(accepted);
     let engineer = sim.substrate.entities.get(1).unwrap();
     assert_eq!(
-        engineer.navigation.nav_com,
+        engineer.navigation.nav_com(),
         Some(NavTargetRef::Building { id: 2 })
     );
     assert_eq!(
@@ -228,7 +230,9 @@ fn building_navcom_reads_live_type_requester_and_radio_slots_after_restore() {
             6,
             EntityCategory::Structure,
         );
-        building.foundation = rules.object("BUILDING").unwrap().foundation.clone();
+        building
+            .type_facts
+            .set_foundation_for_test(rules.object("BUILDING").unwrap().foundation.clone());
         building.radio_contacts = contacts(input);
         position(&mut building, current);
         sim.substrate.entities.insert(building);

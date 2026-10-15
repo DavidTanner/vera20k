@@ -13,7 +13,7 @@ const DEBUG_EVENT_LOG_CAPACITY: usize = 64;
 
 #[derive(Clone, Debug)]
 pub struct DebugEventLog {
-    pub events: VecDeque<DebugEvent>,
+    events: VecDeque<DebugEvent>,
 }
 
 #[derive(Clone, Debug)]
@@ -74,6 +74,11 @@ impl DebugEventLog {
     }
 
     /// Push an event, evicting the oldest if at capacity.
+    /// The retained events, oldest first.
+    pub fn events(&self) -> &VecDeque<DebugEvent> {
+        &self.events
+    }
+
     pub fn push(&mut self, tick: u32, kind: DebugEventKind) {
         if self.events.len() >= DEBUG_EVENT_LOG_CAPACITY {
             self.events.pop_front();

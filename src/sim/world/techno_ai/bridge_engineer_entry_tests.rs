@@ -23,7 +23,7 @@ impl Simulation {
             return;
         };
         if self.interner.resolve(actor.type_ref()) != "ENGINEER"
-            || ![(66, 76), (67, 75)].contains(&(actor.position.rx, actor.position.ry))
+            || ![(66, 76), (67, 75)].contains(&(actor.position.rx(), actor.position.ry()))
         {
             return;
         }
@@ -33,7 +33,8 @@ impl Simulation {
             .values()
             .filter(|e| {
                 e.stable_id() == id
-                    || ((64..=70).contains(&e.position.rx) && (72..=78).contains(&e.position.ry))
+                    || ((64..=70).contains(&e.position.rx())
+                        && (72..=78).contains(&e.position.ry()))
             })
             .map(|e| {
                 json!({"id":e.stable_id(),"type_name":self.interner.resolve(e.type_ref()),
@@ -138,7 +139,7 @@ fn capture_probe(
     let query = json!({
         "actor": engineer, "hut":hut, "type":sim.interner.resolve(actor.type_ref()),
         "movement_zone": object.movement_zone.matrix_row(), "speed_type":format!("{:?}",object.speed_type),
-        "position":actor.position, "on_bridge":actor.on_bridge, "in_playfield":actor.in_playfield,
+        "position":actor.position, "on_bridge":actor.on_bridge(), "in_playfield":actor.in_playfield(),
         "mission_only":actor.is_mission_only(), "lifecycle":actor.lifecycle,
         "tube":actor.low_bridge_tube_state, "locomotor":actor.locomotor,
         "mission":actor.mission, "navigation":actor.navigation,
@@ -177,7 +178,7 @@ fn retail_hills_engineer_cliff_start_is_rejected() {
         .values()
         .find_map(|e| {
             (runtime.simulation.interner.resolve(e.type_ref()) == "CABHUT"
-                && (e.position.rx, e.position.ry) == (68, 74))
+                && (e.position.rx(), e.position.ry()) == (68, 74))
                 .then_some(e.stable_id())
         })
         .unwrap();
@@ -292,7 +293,7 @@ fn retail_hills_engineer_enters_hut_and_repairs() {
         .values()
         .find_map(|e| {
             (runtime.simulation.interner.resolve(e.type_ref()) == "CABHUT"
-                && (e.position.rx, e.position.ry) == (68, 74))
+                && (e.position.rx(), e.position.ry()) == (68, 74))
                 .then_some(e.stable_id())
         })
         .unwrap();
@@ -359,7 +360,7 @@ fn retail_hills_engineer_enters_hut_and_repairs() {
             .unwrap();
         let actor = runtime.simulation.entities().get(engineer);
         if approach_snapshot.is_none()
-            && actor.is_some_and(|e| (e.position.rx, e.position.ry) == (67, 75))
+            && actor.is_some_and(|e| (e.position.rx(), e.position.ry()) == (67, 75))
         {
             approach_snapshot = Some((
                 GameSnapshot::save_validated(

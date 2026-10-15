@@ -433,10 +433,10 @@ impl Simulation {
             self.sound_events.push(SimSoundEvent::VocAt {
                 sound_id,
                 audible_to: Some([planter_house, planter_house]),
-                rx: position.rx,
-                ry: position.ry,
-                sub_x: position.sub_x,
-                sub_y: position.sub_y,
+                rx: position.rx(),
+                ry: position.ry(),
+                sub_x: position.sub_x(),
+                sub_y: position.sub_y(),
                 world_z_leptons,
             });
         }

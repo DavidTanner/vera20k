@@ -117,7 +117,16 @@ fn threat(sim: &Simulation, owner: &str, cell: (i16, i16)) -> i32 {
 fn admitted_unlimbo_publishes_once_and_refusals_preserve_native_uninitialized_domain() {
     let (mut sim, rules, registry) = fixture(7);
     let id = sim
-        .construct_object_limbo_at_height("MTNK", "Americans", 13, 15, 0, 0, &rules)
+        .construct_object_limbo_at_height(
+            "MTNK",
+            "Americans",
+            13,
+            15,
+            0,
+            0,
+            &rules,
+            crate::sim::world::FrameEffects::default(),
+        )
         .unwrap();
     assert_eq!(
         sim.substrate
@@ -219,7 +228,12 @@ fn foot_bucket_transition_uses_old_history_then_refreshes_cached_live_threat() {
         .map(|house| house.spatial_threat_values().to_vec())
         .collect::<Vec<_>>();
     // Supplied physical-position prestate before the real PerCell reason2.
-    sim.substrate.entities.get_mut(id).unwrap().position.rx = 14;
+    sim.substrate
+        .entities
+        .get_mut(id)
+        .unwrap()
+        .position
+        .set_rx(14);
     sim.per_cell_process(
         id,
         crate::sim::movement::PerCellReason::Arrival,
@@ -253,7 +267,12 @@ fn foot_bucket_transition_uses_old_history_then_refreshes_cached_live_threat() {
             .collect::<Vec<_>>(),
         before
     );
-    sim.substrate.entities.get_mut(id).unwrap().position.rx = 16;
+    sim.substrate
+        .entities
+        .get_mut(id)
+        .unwrap()
+        .position
+        .set_rx(16);
     sim.per_cell_process(
         id,
         crate::sim::movement::PerCellReason::Arrival,
@@ -380,7 +399,16 @@ fn diplomacy_rebuild_preserves_native_foot_and_building_filter_asymmetry() {
 fn required_read_of_dead_unlimbo_uninitialized_contribution_faults_explicitly() {
     let (mut sim, rules, _) = fixture(7);
     let id = sim
-        .construct_object_limbo_at_height("MTNK", "Americans", 13, 15, 0, 0, &rules)
+        .construct_object_limbo_at_height(
+            "MTNK",
+            "Americans",
+            13,
+            15,
+            0,
+            0,
+            &rules,
+            crate::sim::world::FrameEffects::default(),
+        )
         .unwrap();
     sim.substrate
         .entities
@@ -505,7 +533,16 @@ fn snapshot_fixup_retains_map_and_initialized_contribution_without_rebuild() {
 fn retained_grid_and_initialized_zero_both_affect_simulation_hash() {
     let (mut sim, rules, _) = fixture(7);
     let id = sim
-        .construct_object_limbo_at_height("MTNK", "Americans", 13, 15, 0, 0, &rules)
+        .construct_object_limbo_at_height(
+            "MTNK",
+            "Americans",
+            13,
+            15,
+            0,
+            0,
+            &rules,
+            crate::sim::world::FrameEffects::default(),
+        )
         .unwrap();
     let initial = sim.state_hash();
     sim.substrate
@@ -536,7 +573,16 @@ fn foot_coefficient_is_copied_only_after_admitted_unlimbo() {
     use crate::util::native_x87::NativeF64Bits;
     let (mut sim, rules, _) = fixture(7);
     let id = sim
-        .construct_object_limbo_at_height("MTNK", "Americans", 13, 15, 0, 0, &rules)
+        .construct_object_limbo_at_height(
+            "MTNK",
+            "Americans",
+            13,
+            15,
+            0,
+            0,
+            &rules,
+            crate::sim::world::FrameEffects::default(),
+        )
         .unwrap();
     assert_eq!(
         sim.substrate

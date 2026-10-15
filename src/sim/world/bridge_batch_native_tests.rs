@@ -319,9 +319,6 @@ fn live_bridge_batch_matches_original_order_recalc_cache_and_hierarchy() {
 
 #[test]
 fn live_raw_bridge_height_keeps_retained_cache_until_native_batch_publication() {
-    use crate::rules::locomotor_type::SpeedType;
-    use crate::sim::pathfinding::terrain_cost::TerrainCostGrid;
-
     let corpus: serde_json::Value = serde_json::from_str(crate::test_fixture::text(
         "tools/spatial_oracle/bridge_hierarchy.json",
     ))
@@ -334,12 +331,6 @@ fn live_raw_bridge_height_keeps_retained_cache_until_native_batch_publication() 
         .unwrap();
     let mut sim = bridge_batch_simulation(case);
     let before_path = sim.path_grid_snapshot().unwrap();
-    let mut cost_input = sim.resolved_terrain.as_ref().unwrap().clone();
-    cost_input.cell_mut(12, 10).unwrap().speed_costs.foot = Some(37);
-    sim.terrain_costs.insert(
-        SpeedType::Foot,
-        TerrainCostGrid::from_resolved_terrain(&cost_input, SpeedType::Foot),
-    );
     let before = sim.zone_grid.as_mut().unwrap().base_topology_mut().clone();
     let rules = RuleSet::from_ini(&IniFile::from_str("")).unwrap();
     let registry =
@@ -368,11 +359,6 @@ fn live_raw_bridge_height_keeps_retained_cache_until_native_batch_publication() 
     assert_eq!(
         sim.path_grid().unwrap().cell(11, 10),
         before_path.cell(11, 10)
-    );
-    assert_eq!(
-        sim.terrain_costs[&SpeedType::Foot].cost_at(12, 10),
-        37,
-        "raw store must not publish cost rows"
     );
     let zones = sim.zone_grid.as_mut().unwrap();
     assert_native_hierarchy_graphs(

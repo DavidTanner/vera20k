@@ -39,11 +39,11 @@ fn compare_foot(scene: &Scene, expected: &Value) {
         .and_then(|runtime| runtime.retained())
         .unwrap();
     let head = drive.head_to().unwrap_or(DriveCoord { x: 0, y: 0, z: 0 });
-    assert_eq!(actor.navigation.path_replay.cursor, 0);
+    assert_eq!(actor.navigation.path_replay.cursor(), 0);
     let words: Vec<i32> = actor
         .navigation
         .path_replay
-        .directions
+        .directions()
         .iter()
         .map(|&word| if word == u8::MAX { -1 } else { i32::from(word) })
         .chain(std::iter::repeat(-1))
@@ -51,12 +51,12 @@ fn compare_foot(scene: &Scene, expected: &Value) {
         .collect();
     assert_eq!(
         json!({
-            "movement_timer": [path.movement_timer.start_frame(), path.movement_timer.duration()],
-            "blocked_timer": [path.blocked_timer.start_frame(), path.blocked_timer.duration()],
-            "retries_left": path.retries_left, "path_blocked": path.path_blocked,
-            "nav_queue_count": actor.navigation.nav_queue.len(), "path": words,
-            "head": [head.x, head.y, head.z], "selector": drive.track().turn_index,
-            "valid": u8::from(drive.track_valid()), "in_playfield": actor.in_playfield,
+            "movement_timer": [path.movement_timer().start_frame(), path.movement_timer().duration()],
+            "blocked_timer": [path.blocked_timer().start_frame(), path.blocked_timer().duration()],
+            "retries_left": path.retries_left(), "path_blocked": path.path_blocked(),
+            "nav_queue_count": actor.navigation.nav_queue().len(), "path": words,
+            "head": [head.x, head.y, head.z], "selector": drive.track().turn_index(),
+            "valid": u8::from(drive.track_valid()), "in_playfield": actor.in_playfield(),
             "mission_only": actor.is_mission_only()
         }),
         *expected,
@@ -249,7 +249,7 @@ fn native_actual_ally_entry_near_stop_preserves_pending_until_foundation_refusal
             .get(peer)
             .unwrap()
             .navigation
-            .nav_com
+            .nav_com()
             .is_none()
     );
     let terrain = scene.sim.resolved_terrain.as_ref().unwrap();
@@ -274,14 +274,17 @@ fn native_actual_ally_entry_near_stop_preserves_pending_until_foundation_refusal
     {
         // Exact pre-Process native route/facing priors; no prior travel claim.
         let actor = scene.sim.substrate.entities.get_mut(scene.tank).unwrap();
-        actor.navigation.path_replay = FootPathQueue {
-            directions: native["foot_before"]["path"]
-                .as_array()
-                .unwrap()
-                .iter()
-                .map_while(|v| (int(v) != -1).then(|| int(v) as u8))
-                .collect(),
-            ..Default::default()
+        actor.navigation.path_replay = {
+            let mut value = FootPathQueue::default();
+            value.set_directions_for_test(
+                native["foot_before"]["path"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .map_while(|v| (int(v) != -1).then(|| int(v) as u8))
+                    .collect(),
+            );
+            value
         };
         actor.body_facing = crate::sim::movement::FacingClass::new(0x8000, 0);
     }

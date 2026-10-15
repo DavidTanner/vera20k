@@ -129,7 +129,7 @@ pub(super) fn candidate_admitted(
         return false;
     }
     if candidate.category() == EntityCategory::Unit
-        && (candidate_object.resource_gatherer || candidate.bunker_link.installed_in().is_some())
+        && (candidate_object.resource_gatherer || candidate.bunker.link().installed_in().is_some())
     {
         return false;
     }

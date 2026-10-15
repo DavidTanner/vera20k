@@ -544,8 +544,8 @@ fn airborne_index(
     let mut ordered: Vec<&GameEntity> = entities
         .values()
         .filter(|entity| {
-            let x = i32::from(entity.position.rx);
-            let y = i32::from(entity.position.ry);
+            let x = i32::from(entity.position.rx());
+            let y = i32::from(entity.position.ry());
             entity.air_spatial_bucket().is_some()
                 && x >= min.0
                 && x <= max.0
@@ -557,7 +557,7 @@ fn airborne_index(
     let mut airborne: BTreeMap<(u16, u16), Vec<u64>> = BTreeMap::new();
     for entity in ordered {
         airborne
-            .entry((entity.position.rx, entity.position.ry))
+            .entry((entity.position.rx(), entity.position.ry()))
             .or_default()
             .push(entity.stable_id());
     }
@@ -829,8 +829,7 @@ impl ScanContext<'_> {
                         candidate_obj,
                         cargo,
                         self.rules,
-                        &world.houses,
-                        world.path_grid(),
+                        world,
                     )
                 }))
     }
@@ -1148,7 +1147,7 @@ pub(crate) fn greatest_threat(
         cells: occupancy,
         healer,
         engineer: attacker.category == EntityCategory::Infantry && attacker_obj.engineer,
-        berserk: scanner.berserk.active,
+        berserk: scanner.berserk.is_active(),
         controller_house,
         fire_world,
     };
@@ -1240,7 +1239,7 @@ pub(crate) fn greatest_threat(
                 // scanners as the flat walk's aircraft walk.
                 if (ctx.is_ally(candidate) && !ctx.attacks_allies())
                     || !ctx.house_gates_admit(candidate)
-                    || !candidate.lifecycle.cell_marked
+                    || !candidate.lifecycle.cell_marked()
                     || crate::sim::occupancy::cell_list_layer_for_entity(candidate, terrain)
                         .is_some()
                 {
@@ -1692,7 +1691,10 @@ fn evaluate_candidate(
     // G6 — `InLimbo`/`Health == 0`. Actual retained Cell lists and separate
     // airborne registrations are not filtered or reconstructed from these
     // facts; eligibility belongs to this receiver.
-    if candidate.health.current() == 0 || candidate.dying || candidate.lifecycle.in_limbo() {
+    if candidate.health.current() == 0
+        || candidate.death.is_dying()
+        || candidate.lifecycle.in_limbo()
+    {
         return None;
     }
 
@@ -1720,7 +1722,7 @@ fn evaluate_candidate(
     }
 
     // G8 — `TechnoClass+0x3D5`, the represented-in-the-playfield byte.
-    if ctx.require_playfield_membership && !candidate.in_playfield {
+    if ctx.require_playfield_membership && !candidate.in_playfield() {
         return None;
     }
 
@@ -1780,7 +1782,7 @@ fn evaluate_candidate(
                 terrain,
                 cell,
                 ctx.attacker_obj.movement_zone,
-                candidate.on_bridge,
+                candidate.on_bridge(),
             )
         });
         if candidate_zone.is_some_and(|zone| zone != scanner_zone) {
@@ -1856,10 +1858,10 @@ fn evaluate_candidate(
                     ctx.attacker.pos_ry,
                     ctx.attacker.sub_x,
                     ctx.attacker.sub_y,
-                    candidate.position.rx,
-                    candidate.position.ry,
-                    candidate.position.sub_x,
-                    candidate.position.sub_y,
+                    candidate.position.rx(),
+                    candidate.position.ry(),
+                    candidate.position.sub_x(),
+                    candidate.position.sub_y(),
                 ),
                 selected.weapon.range,
             ),
@@ -2041,9 +2043,9 @@ fn evaluate_candidate(
         && bridge_layer_rejects_candidate(
             terrain,
             position_world_coord(&ctx.scanner.position),
-            ctx.scanner.on_bridge,
+            ctx.scanner.on_bridge(),
             position_world_coord(&candidate.position),
-            candidate.on_bridge,
+            candidate.on_bridge(),
         )
     {
         return None;
@@ -2309,9 +2311,9 @@ mod tests {
         let mut entity = GameEntity::test_default(id, type_id, owner, rx, ry);
         entity.set_category_for_test(category);
         entity.lifecycle.set_in_limbo_for_test(false);
-        entity.lifecycle.cell_marked = true;
+        entity.lifecycle.set_cell_marked(true);
         if category == EntityCategory::Structure {
-            entity.foundation = "1x1".to_string();
+            entity.type_facts.set_foundation_for_test("1x1".to_string());
         }
         entities.insert(entity);
     }
@@ -2438,8 +2440,8 @@ mod tests {
                 sim.interner = test_interner();
                 for id in [3, 2, 1] {
                     let entity = sim.substrate.entities.get_mut(id).unwrap();
-                    entity.lifecycle.cell_marked = false;
-                    entity.on_bridge = bridge && id != 1;
+                    entity.lifecycle.set_cell_marked(false);
+                    entity.set_on_bridge(bridge && id != 1);
                     if id == 3 {
                         entity.locomotor = Some(LocomotorState::for_test_kind(LocomotorKind::Fly));
                     }
@@ -2507,7 +2509,7 @@ mod tests {
                     .get_mut(3)
                     .unwrap()
                     .lifecycle
-                    .cell_marked = false;
+                    .set_cell_marked(false);
                 assert_eq!(
                     acquire(&sim),
                     Some(2),
@@ -2599,7 +2601,7 @@ mod tests {
         );
         sim.interner = test_interner();
         let mut locomotor = LocomotorState::for_test_kind(LocomotorKind::Jumpjet);
-        locomotor.layer = MovementLayer::Air;
+        locomotor.set_layer(MovementLayer::Air);
         sim.substrate.entities.get_mut(2).unwrap().locomotor = Some(locomotor);
         sim.set_object_height_unmarked(2, altitude);
         sim.add_entity_occupancy(1);
@@ -3087,7 +3089,11 @@ mod tests {
                 9,
                 EntityCategory::Structure,
             );
-            entities.get_mut(2).unwrap().foundation = "3x3".to_string();
+            entities
+                .get_mut(2)
+                .unwrap()
+                .type_facts
+                .set_foundation_for_test("3x3".to_string());
             assert_eq!(
                 pick_with_mask(&entities, &rules, 1, super::super::ScanMission::AreaGuard),
                 expected,
@@ -3123,7 +3129,7 @@ mod tests {
                 11,
                 EntityCategory::Unit,
             );
-            entities.get_mut(2).unwrap().position.z = level;
+            entities.get_mut(2).unwrap().position.set_z(level);
             assert_eq!(
                 pick_with_mask(&entities, &rules, 1, super::super::ScanMission::AreaGuard),
                 expected,
@@ -3172,7 +3178,7 @@ mod tests {
         );
         sim.interner = test_interner();
         let mut locomotor = LocomotorState::for_test_kind(LocomotorKind::Jumpjet);
-        locomotor.layer = MovementLayer::Air;
+        locomotor.set_layer(MovementLayer::Air);
         sim.substrate.entities.get_mut(2).unwrap().locomotor = Some(locomotor);
         sim.set_object_height_unmarked(2, 1200);
         sim.add_entity_occupancy(1);
@@ -3222,7 +3228,11 @@ mod tests {
             10,
             EntityCategory::Structure,
         );
-        entities.get_mut(1).unwrap().foundation = "3x3".to_string();
+        entities
+            .get_mut(1)
+            .unwrap()
+            .type_facts
+            .set_foundation_for_test("3x3".to_string());
         place(
             &mut entities,
             2,
@@ -3268,7 +3278,11 @@ mod tests {
                 ry,
                 EntityCategory::Structure,
             );
-            entities.get_mut(2).unwrap().foundation = foundation.to_string();
+            entities
+                .get_mut(2)
+                .unwrap()
+                .type_facts
+                .set_foundation_for_test(foundation.to_string());
             let interner = test_interner();
             truncate_score(
                 calculate_threat_score(
@@ -3788,7 +3802,7 @@ mod tests {
             5,
             EntityCategory::Structure,
         );
-        building.bunker_occupant = Some(2);
+        building.bunker.set_bunker_occupant_for_test(Some(2));
         let tank = GameEntity::test_default(2, "TANK", "Owner", 5, 5);
         let mut entities = EntityStore::new();
         entities.insert(building);
@@ -3819,7 +3833,7 @@ mod tests {
         let mut cargo = PassengerCargo::new(2, 1);
         assert!(cargo.board(2, 1));
         assert!(cargo.board(3, 1));
-        building.passenger_role = PassengerRole::Transport { cargo };
+        building.passenger_role = PassengerRole::transport(cargo);
         assert_eq!(
             live_threat_posed(
                 &building,

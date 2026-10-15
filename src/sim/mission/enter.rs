@@ -53,7 +53,7 @@ pub(crate) fn mission_enter(
                 .substrate
                 .entities
                 .get(id)
-                .and_then(|entity| entity.navigation.nav_com);
+                .and_then(|entity| entity.navigation.nav_com());
             let nav_is_mover = match nav {
                 Some(
                     NavTargetRef::Entity { id: nav }
@@ -86,7 +86,7 @@ pub(crate) fn mission_enter(
                 .substrate
                 .entities
                 .get(id)
-                .is_some_and(|entity| entity.dock_entered_with.is_some());
+                .is_some_and(|entity| entity.tether.partner().is_some());
             if reply != RadioResponse::Roger && !tethered {
                 // 0x004D92CE..0x004D92E8.
                 radio::transmit_to_contact(sim, id, RadioMessage::Break, Some(rules), effects);
@@ -116,22 +116,22 @@ fn pop_nav_queue(
     let Some(entity) = sim.substrate.entities.get(id) else {
         return false;
     };
-    if entity.navigation.nav_com.is_some() || entity.navigation.nav_queue.is_empty() {
+    if entity.navigation.nav_com().is_some() || entity.navigation.nav_queue().is_empty() {
         return false;
     }
     let _ = sim.try_end_piggyback(id, Some(rules));
     let Some(entity) = sim.substrate.entities.get(id) else {
         return false;
     };
-    let first = entity.navigation.nav_queue[0];
+    let first = entity.navigation.nav_queue()[0];
     // 0x004D939A: vt+0x480(NavQueue[0], 0).
     let _ = sim.assign_destination_keeping_queue(id, Some(first), Some(rules), registry, effects);
     // The shift deletes the first entry of the queue the setter left; the
     // UnitRepair arm's modified NULL (`0x007423CA`) may have emptied it.
     if let Some(entity) = sim.substrate.entities.get_mut(id)
-        && !entity.navigation.nav_queue.is_empty()
+        && !entity.navigation.nav_queue().is_empty()
     {
-        entity.navigation.nav_queue.remove(0);
+        entity.navigation.pop_nav_queue_front();
     }
     true
 }
@@ -157,7 +157,7 @@ fn teleporter_reassign(
     {
         return;
     }
-    let nav = entity.navigation.nav_com;
+    let nav = entity.navigation.nav_com();
     if let Some(entity) = sim.substrate.entities.get_mut(id) {
         crate::sim::movement::foot_stop_moving(entity);
     }

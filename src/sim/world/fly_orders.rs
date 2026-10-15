@@ -227,7 +227,7 @@ impl Simulation {
                 .substrate
                 .entities
                 .get(id)
-                .and_then(|aircraft| aircraft.navigation.nav_com);
+                .and_then(|aircraft| aircraft.navigation.nav_com());
             if !services {
                 archive(self, Some(dock));
             } else if nav_com.is_some() {
@@ -417,7 +417,7 @@ impl Simulation {
             && entity
                 .aircraft_ammo
                 .as_ref()
-                .is_some_and(|a| a.current != 0))
+                .is_some_and(|a| a.current() != 0))
         .then_some(flight_level);
         //4CCE1C..4CCE6E stores destination before landing-base/height reads.
         if let Some(state) = self

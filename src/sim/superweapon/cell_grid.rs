@@ -95,7 +95,7 @@ pub(super) fn live_successor(
     let cell = sim
         .substrate
         .occupancy
-        .get(object.position.rx, object.position.ry)?;
+        .get(object.position.rx(), object.position.ry())?;
     // PUT may retain a Cell list even though the current virtual layer query
     // differs. Read the actual replacement list, not a fresh +78 projection.
     let layer = cell

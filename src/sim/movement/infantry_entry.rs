@@ -140,3 +140,92 @@ pub(crate) fn adjust_height_and_list(
         _ => false,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// One step from `source` at (3,3) to `target` east of it at (4,3), each
+    /// `(level, slope, flags)`, at path `height`: the prelude's admission, the
+    /// height it leaves and whether it selected the bridge list.
+    fn step(source: (u8, u8, u32), target: (u8, u8, u32), height: i32) -> (bool, i32, bool) {
+        let mut terrain = crate::map::resolved_terrain::test_flat_ground_grid(8);
+        let [source, target] = [((3, 3), source), ((4, 3), target)].map(
+            |(coord, (level, slope, flags)): ((i16, i16), (u8, u8, u32))| {
+                let cell = terrain.native_cell_identity(coord);
+                terrain.write_native_cell_level(cell, level);
+                terrain.write_native_cell_flags(cell, flags);
+                terrain
+                    .cell_mut(coord.0 as u16, coord.1 as u16)
+                    .unwrap()
+                    .slope_type = slope;
+                cell
+            },
+        );
+        let (mut height, mut list_bridge) = (height, false);
+        let admitted = adjust_height_and_list(
+            &terrain,
+            target,
+            2,
+            Some(source),
+            &mut height,
+            &mut list_bridge,
+        );
+        (admitted, height, list_bridge)
+    }
+
+    /// `0x004D9DD8..0x004D9E05`: a one-level step reads the slope of the lower
+    /// cell only, from signed levels (`MOVSX` of `+0x11B`); two, three and
+    /// five levels are refused whatever the slopes (`0x004D9D50`).
+    #[test]
+    fn the_lower_cells_slope_decides_a_one_level_step() {
+        for (source, target, height, admitted) in [
+            ((0, 0, 0), (1, 0, 0), 0, false),
+            ((0, 0, 0), (1, 2, 0), 0, false),
+            ((0, 2, 0), (1, 0, 0), 0, true),
+            ((1, 2, 0), (0, 0, 0), 1, false),
+            ((1, 0, 0), (0, 2, 0), 1, true),
+            ((0xFF, 0, 0), (0, 0, 0), -1, false),
+            ((0xFF, 0xFE, 0), (0, 0, 0), -1, true),
+            ((0, 0, 0), (0xFF, 0, 0), 0, false),
+            ((0, 0, 0), (0xFF, 0xFE, 0), 0, true),
+            ((0, 2, 0), (2, 2, 0), 0, false),
+            ((0, 2, 0), (3, 2, 0), 0, false),
+            ((0, 2, 0), (5, 2, 0), 0, false),
+        ] {
+            assert_eq!(
+                step(source, target, height).0,
+                admitted,
+                "{source:?} -> {target:?} at {height}"
+            );
+        }
+    }
+
+    /// `0x004D9E08..0x004D9E3B`: from a structural cell at deck height, an
+    /// equal-level target needs both `0x100` and `0x200`; at the target's own
+    /// level (the ground beneath the span) the step is admitted.
+    #[test]
+    fn a_deck_step_needs_the_targets_transition_flag() {
+        for (target_flags, height, admitted) in
+            [(0x100, 4, false), (0x300, 4, true), (0x100, 0, true)]
+        {
+            assert_eq!(
+                step((0, 0, 0x100), (0, 0, target_flags), height),
+                (admitted, height, false),
+                "flags {target_flags:#x} at {height}"
+            );
+        }
+    }
+
+    /// `0x004D9D5C..0x004D9DD5`: four levels down onto a span needs the
+    /// target's `0x300` and selects the bridge list; four levels up needs a
+    /// structural source with the path at the target's level (the deck).
+    #[test]
+    fn a_four_level_step_meets_the_deck() {
+        assert_eq!(step((4, 0, 0), (0, 0, 0x100), 4), (false, 4, false));
+        assert_eq!(step((4, 0, 0), (0, 0, 0x300), 4), (true, 4, true));
+        assert_eq!(step((0, 0, 0x100), (4, 0, 0), 4), (true, 4, false));
+        assert_eq!(step((0, 0, 0x100), (4, 0, 0), 0), (false, 0, false));
+        assert_eq!(step((0, 0, 0), (4, 0, 0), 0), (false, 0, false));
+    }
+}

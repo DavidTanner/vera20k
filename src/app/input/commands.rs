@@ -681,7 +681,7 @@ fn preferred_local_owner_for_sim(
     // Sandbox fallback: prefer owner of selected unit first.
     for entity in sim.entities().values() {
         let owner_str = sim.interner.resolve(entity.owner());
-        if entity.selected && is_playable_house_name(owner_str) {
+        if entity.selection.is_selected() && is_playable_house_name(owner_str) {
             return Some(owner_str.to_string());
         }
     }
@@ -1122,11 +1122,13 @@ mod tests {
         sim.session.house_order = vec![local, enemy];
         sim.session.game_options.short_game = false;
         sim.session.tick = 41;
+        sim.session.binary_frame = 42;
+        sim.session.current_house = Some(local);
         assert!(
             sim.houses
                 .get_mut(&local)
                 .expect("local house")
-                .flag_to_win(41, 1)
+                .accept_win_result(41, 1, false)
         );
         assert_eq!(
             schedule_command_in_sim(&mut sim, "Local", Command::ExitMatch),
@@ -1136,7 +1138,7 @@ mod tests {
         let due = sim.take_due_commands();
         let result = sim.advance_tick(&due, None, None, None, 33);
         let local_outcome_exit_ready = sim.houses[&local]
-            .outcome_state
+            .outcome()
             .is_some_and(|outcome| outcome.exit_ready);
 
         assert!(!result.frame_committed);

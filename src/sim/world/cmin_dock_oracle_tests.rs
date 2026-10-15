@@ -118,9 +118,9 @@ pub(super) fn cmin_rules(input: &Value) -> (RuleSet, IniFile) {
 /// refinery's foundation cells).
 fn place(s: &mut Scene, id: u64, to: (u16, u16)) {
     let entity = s.sim.substrate.entities.get_mut(id).unwrap();
-    let from = (entity.position.rx, entity.position.ry);
-    entity.position.rx = to.0;
-    entity.position.ry = to.1;
+    let from = (entity.position.rx(), entity.position.ry());
+    entity.position.set_rx(to.0);
+    entity.position.set_ry(to.1);
     let layer = s
         .sim
         .substrate
@@ -189,8 +189,8 @@ pub(super) fn dress_cmin(s: &mut Scene, input: &Value) {
         let miner = s.miner;
         place(s, miner, ((exact.x >> 8) as u16, (exact.y >> 8) as u16));
         let position = &mut s.sim.substrate.entities.get_mut(miner).unwrap().position;
-        position.sub_x = crate::util::fixed_math::SimFixed::from_num(exact.x & 0xFF);
-        position.sub_y = crate::util::fixed_math::SimFixed::from_num(exact.y & 0xFF);
+        position.set_sub_x(crate::util::fixed_math::SimFixed::from_num(exact.x & 0xFF));
+        position.set_sub_y(crate::util::fixed_math::SimFixed::from_num(exact.y & 0xFF));
     }
     let nav = input.get("nav").filter(|n| !n.is_null()).map(cell);
     let terrain = s.sim.resolved_terrain.clone();
@@ -220,9 +220,15 @@ pub(super) fn dress_cmin(s: &mut Scene, input: &Value) {
             ));
         }
     }
-    entity.navigation.nav_com = nav.map(|(x, y)| NavTargetRef::cell(x, y));
-    entity.setter_force_reassign = input["force_reassign"] == true;
-    entity.foot_locomotor_swap_active = input["swap_6ad"] == true;
+    entity
+        .navigation
+        .set_nav_com(nav.map(|(x, y)| NavTargetRef::cell(x, y)));
+    entity
+        .setter_force_reassign
+        .set_for_test(input["force_reassign"] == true);
+    entity
+        .lift
+        .set_swap_active_for_test(input["swap_6ad"] == true);
     if input["locked"] == true {
         entity
             .parasite
@@ -234,7 +240,9 @@ pub(super) fn dress_cmin(s: &mut Scene, input: &Value) {
     if input["latch_27c"] == true {
         // Techno+0x27C, which only the Chronosphere's warp writes in VERA:
         // its payload on the active Teleport.
-        entity.warped_by_house = Some(entity.owner());
+        entity
+            .drop_credit
+            .set_warped_by_house_for_test(Some(entity.owner()));
         entity
             .locomotor
             .as_mut()
@@ -266,14 +274,14 @@ fn kind_name(kind: LocomotorKind) -> &'static str {
 /// The CMIN state every row compares (`state` is the oracle's final state).
 fn compare_cmin(s: &Scene, state: &Value, context: &str, mission_body_executed: bool) {
     let entity = s.sim.substrate.entities.get(s.miner).unwrap();
-    let nav = match entity.navigation.nav_com {
+    let nav = match entity.navigation.nav_com() {
         Some(NavTargetRef::Cell { rx, ry }) => serde_json::json!([rx, ry]),
         None => Value::Null,
         other => panic!("{context}: non-cell NavCom {other:?}"),
     };
     assert_eq!(nav, state["nav"], "{context}: NavCom");
     assert_eq!(
-        u64::from(entity.setter_force_reassign),
+        u64::from(entity.setter_force_reassign.is_raised()),
         state["force_reassign"].as_u64().unwrap(),
         "{context}: +0x1F8"
     );
@@ -286,9 +294,9 @@ fn compare_cmin(s: &Scene, state: &Value, context: &str, mission_body_executed: 
     );
     assert_eq!(
         locomotor
-            .piggyback
+            .piggyback()
             .as_ref()
-            .map_or(Value::Null, |stash| kind_name(stash.kind).into()),
+            .map_or(Value::Null, |stash| kind_name(stash.active_kind()).into()),
         expected["stash"].clone(),
         "{context}: stash"
     );
@@ -344,7 +352,7 @@ fn compare_cmin(s: &Scene, state: &Value, context: &str, mission_body_executed: 
         "{context}: miner contact"
     );
     assert_eq!(
-        u64::from(entity.dock_entered_with.is_some()),
+        u64::from(entity.tether.partner().is_some()),
         state["miner_tether"].as_u64().unwrap(),
         "{context}: miner tether"
     );
@@ -531,7 +539,7 @@ fn teleport_warp_matches_the_original_process() {
         }
         let origin = {
             let entity = s.sim.substrate.entities.get(s.miner).unwrap();
-            (entity.position.rx, entity.position.ry)
+            (entity.position.rx(), entity.position.ry())
         };
         let warp_out = s.sim.interner.intern("WARPOUT");
         let ticks = row["ticks"].as_array().unwrap();
@@ -600,7 +608,7 @@ fn teleport_warp_matches_the_original_process() {
                 assert_eq!(anims, expected_anims, "{context}: WarpOut animations");
                 if expected_anims.is_empty() {
                     let entity = s.sim.substrate.entities.get(s.miner).unwrap();
-                    assert_eq!((entity.position.rx, entity.position.ry), origin);
+                    assert_eq!((entity.position.rx(), entity.position.ry()), origin);
                 }
             }
             let state = &tick["state"];
@@ -638,13 +646,13 @@ fn fill(s: &mut Scene, status: u64) {
     let entity = s.sim.substrate.entities.get_mut(s.miner).unwrap();
     let miner = entity.miner.as_mut().unwrap();
     if status != 0 {
-        miner.cargo = vec![
+        miner.set_cargo_for_test(vec![
             CargoBale {
                 resource_type: ResourceType::Ore,
                 value: 25,
             };
-            usize::from(miner.capacity_bales)
-        ];
+            usize::from(miner.capacity_bales())
+        ]);
     }
     entity.mission.set_handler_state(match status {
         0 => MinerState::SearchOre.cursor(),
@@ -728,13 +736,15 @@ fn mission_enter_teleporter_arms_match_the_original_dispatch() {
         let mut s = cmin_scene(input);
         if let Some(queue) = input["nav_queue"].as_array() {
             let entity = s.sim.substrate.entities.get_mut(s.miner).unwrap();
-            entity.navigation.nav_queue = queue
-                .iter()
-                .map(|c| {
-                    let (x, y) = cell(c);
-                    NavTargetRef::cell(x, y)
-                })
-                .collect();
+            entity.navigation.set_nav_queue_for_test(
+                queue
+                    .iter()
+                    .map(|c| {
+                        let (x, y) = cell(c);
+                        NavTargetRef::cell(x, y)
+                    })
+                    .collect(),
+            );
         }
         radio::take_transmit_log();
         let before = active(&s);
@@ -753,7 +763,7 @@ fn mission_enter_teleporter_arms_match_the_original_dispatch() {
         if let Some(queue) = input["nav_queue"].as_array() {
             let entity = s.sim.substrate.entities.get(s.miner).unwrap();
             assert_eq!(
-                entity.navigation.nav_queue.len(),
+                entity.navigation.nav_queue().len(),
                 queue.len() - 1,
                 "{context}: NavQueue[0] taken"
             );

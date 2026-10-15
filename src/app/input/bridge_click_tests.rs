@@ -365,18 +365,19 @@ fn follow_clicked_goal(
                 "each chained retail command must install its exact destination"
             );
             assert_eq!(
-                entity.navigation.nav_com,
+                entity.navigation.nav_com(),
                 Some(crate::sim::components::NavTargetRef::cell(goal.0, goal.1)),
                 "each chained retail command must also publish its exact NavCom"
             );
         }
-        if (entity.position.rx, entity.position.ry) == goal
+        if (entity.position.rx(), entity.position.ry()) == goal
             && crate::sim::movement::motion_query::is_moving(&entity) != Some(true)
         {
             // Body Cell entry can precede paid-head retirement by several
             // frames. Check the state used by the next actual Move order.
             assert_eq!(
-                entity.on_bridge, expected_on_bridge,
+                entity.on_bridge(),
+                expected_on_bridge,
                 "clicked goal {goal:?} must select the intended movement plane"
             );
             assert_eq!(
@@ -390,7 +391,7 @@ fn follow_clicked_goal(
             println!(
                 "retail click {point:?} -> {goal:?}: arrived after {} frames, on_bridge={}",
                 frame + 1,
-                entity.on_bridge
+                entity.on_bridge()
             );
             arrived = true;
             break;
@@ -511,7 +512,7 @@ fn ordinary_walk_cell_input_reaches_near_bank_and_valid_high_bridge() {
         advance_input_fixture(&mut sim, &rules);
         let e = sim.entities().get(actor).unwrap();
         assert_eq!(
-            e.navigation.nav_com,
+            e.navigation.nav_com(),
             Some(crate::sim::components::NavTargetRef::Cell {
                 rx: chosen.0,
                 ry: chosen.1
@@ -524,15 +525,19 @@ fn ordinary_walk_cell_input_reaches_near_bank_and_valid_high_bridge() {
         for _ in 0..250 {
             advance_input_fixture(&mut sim, &rules);
             let e = sim.entities().get(actor).unwrap();
-            if (e.position.rx, e.position.ry) == chosen
+            if (e.position.rx(), e.position.ry()) == chosen
                 && e.locomotor.as_ref().unwrap().step_head().is_none()
             {
                 break;
             }
         }
         let e = sim.entities().get(actor).unwrap();
-        assert_eq!((e.position.rx, e.position.ry), chosen, "bridge={bridge}");
-        assert_eq!(e.on_bridge, bridge);
+        assert_eq!(
+            (e.position.rx(), e.position.ry()),
+            chosen,
+            "bridge={bridge}"
+        );
+        assert_eq!(e.on_bridge(), bridge);
         assert!(
             e.locomotor.as_ref().unwrap().step_head().is_none(),
             "arrival must retire its paid head"
@@ -565,7 +570,7 @@ fn encoded_walk_destination_survives_topology_change_before_due_frame() {
     advance_input_fixture(&mut sim, &rules);
     let e = sim.entities().get(actor).unwrap();
     assert_eq!(
-        e.navigation.nav_com,
+        e.navigation.nav_com(),
         Some(crate::sim::components::NavTargetRef::Cell { rx: 9, ry: 6 })
     );
     assert_eq!(
@@ -597,7 +602,7 @@ fn direct_simulation_walk_move_is_an_already_resolved_destination() {
     advance_input_fixture(&mut sim, &rules);
     let e = sim.entities().get(actor).unwrap();
     assert_eq!(
-        e.navigation.nav_com,
+        e.navigation.nav_com(),
         Some(crate::sim::components::NavTargetRef::Cell { rx: 9, ry: 5 })
     );
     assert_eq!(

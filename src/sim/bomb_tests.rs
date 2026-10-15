@@ -439,11 +439,11 @@ fn native_world(input: &serde_json::Value, rules: &RuleSet) -> NativeWorld {
             let entity = sim.substrate.entities.get_mut(id).unwrap();
             if let Some(location) = techno["location"].as_array() {
                 let axis = |i: usize| location[i].as_i64().unwrap() as i32;
-                entity.position.rx = (axis(0) / 256) as u16;
-                entity.position.sub_x = SimFixed::from_num(axis(0) % 256);
-                entity.position.ry = (axis(1) / 256) as u16;
-                entity.position.sub_y = SimFixed::from_num(axis(1) % 256);
-                entity.position.exact_z_leptons = Some(axis(2));
+                entity.position.set_rx((axis(0) / 256) as u16);
+                entity.position.set_sub_x(SimFixed::from_num(axis(0) % 256));
+                entity.position.set_ry((axis(1) / 256) as u16);
+                entity.position.set_sub_y(SimFixed::from_num(axis(1) % 256));
+                entity.position.set_exact_z_leptons(Some(axis(2)));
             }
             // Native's detector list holds exactly the objects on the map with
             // a BombSight (Unlimbo adds, Limbo removes), so an unlisted one is
@@ -852,7 +852,7 @@ fn retail_non_fire_once_shot_retains_target() {
     assert!(!rules.weapon("M1Carbine").unwrap().fire_once);
     attack(&mut sim, gi, tank);
     run_until(&mut sim, rules, &grid, 200, |sim| {
-        entity(sim, gi).last_fire_frame >= 0
+        entity(sim, gi).last_fire_frame.frame() >= 0
     })
     .expect("the stock GI fires");
     assert_eq!(
@@ -924,7 +924,7 @@ fn a_bomb_outlives_its_planter_and_credits_no_one() {
     );
     let tank = entity(&sim, tank);
     assert_eq!(tank.health.current(), 0, "450 kills the 300-strength tank");
-    assert!(tank.killed_by.is_none(), "no kill credit");
+    assert!(tank.kill_record.killer().is_none(), "no kill credit");
 }
 
 /// UnInit defuses silently (`0x005F65F3`); a building changing hands loses
@@ -1006,7 +1006,7 @@ fn a_dying_crazy_ivan_explodes() {
     assert_eq!(entity(&sim, tank).health.current(), 1000 - 450);
     let engineer = entity(&sim, engineer);
     assert_eq!(engineer.health.current(), 0);
-    assert_eq!(engineer.killed_by, sim.interner.get("Russians"));
+    assert_eq!(engineer.kill_record.killer(), sim.interner.get("Russians"));
 }
 
 /// A bombed Crazy Ivan who dies blows up once: his death weapon cannot plant
@@ -1029,7 +1029,7 @@ fn a_bombed_crazy_ivan_blows_up_once() {
     assert_eq!(entity(&sim, tank).health.current(), 1000 - 450, "one blast");
     let engineer = entity(&sim, engineer);
     assert_eq!(engineer.health.current(), 0);
-    assert_eq!(engineer.killed_by, sim.interner.get("Americans"));
+    assert_eq!(engineer.kill_record.killer(), sim.interner.get("Americans"));
 }
 
 /// The blast is Apply_area_damage at the carrier's Location with IvanDamage
@@ -1059,7 +1059,7 @@ fn the_blast_is_centred_on_the_carrier() {
     assert_eq!(entity(&sim, tank).health.current(), 1000 - 450);
     let engineer = entity(&sim, engineer);
     assert_eq!(engineer.health.current(), 0);
-    assert_eq!(engineer.killed_by, sim.interner.get("Russians"));
+    assert_eq!(engineer.kill_record.killer(), sim.interner.get("Russians"));
 }
 
 /// A blast that kills another carrier sets that bomb off in its death

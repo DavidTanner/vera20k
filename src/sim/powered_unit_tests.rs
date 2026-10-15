@@ -50,9 +50,11 @@ fn offline_sparks_match_original_execution() {
             &mut entity.position,
             [location[0], location[1]],
         );
-        entity.position.exact_z_leptons = Some(location[2]);
+        entity.position.set_exact_z_leptons(Some(location[2]));
         entity.set_native_unique_id_for_test(int(&row["id"]));
-        entity.deactivated = row["deactivated"].as_bool().unwrap();
+        entity
+            .deactivated
+            .set_for_test(row["deactivated"].as_bool().unwrap());
         let mut sim = Simulation::new();
         sim.substrate.entities.insert(entity);
         sim.session.binary_frame = row["frame"].as_u64().unwrap() as u32;
@@ -201,7 +203,12 @@ fn run_until(
 }
 
 fn offline(sim: &Simulation, id: u64) -> bool {
-    sim.substrate.entities.get(id).unwrap().deactivated
+    sim.substrate
+        .entities
+        .get(id)
+        .unwrap()
+        .deactivated
+        .is_offline()
 }
 
 fn sounds(events: &[SimSoundEvent], name: &str) -> usize {
@@ -241,14 +248,14 @@ fn destroy(sim: &mut Simulation, rules: &RuleSet, id: u64) {
         sim.substrate
             .entities
             .get(id)
-            .is_none_or(|entity| entity.dying)
+            .is_none_or(|entity| entity.death.is_dying())
     );
 }
 
 /// The object's cell.
 fn cell(sim: &Simulation, id: u64) -> (u16, u16) {
     let entity = sim.substrate.entities.get(id).unwrap();
-    (entity.position.rx, entity.position.ry)
+    (entity.position.rx(), entity.position.ry())
 }
 
 /// The object's height above the ground (GetHeight).
@@ -311,7 +318,12 @@ fn losing_and_regaining_the_last_powered_center_switches_robot_tanks() {
     assert_eq!(lines(&events, americans, EVA_ROBOT_TANKS_BACK_ONLINE), 1);
     assert_eq!(lines(&events, russians, EVA_ROBOT_TANKS_BACK_ONLINE), 1);
     assert_eq!(sounds(&events, "RobotTankOnline"), 0);
-    sim.substrate.entities.get_mut(tanks[0]).unwrap().selected = true;
+    sim.substrate
+        .entities
+        .get_mut(tanks[0])
+        .unwrap()
+        .selection
+        .set_selected_for_test(true);
 
     events.clear();
     destroy(&mut sim, &rules, plant);
@@ -329,7 +341,7 @@ fn losing_and_regaining_the_last_powered_center_switches_robot_tanks() {
     let guard = MissionId::from_known(MissionType::Guard);
     for id in tanks {
         let tank = sim.substrate.entities.get(id).unwrap();
-        assert!(!tank.selected);
+        assert!(!tank.selection.is_selected());
         assert!([tank.mission.current(), tank.mission.queued()].contains(&guard));
         assert!(!sim.techno_player_controllable(id, &rules));
         assert!(!sim.techno_is_active(id, &rules));
@@ -455,6 +467,7 @@ fn a_captured_center_counts_for_its_captor_only_at_its_next_edge() {
             .get(center)
             .unwrap()
             .building_last_operational
+            .is_operational()
     };
     destroy(&mut sim, &rules, plant);
     assert!(run_until(
@@ -515,7 +528,7 @@ fn a_robot_tank_without_a_powered_center_goes_offline_when_it_moves() {
         &mut events,
         |sim| height(sim, tank) >= rules.general.hover_height / 2
     ));
-    let start_x = sim.substrate.entities.get(tank).unwrap().position.sub_x;
+    let start_x = sim.substrate.entities.get(tank).unwrap().position.sub_x();
     order_move(&mut sim, tank, (16, 16));
     assert!(run_until(
         &mut sim,
@@ -533,12 +546,12 @@ fn a_robot_tank_without_a_powered_center_goes_offline_when_it_moves() {
     let rest = sim.substrate.entities.get(tank).unwrap().position;
     assert_eq!(height(&sim, tank), 0);
     assert_eq!(cell(&sim, tank), (10, 16));
-    assert!(rest.sub_x > start_x, "it drifted toward its head, east");
+    assert!(rest.sub_x() > start_x, "it drifted toward its head, east");
     run_until(&mut sim, &rules, &grid, 120, &mut events, |_| false);
     let now = sim.substrate.entities.get(tank).unwrap().position;
     assert_eq!(
-        (now.rx, now.ry, now.sub_x, now.sub_y),
-        (rest.rx, rest.ry, rest.sub_x, rest.sub_y)
+        (now.rx(), now.ry(), now.sub_x(), now.sub_y()),
+        (rest.rx(), rest.ry(), rest.sub_x(), rest.sub_y())
     );
     assert!(offline(&sim, tank));
     assert_eq!(sounds(&events, "RobotTankOffline"), 1);
@@ -618,7 +631,7 @@ fn losing_robot_power_drops_water_hover_and_keeps_land_hover_alive() {
                 .entities
                 .get(water_tank)
                 .expect("powered water hover remains alive");
-            assert!(!tank.deactivated && !tank.was_dropped_as_bomb());
+            assert!(!tank.deactivated.is_offline() && !tank.was_dropped_as_bomb());
             assert!(tank.health.current() > 0);
             false
         });
@@ -683,7 +696,7 @@ fn losing_robot_power_drops_water_hover_and_keeps_land_hover_alive() {
             .entities
             .get(land_tank)
             .expect("land hover stays represented");
-        assert!(land_tank.deactivated && land_tank.health.current() > 0);
+        assert!(land_tank.deactivated.is_offline() && land_tank.health.current() > 0);
         assert!(!land_tank.was_dropped_as_bomb() && !land_tank.is_falling_down());
         assert_eq!(
             crate::sim::movement::air_movement::current_fly_height(
@@ -724,13 +737,19 @@ fn robot_tank_state_is_saved_and_hashed() {
             EntityCategory::Structure,
         ));
     let mut seen = vec![sim.state_hash()];
-    sim.substrate.entities.get_mut(tank).unwrap().deactivated = true;
+    sim.substrate
+        .entities
+        .get_mut(tank)
+        .unwrap()
+        .deactivated
+        .set_for_test(true);
     seen.push(sim.state_hash());
     sim.substrate
         .entities
         .get_mut(center)
         .unwrap()
-        .building_powered_center = true;
+        .building_powered_center
+        .set_for_test(true);
     seen.push(sim.state_hash());
     assert_eq!(sim.houses.get_mut(&house).unwrap().gain_powered_center(), 1);
     seen.push(sim.state_hash());
@@ -740,7 +759,15 @@ fn robot_tank_state_is_saved_and_hashed() {
     let bytes = GameSnapshot::save(&sim, 0, 0, "robot tanks", 0);
     let mut restored = GameSnapshot::load(&bytes).unwrap().sim;
     restored.restore_after_snapshot_load().unwrap();
-    assert!(restored.substrate.entities.get(tank).unwrap().deactivated);
+    assert!(
+        restored
+            .substrate
+            .entities
+            .get(tank)
+            .unwrap()
+            .deactivated
+            .is_offline()
+    );
     assert!(
         restored
             .substrate
@@ -748,6 +775,7 @@ fn robot_tank_state_is_saved_and_hashed() {
             .get(center)
             .unwrap()
             .building_powered_center
+            .is_counted()
     );
     assert!(restored.has_powered_center(house));
     assert_eq!(restored.state_hash(), sim.state_hash());

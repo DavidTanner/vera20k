@@ -201,6 +201,7 @@ fn supplied_fixture(row: &Value) -> (Simulation, RuleSet, u64) {
             0,
             0,
             &rules,
+            crate::sim::world::FrameEffects::default(),
         )
         .unwrap();
     let mut terrain = crate::map::resolved_terrain::test_grid(32, 32, |x, y| {
@@ -241,9 +242,13 @@ fn supplied_fixture(row: &Value) -> (Simulation, RuleSet, u64) {
     // The companion supplies a post-constructor Location at Cell10,10;
     // transport the complete saved XYZ through the existing coordinate owner.
     ground_pose::put_location(&mut actor.position, coordinate(&before["position"]));
-    actor.on_bridge = input["bridge"] != 0;
+    actor.set_on_bridge(input["bridge"] != 0);
     actor.set_falling_down_for_test(input["falling"].as_i64().unwrap_or(0) != 0);
-    actor.infantry.as_mut().unwrap().is_prone = before["prone"] != 0;
+    actor
+        .infantry
+        .as_mut()
+        .unwrap()
+        .set_is_prone_for_test(before["prone"] != 0);
     actor.mission_leaf = MissionLeafState::infantry_raw_for_test(
         signed(&before["firing"]) as u8,
         signed(&before["doing"]),
@@ -259,11 +264,16 @@ fn supplied_fixture(row: &Value) -> (Simulation, RuleSet, u64) {
         signed(&before["stage"][2]),
         signed(&before["stage"][3]),
     ));
-    actor.passive_scan_timer = MissionTimer::armed(
-        signed(&before["reload"][0]) as u32,
-        signed(&before["reload"][1]) as u32,
-    );
-    actor.rearm_timer = CdTimer::from_raw(signed(&before["rearm"][0]), signed(&before["rearm"][1]));
+    actor
+        .passive_scan
+        .set_passive_scan_timer_for_test(MissionTimer::armed(
+            signed(&before["reload"][0]) as u32,
+            signed(&before["reload"][1]) as u32,
+        ));
+    actor.rearm_timer.set_for_test(CdTimer::from_raw(
+        signed(&before["rearm"][0]),
+        signed(&before["rearm"][1]),
+    ));
     actor.mission.apply_test_fixture(MissionTestFixture {
         current: MissionId::from_raw(signed(&before["mission"])),
         suspended: MissionId::from_raw(signed(&before["suspended"])),
@@ -277,22 +287,24 @@ fn supplied_fixture(row: &Value) -> (Simulation, RuleSet, u64) {
     actor
         .attack_target
         .set_for_test(target(&before["target"], row));
-    actor.navigation.nav_com = target(&before["nav"], row).map(|target| match target {
-        TargetKind::Cell(x, y) => NavTargetRef::cell(x, y),
-        TargetKind::Entity(_) => unreachable!(),
-    });
+    actor
+        .navigation
+        .set_nav_com(target(&before["nav"], row).map(|target| match target {
+            TargetKind::Cell(x, y) => NavTargetRef::cell(x, y),
+            TargetKind::Entity(_) => unreachable!(),
+        }));
     let mut loco = LocomotorState::from_object_type(
         rules.object(input["type_id"].as_str().unwrap()).unwrap(),
         0,
     );
     // The supplied Walk has a retained destination with moving=0. Calling
     // MoveTo would invent a transition and overwrite that native premise.
-    loco.runtime_payload = LocomotorRuntimePayload::Walk(WalkRuntime {
-        head: nonnull_coordinate(&before["head"]),
-        destination: nonnull_coordinate(&before["destination"]),
-        moving: before["moving"] != 0,
-        animation_moving: before["motion"] != 0,
-    });
+    loco.set_runtime_payload_for_test(LocomotorRuntimePayload::Walk(WalkRuntime::for_test(
+        nonnull_coordinate(&before["head"]),
+        nonnull_coordinate(&before["destination"]),
+        before["moving"] != 0,
+        before["motion"] != 0,
+    )));
     actor.locomotor = Some(loco);
     actor
         .foot_speed
@@ -331,15 +343,15 @@ fn assert_actor(actor: &GameEntity, expected: &Value, row: &Value, rearm: bool) 
         "doing": actor.mission_leaf.as_infantry().unwrap().doing(),
         "pending": actor.mission_leaf.as_infantry().unwrap().pending_deploy(),
         "firing": actor.mission_leaf.foot_firing_sequence_latch(),
-        "prone": u8::from(actor.infantry.as_ref().unwrap().is_prone),
+        "prone": u8::from(actor.infantry.as_ref().unwrap().is_prone()),
         "crush": actor.native_crush_immunity(), "frame": stage.value(), "changed": raw["changed"],
         "stage": [stage.timer().start_frame(), stage.timer().duration(), stage.rate(), signed(&raw["increment"])],
-        "reload": [actor.passive_scan_timer.start_frame as i32, actor.passive_scan_timer.duration as i32],
+        "reload": [actor.passive_scan.timer().start_frame() as i32, actor.passive_scan.timer().duration() as i32],
         "mission": actor.mission.current().raw(), "suspended": actor.mission.suspended().raw(),
         "queued": actor.mission.queued().raw(), "handler_state": actor.mission.handler_state(),
         "mission_start": actor.mission.mission_start_frame(),
-        "on_bridge": u8::from(actor.on_bridge),
-        "position": [i32::from(actor.position.rx)*256+actor.position.sub_x.to_num::<i32>(), i32::from(actor.position.ry)*256+actor.position.sub_y.to_num::<i32>(), actor.position.exact_z_leptons.unwrap()],
+        "on_bridge": u8::from(actor.on_bridge()),
+        "position": [i32::from(actor.position.rx())*256+actor.position.sub_x().to_num::<i32>(), i32::from(actor.position.ry())*256+actor.position.sub_y().to_num::<i32>(), actor.position.exact_z_leptons().unwrap()],
         "moving": u8::from(loco.walk_is_moving().unwrap()), "motion": u8::from(loco.walk_animation_moving().unwrap()),
     });
     for (key, value) in actual.as_object().unwrap() {
@@ -364,7 +376,7 @@ fn assert_actor(actor: &GameEntity, expected: &Value, row: &Value, rearm: bool) 
         TargetKind::Cell(x, y) => NavTargetRef::cell(x, y),
         TargetKind::Entity(_) => unreachable!(),
     });
-    assert_eq!(actor.navigation.nav_com, nav, "{name}: NavCom");
+    assert_eq!(actor.navigation.nav_com(), nav, "{name}: NavCom");
     assert!(actor.archive_target().is_none(), "{name}: archive");
     assert_eq!(expected["archive"], 0);
     if rearm {

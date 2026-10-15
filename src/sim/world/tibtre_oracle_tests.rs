@@ -386,10 +386,11 @@ fn terrain_probability_and_rate_reader_match_native_physical_inputs() {
     }
 }
 
-/// A single Terrain AI slot must publish movement costs before returning to
-/// Logic's next object. Native midpoint timing is covered by the AI replay.
+/// A single Terrain AI slot must publish its Recalc into the path view before
+/// returning to Logic's next object. Native midpoint timing is covered by the
+/// AI replay.
 #[test]
-fn same_frame_ore_terrain_ai_publishes_path_costs_before_return() {
+fn same_frame_ore_terrain_ai_publishes_the_path_view_before_return() {
     let native = corpus();
     let typ = &native["retail_inputs"]["rows"][0];
     // Native animated midpoint11 emits through force1. Isolate that object
@@ -428,15 +429,6 @@ fn same_frame_ore_terrain_ai_publishes_path_costs_before_return() {
         .expect("force1 Terrain turn creates actual ore");
     let cell = s.sim.resolved_terrain.as_ref().unwrap().cell(x, y).unwrap();
     assert_eq!(cell.land_type, 5, "native Mark published ore attributes");
-    for (&speed_type, costs) in &s.sim.terrain_costs {
-        assert_eq!(
-            costs.ground_cost_at(x, y),
-            cell.speed_costs
-                .cost_for_speed_type(speed_type)
-                .unwrap_or(0),
-            "later Foot path requests must see the emitted ore's current costs"
-        );
-    }
     assert!(
         s.sim
             .path_grid
@@ -567,7 +559,7 @@ fn tibtre_spawned_ore_grows_is_harvested_and_reaches_refinery_credits() {
             .miner
             .as_ref()
             .unwrap()
-            .cargo
+            .cargo()
             .is_empty()
         {
             break;
@@ -582,7 +574,7 @@ fn tibtre_spawned_ore_grows_is_harvested_and_reaches_refinery_credits() {
             .miner
             .as_ref()
             .unwrap()
-            .cargo
+            .cargo()
             .is_empty(),
         "miner cuts the tree's ore through Mission_Harvest"
     );

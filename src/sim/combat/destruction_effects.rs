@@ -296,7 +296,7 @@ impl Simulation {
             && object.weight >= rules.general.ship_sinking_weight
             && self.resolved_terrain.as_ref().is_some_and(|terrain| {
                 terrain
-                    .cell(entity.position.rx, entity.position.ry)
+                    .cell(entity.position.rx(), entity.position.ry())
                     .is_some_and(|cell| cell.yr_cell_land_type == LandType::Water.as_index())
             })
             && entity.teleport_state().is_none()
@@ -412,7 +412,11 @@ impl Simulation {
         let Some(object) = self.object_type(entity.type_ref(), rules) else {
             return;
         };
-        let (rx, ry, z) = (entity.position.rx, entity.position.ry, entity.position.z);
+        let (rx, ry, z) = (
+            entity.position.rx(),
+            entity.position.ry(),
+            entity.position.z(),
+        );
         let location = position_world_coord(&entity.position);
         let owner = entity.owner();
 

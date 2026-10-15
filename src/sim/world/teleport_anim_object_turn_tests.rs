@@ -96,9 +96,13 @@ fn relocating_owner(category: EntityCategory, type_name: &str, target: (u16, u16
     // also the centre. An Infantry constructor starts in slot2, so name the
     // supplied centre premise rather than accidentally changing the old test.
     if category == EntityCategory::Infantry {
-        entity.position.sub_x = crate::util::lepton::CELL_CENTER_LEPTON;
-        entity.position.sub_y = crate::util::lepton::CELL_CENTER_LEPTON;
-        entity.sub_cell = Some(0);
+        entity
+            .position
+            .set_sub_x(crate::util::lepton::CELL_CENTER_LEPTON);
+        entity
+            .position
+            .set_sub_y(crate::util::lepton::CELL_CENTER_LEPTON);
+        entity.set_sub_cell(Some(0));
     }
     entity.locomotor = Some(LocomotorState::for_test_kind(LocomotorKind::Teleport));
     entity.install_teleport_state_for_test(Some(TeleportState::for_test(
@@ -164,7 +168,7 @@ fn unbound_warp_art_relocates_without_an_anim() {
         .unwrap();
 
     let mover = sim.substrate.entities.get(1).unwrap();
-    assert_eq!((mover.position.rx, mover.position.ry), (8, 9));
+    assert_eq!((mover.position.rx(), mover.position.ry()), (8, 9));
     assert_eq!(sim.substrate.anims.len(), 0);
 }
 
@@ -331,8 +335,8 @@ fn the_warp_drops_attack_locks_on_its_owner() {
 
     assert_eq!(
         (
-            sim.substrate.entities.get(1).unwrap().position.rx,
-            sim.substrate.entities.get(1).unwrap().position.ry
+            sim.substrate.entities.get(1).unwrap().position.rx(),
+            sim.substrate.entities.get(1).unwrap().position.ry()
         ),
         (8, 9)
     );
@@ -362,7 +366,9 @@ fn the_warp_restores_its_attackers_suspended_missions() {
     attacker
         .attack_target
         .set_for_test(Some(crate::sim::combat::TargetKind::Entity(1)));
-    attacker.passively_acquired_target = true;
+    attacker
+        .passive_scan
+        .set_passively_acquired_target_for_test(true);
     attacker.mission.apply_test_fixture(MissionTestFixture {
         current: MissionId::from_known(MissionType::Attack),
         suspended: MissionId::from_known(MissionType::Guard),
@@ -380,7 +386,7 @@ fn the_warp_restores_its_attackers_suspended_missions() {
 
     let attacker = sim.substrate.entities.get(2).unwrap();
     assert!(attacker.attack_target.target().is_none());
-    assert!(!attacker.passively_acquired_target);
+    assert!(!attacker.passive_scan.acquired());
     assert_eq!(
         attacker.mission.current(),
         MissionId::from_known(MissionType::Guard)
@@ -403,14 +409,14 @@ fn a_restored_destination_warps_at_the_teleport_process_entry() {
     let mover = sim.substrate.entities.get_mut(1).unwrap();
     mover.install_teleport_state_for_test(None);
     represented_assign_destination(mover, Some(NavTargetRef::cell(8, 9)));
-    mover.navigation.pending_destination_setter = true;
+    mover.navigation.set_pending_destination_setter(true);
 
     sim.advance_live_object_turn(1, Some(&rules), techno_ai::ObjectAiCtx::default())
         .unwrap();
 
     let mover = sim.substrate.entities.get(1).unwrap();
-    assert_eq!((mover.position.rx, mover.position.ry), (8, 9));
-    assert!(!mover.navigation.pending_destination_setter);
+    assert_eq!((mover.position.rx(), mover.position.ry()), (8, 9));
+    assert!(!mover.navigation.pending_destination_setter());
     assert!(crate::sim::movement::motion_query::is_moving(&mover) != Some(true));
 }
 
@@ -451,8 +457,8 @@ fn restoration_callbacks_forward_overlay_inputs_before_any_destination_write() {
         ai_counter: 0,
         dispatch_timer: MissionDispatchTimer::at_frame(0),
     });
-    mover.navigation.nav_com = Some(NavTargetRef::cell(8, 9));
-    mover.navigation.suspended_nav_com = Some(destination);
+    mover.navigation.set_nav_com(Some(NavTargetRef::cell(8, 9)));
+    mover.navigation.set_suspended_nav_com(Some(destination));
     // In OverlayGrid, which owns a real cell's overlay.
     let mut overlays = crate::sim::overlay_grid::OverlayGrid::new(32, 32);
     overlays.place_overlay(12, 7, overlay, 0);
@@ -495,13 +501,13 @@ fn restoration_callbacks_forward_overlay_inputs_before_any_destination_write() {
     let mover = sim.substrate.entities.get(1).unwrap();
     assert_eq!(mover.mission.current().known(), Some(MissionType::Move));
     assert_eq!(mover.mission.suspended(), MissionId::NONE);
-    assert_eq!(mover.navigation.nav_com, Some(destination));
+    assert_eq!(mover.navigation.nav_com(), Some(destination));
     assert_eq!(
         crate::sim::movement::motion_query::is_moving(mover),
         Some(true)
     );
     assert_eq!(mover.teleport_state().unwrap().target_cell(), Some((12, 7)));
-    assert_eq!((mover.position.rx, mover.position.ry), (5, 5));
+    assert_eq!((mover.position.rx(), mover.position.ry()), (5, 5));
     assert_ne!(raw_bits(&sim, (12, 7)), 0, "the restored Cell is reserved");
 }
 
@@ -552,7 +558,7 @@ fn an_armed_warp_waits_while_a_drive_piggyback_is_active() {
     sim.advance_live_object_turn(1, Some(&rules), techno_ai::ObjectAiCtx::default())
         .unwrap();
     let mover = sim.substrate.entities.get_mut(1).unwrap();
-    assert_eq!((mover.position.rx, mover.position.ry), (5, 5));
+    assert_eq!((mover.position.rx(), mover.position.ry()), (5, 5));
     assert_eq!(
         mover.teleport_state().map(|state| state.phase()),
         Some(TeleportPhase::Relocate)
@@ -565,5 +571,5 @@ fn an_armed_warp_waits_while_a_drive_piggyback_is_active() {
     sim.advance_live_object_turn(1, Some(&rules), techno_ai::ObjectAiCtx::default())
         .unwrap();
     let mover = sim.substrate.entities.get(1).unwrap();
-    assert_eq!((mover.position.rx, mover.position.ry), (8, 9));
+    assert_eq!((mover.position.rx(), mover.position.ry()), (8, 9));
 }

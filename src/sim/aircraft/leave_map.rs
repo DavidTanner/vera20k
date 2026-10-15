@@ -96,7 +96,7 @@ impl Simulation {
             return false;
         }
         let mission = entity.mission.effective();
-        if !entity.in_playfield
+        if !entity.in_playfield()
             || mission == MissionId::from_known(MissionType::ParadropApproach)
             || mission == MissionId::from_known(MissionType::ParadropOverfly)
         {

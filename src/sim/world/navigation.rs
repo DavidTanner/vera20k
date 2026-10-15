@@ -3,19 +3,17 @@
 //! The cache borrows never move gameplay authority out of Simulation. Resident
 //! world rebuilds and synchronous receiver rebuilds share the same policy.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 use std::sync::Arc;
 
 use crate::map::entities::EntityCategory;
 use crate::map::resolved_terrain::ResolvedTerrainGrid;
-use crate::rules::locomotor_type::SpeedType;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::bridge_state::BridgeRuntimeState;
 use crate::sim::entity_store::EntityStore;
 use crate::sim::game_entity::GameEntity;
 use crate::sim::intern::StringInterner;
 use crate::sim::pathfinding::PathGrid;
-use crate::sim::pathfinding::terrain_cost::{TerrainCostGrid, build_canonical_terrain_cost_grids};
 use crate::sim::pathfinding::zone_map::ZoneGrid;
 
 /// The cells one marked structure blocks for movement: its base foundation
@@ -32,7 +30,7 @@ pub(super) fn marked_structure_movement_cells(
     interner: &StringInterner,
     rules: &RuleSet,
 ) -> Vec<(u16, u16)> {
-    if entity.category() != EntityCategory::Structure || !entity.lifecycle.cell_marked {
+    if entity.category() != EntityCategory::Structure || !entity.lifecycle.cell_marked() {
         return Vec::new();
     }
     let object_type = rules.object(interner.resolve(entity.type_ref()));
@@ -41,8 +39,8 @@ pub(super) fn marked_structure_movement_cells(
         .unwrap_or("1x1");
     let has_bib = object_type.is_some_and(|object| object.bib);
     let foundation_cells = crate::sim::production::building_base_foundation_cells(
-        entity.position.rx,
-        entity.position.ry,
+        entity.position.rx(),
+        entity.position.ry(),
         foundation,
     );
     crate::sim::production::building_movement_blocking_cells(&foundation_cells, has_bib)
@@ -97,7 +95,6 @@ pub(super) fn structure_blocked_among(
 }
 
 pub(super) struct NavigationCaches<'a> {
-    pub(super) terrain_costs: &'a mut BTreeMap<SpeedType, TerrainCostGrid>,
     pub(super) zones: &'a mut Option<ZoneGrid>,
     pub(super) path: &'a mut Option<Arc<PathGrid>>,
     /// Current operation's world bounds; this borrowed view is never retained.
@@ -129,14 +126,6 @@ impl NavigationCaches<'_> {
                 return Err("current path cell could not be published".into());
             }
         }
-        for (&speed_type, costs) in self.terrain_costs.iter_mut() {
-            if costs.width() != terrain.width()
-                || costs.height() != terrain.height()
-                || !costs.refresh_resolved_cell(cell, speed_type)
-            {
-                return Err("Recalc terrain cost cell could not be published".into());
-            }
-        }
         Ok(())
     }
 
@@ -150,7 +139,6 @@ impl NavigationCaches<'_> {
         rules: &RuleSet,
     ) -> Result<BTreeSet<(u16, u16)>, String> {
         let mut grid = PathGrid::from_resolved_terrain_with_bridges(terrain);
-        *self.terrain_costs = build_canonical_terrain_cost_grids(terrain);
 
         let structure_cells = structure_movement_cells(entities, interner, rules);
         for &(x, y) in &structure_cells {
@@ -175,7 +163,7 @@ impl NavigationCaches<'_> {
         Ok(structure_cells)
     }
 
-    /// Publish the path/cost views of one completed47D2B0 Recalc before another
+    /// Publish the path view of one completed47D2B0 Recalc before another
     /// bridge callback reads them. Zone IDs and hierarchy remain owned by the
     /// separate56C510/586990 callbacks. Height/slope changes require publication
     /// even when the narrower overlay passability receipt reports no change.
@@ -209,7 +197,7 @@ impl NavigationCaches<'_> {
 
     /// Current Cell/path view only. Native ramp repair's raw +11B writes can
     /// precede a count30 abort, with no Recalc or cached class/height publication.
-    /// Keep the same path projection as Recalc without changing costs or zones.
+    /// Keep the same path projection as Recalc without changing zones.
     pub(super) fn publish_current_path_cell(
         &mut self,
         terrain: &ResolvedTerrainGrid,

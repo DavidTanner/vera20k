@@ -8,13 +8,12 @@ use crate::rules::locomotor_type::{LocomotorKind, MovementZone};
 use crate::sim::movement::locomotor::{LocomotorState, MovementLayer};
 #[path = "path_finishing.rs"]
 mod path_finishing;
-use crate::sim::pathfinding::terrain_cost::TerrainCostGrid;
 use crate::sim::pathfinding::zone_search;
 use crate::sim::pathfinding::{
     LayeredPath, MAX_PATH_SEGMENT_STEPS, PathGrid, SearchMarkerOverlay, truncate_layered_path,
 };
 
-use super::{MoverPathFacts, PathfindingContext};
+use super::PathfindingContext;
 
 #[cfg(test)]
 pub(crate) fn reset_path_search_used_zone_grid_marker() {
@@ -117,7 +116,7 @@ pub(super) fn supports_layered_bridge_pathing(
         return false;
     }
     matches!(
-        loco.kind,
+        loco.active_kind(),
         LocomotorKind::Drive | LocomotorKind::Walk | LocomotorKind::Hover
     ) || on_bridge
 }
@@ -162,14 +161,17 @@ pub(super) fn find_move_path(
     start: (u16, u16),
     start_layer: MovementLayer,
     goal: (u16, u16),
-    terrain_costs: Option<&TerrainCostGrid>,
     zone_mz: MovementZone,
     movement_zone: Option<MovementZone>,
     marker_overlay: Option<&SearchMarkerOverlay>,
-    facts: MoverPathFacts,
+    urgency: u8,
     allow_zone_hierarchy: bool,
-    foot_entry: Option<&dyn crate::sim::pathfinding::SearchFootEntry>,
+    foot_entry: &dyn crate::sim::pathfinding::SearchFootEntry,
 ) -> Result<LayeredPath, MovePathFailure> {
+    let facts = crate::sim::pathfinding::MoverSearchFacts {
+        urgency,
+        foot_entry,
+    };
     let grid = ctx.path_grid.ok_or(MovePathFailure::MissingGrid)?;
     let zone_grid = ctx.zone_grid;
     #[cfg(test)]
@@ -185,17 +187,11 @@ pub(super) fn find_move_path(
             goal,
             zone_grid,
             zone_mz,
-            terrain_costs,
             movement_zone,
             resolved_terrain,
             marker_overlay,
             ctx.blocker_neighbor_counts,
-            crate::sim::pathfinding::MoverSearchFacts {
-                urgency: facts.urgency,
-                mover_is_crusher: facts.mover_is_crusher,
-                is_infantry: facts.is_infantry,
-                foot_entry,
-            },
+            facts,
             allow_zone_hierarchy,
             ctx.playfield_bounds,
         );
@@ -207,19 +203,10 @@ pub(super) fn find_move_path(
             goal,
             path.len(),
         );
-        let (coords, layers) = path_finishing::finish(
-            path,
-            ctx,
-            grid,
-            foot_entry,
-            terrain_costs,
-            movement_zone,
-            facts,
-            marker_overlay,
-        )
-        .map_err(|cause| {
-            MovePathFailure::Search(zone_search::PathSearchFailure::CellEntryUnavailable(cause))
-        })?;
+        let (coords, layers) = path_finishing::finish(path, ctx, grid, foot_entry, marker_overlay)
+            .map_err(|cause| {
+                MovePathFailure::Search(zone_search::PathSearchFailure::CellEntryUnavailable(cause))
+            })?;
         let (coords, layers) = truncate_layered_path(coords, layers, MAX_PATH_SEGMENT_STEPS);
         return Ok((coords, layers));
     }
@@ -232,35 +219,20 @@ pub(super) fn find_move_path(
         grid,
         start,
         goal,
-        terrain_costs,
         zone_grid,
         zone_mz,
         movement_zone,
         resolved_terrain,
         marker_overlay,
         ctx.blocker_neighbor_counts,
-        crate::sim::pathfinding::MoverSearchFacts {
-            urgency: facts.urgency,
-            mover_is_crusher: facts.mover_is_crusher,
-            is_infantry: facts.is_infantry,
-            foot_entry,
-        },
+        facts,
         allow_zone_hierarchy,
         ctx.playfield_bounds,
     )
     .map_err(MovePathFailure::Search)?;
 
-    let (path, path_layers) = path_finishing::finish(
-        path,
-        ctx,
-        grid,
-        foot_entry,
-        terrain_costs,
-        movement_zone,
-        facts,
-        marker_overlay,
-    )
-    .map_err(|cause| {
+    let (path, path_layers) = path_finishing::finish(path, ctx, grid, foot_entry, marker_overlay)
+        .map_err(|cause| {
         MovePathFailure::Search(zone_search::PathSearchFailure::CellEntryUnavailable(cause))
     })?;
     Ok(truncate_layered_path(
@@ -278,6 +250,7 @@ mod tests {
     };
     use crate::map::tube_facts::{TubeFact, TubeId};
     use crate::sim::pathfinding::zone_map::ZoneGrid;
+    use crate::sim::pathfinding::{SearchEntryQuery, SearchFootEntry, WalkableEntry};
 
     fn make_resolved_cell(rx: u16, ry: u16) -> ResolvedTerrainCell {
         ResolvedTerrainCell {
@@ -289,6 +262,7 @@ mod tests {
     fn path_failure_detail_distinguishes_missing_grid_from_executed_search() {
         use crate::sim::pathfinding::zone_search::PathSearchFailure;
         fn search(grid: Option<&PathGrid>) -> Result<LayeredPath, MovePathFailure> {
+            let fallback = PathGrid::new(1, 1);
             find_move_path(
                 PathfindingContext {
                     path_grid: grid,
@@ -301,13 +275,12 @@ mod tests {
                 (0, 1),
                 MovementLayer::Ground,
                 (4, 1),
-                None,
                 MovementZone::Normal,
                 Some(MovementZone::Normal),
                 None,
-                super::MoverPathFacts::fixture(0, false, true),
+                0,
                 false,
-                None,
+                &WalkableEntry::new(grid.unwrap_or(&fallback)),
             )
         }
         assert_eq!(search(None), Err(MovePathFailure::MissingGrid));
@@ -357,13 +330,12 @@ mod tests {
             (0, 0),
             MovementLayer::Ground,
             (4, 0),
-            None,
             MovementZone::Normal,
             Some(MovementZone::Normal),
             None,
-            super::MoverPathFacts::fixture(0, false, false),
+            0,
             true,
-            None,
+            &WalkableEntry::with_cells(&grid, &terrain),
         )
         .expect("movement path should use explicit tube despite disconnected zones");
 
@@ -391,13 +363,12 @@ mod tests {
             (0, 1),
             MovementLayer::Ground,
             (4, 1),
-            None,
             MovementZone::Normal,
             Some(MovementZone::Normal),
             Some(&marker_overlay),
-            super::MoverPathFacts::fixture(0, false, false),
+            0,
             true,
-            None,
+            &WalkableEntry::new(&grid),
         )
         .expect("marker overlay should still allow a path");
 
@@ -415,6 +386,24 @@ mod tests {
 
     #[test]
     fn gsi_04_12_layered_failure_does_not_retry_flat_ground_path() {
+        // Foot `0x004D9C60` refuses a step from deck height down to a plain
+        // ground neighbour (a height difference of four without the target's
+        // `0x300` flags). This receiver answers that refusal for every step
+        // from a nonzero height and admits the rest.
+        struct DeckStepRefused;
+        impl SearchFootEntry for DeckStepRefused {
+            fn classify(&self, query: SearchEntryQuery) -> Result<u8, String> {
+                Ok(if query.path_height == 0 { 0 } else { 7 })
+            }
+            fn finishing_threat_coefficient(
+                &self,
+            ) -> Result<crate::util::native_x87::NativeF64Bits, String> {
+                Ok(crate::util::native_x87::NativeF64Bits::POSITIVE_ZERO)
+            }
+            fn finishing_house_threat(&self, _coord: (i16, i16)) -> Result<i32, String> {
+                Ok(0)
+            }
+        }
         let mut grid = PathGrid::test_all_passable(3, 1);
         // Start on a non-transition bridge deck. Native layered A* cannot
         // descend directly to the ground-only neighbor, while a separate flat
@@ -434,13 +423,12 @@ mod tests {
             (0, 0),
             MovementLayer::Ground,
             (2, 0),
-            None,
             MovementZone::Normal,
             Some(MovementZone::Normal),
             None,
-            super::MoverPathFacts::fixture(0, false, false),
+            0,
             true,
-            None,
+            &DeckStepRefused,
         )
         .expect("fixture must prove the removed ground-only retry could succeed");
         assert_eq!(flat.0.last().copied(), Some((2, 0)));
@@ -457,13 +445,12 @@ mod tests {
             (0, 0),
             MovementLayer::Bridge,
             (2, 0),
-            None,
             MovementZone::Normal,
             Some(MovementZone::Normal),
             None,
-            super::MoverPathFacts::fixture(0, false, false),
+            0,
             true,
-            None,
+            &DeckStepRefused,
         );
 
         assert!(
@@ -490,8 +477,7 @@ mod tests {
     #[test]
     fn a_wall_line_that_disconnects_the_map_is_refused_before_the_cost_class_runs() {
         use crate::map::resolved_terrain::{ResolvedTerrainCell, ResolvedTerrainGrid, zone_class};
-        use crate::rules::locomotor_type::SpeedType;
-        use crate::sim::pathfinding::{SearchEntryCandidate, SearchEntryQuery, SearchFootEntry};
+        use crate::sim::pathfinding::SearchEntryCandidate;
 
         let mut cells = Vec::with_capacity(15);
         for ry in 0..3u16 {
@@ -508,7 +494,6 @@ mod tests {
         }
         let terrain = ResolvedTerrainGrid::from_cells(5, 3, cells);
         let grid = PathGrid::from_resolved_terrain(&terrain);
-        let costs = TerrainCostGrid::from_resolved_terrain(&terrain, SpeedType::Track);
         let zone_grid = ZoneGrid::build_with_terrain(&grid, &terrain, &[], 5, 3);
         let counts = crate::sim::pathfinding::BlockerNeighborCounts::new(5, 3);
 
@@ -537,13 +522,12 @@ mod tests {
             (0, 1),
             MovementLayer::Ground,
             (4, 1),
-            Some(&costs),
             MovementZone::Normal,
             Some(MovementZone::Normal),
             None,
-            super::MoverPathFacts::fixture(0, false, true),
+            0,
             true,
-            Some(&entry),
+            &entry,
         );
         assert!(
             path.is_err(),

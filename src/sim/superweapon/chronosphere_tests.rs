@@ -89,11 +89,20 @@ fn world_with_cells(
         sim.houses
             .insert(id, HouseState::new(id, side, None, human, 0, 10));
         sim.session.house_order.push(id);
+        // The native scenario constructs every stock Super for each House
+        // before its map objects; provider passes never construct lazily.
+        for name in &rules.super_weapon_order {
+            let type_id = sim.interner.intern(name);
+            sim.super_weapons
+                .entry(id)
+                .or_default()
+                .insert(type_id, super::SuperWeaponInstance::new(type_id, id, 0));
+        }
     }
     sim.session.game_options.super_weapons = true;
     sim.session.map_width = size;
     sim.session.map_height = size;
-    sim.resolved_terrain = Some(test_grid(size, size, cell));
+    sim.install_resolved_terrain_for_new_map(test_grid(size, size, cell));
     crate::sim::arena_fixture::supply_native_map(&mut sim);
     (rules, sim, americans)
 }
@@ -155,7 +164,16 @@ pub(crate) fn place(
 ) -> u64 {
     let deck = if bridge { 4 } else { 0 };
     let id = sim
-        .construct_object_limbo_at_height(kind, "Americans", x, y, 0, level + deck, rules)
+        .construct_object_limbo_at_height(
+            kind,
+            "Americans",
+            x,
+            y,
+            0,
+            level + deck,
+            rules,
+            crate::sim::world::FrameEffects::default(),
+        )
         .unwrap_or_else(|| panic!("{kind} constructs at {x},{y}"));
     let frame = sim.session.binary_frame;
     let entity = sim.substrate.entities.get_mut(id).unwrap();
@@ -167,10 +185,12 @@ pub(crate) fn place(
             z: i32::from(level + deck) * 104,
         },
     );
-    entity.position.z = level + deck;
-    entity.on_bridge = bridge;
+    entity.position.set_z(level + deck);
+    entity.set_on_bridge(bridge);
     if latch {
-        entity.warped_by_house = Some(entity.owner());
+        entity
+            .drop_credit
+            .set_warped_by_house_for_test(Some(entity.owner()));
         entity
             .locomotor
             .as_mut()
@@ -182,7 +202,7 @@ pub(crate) fn place(
             ));
     }
     assert!(matches!(
-        sim.reveal(id),
+        sim.reveal_entity_with_rules(id, rules),
         crate::sim::world::RevealOutcome::Revealed { .. }
     ));
     assert_eq!(
@@ -192,12 +212,27 @@ pub(crate) fn place(
     id
 }
 
-/// A charged Super of type `name` for `owner`, replacing any it has: its
-/// recharge timer has run out.
+/// Supply a charged Super and an already-consumed House tech-tree tail.
+/// These sparse launch/effect fixtures do not compare provider grant provenance.
+/// Native4F927C clears1FC before its passes; a clean tail does not run50AF10
+/// again until an actual dirty writer. Production grant/power fixtures supply
+/// real providers and exercise that separate admission chain instead.
 pub(crate) fn charge_super(sim: &mut Simulation, owner: InternedId, name: &str) -> InternedId {
+    // Sparse launch-only controls still supply a native Super owner House.
+    // Do not append it to House AI order: these cases do not test provider
+    // grants, Strategy, natural defeat, or an additional House update.
+    sim.houses
+        .entry(owner)
+        .or_insert_with(|| crate::sim::house_state::HouseState::new(owner, 0, None, true, 0, 10));
+    sim.houses
+        .get_mut(&owner)
+        .expect("supplied launcher's House")
+        .take_tech_recheck();
     let sw_type = sim.interner.intern(name);
     let mut instance = SuperWeaponInstance::new(sw_type, owner, 0);
-    instance.activate(6300, sim.session.binary_frame);
+    instance.is_active = true;
+    instance.charge_start_tick = (sim.session.binary_frame) as i32;
+    instance.charge_duration = 6300;
     instance.charge_start_tick -= 6300;
     instance.is_ready = true;
     sim.super_weapons
@@ -230,7 +265,7 @@ pub(crate) fn click(
 
 fn cell(sim: &Simulation, id: u64) -> (u16, u16) {
     let entity = sim.substrate.entities.get(id).expect("alive");
-    (entity.position.rx, entity.position.ry)
+    (entity.position.rx(), entity.position.ry())
 }
 
 fn locomotors(sim: &Simulation, id: u64) -> (LocomotorKind, Option<LocomotorKind>) {
@@ -242,7 +277,10 @@ fn locomotors(sim: &Simulation, id: u64) -> (LocomotorKind, Option<LocomotorKind
         .expect("a locomotor");
     (
         locomotor.active_kind(),
-        locomotor.piggyback.as_ref().map(|stash| stash.kind),
+        locomotor
+            .piggyback()
+            .as_ref()
+            .map(|stash| stash.active_kind()),
     )
 }
 
@@ -250,7 +288,7 @@ fn dead(sim: &Simulation, id: u64) -> bool {
     sim.substrate
         .entities
         .get(id)
-        .is_none_or(|entity| entity.health.current() == 0 || entity.dying)
+        .is_none_or(|entity| entity.health.current() == 0 || entity.death.is_dying())
 }
 
 /// The keys the chain reads, through the production reader on the retail
@@ -388,7 +426,7 @@ fn retail_chrono_warp_moves_the_source_block() {
     assert!(landed && ended);
     let entity = sim.substrate.entities.get(tank).unwrap();
     assert!(!entity.is_warping_in() && !entity.is_warped_out());
-    assert!(entity.navigation.nav_com.is_none());
+    assert!(entity.navigation.nav_com().is_none());
     assert!(!dead(&sim, tank) && !dead(&sim, legionnaire));
 }
 
@@ -402,7 +440,7 @@ fn chain(sim: &Simulation, id: u64) -> Vec<LocomotorKind> {
         .and_then(|entity| entity.locomotor.as_ref());
     while let Some(locomotor) = at {
         kinds.push(locomotor.active_kind());
-        at = locomotor.piggyback.as_deref();
+        at = locomotor.piggyback().as_deref();
     }
     kinds
 }
@@ -472,7 +510,7 @@ fn retail_chrono_warp_carries_a_driving_chrono_miner() {
         ]
     );
     let entity = sim.substrate.entities.get(miner).unwrap();
-    assert!(!warping(&sim) && entity.navigation.nav_com.is_none());
+    assert!(!warping(&sim) && entity.navigation.nav_com().is_none());
 
     let next = (landing.0 + 4, landing.1);
     order(&mut sim, next);
@@ -521,7 +559,11 @@ fn retail_chrono_warp_forces_a_sailing_ships_track_to_its_landing() {
     let track = |sim: &Simulation| {
         let locomotor = sim.substrate.entities.get(ship)?.locomotor.as_ref()?;
         let ship = locomotor.selected_ship_runtime()?.retained()?;
-        Some((ship.track().turn_index, ship.head_to(), ship.destination()))
+        Some((
+            ship.track().turn_index(),
+            ship.head_to(),
+            ship.destination(),
+        ))
     };
     // The destroyer turns in place before its first track.
     for _ in 0..30 {
@@ -599,7 +641,7 @@ fn retail_chrono_warp_runs_an_idle_chrono_miner_on_a_tanks_frames() {
         let tank_state = state(&sim, tank);
         assert_eq!(state(&sim, miner), tank_state, "frame {frame}");
         let entity = sim.substrate.entities.get(miner).unwrap();
-        assert!(entity.navigation.nav_com.is_none(), "frame {frame}");
+        assert!(entity.navigation.nav_com().is_none(), "frame {frame}");
         let expected = if tank_state.is_some() {
             vec![Teleport, Teleport]
         } else {
@@ -650,7 +692,7 @@ fn retail_destination_while_warping_in_is_refused_by_the_drive() {
     assert_eq!(chain(&sim, miner), [Drive, Teleport, Teleport]);
     assert!(warping_in(&sim));
     let entity = sim.substrate.entities.get(miner).unwrap();
-    assert_eq!(entity.navigation.nav_com, Some(next));
+    assert_eq!(entity.navigation.nav_com(), Some(next));
     assert_eq!(
         crate::sim::movement::motion_query::is_moving(entity),
         Some(false)
@@ -676,7 +718,7 @@ fn retail_destination_while_warping_in_is_refused_by_the_drive() {
     let entity = sim.substrate.entities.get(miner).unwrap();
     assert!(entity.chrono_warp().is_none() && !entity.is_warping_in());
     assert!(
-        entity.navigation.nav_com.is_none()
+        entity.navigation.nav_com().is_none()
             && crate::sim::movement::motion_query::is_moving(&entity) != Some(true)
     );
 }
@@ -947,7 +989,7 @@ fn retail_chrono_update_position_matches_native_rows() {
         click(&mut sim, &rules, americans, "ChronoWarpSpecial", TARGET);
         let target = coord(&row["coord"]);
         let entity = sim.substrate.entities.get_mut(owner).unwrap();
-        entity.on_bridge = row["on_bridge"].as_bool().unwrap();
+        entity.set_on_bridge(row["on_bridge"].as_bool().unwrap());
         let runtime = entity
             .locomotor
             .as_mut()
@@ -1002,7 +1044,7 @@ fn retail_chrono_update_position_matches_native_rows() {
             "Marked of {row}"
         );
         assert_eq!(
-            u8::from(entity.on_bridge),
+            u8::from(entity.on_bridge()),
             int(&row["on_bridge_after"]) as u8,
             "OnBridge of {row}"
         );

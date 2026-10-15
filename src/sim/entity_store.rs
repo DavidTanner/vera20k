@@ -19,35 +19,14 @@
 //! - sim/ NEVER depends on render/, ui/, audio/, net/.
 
 use std::collections::{BTreeMap, HashMap};
-use std::hash::{BuildHasherDefault, Hasher};
 
 use crate::sim::game_entity::GameEntity;
 use crate::sim::touch_log::{TouchLog, Touched};
+use crate::util::lookup_hash::LookupMap;
 
 /// Only this module can authorize a live indexed-owner write.
 /// Payload consumers can read owner identity but cannot construct this capability.
 pub(crate) struct OwnerChangeAuthority(());
-
-/// Hashes a stable id for the slot index (FxHash's multiply). The index is
-/// only looked up, never iterated, so its order cannot reach a result.
-#[derive(Default)]
-struct IdHasher(u64);
-
-impl Hasher for IdHasher {
-    fn write(&mut self, bytes: &[u8]) {
-        for &byte in bytes {
-            self.write_u64(u64::from(byte));
-        }
-    }
-
-    fn write_u64(&mut self, id: u64) {
-        self.0 = (self.0.rotate_left(5) ^ id).wrapping_mul(0x51_7c_c1_b7_27_22_0a_95);
-    }
-
-    fn finish(&self) -> u64 {
-        self.0
-    }
-}
 
 /// Container for all game entities, keyed by stable_id.
 ///
@@ -66,12 +45,22 @@ pub struct EntityStore {
     /// remove and compaction move pointers, not entities. serde writes a
     /// `Box<T>` as its `T`.
     entities: Vec<Option<Box<GameEntity>>>,
-    /// stable_id -> slot, for every slot that holds an entity.
-    slot_of: HashMap<u64, u32, BuildHasherDefault<IdHasher>>,
+    /// stable_id -> slot, for every slot that holds an entity. Only looked
+    /// up, never iterated, so its order cannot reach a result.
+    slot_of: LookupMap<u64, u32>,
     /// Derived InfantryClass registry, in monotonic construction-ID order.
     /// Uninit retains an entry; remove compacts it. Class/category is immutable
     /// while stored, like indexed identity (replace through remove/insert).
     infantry_registry: Vec<u64>,
+    /// Derived TechnoClass registration index from monotonic constructor IDs.
+    /// Production construction stores each parent before manager children;
+    /// see construction33/55,world_spawn::store_with_constructor_managers,
+    /// authored_health::unlimbo and reinforcement construction. Stable ID is
+    /// authoritative, this cache is rebuilt on restore and never serialized.
+    /// UnInit keeps a row; physical remove compacts the registry independently
+    /// of the dense storage's empty slots and compaction schedule.
+    /// RMG PreconsumedGenerated registration parity is not established here.
+    techno_registry: Vec<u64>,
     /// Which entities may have changed since each reader last took its log
     /// ([`Self::take_touched`]). Every route to a `&mut GameEntity` goes
     /// through the store, so an entity missing from a log has not changed.
@@ -86,10 +75,12 @@ pub(crate) enum TouchReader {
     BlockerPlane = 0,
     /// The kept Ground display sort keys.
     GroundKeys = 1,
+    /// The pointer-expiry broadcast's listener index.
+    ExpiryListeners = 2,
 }
 
 impl TouchReader {
-    const COUNT: usize = 2;
+    const COUNT: usize = 3;
 }
 
 #[derive(Debug, Clone)]
@@ -140,6 +131,7 @@ impl Clone for EntityStore {
             entities: self.entities.clone(),
             slot_of: self.slot_of.clone(),
             infantry_registry: self.infantry_registry.clone(),
+            techno_registry: self.techno_registry.clone(),
             touched: TouchLogs::everything(),
         }
     }
@@ -164,6 +156,7 @@ impl EntityStore {
             entities: Vec::new(),
             slot_of: HashMap::default(),
             infantry_registry: Vec::new(),
+            techno_registry: Vec::new(),
             touched: TouchLogs::everything(),
         }
     }
@@ -193,6 +186,9 @@ impl EntityStore {
                 self.reindex_from(slot);
             }
         }
+        if let Err(index) = self.techno_registry.binary_search(&id) {
+            self.techno_registry.insert(index, id);
+        }
         self.remove_infantry_index(id);
         if infantry {
             let index = self
@@ -209,6 +205,9 @@ impl EntityStore {
         let removed = self.entities[slot].take().map(|entity| *entity);
         self.touched.note(stable_id, self.len());
         self.remove_infantry_index(stable_id);
+        if let Ok(index) = self.techno_registry.binary_search(&stable_id) {
+            self.techno_registry.remove(index);
+        }
         // Compact once a quarter of the slots are empty, so a walk skips few
         // and compaction's cost spreads over many removals.
         let empty = self.ids.len() - self.slot_of.len();
@@ -258,20 +257,17 @@ impl EntityStore {
         let stored = self.len();
         self.touched.note(stable_id, stored);
         for entity in self.entities.iter_mut().filter_map(Option::as_deref_mut) {
-            if entity.has_live_contact_with(stable_id)
-                || entity.dock_entered_with == Some(stable_id)
+            if entity.has_live_contact_with(stable_id) || entity.tether.partner() == Some(stable_id)
             {
                 self.touched.note(entity.stable_id(), stored);
             }
             entity.clear_live_contact_with(stable_id);
-            // Drop a dangling dock-entered link pointing at the departing entity
-            // (the BREAK cascade a limbo'd dock partner would otherwise miss).
-            if entity.dock_entered_with == Some(stable_id) {
-                entity.dock_entered_with = None;
-            }
+            // Drop a dangling tether to the departing entity (the BREAK
+            // cascade a limbo'd dock partner would otherwise miss).
+            entity.tether.forget(stable_id);
             if entity.stable_id() == stable_id {
                 entity.radio_contacts.clear_all();
-                entity.dock_entered_with = None;
+                entity.tether.release();
             }
         }
     }
@@ -349,6 +345,15 @@ impl EntityStore {
         .into_iter()
         .map(|slot| self.ids[slot])
         .collect()
+    }
+
+    /// Action14's full Techno array, independent of Logic and Display order.
+    /// Read length/slot afresh after callbacks; append/removal is visible.
+    pub(crate) fn techno_registry_at(&self, index: usize) -> Option<u64> {
+        self.techno_registry.get(index).copied()
+    }
+    pub(crate) fn techno_registry_len(&self) -> usize {
+        self.techno_registry.len()
     }
 
     /// Native InfantryClass array index. Read afresh after a callback: removing
@@ -490,6 +495,7 @@ impl<'de> serde::Deserialize<'de> for EntityStore {
             store.entities.push(Some(entity));
         }
         store.rebuild_infantry_registry();
+        store.techno_registry = store.ids.clone();
         Ok(store)
     }
 }
@@ -520,7 +526,10 @@ mod tests {
         // Nothing has been derived from a fresh store yet.
         assert_eq!(store.take_touched(TouchReader::BlockerPlane), Touched::All);
         assert_eq!(store.take_touched(TouchReader::GroundKeys), Touched::All);
-        store.get_mut(2).unwrap().position.rx += 1;
+        {
+            let position = &mut store.get_mut(2).unwrap().position;
+            position.set_rx(position.rx() + 1);
+        }
         store.get_mut(3);
         assert_eq!(
             store.take_touched(TouchReader::BlockerPlane),
@@ -570,7 +579,7 @@ mod tests {
                 0..=4 if !removing => {
                     newest += 1 + next(3);
                     let mut entity = make_entity(newest);
-                    entity.position.rx = step as u16;
+                    entity.position.set_rx(step as u16);
                     store.insert(entity);
                     model.insert(newest, step as u16);
                 }
@@ -578,7 +587,7 @@ mod tests {
                 5 => {
                     let id = next(newest + 1);
                     let mut entity = make_entity(id);
-                    entity.position.rx = step as u16;
+                    entity.position.set_rx(step as u16);
                     store.insert(entity);
                     model.insert(id, step as u16);
                 }
@@ -589,12 +598,12 @@ mod tests {
                     } else {
                         next(newest + 1)
                     };
-                    assert_eq!(store.remove(id).map(|e| e.position.rx), model.remove(&id));
+                    assert_eq!(store.remove(id).map(|e| e.position.rx()), model.remove(&id));
                 }
                 _ => {
                     let id = next(newest + 1);
                     if let Some(entity) = store.get_mut(id) {
-                        entity.position.rx = step as u16;
+                        entity.position.set_rx(step as u16);
                     }
                     if let Some(rx) = model.get_mut(&id) {
                         *rx = step as u16;
@@ -608,7 +617,7 @@ mod tests {
             let probe = next(newest + 1);
             assert_eq!(store.contains(probe), model.contains_key(&probe));
             assert_eq!(
-                store.get(probe).map(|e| e.position.rx),
+                store.get(probe).map(|e| e.position.rx()),
                 model.get(&probe).copied()
             );
             if step % 97 == 0 {
@@ -617,10 +626,15 @@ mod tests {
                     store.keys_sorted(),
                     model.keys().copied().collect::<Vec<_>>()
                 );
+                assert_eq!(
+                    store.techno_registry,
+                    model.keys().copied().collect::<Vec<_>>(),
+                    "native registration rows must not follow dense empty slots"
+                );
                 let stored: Vec<(u64, u16)> = store
                     .iter_sorted()
                     .rev()
-                    .map(|(id, e)| (id, e.position.rx))
+                    .map(|(id, e)| (id, e.position.rx()))
                     .collect();
                 let expected: Vec<(u64, u16)> = model.iter().rev().map(|(&k, &v)| (k, v)).collect();
                 assert_eq!(stored, expected);
@@ -654,6 +668,7 @@ mod tests {
         assert_eq!(saved, bincode::serialize(&map).unwrap());
         let restored: EntityStore = bincode::deserialize(&saved).unwrap();
         assert_eq!(restored.keys_sorted(), [2, 4, 7]);
+        assert_eq!(restored.techno_registry, [2, 4, 7]);
         assert_eq!(bincode::serialize(&restored).unwrap(), saved);
     }
 
@@ -901,13 +916,13 @@ mod tests {
     fn test_cross_entity_read_pattern() {
         let mut store = EntityStore::new();
         let mut e1 = make_entity(1);
-        e1.position.rx = 10;
-        e1.position.ry = 20;
+        e1.position.set_rx(10);
+        e1.position.set_ry(20);
         store.insert(e1);
 
         let mut e2 = make_entity(2);
-        e2.position.rx = 30;
-        e2.position.ry = 40;
+        e2.position.set_rx(30);
+        e2.position.set_ry(40);
         store.insert(e2);
 
         // Read target position first (immutable borrow ends).
@@ -915,7 +930,7 @@ mod tests {
         // Then mutate attacker (no conflict).
         if let (Some(attacker), Some(pos)) = (store.get_mut(1), target_pos) {
             // In real code: compute firing direction, apply cooldown, etc.
-            assert_eq!(pos.rx, 30);
+            assert_eq!(pos.rx(), 30);
             attacker.body_facing.snap(0x8000, 0); // face toward target
         }
 

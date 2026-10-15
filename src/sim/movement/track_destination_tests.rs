@@ -67,16 +67,16 @@ fn shared_null_destination_matches_original_gate_and_timer_boundaries() {
         e.attack_target.set_for_test(
             (input["target"] == true).then(|| crate::sim::combat::TargetKind::Cell(11, 10)),
         );
-        e.navigation.nav_com = (input["nav"] != false).then(|| NavTargetRef::cell(11, 10));
-        e.foot_locomotor_swap_active = input["swap"] == true;
+        e.navigation
+            .set_nav_com((input["nav"] != false).then(|| NavTargetRef::cell(11, 10)));
+        e.lift.set_swap_active_for_test(input["swap"] == true);
         if input["bunker"] == true {
-            e.bunker_link = crate::sim::game_entity::BunkerLink::Installed(2);
+            e.bunker.set_bunker_link_for_test(
+                crate::sim::docking::bunker_link::BunkerLink::Installed(2),
+            );
         }
         if input["open_transport"] == true {
-            e.passenger_role = crate::sim::passenger::PassengerRole::Inside {
-                transport_id: 2,
-                open_topped: true,
-            };
+            e.passenger_role = crate::sim::passenger::PassengerRole::inside_for_test(2, true);
         }
         sim.substrate.entities.insert(e);
         if aircraft {
@@ -120,23 +120,23 @@ fn shared_null_destination_matches_original_gate_and_timer_boundaries() {
         assert_eq!(head.unwrap_or(ZERO), coord(&row["head"]), "{input}");
         let path = &e.navigation.path_runtime;
         for (key, actual) in [
-            ("nav", json!(e.navigation.nav_com.is_some())),
-            ("aux", json!(e.navigation.nav_com_aux.is_some())),
-            ("path", json!(e.navigation.path_replay.directions)),
-            ("blocked", json!(path.path_blocked)),
-            ("retries", json!(path.retries_left)),
+            ("nav", json!(e.navigation.nav_com().is_some())),
+            ("aux", json!(e.navigation.nav_com_aux().is_some())),
+            ("path", json!(e.navigation.path_replay.directions())),
+            ("blocked", json!(path.path_blocked())),
+            ("retries", json!(path.retries_left())),
             (
                 "movement_timer",
                 json!([
-                    path.movement_timer.start_frame() as u32,
-                    path.movement_timer.duration()
+                    path.movement_timer().start_frame() as u32,
+                    path.movement_timer().duration()
                 ]),
             ),
             (
                 "blocked_timer",
                 json!([
-                    path.blocked_timer.start_frame() as u32,
-                    path.blocked_timer.duration()
+                    path.blocked_timer().start_frame() as u32,
+                    path.blocked_timer().duration()
                 ]),
             ),
         ] {
@@ -172,15 +172,18 @@ fn terrain(bridge: bool) -> ResolvedTerrainGrid {
 fn actor(input: &Value) -> GameEntity {
     let mut e = GameEntity::test_default(1, "MOVER", "Americans", 10, 10);
     e.set_category_for_test(crate::map::entities::EntityCategory::Unit);
-    e.position.sub_x = SimFixed::from_num(128);
-    e.position.sub_y = SimFixed::from_num(128);
+    e.position.set_sub_x(SimFixed::from_num(128));
+    e.position.set_sub_y(SimFixed::from_num(128));
     let kind = if input["family"] == "drive" {
         LocomotorKind::Drive
     } else {
         LocomotorKind::Ship
     };
     e.locomotor = Some(LocomotorState::for_test_kind(kind));
-    e.locomotor.as_mut().unwrap().powered = input["power_off"] != true;
+    e.locomotor
+        .as_mut()
+        .unwrap()
+        .set_powered_for_test(input["power_off"] != true);
     let head = input.get("head").map_or(
         DriveCoord {
             x: 2816,
@@ -218,21 +221,26 @@ fn actor(input: &Value) -> GameEntity {
                 ))
         );
     }
-    e.navigation.nav_com_aux = Some(NavTargetRef::cell(0, 0));
-    e.navigation.nav_com = (input["same_nav"] == true).then(|| NavTargetRef::cell(11, 10));
-    e.setter_force_reassign = input["force_reassign"] == true;
-    e.navigation.nav_queue =
-        vec![NavTargetRef::cell(11, 10); input["nav_queue"].as_u64().unwrap_or(0) as usize];
-    e.navigation.path_replay = FootPathQueue {
-        directions: vec![2, 3, 4, 5],
-        reference_cell: Some((9, 8)),
-        ..Default::default()
+    e.navigation.set_nav_com_aux(Some(NavTargetRef::cell(0, 0)));
+    e.navigation
+        .set_nav_com((input["same_nav"] == true).then(|| NavTargetRef::cell(11, 10)));
+    e.setter_force_reassign
+        .set_for_test(input["force_reassign"] == true);
+    e.navigation.set_nav_queue_for_test(vec![
+        NavTargetRef::cell(11, 10);
+        input["nav_queue"].as_u64().unwrap_or(0) as usize
+    ]);
+    e.navigation.path_replay = {
+        let mut value = FootPathQueue::default();
+        value.set_directions_for_test(vec![2, 3, 4, 5]);
+        value.set_reference_cell(Some((9, 8)));
+        value
     };
     let path_runtime = &mut e.navigation.path_runtime;
-    path_runtime.movement_timer = CdTimer::started(50, 5);
-    path_runtime.blocked_timer = CdTimer::started(40, 6);
-    path_runtime.path_blocked = true;
-    path_runtime.retries_left = 7;
+    path_runtime.set_movement_timer_for_test(CdTimer::started(50, 5));
+    path_runtime.set_blocked_timer_for_test(CdTimer::started(40, 6));
+    path_runtime.set_path_blocked(true);
+    path_runtime.set_retries_left(7);
     // `+0x270` through a Temporal chain's head (any id); `+0x271` through
     // the teleport's warp-in.
     if input["warp_out"] == true {
@@ -299,7 +307,7 @@ fn compare(e: &GameEntity, row: &Value) {
     );
     assert_eq!(head.unwrap_or(ZERO), coord(&row["head"]), "{row}");
     assert_eq!(
-        u8::from(e.locomotor.as_ref().unwrap().powered),
+        u8::from(e.locomotor.as_ref().unwrap().is_powered()),
         row["power"].as_u64().unwrap() as u8,
         "{row}"
     );
@@ -315,41 +323,53 @@ fn compare(e: &GameEntity, row: &Value) {
         );
     }
     let p = &e.navigation.path_runtime;
-    let nav = e.navigation.nav_com.map(|n| match n {
+    let nav = e.navigation.nav_com().map(|n| match n {
         NavTargetRef::Cell { rx, ry } => [rx, ry],
         _ => panic!("cell fixture"),
     });
     for (key, actual) in [
         ("nav", json!(nav)),
-        ("aux", json!(e.navigation.nav_com_aux.is_some())),
+        ("aux", json!(e.navigation.nav_com_aux().is_some())),
         (
             "path",
             json!(
                 e.navigation
                     .path_replay
-                    .directions
+                    .directions()
                     .iter()
                     .map(|&v| { if v == u8::MAX { -1 } else { i32::from(v) } })
                     .collect::<Vec<_>>()
             ),
         ),
-        ("reference", json!(e.navigation.path_replay.reference_cell)),
+        (
+            "reference",
+            json!(e.navigation.path_replay.reference_cell()),
+        ),
         (
             "movement_timer",
-            json!([p.movement_timer.start_frame(), p.movement_timer.duration()]),
+            json!([
+                p.movement_timer().start_frame(),
+                p.movement_timer().duration()
+            ]),
         ),
         (
             "blocked_timer",
-            json!([p.blocked_timer.start_frame(), p.blocked_timer.duration()]),
+            json!([
+                p.blocked_timer().start_frame(),
+                p.blocked_timer().duration()
+            ]),
         ),
-        ("blocked", json!(u8::from(p.path_blocked))),
-        ("retries", json!(p.retries_left)),
-        ("force_reassign", json!(u8::from(e.setter_force_reassign))),
+        ("blocked", json!(u8::from(p.path_blocked()))),
+        ("retries", json!(p.retries_left())),
+        (
+            "force_reassign",
+            json!(u8::from(e.setter_force_reassign.is_raised())),
+        ),
     ] {
         assert_eq!(actual, row[key], "{key}: {row}");
     }
     if let Some(expected) = row.get("nav_queue") {
-        assert_eq!(json!(e.navigation.nav_queue.len()), *expected, "{row}");
+        assert_eq!(json!(e.navigation.nav_queue().len()), *expected, "{row}");
     }
 }
 
@@ -436,14 +456,15 @@ fn repeated_move_orders_sample_live_native_speed() {
             TrackFamily::Ship
         };
         let entity = sim.substrate.entities.get_mut(1).unwrap();
-        entity.drive_accelerates = false;
+        entity.mover_facts.set_drive_accelerates_for_test(false);
         entity.foot_speed.set_speed_fraction(SIM_ONE);
         let loco = entity.locomotor.as_mut().unwrap();
         let mut progress = loco.track_progress(family).unwrap();
-        progress.turn_index = input["selector"].as_i64().unwrap() as i32;
-        progress.residual = input["residual"].as_i64().unwrap() as i32;
+        progress.set_turn_index(input["selector"].as_i64().unwrap() as i32);
+        progress.set_residual(input["residual"].as_i64().unwrap() as i32);
         assert_eq!(
-            progress.residual, 0,
+            progress.residual(),
+            0,
             "native prefix budget equals its speed"
         );
         loco.store_track_progress(family, progress);
@@ -463,7 +484,9 @@ fn repeated_move_orders_sample_live_native_speed() {
                 2 => entity.veterancy.set_elite(),
                 rank => panic!("unexpected native rank {rank}"),
             }
-            entity.setter_force_reassign = step["forced"] == true;
+            entity
+                .setter_force_reassign
+                .set_for_test(step["forced"] == true);
             let retained_before =
                 serde_json::to_value((&entity.navigation, &entity.locomotor)).unwrap();
             assert!(sim.apply_command(
@@ -486,7 +509,7 @@ fn repeated_move_orders_sample_live_native_speed() {
             let loco = entity.locomotor.as_ref().unwrap();
             let destination = loco.track_destination(family).unwrap_or(ZERO);
             let head = loco.track_head(family).unwrap_or(ZERO);
-            let nav = entity.navigation.nav_com.map(|nav| match nav {
+            let nav = entity.navigation.nav_com().map(|nav| match nav {
                 NavTargetRef::Cell { rx, ry } => [rx, ry],
                 _ => panic!("cell fixture"),
             });
@@ -497,13 +520,13 @@ fn repeated_move_orders_sample_live_native_speed() {
                     "destination": [destination.x, destination.y, destination.z],
                     "head": [head.x, head.y, head.z],
                     "nav": nav,
-                    "nav_queue": entity.navigation.nav_queue.len(),
-                    "force_reassign": u8::from(entity.setter_force_reassign),
+                    "nav_queue": entity.navigation.nav_queue().len(),
+                    "force_reassign": u8::from(entity.setter_force_reassign.is_raised()),
                     "movement_timer": [
-                        path.movement_timer.start_frame(), path.movement_timer.duration(),
+                        path.movement_timer().start_frame(), path.movement_timer().duration(),
                     ],
                     "blocked_timer": [
-                        path.blocked_timer.start_frame(), path.blocked_timer.duration(),
+                        path.blocked_timer().start_frame(), path.blocked_timer().duration(),
                     ],
                 }),
                 step["setter_state"],
@@ -586,7 +609,7 @@ fn command_move_matches_native_action_line_destination_inputs() {
         let source = super::super::ground_pose::position_world_coord(&entity.position);
         let destination = drive.destination().unwrap_or(ZERO);
         let head = drive.head_to().unwrap_or(ZERO);
-        let nav = entity.navigation.nav_com.map(|nav| match nav {
+        let nav = entity.navigation.nav_com().map(|nav| match nav {
             NavTargetRef::Cell { rx, ry } => [rx, ry],
             _ => panic!("cell fixture"),
         });
@@ -597,14 +620,14 @@ fn command_move_matches_native_action_line_destination_inputs() {
                 "destination": [destination.x, destination.y, destination.z],
                 "head": [head.x, head.y, head.z],
                 "nav": nav,
-                "nav_queue": entity.navigation.nav_queue.len(),
+                "nav_queue": entity.navigation.nav_queue().len(),
                 "movement_timer": [
-                    path.movement_timer.start_frame(),
-                    path.movement_timer.duration(),
+                    path.movement_timer().start_frame(),
+                    path.movement_timer().duration(),
                 ],
                 "blocked_timer": [
-                    path.blocked_timer.start_frame(),
-                    path.blocked_timer.duration(),
+                    path.blocked_timer().start_frame(),
+                    path.blocked_timer().duration(),
                 ],
             }),
             row["setter_result"],
@@ -890,10 +913,10 @@ fn destination_receipt_actor(
         family != "E1",
     );
     actor.lifecycle.set_in_limbo_for_test(false);
-    actor.position.sub_x = SimFixed::from_num(xyz.x % 256);
-    actor.position.sub_y = SimFixed::from_num(xyz.y % 256);
-    actor.position.exact_z_leptons = Some(xyz.z);
-    actor.on_bridge = before["on_bridge"].as_u64().unwrap() != 0;
+    actor.position.set_sub_x(SimFixed::from_num(xyz.x % 256));
+    actor.position.set_sub_y(SimFixed::from_num(xyz.y % 256));
+    actor.position.set_exact_z_leptons(Some(xyz.z));
+    actor.set_on_bridge(before["on_bridge"].as_u64().unwrap() != 0);
     actor.locomotor = Some(LocomotorState::from_object_type(
         object,
         sim.session.binary_frame,
@@ -972,40 +995,47 @@ fn noncell_foot_destinations_match_original_anytown_class_calls() {
         let mut actor = destination_receipt_actor(&mut sim, &rules, 1, family, before);
         // The vector's two native receivers are the archive Foot and Cell87,53.
         // Neither element is dereferenced in these clear/retain class arms.
-        actor.navigation.nav_queue =
-            vec![NavTargetRef::Object { id: 2 }, NavTargetRef::cell(87, 53)];
-        actor.navigation.nav_com_aux = Some(NavTargetRef::Object { id: 3 });
-        actor.navigation.path_replay = FootPathQueue {
-            directions: before["path"]
-                .as_array()
-                .unwrap()
-                .iter()
-                .map(|v| v.as_i64().unwrap() as u8)
-                .collect(),
-            reference_cell: Some((
+        actor.navigation.set_nav_queue_for_test(vec![
+            NavTargetRef::Object { id: 2 },
+            NavTargetRef::cell(87, 53),
+        ]);
+        actor
+            .navigation
+            .set_nav_com_aux(Some(NavTargetRef::Object { id: 3 }));
+        actor.navigation.path_replay = {
+            let mut value = FootPathQueue::default();
+            value.set_directions_for_test(
+                before["path"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .map(|v| v.as_i64().unwrap() as u8)
+                    .collect(),
+            );
+            value.set_reference_cell(Some((
                 before["reference_cell"][0].as_u64().unwrap() as i16,
                 before["reference_cell"][1].as_u64().unwrap() as i16,
-            )),
-            ..Default::default()
+            )));
+            value
         };
         let runtime = &mut actor.navigation.path_runtime;
-        runtime.movement_timer = CdTimer::from_raw(
+        runtime.set_movement_timer_for_test(CdTimer::from_raw(
             before["movement_timer_words"][0].as_i64().unwrap() as i32,
             before["movement_timer_words"][2].as_i64().unwrap() as i32,
-        );
-        runtime.blocked_timer = CdTimer::from_raw(
+        ));
+        runtime.set_blocked_timer_for_test(CdTimer::from_raw(
             before["blocked_timer_words"][0].as_i64().unwrap() as i32,
             before["blocked_timer_words"][2].as_i64().unwrap() as i32,
-        );
-        runtime.path_blocked = before["blocked"].as_u64().unwrap() != 0;
-        runtime.retries_left = before["retry"].as_u64().unwrap() as u32;
+        ));
+        runtime.set_path_blocked(before["blocked"].as_u64().unwrap() != 0);
+        runtime.set_retries_left(before["retry"].as_u64().unwrap() as u32);
         let mut archive = readback["archive_object"].clone();
         archive["locomotor"] = readback["archive_locomotor"].clone();
         let archive = destination_receipt_actor(&mut sim, &rules, 2, "MTNK", &archive);
         sim.substrate.entities.insert(archive);
-        let queue = actor.navigation.nav_queue.clone();
+        let queue = actor.navigation.nav_queue().to_vec();
         assert_eq!(
-            actor.navigation.nav_queue.len(),
+            actor.navigation.nav_queue().len(),
             before["nav_queue"]["count"].as_u64().unwrap() as usize
         );
         sim.substrate.entities.insert(actor);
@@ -1133,13 +1163,13 @@ fn noncell_foot_destinations_match_original_anytown_class_calls() {
                 after["locomotor"]["is_moving_al"].as_u64().unwrap() as u8,
                 "{input}"
             );
-            assert_eq!(actor.navigation.nav_com, Some(requested), "{input}");
-            assert!(actor.navigation.nav_com_aux.is_none(), "{input}");
+            assert_eq!(actor.navigation.nav_com(), Some(requested), "{input}");
+            assert!(actor.navigation.nav_com_aux().is_none(), "{input}");
             assert_eq!(
                 actor
                     .navigation
                     .path_replay
-                    .directions
+                    .directions()
                     .iter()
                     .map(|&v| if v == u8::MAX { -1 } else { i32::from(v) })
                     .collect::<Vec<_>>(),
@@ -1147,24 +1177,24 @@ fn noncell_foot_destinations_match_original_anytown_class_calls() {
                 "{input}"
             );
             assert_eq!(
-                json!(actor.navigation.path_replay.reference_cell),
+                json!(actor.navigation.path_replay.reference_cell()),
                 after["reference_cell"],
                 "{input}"
             );
             assert_eq!(
-                actor.navigation.nav_queue.len(),
+                actor.navigation.nav_queue().len(),
                 after["nav_queue"]["count"].as_u64().unwrap() as usize,
                 "{input}"
             );
             if family == "E1" {
-                assert_eq!(actor.navigation.nav_queue, queue, "{input}");
+                assert_eq!(actor.navigation.nav_queue(), queue, "{input}");
             }
             let runtime = &actor.navigation.path_runtime;
             // Native timer auxiliary words copy stack residue. Only their
             // native-significant start and duration are represented in Rust.
             for (key, timer) in [
-                ("movement_timer_words", runtime.movement_timer),
-                ("blocked_timer_words", runtime.blocked_timer),
+                ("movement_timer_words", runtime.movement_timer()),
+                ("blocked_timer_words", runtime.blocked_timer()),
             ] {
                 assert_eq!(
                     json!([timer.start_frame(), timer.duration()]),
@@ -1173,12 +1203,12 @@ fn noncell_foot_destinations_match_original_anytown_class_calls() {
                 );
             }
             assert_eq!(
-                u8::from(runtime.path_blocked),
+                u8::from(runtime.path_blocked()),
                 after["blocked"].as_u64().unwrap() as u8,
                 "{input}"
             );
             assert_eq!(
-                runtime.retries_left,
+                runtime.retries_left(),
                 after["retry"].as_u64().unwrap() as u32,
                 "{input}"
             );

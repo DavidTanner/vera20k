@@ -148,7 +148,7 @@ fn walk_destination_search_observes_route_opened_before_process() {
     let e = sim.substrate.entities.get(actor).unwrap();
     assert!(e.navigation.path_replay.remaining_directions().is_empty());
     assert_eq!(
-        e.navigation.nav_com,
+        e.navigation.nav_com(),
         Some(crate::sim::components::NavTargetRef::Cell { rx: 14, ry: 10 })
     );
     assert!(e.locomotor.as_ref().unwrap().step_head().is_none());
@@ -186,7 +186,7 @@ fn walk_destination_search_observes_route_opened_before_process() {
     ));
     let e = sim.substrate.entities.get(actor).unwrap();
     assert!(crate::sim::movement::motion_query::is_moving(&e) == Some(true));
-    assert!(e.navigation.nav_com.is_some());
+    assert!(e.navigation.nav_com().is_some());
     assert!(e.locomotor.as_ref().unwrap().walk_destination().is_some());
 }
 
@@ -194,15 +194,17 @@ fn walk_destination_search_observes_route_opened_before_process() {
 fn walk_cell_order_defers_queue_publication_and_first_head_motion() {
     use crate::sim::components::{FootPathQueue, NavTargetRef};
     let (mut sim, rules, actor, _) = walk_attack_scene();
-    let queue = FootPathQueue {
-        directions: vec![2, 3, 4, 5],
-        cursor: 0,
-        reference_cell: Some((9, 8)),
-    };
+    let queue = FootPathQueue::for_test(vec![2, 3, 4, 5], 0, Some((9, 8)));
     let entity = sim.substrate.entities.get_mut(actor).unwrap();
     entity.navigation.path_replay = queue.clone();
-    entity.locomotor.as_mut().unwrap().powered = false;
-    entity.navigation.nav_queue = vec![NavTargetRef::Cell { rx: 25, ry: 10 }];
+    entity
+        .locomotor
+        .as_mut()
+        .unwrap()
+        .set_powered_for_test(false);
+    entity
+        .navigation
+        .set_nav_queue_for_test(vec![NavTargetRef::Cell { rx: 25, ry: 10 }]);
     let before = crate::sim::movement::ground_pose::position_world_coord(&entity.position);
     walk_command(
         &mut sim,
@@ -215,7 +217,7 @@ fn walk_cell_order_defers_queue_publication_and_first_head_motion() {
     );
     let entity = sim.substrate.entities.get(actor).unwrap();
     assert!(
-        !entity.locomotor.as_ref().unwrap().powered,
+        !entity.locomotor.as_ref().unwrap().is_powered(),
         "ordinary Walk destination also preserves native power state"
     );
     let mut invalidated = queue;
@@ -225,7 +227,7 @@ fn walk_cell_order_defers_queue_publication_and_first_head_motion() {
         "accepted setter writes one native path head"
     );
     assert_eq!(
-        entity.navigation.nav_queue,
+        entity.navigation.nav_queue(),
         vec![NavTargetRef::Cell { rx: 25, ry: 10 }]
     );
     assert_eq!(entity.locomotor.as_ref().unwrap().step_head(), None);
@@ -248,7 +250,10 @@ fn walk_cell_order_defers_queue_publication_and_first_head_motion() {
             .remaining_directions()
             .is_empty()
     );
-    assert_eq!(entity.navigation.path_replay.reference_cell, Some((10, 10)));
+    assert_eq!(
+        entity.navigation.path_replay.reference_cell(),
+        Some((10, 10))
+    );
     assert_eq!(
         entity.foot_speed.applied_fraction(),
         crate::util::fixed_math::SIM_ONE
@@ -299,9 +304,9 @@ fn walk_attack_range_entry_finishes_paid_head_then_accepts_new_move() {
     sim.remove_entity_occupancy(victim);
     {
         let e = sim.substrate.entities.get_mut(victim).unwrap();
-        e.position.rx = (head.x / 256 + 2) as u16;
-        e.position.ry = (head.y / 256) as u16;
-        e.position.exact_z_leptons = Some(0);
+        e.position.set_rx((head.x / 256 + 2) as u16);
+        e.position.set_ry((head.y / 256) as u16);
+        e.position.set_exact_z_leptons(Some(0));
     }
     sim.add_entity_occupancy(victim);
     assert!(sim.owns_foot_approach(actor, &rules));
@@ -312,7 +317,7 @@ fn walk_attack_range_entry_finishes_paid_head_then_accepts_new_move() {
         crate::sim::movement::motion_query::is_moving(&e) == Some(true),
         "range entry must not strand the paid head"
     );
-    assert!(e.navigation.nav_com.is_some());
+    assert!(e.navigation.nav_com().is_some());
     for _ in 0..80 {
         walk_frame(&mut sim, &rules);
         if crate::sim::movement::motion_query::is_moving(sim.substrate.entities.get(actor).unwrap())
@@ -333,12 +338,12 @@ fn walk_attack_range_entry_finishes_paid_head_then_accepts_new_move() {
         e.locomotor.as_ref().unwrap().walk_animation_moving(),
         Some(false)
     );
-    assert!(e.navigation.nav_com.is_none());
+    assert!(e.navigation.nav_com().is_none());
     assert_eq!(
-        (e.position.rx, e.position.ry),
+        (e.position.rx(), e.position.ry()),
         ((head.x / 256) as u16, (head.y / 256) as u16)
     );
-    let from = (e.position.rx, e.position.ry);
+    let from = (e.position.rx(), e.position.ry());
     let raw_bits: u32 = sim
         .substrate
         .raw_cell_occupation
@@ -384,17 +389,12 @@ fn ordered_walk_attack_nulls_destination_but_preserves_paid_head_and_queues() {
         );
         let head = wait_for_walk_head(&mut sim, &rules, actor);
         // Distinguish the two Foot queues using supplied existing backing state.
-        let queue = FootPathQueue {
-            directions: vec![6, 2, 3, 4, 5],
-            cursor: 1,
-            reference_cell: Some((9, 10)),
-        };
+        let queue = FootPathQueue::for_test(vec![6, 2, 3, 4, 5], 1, Some((9, 10)));
         let e = sim.substrate.entities.get_mut(actor).unwrap();
         e.navigation.path_replay = queue.clone();
         e.navigation
-            .nav_queue
-            .push(NavTargetRef::Cell { rx: 25, ry: 10 });
-        let queued = e.navigation.nav_queue.clone();
+            .push_nav_queue_for_test(NavTargetRef::Cell { rx: 25, ry: 10 });
+        let queued = e.navigation.nav_queue().to_vec();
         walk_command(
             &mut sim,
             &rules,
@@ -420,11 +420,11 @@ fn ordered_walk_attack_nulls_destination_but_preserves_paid_head_and_queues() {
             Some(true)
         );
         assert!(crate::sim::movement::motion_query::is_moving(&e) == Some(true));
-        assert!(e.navigation.nav_com.is_none());
+        assert!(e.navigation.nav_com().is_none());
         let mut expected = queue;
         expected.clear_live_head();
         assert_eq!(e.navigation.path_replay, expected);
-        assert_eq!(e.navigation.nav_queue, queued);
+        assert_eq!(e.navigation.nav_queue(), queued);
         for _ in 0..80 {
             walk_frame(&mut sim, &rules);
             if sim
@@ -447,10 +447,10 @@ fn ordered_walk_attack_nulls_destination_but_preserves_paid_head_and_queues() {
             "null destination still finishes its paid step"
         );
         assert_eq!(
-            (e.position.rx, e.position.ry),
+            (e.position.rx(), e.position.ry()),
             ((head.x / 256) as u16, (head.y / 256) as u16)
         );
-        assert_eq!(e.navigation.nav_queue, queued);
+        assert_eq!(e.navigation.nav_queue(), queued);
     }
 }
 
@@ -504,7 +504,7 @@ fn owner_change_finishes_the_paid_walk_head() {
         "paid head stalls"
     );
     assert_eq!(
-        (e.position.rx, e.position.ry),
+        (e.position.rx(), e.position.ry()),
         ((head.x / 256) as u16, (head.y / 256) as u16)
     );
 }
@@ -576,24 +576,21 @@ fn walk_null_setter_matches_original_caller_rows() {
             ai_counter: 0,
             dispatch_timer: MissionDispatchTimer::at_frame(0),
         });
-        e.navigation.nav_com = Some(NavTargetRef::Entity { id: victim });
-        e.navigation.nav_com_aux = Some(NavTargetRef::Entity { id: victim });
-        e.navigation.path_replay = FootPathQueue {
-            directions: vec![2, 3, 4, 5],
-            cursor: 0,
-            reference_cell: Some((10, 10)),
-        };
+        e.navigation
+            .set_nav_com(Some(NavTargetRef::Entity { id: victim }));
+        e.navigation
+            .set_nav_com_aux(Some(NavTargetRef::Entity { id: victim }));
+        e.navigation.path_replay = FootPathQueue::for_test(vec![2, 3, 4, 5], 0, Some((10, 10)));
         if input["nav_queue"] == 1 {
             e.navigation
-                .nav_queue
-                .push(NavTargetRef::Entity { id: victim });
+                .push_nav_queue_for_test(NavTargetRef::Entity { id: victim });
         }
         if input["contact"] == true {
             e.radio_contacts.insert(victim);
         }
         e.navigation.path_runtime.start_movement(0, 5);
         e.navigation.path_runtime.start_blocked(0, 6);
-        e.navigation.path_runtime.path_blocked = true;
+        e.navigation.path_runtime.set_path_blocked(true);
         let loco = e.locomotor.as_mut().unwrap();
         loco.set_walk_destination(Some(DriveCoord {
             x: 7808,
@@ -637,29 +634,29 @@ fn walk_null_setter_matches_original_caller_rows() {
             }
         );
         assert_eq!(loco.walk_destination(), None);
-        assert!(e.navigation.nav_com.is_none());
-        assert!(e.navigation.nav_com_aux.is_none());
+        assert!(e.navigation.nav_com().is_none());
+        assert!(e.navigation.nav_com_aux().is_none());
         let expected: Vec<u8> = row["queue"]
             .as_array()
             .unwrap()
             .iter()
             .map(|v| v.as_i64().unwrap() as u8)
             .collect();
-        assert_eq!(e.navigation.path_replay.directions, expected, "{input}");
-        assert_eq!(e.navigation.path_replay.reference_cell, Some((10, 10)));
+        assert_eq!(e.navigation.path_replay.directions(), expected, "{input}");
+        assert_eq!(e.navigation.path_replay.reference_cell(), Some((10, 10)));
         assert_eq!(
-            e.navigation.nav_queue.len(),
+            e.navigation.nav_queue().len(),
             row["nav_queue_count"].as_u64().unwrap() as usize
         );
         let path = &e.navigation.path_runtime;
-        assert!(!path.path_blocked);
+        assert!(!path.path_blocked());
         assert_eq!(
-            path.movement_timer
+            path.movement_timer()
                 .remaining(sim.session.binary_frame as i32),
             0
         );
         assert_eq!(
-            path.blocked_timer
+            path.blocked_timer()
                 .remaining(sim.session.binary_frame as i32),
             22
         );

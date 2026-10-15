@@ -87,7 +87,7 @@ impl Simulation {
                     .ok_or("retired Walk path requester")?
                     .navigation
                     .path_runtime
-                    .retries_left = super::PATH_STUCK_INIT;
+                    .set_retries_left(super::PATH_STUCK_INIT);
                 self.walk_short_path_receiver(id, rules)?;
                 Ok(true)
             }
@@ -152,8 +152,8 @@ impl Simulation {
         let prone = actor
             .infantry
             .as_ref()
-            .is_some_and(|infantry| infantry.is_prone);
-        let on_bridge = actor.on_bridge;
+            .is_some_and(|infantry| infantry.is_prone());
+        let on_bridge = actor.on_bridge();
         let coord = ground_pose::position_world_coord(&actor.position);
         //0x51DB68..0x51DB7A: the 16-bit facing (+388) becomes an octant through
         //`((facing >> 12) + 1) >> 1 & 7`.
@@ -197,7 +197,7 @@ impl Simulation {
                     .infantry
                     .as_mut()
                     .ok_or("failed-path receiver requires Infantry runtime state")?
-                    .cell_entry_blocked = answer.is_nonzero();
+                    .record_cell_entry(answer.is_nonzero());
             }
             Err(cause) => log::debug!("infantry {id} Stop_Driver Can_Enter_Cell: {cause}"),
         }
@@ -247,9 +247,9 @@ impl Simulation {
                 current.y.wrapping_sub(destination.y),
                 current.z.wrapping_sub(destination.z),
             ) < rules.general.close_enough;
-            if close && actor.dock_entered_with.is_none() {
+            if close && actor.tether.partner().is_none() {
                 self.assign_null_destination(id, Some(rules), None, frame_effects);
-            } else if actor.navigation.path_runtime.retries_left != 0 {
+            } else if actor.navigation.path_runtime.retries_left() != 0 {
                 //The test is before the decrement: 1->0 does not run the
                 //exhaustion tail until a later failed Process invocation.
                 self.substrate
@@ -258,7 +258,7 @@ impl Simulation {
                     .unwrap()
                     .navigation
                     .path_runtime
-                    .retries_left -= 1;
+                    .decrement_retries_left();
             } else {
                 self.finish_exhausted_walk_retry(id, rules, frame_effects)?;
             }
@@ -304,7 +304,7 @@ impl Simulation {
             .as_ref()
             .and_then(|loco| loco.walk_destination())
             .unwrap_or(DriveCoord { x: 0, y: 0, z: 0 });
-        if actor.in_playfield && !self.foot_can_reach_navigation_cell(id, destination, rules)? {
+        if actor.in_playfield() && !self.foot_can_reach_navigation_cell(id, destination, rules)? {
             self.assign_null_destination(id, Some(rules), None, frame_effects);
         }
         //75B18A asks a nonnull target's+4C even when3D5 will then be false.
@@ -334,7 +334,7 @@ impl Simulation {
                 .entities
                 .get(id)
                 .ok_or("retired exhausted Walk actor")?;
-            if actor.in_playfield
+            if actor.in_playfield()
                 && actor.attack_target.target().is_some()
                 && !self.foot_can_reach_navigation_cell(id, coordinate, rules)?
             {

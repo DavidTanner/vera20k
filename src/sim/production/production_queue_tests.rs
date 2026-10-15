@@ -7,11 +7,9 @@ use super::{
     queue_view_for_owner, ready_buildings_for_owner, suspend_production,
 };
 use crate::rules::ini_parser::IniFile;
-use crate::rules::locomotor_type::SpeedType;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::intern::InternedId;
 use crate::sim::pathfinding::PathGrid;
-use crate::sim::pathfinding::terrain_cost::TerrainCostGrid;
 use crate::sim::rng::SimRng;
 use crate::sim::timer::CdTimer;
 use crate::sim::world::{SimSoundEvent, Simulation};
@@ -380,7 +378,7 @@ fn busy_factory_exit_failed_chosen_receiver_returns_once_and_restores_attachment
             .get_mut(product)
             .unwrap()
             .lifecycle
-            .cell_marked = true;
+            .set_cell_marked(true);
         let registry = sim.production.factories.clone();
         let credits = sim.houses[&owner].economy.credits();
         let next_id = sim.substrate.next_stable_object_id;
@@ -648,7 +646,16 @@ fn busy_factory_exit_original_rows_compare_receiver_archive_restoration_and_rng(
         for (label, type_name) in &producer_types {
             let native = &before["producers"][label];
             let id = sim
-                .construct_object_limbo_at_height(type_name, "Americans", 0, 0, 0, 0, &rules)
+                .construct_object_limbo_at_height(
+                    type_name,
+                    "Americans",
+                    0,
+                    0,
+                    0,
+                    0,
+                    &rules,
+                    crate::sim::world::FrameEffects::default(),
+                )
                 .unwrap();
             assert!(labels.insert(*label, id).is_none());
             let entity = sim.substrate.entities.get_mut(id).unwrap();
@@ -725,7 +732,7 @@ fn busy_factory_exit_original_rows_compare_receiver_archive_restoration_and_rng(
             // delayed result, restoration and RNG. Mark/lifecycle parity for
             // this different refusal cause is explicitly excluded.
             assert_eq!(before["product"]["marked"], 0);
-            actor.lifecycle.cell_marked = true;
+            actor.lifecycle.set_cell_marked(true);
         }
         // Native before is post-constructor. Import that declared boundary;
         // this compares ExitObject, not Factory construction/charge or release.
@@ -814,7 +821,7 @@ fn busy_factory_exit_original_rows_compare_receiver_archive_restoration_and_rng(
                 cell[0].as_u64().unwrap() as u16,
                 cell[1].as_u64().unwrap() as u16,
             );
-            assert_eq!(json!([placed.position.rx, placed.position.ry]), *cell);
+            assert_eq!(json!([placed.position.rx(), placed.position.ry()]), *cell);
             let plane = &control["actual_cell"]["plane_after"];
             assert_eq!(
                 json!(sim.substrate.raw_cell_occupation.ground_bits(rx, ry)),
@@ -937,7 +944,7 @@ fn human_mobile_completion_retains_identity_until_next_frame_place() {
         entity.lifecycle.in_limbo(),
         "Strip emits PLACE before Unlimbo"
     );
-    assert!(!entity.in_logic_vector);
+    assert!(!entity.in_logic_vector.is_member());
     let factory = sim
         .production
         .factories
@@ -1135,9 +1142,9 @@ fn factory_constructor_start_cancel_and_promotion_own_scenario_words() {
     let vehicle_id = vehicle.entity_id.expect("Factory+0x58 identity");
     let vehicle_entity = sim.substrate.entities.get(vehicle_id).unwrap();
     assert!(vehicle_entity.lifecycle.in_limbo());
-    assert!(!vehicle_entity.lifecycle.cell_marked);
-    assert!(!vehicle_entity.in_logic_vector);
-    assert!(!vehicle_entity.in_playfield);
+    assert!(!vehicle_entity.lifecycle.cell_marked());
+    assert!(!vehicle_entity.in_logic_vector.is_member());
+    assert!(!vehicle_entity.in_playfield());
     assert_eq!(vehicle_entity.techno_ctor_random_word(), mtnk_word);
 
     let e1_word = (expected.next_u32() & 0xFFFF) as u16;
@@ -1157,9 +1164,9 @@ fn factory_constructor_start_cancel_and_promotion_own_scenario_words() {
     let e1_id = infantry.entity_id.expect("Factory+0x58 identity");
     let e1_entity = sim.substrate.entities.get(e1_id).unwrap();
     assert!(e1_entity.lifecycle.in_limbo());
-    assert!(!e1_entity.lifecycle.cell_marked);
-    assert!(!e1_entity.in_logic_vector);
-    assert!(!e1_entity.in_playfield);
+    assert!(!e1_entity.lifecycle.cell_marked());
+    assert!(!e1_entity.in_logic_vector.is_member());
+    assert!(!e1_entity.in_playfield());
     assert_eq!(e1_entity.techno_ctor_random_word(), e1_word);
 
     assert!(enqueue_by_type(
@@ -1288,8 +1295,8 @@ fn cancelled_constructor_building_runs_shared_destructor_without_uninit() {
                 .as_i64()
                 .unwrap()
         );
-        assert!(building.lifecycle.in_limbo() && !building.lifecycle.cell_marked);
-        assert!(!building.in_logic_vector);
+        assert!(building.lifecycle.in_limbo() && !building.lifecycle.cell_marked());
+        assert!(!building.in_logic_vector.is_member());
         if control["input"]["equal_sample_control"] == true {
             // Same isolated health-sampling rung as the native equality control;
             // a held product receives no normal AI turn.
@@ -1300,7 +1307,16 @@ fn cancelled_constructor_building_runs_shared_destructor_without_uninit() {
             // Only matching Target, active45 timer and constructor Techno state
             // are required by the compared expiry arm; Unlimbo is not compared.
             let observer = sim
-                .construct_object_limbo_at_height("MTNK", "Americans", 10, 11, 0, 0, &rules)
+                .construct_object_limbo_at_height(
+                    "MTNK",
+                    "Americans",
+                    10,
+                    11,
+                    0,
+                    0,
+                    &rules,
+                    crate::sim::world::FrameEffects::default(),
+                )
                 .unwrap();
             sim.assign_target_represented(
                 observer,
@@ -1385,8 +1401,8 @@ fn cancelled_constructor_building_runs_shared_destructor_without_uninit() {
             );
             assert_eq!(
                 [
-                    i64::from(actor.passive_scan_timer.start_frame),
-                    i64::from(actor.passive_scan_timer.duration)
+                    i64::from(actor.passive_scan.timer().start_frame()),
+                    i64::from(actor.passive_scan.timer().duration())
                 ],
                 [
                     after["observer"]["passive_scan_timer"][0].as_i64().unwrap(),
@@ -1733,10 +1749,6 @@ fn naval_unit_rally_uses_water_pathing_after_spawn() {
         off_104: 200,
         off_108: 200,
     });
-    sim.terrain_costs.insert(
-        SpeedType::Float,
-        TerrainCostGrid::from_resolved_terrain(&terrain, SpeedType::Float),
-    );
     spawn_structure(&mut sim, &rules, 1, "Americans", "GAYARD", 20, 20);
     sim.substrate
         .entities
@@ -1798,7 +1810,7 @@ fn naval_unit_rally_uses_water_pathing_after_spawn() {
         "delivery reuses Factory+0x58 identity"
     );
     assert_eq!(
-        ship.navigation.nav_com,
+        ship.navigation.nav_com(),
         Some(crate::sim::components::NavTargetRef::cell(26, 21)),
         "the selected producer owns the represented rally destination"
     );
@@ -2110,7 +2122,7 @@ fn blocked_vehicle_delivery_refunds_disposes_and_promotes_next_item() {
     assert_eq!(factory.progress, 0);
     assert!(factory.queue.is_empty());
     let object = sim.substrate.entities.get(successor).unwrap();
-    assert!(object.lifecycle.in_limbo() && !object.lifecycle.cell_marked);
+    assert!(object.lifecycle.in_limbo() && !object.lifecycle.cell_marked());
     super::lifecycle_tests::assert_constructor_words(&sim, successor, &mut expected);
     assert_eq!(sim.main_rng.logical_state(), main);
     assert_eq!(sim.mapgen_rng.logical_state(), mapgen);
@@ -2226,7 +2238,7 @@ fn failed_vehicle_exit_promotes_a_fresh_identity_that_can_deliver_after_cells_cl
         &mut sim, &rules, None
     ));
     let delivered = sim.substrate.entities.get(successor).unwrap();
-    assert!(!delivered.lifecycle.in_limbo() && delivered.lifecycle.cell_marked);
+    assert!(!delivered.lifecycle.in_limbo() && delivered.lifecycle.cell_marked());
     assert_eq!(super::lifecycle_tests::children(&sim, successor).len(), 3);
     assert!(!sim.substrate.entities.contains(refused));
     assert_eq!(sim.owned_object_counts(americans_id).1, owned);

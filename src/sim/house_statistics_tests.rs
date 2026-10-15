@@ -102,7 +102,7 @@ fn native_null_record_kill_books_each_live_callback_immediately() {
         victim
             .health
             .set_for_test(i32::try_from(row["before"]["health"].as_i64().unwrap()).unwrap());
-        victim.dont_score = dont_score;
+        victim.tracking_facts.set_dont_score_for_test(dont_score);
         sim.substrate.entities.insert(victim);
         let before_rng = sim.rng_state();
         assert_eq!(
@@ -118,10 +118,9 @@ fn native_null_record_kill_books_each_live_callback_immediately() {
         for after in expected {
             sim.record_the_kill(
                 1,
-                None,
-                None,
+                crate::sim::combat::KillSource::Techno(None),
                 crate::sim::combat::KillCallback::OwnerChange,
-                &rules,
+                crate::sim::world::UninitContext::with_rules(&rules),
             );
             assert_eq!(
                 house_totals(&sim.houses[&owner]),
@@ -136,7 +135,7 @@ fn native_null_record_kill_books_each_live_callback_immediately() {
                 "{name}"
             );
             assert!(
-                !victim.destruction_recorded,
+                !victim.kill_record.is_recorded(),
                 "{name}: live capture is not death"
             );
             assert_eq!(sim.rng_state(), before_rng, "{name}");
@@ -345,10 +344,9 @@ fn native_house_statistics_survive_snapshot_and_retained_ship_terminal_record() 
             let rng = restored.rng_state();
             restored.record_the_kill(
                 id,
-                None,
-                None,
+                crate::sim::combat::KillSource::Techno(None),
                 crate::sim::combat::KillCallback::Terminal,
-                &rules,
+                crate::sim::world::UninitContext::with_rules(&rules),
             );
             assert_eq!(
                 u64::from(restored.houses[&owner].stats.units_lost()),

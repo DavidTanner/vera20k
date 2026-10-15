@@ -74,6 +74,39 @@ pub(crate) fn apply_unit_facing(
     }
 }
 
+/// The turret rotation latch, `UnitClass+0x6AF`, written only by
+/// `UnitClass::Facing_Update @ 0x00736990` (cleared at `0x00736AD5`, re-set
+/// from `FacingClass::Is_Rotating` at `0x00736B16`): the Facing slot's store
+/// below. Its readers include the transport unload (`0x0073D892`), the radio
+/// receivers and Scatter's coordinate arm (`0x00743CFD`), besides
+/// `UnitClass::GetFireError @ 0x00741233`. While set, the aim block is
+/// skipped so the turret finishes the arc it started instead of
+/// re-snapshotting every frame, and — unless the projectile homes — the fire
+/// gate answers FIRE_ROTATING(4) at `0x00741250`, refusing the shot until the
+/// arc completes.
+///
+/// Not folded into `world_hash`: it is last tick's `barrel_facing`
+/// `Is_Rotating`, which the hash already folds, so a divergence surfaces one
+/// tick later through the interpolator itself.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(transparent)]
+pub(crate) struct TurretRotationLatch {
+    rotating: bool,
+}
+
+impl TurretRotationLatch {
+    /// Set: the turret is finishing the arc it started.
+    pub(crate) const fn is_set(self) -> bool {
+        self.rotating
+    }
+
+    /// Install a fixture's latch.
+    #[cfg(test)]
+    pub(crate) fn set_for_test(&mut self, rotating: bool) {
+        self.rotating = rotating;
+    }
+}
+
 /// The fields the Facing slot writes, stepped on a copy.
 #[derive(Clone, Copy, PartialEq)]
 struct UnitFacing {
@@ -90,14 +123,14 @@ impl UnitFacing {
         Self {
             hull: entity.body_facing,
             barrel: entity.barrel_facing,
-            latch: entity.turret_rotation_latch,
+            latch: entity.turret_rotation_latch.is_set(),
         }
     }
 
     fn store(self, entity: &mut GameEntity) {
         entity.body_facing = self.hull;
         entity.barrel_facing = self.barrel;
-        entity.turret_rotation_latch = self.latch;
+        entity.turret_rotation_latch.rotating = self.latch;
     }
 
     /// Steps 1–4 in binary order.

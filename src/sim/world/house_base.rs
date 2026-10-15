@@ -710,6 +710,7 @@ mod tests {
         sim.session.map_width = 17;
         sim.session.map_height = 17;
         sim.session.binary_frame = 100;
+        crate::sim::arena_fixture::supply_native_map(&mut sim);
         sim
     }
 
@@ -728,7 +729,7 @@ mod tests {
     }
 
     fn ordinary_rules() -> RuleSet {
-        RuleSet::from_ini(&crate::rules::ini_parser::IniFile::from_str(
+        RuleSet::from_ini(&crate::sim::arena_fixture::clear_ground_ini(
             "[Countries]\n0=Americans\n1=Russians\n\
              [BuildingTypes]\n0=FIRST\n1=SECOND\n\
              [FIRST]\nCost=2000\nStrength=1000\nFoundation=1x1\n\
@@ -859,10 +860,14 @@ mod tests {
         // The signed-current stress row uses retained negative subcoordinates
         // at unsigned cell0; position_world_coord reconstructs its raw leptons.
         // This is an explicit nonretail physical input, not placement evidence.
-        actor.position.sub_x = SimFixed::from_num(current[0] - i32::from(rx) * 256);
-        actor.position.sub_y = SimFixed::from_num(current[1] - i32::from(ry) * 256);
-        actor.position.exact_z_leptons = Some(current[2]);
-        actor.on_bridge = input["on_bridge"].as_bool().unwrap_or(false);
+        actor
+            .position
+            .set_sub_x(SimFixed::from_num(current[0] - i32::from(rx) * 256));
+        actor
+            .position
+            .set_sub_y(SimFixed::from_num(current[1] - i32::from(ry) * 256));
+        actor.position.set_exact_z_leptons(Some(current[2]));
+        actor.set_on_bridge(input["on_bridge"].as_bool().unwrap_or(false));
         sim.substrate.entities.insert(actor);
         sim.scenario_rng = crate::sim::rng::SimRng::new(input["seed"].as_u64().unwrap());
         (sim, id, owner)
@@ -1134,9 +1139,9 @@ mod tests {
                     false,
                 );
                 entity.lifecycle.set_in_limbo_for_test(limbo);
-                entity.position.sub_x = SimFixed::from_num(xyz[0] % 256);
-                entity.position.sub_y = SimFixed::from_num(xyz[1] % 256);
-                entity.position.exact_z_leptons = Some(xyz[2]);
+                entity.position.set_sub_x(SimFixed::from_num(xyz[0] % 256));
+                entity.position.set_sub_y(SimFixed::from_num(xyz[1] % 256));
+                entity.position.set_exact_z_leptons(Some(xyz[2]));
                 sim.substrate.entities.insert(entity);
                 ids.push(id);
             }
@@ -1293,23 +1298,19 @@ mod tests {
             if index == 1 {
                 entity.lifecycle.set_object_alive_for_test(false);
             } else if index == 2 {
-                entity.structure_upgrade_link =
-                    Some(crate::sim::game_entity::StructureUpgradeLink {
-                        parent_stable_id: id - 1,
-                        slot: 0,
-                    });
+                entity.link_structure_upgrade(id - 1, 0);
             }
             let result = sim.try_reveal_entity_with_context(
                 id,
                 RevealRequest {
-                    position: RevealPosition {
-                        exact_z_leptons: None,
-                        rx: cell.0,
-                        ry: cell.1,
-                        z: 0,
-                        sub_x: SimFixed::from_num(128),
-                        sub_y: SimFixed::from_num(128),
-                    },
+                    position: RevealPosition::new(
+                        cell.0,
+                        cell.1,
+                        0,
+                        None,
+                        SimFixed::from_num(128),
+                        SimFixed::from_num(128),
+                    ),
                     placement,
                     logic_eligible: true,
                 },
@@ -1374,9 +1375,19 @@ mod tests {
         house.base_plan_center = (3, 4);
         // Native load constructs the Scenario RNG with seed0. This test pins
         // geometry/list persistence, not a different RNG restore contract.
+        // The native-map fixture also supplies navigation; publish and restore
+        // that owner through the production map seam, which finishes the
+        // deliberately pending post-deserialization hierarchy.
+        let terrain = sim.resolved_terrain.as_ref().unwrap().clone();
+        sim.overlay_grid = Some(crate::sim::overlay_grid::OverlayGrid::new(
+            terrain.width(),
+            terrain.height(),
+        ));
+        let overlays = crate::rules::overlay_types::OverlayTypeRegistry::empty();
+        sim.restore_map_authority_after_snapshot_load(&rules, &overlays, None)
+            .expect("publish fixture map authority");
         sim.scenario_rng = crate::sim::rng::SimRng::new(0);
         let before = sim.state_hash();
-        let terrain = sim.resolved_terrain.as_ref().unwrap().clone();
         let bytes = crate::sim::snapshot::GameSnapshot::save(&sim, 0, 0, "house-base-geometry", 0);
         let mut restored = crate::sim::snapshot::GameSnapshot::load(&bytes)
             .unwrap()
@@ -1388,7 +1399,16 @@ mod tests {
             crate::sim::pathfinding::terrain_speed::TerrainSpeedConfig::default(),
             &rules,
         );
-        assert_eq!(restored.state_hash(), before);
+        restored
+            .restore_map_authority_after_snapshot_load(&rules, &overlays, None)
+            .expect("restore fixture map authority and navigation");
+        assert_eq!(
+            restored.state_hash(),
+            before,
+            "saved owners {:?}; restored owners {:?}",
+            sim.hash_owner_diagnostics_for_test(),
+            restored.hash_owner_diagnostics_for_test(),
+        );
         assert_eq!(geometry(&restored, owner), (Some((14, 14)), 1028));
         assert_eq!(restored.houses[&owner].alternate_base_center, (1, 1));
         assert_eq!(restored.houses[&owner].base_plan_center, (3, 4));
@@ -1454,10 +1474,9 @@ mod tests {
     #[test]
     fn factory_plant_discount_follows_unlimbo_capture_and_expiry() {
         use crate::map::resolved_terrain::test_flat_ground_grid;
-        use crate::rules::ini_parser::IniFile;
         use crate::sim::house_state::HouseState;
 
-        let rules = RuleSet::from_ini(&IniFile::from_str(
+        let rules = RuleSet::from_ini(&crate::sim::arena_fixture::clear_ground_ini(
             "[Countries]\n0=Americans\n1=Russians\n\
              [Russians]\nCostUnitsMult=.5\n\
              [BuildingTypes]\n0=NAINDP\n[VehicleTypes]\n0=HTNK\n\
@@ -1468,6 +1487,7 @@ mod tests {
         .unwrap();
         let mut sim = Simulation::new();
         sim.install_resolved_terrain_for_new_map(test_flat_ground_grid(32));
+        crate::sim::arena_fixture::supply_native_map(&mut sim);
         let [allies, soviets] = ["Americans", "Russians"].map(|name| sim.interner.intern(name));
         for house in [allies, soviets] {
             let mut state = HouseState::new(house, 0, None, false, 0, 10);

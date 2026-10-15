@@ -1372,7 +1372,6 @@ SpreadPercentage=.06
 
     #[test]
     fn gsi_04_09_full_reduction_propagates_synchronous_path_refresh() {
-        use crate::rules::locomotor_type::SpeedType;
         use crate::sim::world::TickLane;
         use std::sync::Arc;
 
@@ -1406,8 +1405,6 @@ SpreadPercentage=.06
         sim.overlay_grid = Some(overlay);
         sim.resolved_terrain = Some(terrain);
         assert!(sim.rebuild_dynamic_navigation(&rules));
-        let old_cost = sim.terrain_costs[&SpeedType::Foot].cost_at(0, 0);
-        assert_ne!(old_cost, 37, "fixture must expose a canonical cost change");
         let before = sim.path_grid_snapshot().unwrap();
 
         let outcome = sim.reduce_tiberium_at_with_native_context(
@@ -1427,7 +1424,17 @@ SpreadPercentage=.06
             LandType::Clear.as_index(),
             "full reduction projects terrain synchronously"
         );
-        assert_eq!(sim.terrain_costs[&SpeedType::Foot].cost_at(0, 0), old_cost);
+        assert_eq!(
+            sim.resolved_terrain
+                .as_ref()
+                .unwrap()
+                .cell(0, 0)
+                .unwrap()
+                .speed_costs
+                .foot,
+            Some(37),
+            "the restored land row is the cell's own, read without publication"
+        );
         let repeated = sim.overlay_grid.as_mut().unwrap().recalculate_runtime_cell(
             sim.resolved_terrain.as_mut().unwrap(),
             &overlay_registry,
@@ -1439,15 +1446,10 @@ SpreadPercentage=.06
             .advance_app_frame(&[], Some(&rules), None, 67, TickLane::Ordinary, None, crate::sim::world::FrameEffects::default())
             .expect("fixture frame must complete");
         assert!(deferred.overlay_updates.is_empty());
-        assert_eq!(
-            sim.terrain_costs[&SpeedType::Foot].cost_at(0, 0),
-            37,
-            "the next path reader publishes the Recalc without an overlay registry"
-        );
         let published = sim.path_grid_snapshot().unwrap();
         assert!(
             Arc::ptr_eq(&before, &published),
-            "the walkable path cell is current; only its costs change"
+            "the walkable path cell is current; only its land row changes"
         );
         let mut pending = sim.overlay_grid.as_ref().unwrap().clone();
         assert_eq!(

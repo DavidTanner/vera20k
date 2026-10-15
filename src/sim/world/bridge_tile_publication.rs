@@ -9,7 +9,7 @@ use crate::map::iso_tile_flood::{self, IsoTileFloodHost};
 impl LivePublication<'_> {
     /// Original568E40/569760 and573540/570050 raw Cell+11B stores. Preserve
     /// the completed write before another callback can fail. These stores do
-    /// not invoke47D2B0: cached class/height, cost rows and zone IDs stay intact.
+    /// not invoke47D2B0: cached class/height and zone IDs stay intact.
     pub(super) fn write_raw_bridge_level(&mut self, cell: Cell, level: u8) -> Result<(), String> {
         let sim = &mut self.sim;
         let terrain = sim
@@ -25,7 +25,6 @@ impl LivePublication<'_> {
         self.retain_real_write(cell);
         let sim = &mut self.sim;
         crate::sim::world::navigation::NavigationCaches {
-            terrain_costs: &mut sim.terrain_costs,
             zones: &mut sim.zone_grid,
             path: &mut sim.path_grid,
             playfield_bounds: sim.playfield_bounds,
@@ -239,7 +238,6 @@ impl IsoTileFloodHost for LiveTileFlood<'_, '_> {
             outcome.finalized,
         );
         crate::sim::world::navigation::NavigationCaches {
-            terrain_costs: &mut sim.terrain_costs,
             zones: &mut sim.zone_grid,
             path: &mut sim.path_grid,
             playfield_bounds: sim.playfield_bounds,

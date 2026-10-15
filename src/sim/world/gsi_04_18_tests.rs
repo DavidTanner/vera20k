@@ -64,7 +64,7 @@ fn insert_structure(
         false,
     );
     entity.lifecycle.set_in_limbo_for_test(false);
-    entity.lifecycle.cell_marked = false;
+    entity.lifecycle.set_cell_marked(false);
     sim.substrate.next_stable_object_id = sim.substrate.next_stable_object_id.max(stable_id + 1);
     sim.substrate.entities.insert(entity);
     sim.add_entity_occupancy(stable_id);
@@ -89,7 +89,7 @@ fn insert_sight_unit(sim: &mut Simulation, stable_id: u64, owner: InternedId, rx
         false,
     );
     entity.lifecycle.set_in_limbo_for_test(false);
-    entity.lifecycle.cell_marked = false;
+    entity.lifecycle.set_cell_marked(false);
     sim.substrate.next_stable_object_id = sim.substrate.next_stable_object_id.max(stable_id + 1);
     sim.substrate.entities.insert(entity);
     sim.add_entity_occupancy(stable_id);
@@ -560,15 +560,15 @@ fn shroud_current_sight_live_foot_timer_keeps_viewer_histories_and_snapshot() {
     insert_sight_unit(&mut sim, 2, a, 13, 13);
     {
         let entity = sim.substrate.entities.get_mut(2).unwrap();
-        entity.in_playfield = true;
+        entity.set_in_playfield(true);
         let mut loco = LocomotorState::for_test_kind(LocomotorKind::Jumpjet);
-        loco.layer = MovementLayer::Air;
+        loco.set_layer(MovementLayer::Air);
         // Keep the admitted high-flight height through the actual Process below.
 
         let runtime = loco.jumpjet_runtime_mut().expect("jumpjet runtime");
         let mut flight = runtime.flight();
         // The kernel flies toward its own retained target height.
-        flight.target_height = 208;
+        flight.set_target_height(208);
         *runtime = runtime
             .clone()
             .with_phase_for_test(
@@ -606,8 +606,8 @@ fn shroud_current_sight_live_foot_timer_keeps_viewer_histories_and_snapshot() {
             .get_mut(2)
             .unwrap()
             .sight_refresh_timers;
-        clocks.by_viewer.insert(a, CdTimer::started(104, 15));
-        clocks.by_viewer.insert(b, CdTimer::started(119, 15));
+        clocks.reload(a, 104);
+        clocks.reload(b, 119);
     }
     // Native Scenario deserialization resets only this RNG to Seed(0).
     sim.scenario_rng = crate::sim::rng::SimRng::new(0);
@@ -636,11 +636,11 @@ fn shroud_current_sight_live_foot_timer_keeps_viewer_histories_and_snapshot() {
     assert_eq!(clocks.timer(a), CdTimer::started(119, 15));
     assert_eq!(clocks.timer(b), CdTimer::started(119, 15));
     assert!(
-        !clocks.by_viewer.contains_key(&c),
+        !clocks.has_timer_for_test(c),
         "nonallied viewer never borrows another viewer's countdown"
     );
     assert!(
-        !clocks.by_viewer.contains_key(&reverse),
+        !clocks.has_timer_for_test(reverse),
         "reverse-only alliance must not consume source-house timer gate"
     );
     sim.fog.flush_pending_gap_conceal(120);
@@ -699,8 +699,10 @@ fn shroud_current_sight_live_refresh_gates_preserve_or_reload_native_timer() {
     let (mut sim, _rules, owner) = fixture();
     insert_sight_unit(&mut sim, 2, owner, 13, 13);
     let mut loco = LocomotorState::for_test_kind(LocomotorKind::Fly);
-    loco.layer = MovementLayer::Air;
-    loco.fly_runtime_mut().unwrap().current_speed = SimFixed::from_num(1);
+    loco.set_layer(MovementLayer::Air);
+    loco.fly_runtime_mut()
+        .unwrap()
+        .set_current_speed(SimFixed::from_num(1));
     sim.substrate.entities.get_mut(2).unwrap().locomotor = Some(loco);
     sim.set_object_height_unmarked(2, 207);
     sim.session.binary_frame = 119;
@@ -724,7 +726,9 @@ fn shroud_current_sight_live_refresh_gates_preserve_or_reload_native_timer() {
             .locomotor
             .as_mut()
             .unwrap();
-        loco.fly_runtime_mut().unwrap().current_speed = SimFixed::from_num(0);
+        loco.fly_runtime_mut()
+            .unwrap()
+            .set_current_speed(SimFixed::from_num(0));
     }
     sim.set_object_height_unmarked(2, 208);
     sim.refresh_high_flying_sight_before_process(2, None);
@@ -747,7 +751,7 @@ fn shroud_current_sight_live_refresh_gates_preserve_or_reload_native_timer() {
         .unwrap()
         .fly_runtime_mut()
         .unwrap()
-        .current_speed = SimFixed::from_num(-1);
+        .set_current_speed(SimFixed::from_num(-1));
     // Membership is false: the admitted FootAI event calls leaves which reject,
     // then still reloads15. Native moving compares !=0, so negative speed admits.
     sim.refresh_high_flying_sight_before_process(2, None);
@@ -782,8 +786,8 @@ fn shroud_current_sight_live_refresh_gates_preserve_or_reload_native_timer() {
     {
         let entity = sim.substrate.entities.get_mut(2).unwrap();
         entity.lifecycle.set_in_limbo_for_test(false);
-        entity.in_playfield = true;
-        entity.vision_range = 0;
+        entity.set_in_playfield(true);
+        entity.sight.set_vision_range_for_test(0);
     }
     sim.refresh_high_flying_sight_before_process(2, None);
     assert_eq!(

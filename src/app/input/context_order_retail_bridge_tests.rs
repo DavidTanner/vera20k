@@ -188,7 +188,7 @@ fn resolve_hut_orders(
     receipts.borrow_mut().push(json!({
         "tick": sim.session.tick, "binary_frame": sim.session.binary_frame,
         "engineer": engineer, "hut": hut,
-        "hut_cell": [sim.entities().get(hut).unwrap().position.rx, sim.entities().get(hut).unwrap().position.ry],
+        "hut_cell": [sim.entities().get(hut).unwrap().position.rx(), sim.entities().get(hut).unwrap().position.ry()],
         "native_action": action, "native_cursor_row": native_cursor_row,
         "envelopes": envelopes, "input_state_hash": format!("{before_hash:016X}"),
         "input_rng": format!("{before_rng:?}"),
@@ -212,7 +212,7 @@ fn probe_healthy_hut(
         .values()
         .find_map(|entity| {
             (runtime.simulation.resolve(entity.type_ref()) == "CABHUT"
-                && (entity.position.rx, entity.position.ry) == hut_coord)
+                && (entity.position.rx(), entity.position.ry()) == hut_coord)
                 .then_some(entity.stable_id())
         })
         .unwrap();
@@ -259,7 +259,7 @@ fn probe_healthy_hut(
             .get(engineer)
             .unwrap()
             .navigation
-            .nav_com
+            .nav_com()
             .is_none()
     );
 }

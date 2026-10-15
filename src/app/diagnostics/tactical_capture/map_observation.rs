@@ -1665,23 +1665,24 @@ fn disguise_inputs(
 
 fn retask_observation(entity: &crate::sim::game_entity::GameEntity) -> Value {
     json!({
-        "suspended_target": entity.suspended_attack_target,
-        "suspended_nav": entity.navigation.suspended_nav_com,
+        "suspended_target": entity.suspended_attack_target.target(),
+        "suspended_nav": entity.navigation.suspended_nav_com(),
     })
 }
 
 fn prism_observation(entity: &crate::sim::game_entity::GameEntity, frame: i32) -> Value {
-    use crate::sim::game_entity::DelayedFire;
+    use crate::sim::world::DelayedFire;
     if entity.category() != crate::map::entities::EntityCategory::Structure {
         return Value::Null;
     }
     let pending = entity
         .pending_building_fire
-        .map(|pending| match pending.fire {
+        .pending()
+        .map(|pending| match pending.fire() {
             DelayedFire::Weapon(slot) => json!({"mode": 1, "payload": {"weapon": slot},
-            "remaining": pending.remaining_ticks}),
+            "remaining": pending.remaining_ticks()}),
             DelayedFire::SupportBeam { to } => json!({"mode": 2,
-            "payload": {"to": [to.x, to.y, to.z]}, "remaining": pending.remaining_ticks}),
+            "payload": {"to": [to.x, to.y, to.z]}, "remaining": pending.remaining_ticks()}),
         });
     json!({"support_count": entity.prism_support_count, "pending": pending,
         "rearm": {"start": entity.rearm_timer.start_frame(),
@@ -1692,7 +1693,7 @@ fn prism_observation(entity: &crate::sim::game_entity::GameEntity, frame: i32) -
 fn fire_observation(entity: &crate::sim::game_entity::GameEntity, frame: i32) -> Value {
     // Existing immutable counters and timer queries only. In particular this
     // neither completes a firing sequence nor draws GetROF's Scenario RNG.
-    json!({"last_fire_frame": entity.last_fire_frame,
+    json!({"last_fire_frame": entity.last_fire_frame.frame(),
         "body_counter": entity.body_frame_counter,
         "stage_value": entity.native_stage().value(),
         "rearm": {"start_frame": entity.rearm_timer.start_frame(),
@@ -3028,8 +3029,8 @@ impl TacticalCaptureSession {
                                 .map(|coord| [coord.x, coord.y, coord.z]),
                             "head_leptons": loco.track_head(family)
                                 .map(|coord| [coord.x, coord.y, coord.z]),
-                            "selector": progress.turn_index,
-                            "cursor": progress.cursor,
+                            "selector": progress.turn_index(),
+                            "cursor": progress.cursor(),
                             "valid": valid,
                         }))
                     });
@@ -3049,7 +3050,7 @@ impl TacticalCaptureSession {
                             "spatial_bucket": entity.air_spatial_bucket(),
                             "spatial_enter_order": entity.air_spatial_enter_order(),
                             "current_cell_slot_holder": sim.substrate.air_slots.holder(
-                                entity.position.rx, entity.position.ry),
+                                entity.position.rx(), entity.position.ry()),
                             "tracker_cell_slot_holder": sim.substrate.air_slots.holder(
                                 tracker_cell.0 as u16, tracker_cell.1 as u16),
                             "slot_cell_slot_holder": sim.substrate.air_slots.holder(
@@ -3113,7 +3114,7 @@ impl TacticalCaptureSession {
                     "voxel_gun": {
                         "facing": entity.body_facing_current(sim.session.binary_frame),
                         "elevation": entity.barrel_elevation().current(sim.session.binary_frame),
-                        "hva_counter": entity.turret_anim_frame,
+                        "hva_counter": entity.turret_anim_frame.frame(),
                         "recoil": entity.voxel_recoil().0,
                         "recoil_active": entity.voxel_recoil().1
                     }}))
@@ -3121,10 +3122,10 @@ impl TacticalCaptureSession {
                     None
                 };
                 let miner = entity.miner.as_ref().map(|miner| {
-                    json!({"cargo_bales": miner.cargo.len(),
-                        "capacity_bales": miner.capacity_bales,
-                        "unload_active": miner.unload_active,
-                        "harvesting": miner.harvesting})
+                    json!({"cargo_bales": miner.cargo().len(),
+                        "capacity_bales": miner.capacity_bales(),
+                        "unload_active": miner.unload_active(),
+                        "harvesting": miner.harvesting()})
                 });
                 // Preserve contact slot positions, including null holes. Reads
                 // of the contact/tether owners never send a radio query.
@@ -3140,10 +3141,10 @@ impl TacticalCaptureSession {
                         .object(type_name)
                         .context("cloak observation type absent")?;
                     Some(json!({
-                        "state_i32": cloak.state,
-                        "progress_i32": cloak.depth as i32,
+                        "state_i32": cloak.state(),
+                        "progress_i32": cloak.depth() as i32,
                         "cloaking_stages_i32": rules.general.cloaking_stages,
-                        "voxel": entity.is_voxel,
+                        "voxel": entity.is_voxel(),
                         "no_shadow": object.no_shadow,
                     }))
                 } else {
@@ -3152,32 +3153,32 @@ impl TacticalCaptureSession {
                 let mut observation = json!({
                     "stable_id": id, "owner": owner,
                     "type_id": type_name, "category": entity.category(),
-                    "cell": [entity.position.rx, entity.position.ry],
-                    "physical_leptons": [coord.x, coord.y, coord.z], "on_bridge": entity.on_bridge,
+                    "cell": [entity.position.rx(), entity.position.ry()],
+                    "physical_leptons": [coord.x, coord.y, coord.z], "on_bridge": entity.on_bridge(),
                     "health": entity.health.current(), "active": entity.is_active(),
                     "veterancy_raw_bits": entity.veterancy.raw().bits(),
                     "veterancy_rank_cache": entity.veterancy.rank_cache(),
                     "elite_flash_frames": entity.flashing.frames(),
                     "object_alive": entity.is_object_alive(),
-                    "in_limbo": entity.lifecycle.in_limbo(), "dying": entity.dying,
+                    "in_limbo": entity.lifecycle.in_limbo(), "dying": entity.death.is_dying(),
                     // Techno +0x1C8, the offline latch (`sim::powered_unit`).
                     "deactivated": entity.deactivated,
                     // Mark and Logic membership are independent retained facts.
-                    "cell_marked": entity.lifecycle.cell_marked,
-                    "in_logic_vector": entity.in_logic_vector,
+                    "cell_marked": entity.lifecycle.cell_marked(),
+                    "in_logic_vector": entity.in_logic_vector.is_member(),
                     "mission": {"current": entity.mission.current().raw(),
                         "queued": entity.mission.queued().raw(), "suspended": entity.mission.suspended().raw(),
                         "effective": entity.mission.effective().raw(), "handler_state": entity.mission.handler_state(),
                         "start_frame": entity.mission.mission_start_frame(), "ai_counter": entity.mission.ai_counter(),
                         "dispatch_timer": {"start_frame": timer.start_frame(), "delay": timer.delay()}},
                     "target": entity.attack_target.target(),
-                    "archive": entity.archive_target(), "nav": entity.navigation.nav_com, "foot": foot,
+                    "archive": entity.archive_target(), "nav": entity.navigation.nav_com(), "foot": foot,
                     "retask": retask_observation(entity),
                     "jumpjet": jumpjet,
                     "cloak": cloak,
                     "building": building, "unit": unit,
                     "miner": miner,
-                    "radio": {"contacts": contacts, "dock_entered_with": entity.dock_entered_with},
+                    "radio": {"contacts": contacts, "dock_entered_with": entity.tether.partner()},
                 });
                 if profile.observe_disguise_inputs == Some(true) {
                     observation["disguise_inputs"] = disguise_inputs(state, entity)?;
@@ -3230,7 +3231,7 @@ impl TacticalCaptureSession {
                             "turret_offset": crate::sim::combat::fire_coord::firer_art(rules, object)
                                 .map_or(0, |art| art.turret_offset),
                             "rocking_angles_fixed_bits": entity.rocking.as_ref().map(|rocking| [
-                                rocking.angle_sideways.to_bits(), rocking.angle_forwards.to_bits()]),
+                                rocking.angle_sideways().to_bits(), rocking.angle_forwards().to_bits()]),
                         })
                     };
                     observation["action_line_inputs"] = inputs;
@@ -3951,9 +3952,9 @@ mod tests {
         sim.session.binary_frame = 17;
         sim.bomb_attach(planter, Some(carrier), &rules);
         let entity = sim.substrate.entities.get_mut(planter).unwrap();
-        entity.last_fire_frame = 16;
-        entity.body_frame_counter = u32::MAX;
-        entity.rearm_timer = CdTimer::from_raw(16, 50);
+        entity.last_fire_frame.set_for_test(16);
+        entity.body_frame_counter.set_for_test(u32::MAX);
+        entity.rearm_timer.set_for_test(CdTimer::from_raw(16, 50));
         let hash = sim.state_hash();
         let rng = sim.rng_state();
         let snapshot = sim.bomb_observation(MAX_OBSERVATION_SAMPLES + 1);
@@ -4987,24 +4988,32 @@ mod tests {
     fn actor_retask_snapshot_preserves_tagged_suspended_references() {
         use crate::sim::{combat::TargetKind, components::NavTargetRef, game_entity::GameEntity};
         let mut entity = GameEntity::test_default(1, "MTNK", "Americans", 10, 20);
-        entity.suspended_attack_target = Some(TargetKind::Cell(7, 8));
-        entity.navigation.suspended_nav_com = Some(NavTargetRef::object(42));
+        entity
+            .suspended_attack_target
+            .set_for_test(Some(TargetKind::Cell(7, 8)));
+        entity
+            .navigation
+            .set_suspended_nav_com(Some(NavTargetRef::object(42)));
         assert_eq!(
             retask_observation(&entity),
             json!({
                 "suspended_target":{"Cell":[7,8]}, "suspended_nav":{"Object":{"id":42}}
             })
         );
-        entity.suspended_attack_target = Some(TargetKind::Entity(43));
-        entity.navigation.suspended_nav_com = Some(NavTargetRef::cell(9, 10));
+        entity
+            .suspended_attack_target
+            .set_for_test(Some(TargetKind::Entity(43)));
+        entity
+            .navigation
+            .set_suspended_nav_com(Some(NavTargetRef::cell(9, 10)));
         assert_eq!(
             retask_observation(&entity),
             json!({
                 "suspended_target":{"Entity":43}, "suspended_nav":{"Cell":{"rx":9,"ry":10}}
             })
         );
-        entity.suspended_attack_target = None;
-        entity.navigation.suspended_nav_com = None;
+        entity.suspended_attack_target.set_for_test(None);
+        entity.navigation.set_suspended_nav_com(None);
         assert_eq!(
             retask_observation(&entity),
             json!({"suspended_target":null,"suspended_nav":null})

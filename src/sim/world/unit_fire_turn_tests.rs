@@ -67,10 +67,12 @@ fn fixture_with_first(first_type: &str) -> (Simulation, RuleSet, u64, u64) {
                 ai_counter: 0,
                 dispatch_timer: MissionDispatchTimer::from_raw(10, 1000),
             });
-        entity.rearm_timer = crate::sim::timer::CdTimer::started(10, 0);
+        entity
+            .rearm_timer
+            .set_for_test(crate::sim::timer::CdTimer::started(10, 0));
         entity.attack_target.set_for_test(Some(TargetKind::Cell(
-            entity.position.rx,
-            entity.position.ry - 3,
+            entity.position.rx(),
+            entity.position.ry() - 3,
         )));
     }
     (sim, rules, first, second)
@@ -78,8 +80,8 @@ fn fixture_with_first(first_type: &str) -> (Simulation, RuleSet, u64, u64) {
 
 fn install_paid_track(sim: &mut Simulation, id: u64) {
     let entity = sim.substrate.entities.get_mut(id).unwrap();
-    let (x, y) = (entity.position.rx, entity.position.ry);
-    entity.drive_accelerates = false;
+    let (x, y) = (entity.position.rx(), entity.position.ry());
+    entity.mover_facts.set_drive_accelerates_for_test(false);
     assert!(
         entity
             .locomotor
@@ -90,12 +92,7 @@ fn install_paid_track(sim: &mut Simulation, id: u64) {
                     .with_head_to_for_test(Some(DriveCoord::cell(x, y - 1, 0)))
                     .with_track_valid_for_test(true)
                     .with_target_speed_fraction_for_test(SimFixed::from_num(1))
-                    .with_track_for_test(TrackProgress {
-                        turn_index: 0,
-                        cursor: 0,
-                        reversed: false,
-                        residual: 0,
-                    })
+                    .with_track_for_test(TrackProgress::for_test(0, 0, false, 0))
             ))
     );
     // The accepted head (x, y-1) was the route's last cell, so Foot+5E0
@@ -105,9 +102,9 @@ fn install_paid_track(sim: &mut Simulation, id: u64) {
 fn position(sim: &Simulation, id: u64) -> ProjectileCoord {
     let entity = sim.substrate.entities.get(id).unwrap();
     ProjectileCoord::new(
-        i32::from(entity.position.rx) * 256 + entity.position.sub_x.to_num::<i32>(),
-        i32::from(entity.position.ry) * 256 + entity.position.sub_y.to_num::<i32>(),
-        entity.position.exact_z_leptons.unwrap_or(0),
+        i32::from(entity.position.rx()) * 256 + entity.position.sub_x().to_num::<i32>(),
+        i32::from(entity.position.ry()) * 256 + entity.position.sub_y().to_num::<i32>(),
+        entity.position.exact_z_leptons().unwrap_or(0),
     )
 }
 
@@ -210,7 +207,7 @@ fn attack_move_acquires_before_its_foot_fire_slot() {
                 ai_counter: 0,
                 dispatch_timer: MissionDispatchTimer::from_raw(10, 1000),
             });
-        actor.passive_scan_timer.reset(10);
+        actor.passive_scan.timer_mut_for_test().reset(10);
         actor.mega_mission = crate::sim::mission::mega_mission::MegaMission::attack_move(Some(
             crate::sim::combat::TargetKind::Cell(24, 16),
         ));
@@ -234,8 +231,12 @@ fn global_combat_tail_cannot_fire_a_ready_foot_a_second_time() {
         sim.advance_live_object_turn(first, Some(&rules), techno_ai::ObjectAiCtx::default())
             .unwrap();
         assert_eq!(sim.fire_events.len(), 1);
-        sim.substrate.entities.get_mut(first).unwrap().rearm_timer =
-            crate::sim::timer::CdTimer::started(10, 0);
+        sim.substrate
+            .entities
+            .get_mut(first)
+            .unwrap()
+            .rearm_timer
+            .set_for_test(crate::sim::timer::CdTimer::started(10, 0));
         let before = sim.scenario_rng.state();
         let result = sim.tick_combat_with_fatal_lifecycle(
             &rules,

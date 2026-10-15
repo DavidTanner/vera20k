@@ -55,20 +55,20 @@ fn place_actor(
         5,
         true,
     );
-    entity.position.sub_x = SimFixed::from_num(128);
-    entity.position.sub_y = SimFixed::from_num(128);
+    entity.position.set_sub_x(SimFixed::from_num(128));
+    entity.position.set_sub_y(SimFixed::from_num(128));
     sim.substrate.entities.insert(entity);
     sim.try_reveal_entity(
         id,
         RevealRequest {
-            position: RevealPosition {
-                exact_z_leptons: None,
-                rx: cell.0,
-                ry: cell.1,
-                z: 0,
-                sub_x: SimFixed::from_num(128),
-                sub_y: SimFixed::from_num(128),
-            },
+            position: RevealPosition::new(
+                cell.0,
+                cell.1,
+                0,
+                None,
+                SimFixed::from_num(128),
+                SimFixed::from_num(128),
+            ),
             placement: PlacementEvidence::MarkSucceeded,
             logic_eligible: true,
         },
@@ -464,8 +464,14 @@ fn armor_and_firepower_crates_multiply_once_and_announce() {
         actor,
         crate::sim::world::FrameEffects::default()
     ));
-    let armor =
-        |sim: &Simulation, id: u64| sim.substrate.entities.get(id).unwrap().armor_multiplier;
+    let armor = |sim: &Simulation, id: u64| {
+        sim.substrate
+            .entities
+            .get(id)
+            .unwrap()
+            .crate_multipliers
+            .armor()
+    };
     assert_eq!(armor(&sim, actor).bits(), 1.5_f64.to_bits());
     assert_eq!(armor(&sim, distant), NativeF64Bits::ONE);
     assert_eq!(eva_events(&sim), vec![(owner, "EVA_UnitArmorUpgraded")]);
@@ -506,14 +512,16 @@ fn armor_and_firepower_crates_multiply_once_and_announce() {
         .entities
         .get(actor)
         .unwrap()
-        .firepower_multiplier;
+        .crate_multipliers
+        .firepower();
     assert_eq!(firepower.bits(), 2.0_f64.to_bits());
     assert_eq!(
         sim.substrate
             .entities
             .get(distant)
             .unwrap()
-            .firepower_multiplier,
+            .crate_multipliers
+            .firepower(),
         NativeF64Bits::ONE
     );
     assert!(eva_events(&sim).contains(&(owner, "EVA_UnitFirePowerUpgraded")));
@@ -690,8 +698,8 @@ fn unit_crate_places_a_goodie_vehicle_and_returns_false() {
             entity.stable_id() != actor && sim.interner.resolve(entity.type_ref()) == "TNK"
         })
         .expect("the free tank");
-    assert_eq!((free.position.rx, free.position.ry), (21, 22));
-    assert!(free.lifecycle.cell_marked && !free.lifecycle.in_limbo());
+    assert_eq!((free.position.rx(), free.position.ry()), (21, 22));
+    assert!(free.lifecycle.cell_marked() && !free.lifecycle.in_limbo());
     assert_eq!(free.owner(), owner);
     assert_eq!(overlay_at(&sim, (21, 22)), None);
     assert_eq!(
@@ -735,13 +743,13 @@ fn unit_crate_under_its_picker_lands_the_goodie_on_the_first_ring_at_any_level()
             entity.stable_id() != actor && sim.interner.resolve(entity.type_ref()) == "TNK"
         })
         .expect("the goodie was placed");
-    let cell = (free.position.rx, free.position.ry);
+    let cell = (free.position.rx(), free.position.ry());
     assert_eq!(
         cell.0.abs_diff(at.0).max(cell.1.abs_diff(at.1)),
         1,
         "the first ring, two levels up: {cell:?}"
     );
-    assert!(free.lifecycle.cell_marked && !free.lifecycle.in_limbo());
+    assert!(free.lifecycle.cell_marked() && !free.lifecycle.in_limbo());
     assert_eq!(free.owner(), owner);
 }
 
@@ -770,7 +778,7 @@ fn mcv_preempt_grants_the_base_unit_with_bases_on() {
         .values()
         .find(|entity| sim.interner.resolve(entity.type_ref()) == "AMCV")
         .expect("the free MCV");
-    assert_eq!((mcv.position.rx, mcv.position.ry), (21, 22));
+    assert_eq!((mcv.position.rx(), mcv.position.ry()), (21, 22));
     assert_eq!(mcv.owner(), owner);
 }
 

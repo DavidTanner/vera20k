@@ -187,7 +187,7 @@ fn fixture(row: &Value) -> Scene {
         if let Some(contact) = contact {
             e.radio_contacts.set_slot(0, contact);
         }
-        e.dock_entered_with = (before[tether] == 1).then_some(peer);
+        e.tether.set_for_test((before[tether] == 1).then_some(peer));
     }
     if let Some(slots) = case["actual_slots"].as_array() {
         // These native controls supply an actual vector independently of the
@@ -208,7 +208,7 @@ fn fixture(row: &Value) -> Scene {
     {
         let e = s.sim.substrate.entities.get_mut(s.miner).unwrap();
         e.health.set_for_test(int(&before["health"]));
-        e.navigation.nav_com = raw_nav;
+        e.navigation.set_nav_com(raw_nav);
         e.set_archive_target(archive);
         e.mission.apply_test_fixture(MissionTestFixture {
             current: MissionId::from_raw(int(&before["miner_mission"])),
@@ -315,11 +315,11 @@ fn compare(s: &Scene, native: &Value, context: &str) {
         || json!([0.0, 0.0, 0.0, 0.0]),
         |m| {
             json!([
-                m.cargo
+                m.cargo()
                     .iter()
                     .filter(|b| b.resource_type == crate::sim::miner::ResourceType::Ore)
                     .count() as f64,
-                m.cargo
+                m.cargo()
                     .iter()
                     .filter(|b| b.resource_type == crate::sim::miner::ResourceType::Gem)
                     .count() as f64,
@@ -337,7 +337,7 @@ fn compare(s: &Scene, native: &Value, context: &str) {
         "miner_mission":e.mission.current().raw(),"miner_queued":e.mission.queued().raw(),
         "miner_status":e.mission.handler_state(),
         "dispatch_timer":[e.mission.dispatch_timer().start_frame(),e.mission.dispatch_timer().delay()],
-        "nav_queue_count":e.navigation.nav_queue.len(), "miner_nav":nav_name(s,e.navigation.nav_com),
+        "nav_queue_count":e.navigation.nav_queue().len(), "miner_nav":nav_name(s,e.navigation.nav_com()),
         "archive":nav_name(s,archive), "pending_entry":pending,
         "target":e.attack_target.target().map_or(Value::Null, |t| match t { TargetKind::Entity(id)=>s.name(id), TargetKind::Cell(rx,ry)=>json!([rx,ry]) }),
         "health":e.health.current(),"strength":s.sim.object_type(e.type_ref(),&s.rules).unwrap().strength,
@@ -348,8 +348,8 @@ fn compare(s: &Scene, native: &Value, context: &str) {
         "stage":[stage.value(),stage.timer().start_frame(),stage.timer().duration(),stage.rate()],
         "stage_changed":stage_raw["changed"],"stage_step":stage_raw["increment"],
         "facing":{"desired":e.body_facing.destination(),"start":e.body_facing.start_word(),"timer_start":e.body_facing.timer_start_frame().map_or(-1,|n|n as i32),"duration":e.body_facing.timer_duration()},
-        "unloading":u8::from(e.miner.as_ref().is_some_and(|m|m.unload_active)),
-        "harvesting":u8::from(e.miner.as_ref().is_some_and(|m|m.harvesting)),
+        "unloading":u8::from(e.miner.as_ref().is_some_and(|m|m.unload_active())),
+        "harvesting":u8::from(e.miner.as_ref().is_some_and(|m|m.harvesting())),
         "storage":storage,"balance":house.economy.credits(),"score":house.economy.score(),
         "scenario_rng":{"disabled":view.disabled,"index_a":view.index_a,"index_b":view.index_b,"state":view.words}
     });
@@ -382,7 +382,8 @@ fn compare(s: &Scene, native: &Value, context: &str) {
                     .entities
                     .get(id)
                     .unwrap()
-                    .dock_entered_with
+                    .tether
+                    .partner()
                     .is_some()
             ),
             int(&native[field]) as u8,
@@ -554,17 +555,19 @@ fn step(s: &mut Scene, step: &Value, context: &str) {
         "arrival" => {
             let (rx, ry) = cell(&step["returned"]["supplied_arrival_cell"]);
             let e = s.sim.substrate.entities.get_mut(s.miner).unwrap();
-            let old = (e.position.rx, e.position.ry);
+            let old = (e.position.rx(), e.position.ry());
             let layer = s
                 .sim
                 .substrate
                 .occupancy
                 .listed_layer(old.0, old.1, s.miner)
                 .unwrap();
-            e.position.rx = rx;
-            e.position.ry = ry;
-            e.position.sub_x = crate::util::fixed_math::SimFixed::from_num(128);
-            e.position.sub_y = crate::util::fixed_math::SimFixed::from_num(128);
+            e.position.set_rx(rx);
+            e.position.set_ry(ry);
+            e.position
+                .set_sub_x(crate::util::fixed_math::SimFixed::from_num(128));
+            e.position
+                .set_sub_y(crate::util::fixed_math::SimFixed::from_num(128));
             let drive = e.locomotor.as_mut().unwrap();
             assert!(drive.store_track_destination(
                 crate::sim::movement::track_process::TrackFamily::Drive,

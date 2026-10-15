@@ -676,9 +676,9 @@ pub(super) fn children(sim: &Simulation, parent: u64) -> Vec<u64> {
         .as_ref()
     {
         manager
-            .slots
+            .slots()
             .iter()
-            .map(|slot| slot.spawn.unwrap())
+            .map(|slot| slot.spawn().unwrap())
             .collect()
     } else {
         sim.substrate
@@ -696,8 +696,10 @@ pub(super) fn children(sim: &Simulation, parent: u64) -> Vec<u64> {
             .entities
             .get(id)
             .expect("held manager child remains represented");
-        assert!(child.lifecycle.in_limbo() && !child.lifecycle.cell_marked);
-        assert!(child.spawn_owner_id == Some(parent) || child.slave.owner() == Some(parent));
+        assert!(child.lifecycle.in_limbo() && !child.lifecycle.cell_marked());
+        assert!(
+            child.spawn_owner_id.owner() == Some(parent) || child.slave.owner() == Some(parent)
+        );
     }
     ids
 }
@@ -933,15 +935,15 @@ fn produced_infantry_retains_its_barracks_rally_until_exit_handoff() {
     // consumes this retained Archive later (520F92 -> 51CBA0 -> 4D82B0).
     assert_eq!(entity.rally_cell(), Some((30, 30)));
     assert!(
-        entity.navigation.nav_com.is_some(),
+        entity.navigation.nav_com().is_some(),
         "the initial exit is paid first"
     );
     assert_ne!(
-        entity.navigation.nav_com,
+        entity.navigation.nav_com(),
         Some(crate::sim::components::NavTargetRef::cell(30, 30))
     );
     assert!(entity.has_live_contact_with(2));
-    assert_eq!(entity.dock_entered_with, Some(2));
+    assert_eq!(entity.tether.partner(), Some(2));
 }
 
 /// `TechnoClass::ChangeOwner @ 0x007014A0` clears the ArchiveTarget
@@ -1196,7 +1198,7 @@ fn missing_barracks_retains_completed_infantry_and_queued_successor() {
     assert_eq!(factory.progress, super::PRODUCTION_STEPS);
     assert_eq!(factory.queue.len(), 1);
     let object = sim.substrate.entities.get(held).unwrap();
-    assert!(object.lifecycle.in_limbo() && !object.lifecycle.cell_marked);
+    assert!(object.lifecycle.in_limbo() && !object.lifecycle.cell_marked());
     assert_eq!(sim.houses[&owner].economy.credits(), credits);
     assert_eq!(sim.substrate.next_stable_object_id, allocated);
     assert_eq!(
@@ -1475,7 +1477,7 @@ fn a_held_vehicle_goes_with_the_last_war_factory() {
 /// A 900-credit tank buildable from a war factory, and an Industrial Plant type
 /// (`UnitsCostBonus=.75`) that is not yet on the map, for a house with no money.
 fn plant_world() -> (Simulation, RuleSet, InternedId) {
-    let rules = RuleSet::from_ini(&IniFile::from_str(
+    let rules = RuleSet::from_ini(&crate::sim::arena_fixture::clear_ground_ini(
         "[Countries]\n0=Americans\n1=Russians\n[VehicleTypes]\n0=HTNK\n\
          [BuildingTypes]\n0=NAWEAP\n1=NAINDP\n\
          [HTNK]\nOwner=Russians\nCost=900\nStrength=400\nSpeed=5\nTechLevel=1\n\
@@ -1487,6 +1489,7 @@ fn plant_world() -> (Simulation, RuleSet, InternedId) {
     sim.install_resolved_terrain_for_new_map(crate::map::resolved_terrain::test_flat_ground_grid(
         32,
     ));
+    crate::sim::arena_fixture::supply_native_map(&mut sim);
     sim.intern_rule_type_ids(&rules);
     sim.resolve_type_handles(&rules);
     let owner = sim.interner.intern("Russians");
@@ -1616,16 +1619,16 @@ fn occupied_barracks_radio_refunds_discards_and_promotes_one_gi() {
     ));
     assert!(sim.pending_command_snapshot().is_empty());
     let first_entity = sim.substrate.entities.get(first).unwrap();
-    assert!(!first_entity.lifecycle.in_limbo() && first_entity.in_logic_vector);
+    assert!(!first_entity.lifecycle.in_limbo() && first_entity.in_logic_vector.is_member());
     let first_contacts = first_entity.radio_contacts.clone();
     assert_eq!(first_contacts.slot(0), Some(producer));
-    assert_eq!(first_entity.dock_entered_with, Some(producer));
+    assert_eq!(first_entity.tether.partner(), Some(producer));
     let producer_entity = sim.substrate.entities.get(producer).unwrap();
     let producer_contacts = producer_entity.radio_contacts.clone();
     assert_eq!(producer_contacts.capacity(), 1);
     assert_eq!(producer_contacts.slot(0), Some(first));
     assert_eq!(producer_contacts.first_free(), None);
-    assert_eq!(producer_entity.dock_entered_with, Some(first));
+    assert_eq!(producer_entity.tether.partner(), Some(first));
     assert!(
         sim.production
             .factories
@@ -1730,14 +1733,14 @@ fn occupied_barracks_radio_refunds_discards_and_promotes_one_gi() {
         "exactly one FIFO successor constructs"
     );
     let successor_entity = sim.substrate.entities.get(successor).unwrap();
-    assert!(successor_entity.lifecycle.in_limbo() && !successor_entity.lifecycle.cell_marked);
-    assert!(!successor_entity.in_logic_vector);
+    assert!(successor_entity.lifecycle.in_limbo() && !successor_entity.lifecycle.cell_marked());
+    assert!(!successor_entity.in_logic_vector.is_member());
     let first_entity = sim.substrate.entities.get(first).unwrap();
     assert_eq!(first_entity.radio_contacts, first_contacts);
-    assert_eq!(first_entity.dock_entered_with, Some(producer));
+    assert_eq!(first_entity.tether.partner(), Some(producer));
     let producer_entity = sim.substrate.entities.get(producer).unwrap();
     assert_eq!(producer_entity.radio_contacts, producer_contacts);
-    assert_eq!(producer_entity.dock_entered_with, Some(first));
+    assert_eq!(producer_entity.tether.partner(), Some(first));
     assert!(
         sim.production
             .factories

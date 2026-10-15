@@ -59,7 +59,9 @@ fn fixture(input: &Value, other_flags: &str) -> (Simulation, RuleSet) {
         ai_counter: 0,
         dispatch_timer: MissionDispatchTimer::at_frame(0),
     });
-    infantry.navigation.nav_com = identity(&input["nav_com"]).map(NavTargetRef::building);
+    infantry
+        .navigation
+        .set_nav_com(identity(&input["nav_com"]).map(NavTargetRef::building));
     infantry
         .attack_target
         .set_for_test(identity(&input["attack_target"]).map(|id| TargetKind::Entity(id)));
@@ -164,7 +166,7 @@ fn one_cell_undeploy_navcom_stays_at_the_separate_conversion_boundary() {
         .get_mut(OTHER)
         .unwrap()
         .lifecycle
-        .cell_marked = false;
+        .set_cell_marked(false);
     assert_eq!(
         sim.infantry_per_cell_building_admission(
             sim.substrate.entities.get(INFANTRY).unwrap(),
@@ -190,7 +192,7 @@ fn one_cell_undeploy_navcom_stays_at_the_separate_conversion_boundary() {
             .get(INFANTRY)
             .unwrap()
             .navigation
-            .nav_com,
+            .nav_com(),
         Some(NavTargetRef::building(OTHER))
     );
 }

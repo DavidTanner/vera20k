@@ -184,7 +184,16 @@ fn nested_death_bridge_continuation_finishes_before_parent_area_returns() {
         let mut units = Vec::new();
         for name in ["OUTER", "INNER"] {
             let id = sim
-                .construct_object_limbo_at_height(name, "Americans", 10, 20, 0, 6, &rules)
+                .construct_object_limbo_at_height(
+                    name,
+                    "Americans",
+                    10,
+                    20,
+                    0,
+                    6,
+                    &rules,
+                    crate::sim::world::FrameEffects::default(),
+                )
                 .unwrap();
             // Both objects are in the deck list at the identical coordinate,
             // so OUTER's zero-spread death blast includes only the live INNER.
@@ -198,8 +207,8 @@ fn nested_death_bridge_continuation_finishes_before_parent_area_returns() {
                         z: 624,
                     },
                 );
-                actor.position.z = 6;
-                actor.on_bridge = true;
+                actor.position.set_z(6);
+                actor.set_on_bridge(true);
             }
             sim.reveal_entity_with_rules(id, &rules);
             assert!(
@@ -208,7 +217,7 @@ fn nested_death_bridge_continuation_finishes_before_parent_area_returns() {
                     .get(id)
                     .unwrap()
                     .lifecycle
-                    .cell_marked
+                    .cell_marked()
             );
             units.push(id);
         }

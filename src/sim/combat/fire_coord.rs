@@ -122,12 +122,12 @@ impl FireSource {
         Self {
             stable_id: entity.stable_id(),
             category: entity.category(),
-            rx: entity.position.rx,
-            ry: entity.position.ry,
-            sub_x: entity.position.sub_x,
-            sub_y: entity.position.sub_y,
-            level: entity.position.z,
-            exact_z_leptons: entity.position.exact_z_leptons,
+            rx: entity.position.rx(),
+            ry: entity.position.ry(),
+            sub_x: entity.position.sub_x(),
+            sub_y: entity.position.sub_y(),
+            level: entity.position.z(),
+            exact_z_leptons: entity.position.exact_z_leptons(),
             hull_facing: entity.body_facing,
             barrel_facing: entity.barrel_facing,
             veterancy: entity.veterancy.rank(),
@@ -417,7 +417,7 @@ fn fire_coordinate_base<'r>(
         .entities
         .get(snap.stable_id)
         .and_then(|e| e.locomotor.as_ref())
-        .is_some_and(|l| l.kind == crate::rules::locomotor_type::LocomotorKind::Fly)
+        .is_some_and(|l| l.active_kind() == crate::rules::locomotor_type::LocomotorKind::Fly)
     {
         // Fly DrawMatrix4CF651 reads SecondaryFacing even when GetFLH's
         // separate relative-aim rotation still subtracts PrimaryFacing.
@@ -599,7 +599,7 @@ fn open_topped_port_coordinate(
     let port = transport
         .passenger_role
         .cargo()?
-        .passengers
+        .passengers()
         .iter()
         .position(|&id| id == snap.stable_id)?;
     let transport_obj = rules.object(world.interner.resolve(transport.type_ref()))?;
@@ -933,7 +933,7 @@ mod tests {
         let id = world.allocate_stable_id();
         let mut gi =
             crate::sim::game_entity::GameEntity::test_default(id, "E1", "Americans", 10, 11);
-        gi.position.exact_z_leptons = Some(333);
+        gi.position.set_exact_z_leptons(Some(333));
         world.substrate.entities.insert(gi);
         let mut shooter = source(EntityCategory::Infantry);
         shooter.stable_id = id;

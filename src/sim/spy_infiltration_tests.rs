@@ -298,7 +298,7 @@ const ARENA_ART: &str = "[PLANT]\nFoundation=2x2\n[DEPOT]\nFoundation=2x2\n\
 
 fn arena_rules() -> RuleSet {
     RuleSet::from_ini_with_fixed_art_for_test(
-        &IniFile::from_str(ARENA_RULES),
+        &crate::sim::arena_fixture::clear_ground_ini(ARENA_RULES),
         &IniFile::from_str(ARENA_ART),
     )
     .unwrap()
@@ -442,7 +442,7 @@ fn a_spy_sent_into_an_enemy_power_plant_blacks_it_out() {
         .collect();
     let plant_cell = {
         let plant = sim.entities().get(plant).unwrap();
-        (plant.position.rx, plant.position.ry)
+        (plant.position.rx(), plant.position.ry())
     };
     assert_eq!(
         infiltrations,
@@ -532,7 +532,7 @@ fn an_infiltrator_that_is_no_agent_is_scattered_from_the_building() {
     let mut events = Vec::new();
     let footprint = |sim: &Simulation, id: u64| {
         let entity = sim.entities().get(id).unwrap();
-        (entity.position.rx, entity.position.ry)
+        (entity.position.rx(), entity.position.ry())
     };
     let mut entered = false;
     run_until(&mut sim, &rules, &grid, 300, &mut events, |sim| {
@@ -544,12 +544,12 @@ fn an_infiltrator_that_is_no_agent_is_scattered_from_the_building() {
                 .get(thief)
                 .unwrap()
                 .navigation
-                .nav_com
+                .nav_com()
                 .is_none()
     });
     assert!(entered, "the infiltrator never reached the building");
     let entity = sim.entities().get(thief).expect("the infiltrator stays");
-    assert!(entity.navigation.nav_com.is_none());
+    assert!(entity.navigation.nav_com().is_none());
     assert!(
         !events
             .iter()

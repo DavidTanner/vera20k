@@ -134,8 +134,8 @@ mod tests {
         let before = state.clone();
         state.power_off();
 
-        assert_eq!(state.kind, before.kind);
-        assert_eq!(state.layer, before.layer);
-        assert_eq!(state.piggyback, before.piggyback);
+        assert_eq!(state.active_kind(), before.active_kind());
+        assert_eq!(state.layer(), before.layer());
+        assert_eq!(state.piggyback(), before.piggyback());
     }
 }

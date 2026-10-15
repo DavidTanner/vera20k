@@ -129,8 +129,8 @@ fn list_fixture() -> (RuleSet, EntityStore, OccupancyGrid, ResolvedTerrainGrid) 
     ] {
         let mut entity = GameEntity::test_default(id, kind, owner, x, 5);
         entity.lifecycle.set_in_limbo_for_test(false);
-        entity.lifecycle.cell_marked = true;
-        entity.on_bridge = on_bridge;
+        entity.lifecycle.set_cell_marked(true);
+        entity.set_on_bridge(on_bridge);
         occupancy.add(
             x,
             5,
@@ -282,12 +282,12 @@ fn original_dead_missing_cell_candidate_runs_fire_probe_before_health_rejection(
             6,
             true,
         );
-        entity.position.z = 6;
-        entity.position.exact_z_leptons = Some(624);
+        entity.position.set_z(6);
+        entity.position.set_exact_z_leptons(Some(624));
         entity.health.set_for_test(hp);
-        entity.lifecycle.cell_marked = true;
+        entity.lifecycle.set_cell_marked(true);
         entity.lifecycle.set_in_limbo_for_test(false);
-        entity.in_playfield = true;
+        entity.set_in_playfield(true);
         entity.locomotor = Some(LocomotorState::from_object_type(obj, 0));
         entity.barrel_facing = Some(FacingClass::new(16383, 0));
         world.substrate.entities.insert(entity);

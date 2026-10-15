@@ -59,7 +59,7 @@ impl Simulation {
             .get(id)
             .expect("SetZ owner exists")
             .lifecycle
-            .cell_marked;
+            .cell_marked();
         if marked {
             self.foot_mark_remove(id, rules, registry, effects);
         }
@@ -68,7 +68,7 @@ impl Simulation {
             .get_mut(id)
             .unwrap()
             .position
-            .exact_z_leptons = Some(z);
+            .set_exact_z_leptons(Some(z));
         if marked {
             self.foot_mark_put(id, rules, registry, effects);
         }
@@ -153,12 +153,12 @@ pub(crate) fn navigation_should_be_on_bridge(
 /// the cell and sub-cell [`set_position_world_xy`] stores.
 pub(crate) fn position_world_xy(position: &Position) -> [i32; 2] {
     [
-        i32::from(position.rx)
+        i32::from(position.rx())
             .wrapping_mul(256)
-            .wrapping_add(position.sub_x.to_num::<i32>()),
-        i32::from(position.ry)
+            .wrapping_add(position.sub_x().to_num::<i32>()),
+        i32::from(position.ry())
             .wrapping_mul(256)
-            .wrapping_add(position.sub_y.to_num::<i32>()),
+            .wrapping_add(position.sub_y().to_num::<i32>()),
     ]
 }
 
@@ -174,16 +174,20 @@ pub(crate) fn set_position_world_xy(position: &mut Position, xy: [i32; 2]) {
     let [x, y] = xy;
     let cell_x = crate::util::lepton::lepton_to_cell(x).clamp(0, i32::from(u16::MAX));
     let cell_y = crate::util::lepton::lepton_to_cell(y).clamp(0, i32::from(u16::MAX));
-    position.rx = cell_x as u16;
-    position.ry = cell_y as u16;
-    position.sub_x = crate::util::fixed_math::SimFixed::from_num(x.wrapping_sub(cell_x * 256));
-    position.sub_y = crate::util::fixed_math::SimFixed::from_num(y.wrapping_sub(cell_y * 256));
+    position.set_rx(cell_x as u16);
+    position.set_ry(cell_y as u16);
+    position.set_sub_x(crate::util::fixed_math::SimFixed::from_num(
+        x.wrapping_sub(cell_x * 256),
+    ));
+    position.set_sub_y(crate::util::fixed_math::SimFixed::from_num(
+        y.wrapping_sub(cell_y * 256),
+    ));
 }
 
 /// `ObjectClass::SetLocation @ 0x005F6940`: the Location becomes `coord`.
 pub(crate) fn put_location(position: &mut Position, coord: DriveCoord) {
     set_position_world_xy(position, [coord.x, coord.y]);
-    position.exact_z_leptons = Some(coord.z);
+    position.set_exact_z_leptons(Some(coord.z));
 }
 
 /// `FootClass::SetLocation` (vt+0x1B4 = `0x004DB810`): the Location becomes
@@ -249,8 +253,8 @@ pub(crate) fn position_world_coord(position: &Position) -> DriveCoord {
     DriveCoord {
         x,
         y,
-        z: position.exact_z_leptons.unwrap_or_else(|| {
-            i32::from(position.z as i8) * crate::util::lepton::GROUND_LEVEL_HEIGHT_LEPTONS
+        z: position.exact_z_leptons().unwrap_or_else(|| {
+            i32::from(position.z() as i8) * crate::util::lepton::GROUND_LEVEL_HEIGHT_LEPTONS
         }),
     }
 }
@@ -269,7 +273,7 @@ pub(crate) fn object_world_z_leptons(
 ) -> i32 {
     entity
         .position
-        .exact_z_leptons
+        .exact_z_leptons()
         .unwrap_or_else(|| object_ground_z_leptons(entity, terrain))
 }
 
@@ -282,16 +286,16 @@ pub(crate) fn object_ground_z_leptons(
 ) -> i32 {
     let [x, y] = position_world_xy(&entity.position);
     terrain
-        .and_then(|terrain| terrain.cell(entity.position.rx, entity.position.ry))
+        .and_then(|terrain| terrain.cell(entity.position.rx(), entity.position.ry()))
         .and_then(|cell| ground_height_leptons(cell.level, cell.slope_type, x, y).ok())
         .map(|ground| {
-            ground.wrapping_add(if entity.on_bridge {
+            ground.wrapping_add(if entity.on_bridge() {
                 BRIDGE_DECK_HEIGHT_LEPTONS
             } else {
                 0
             })
         })
-        .unwrap_or_else(|| i32::from(entity.position.z as i8) * GROUND_LEVEL_HEIGHT_LEPTONS)
+        .unwrap_or_else(|| i32::from(entity.position.z() as i8) * GROUND_LEVEL_HEIGHT_LEPTONS)
 }
 
 /// Building render-coordinate459EF0 and GetYSort449410's type adjustment.
@@ -330,7 +334,7 @@ fn foundation_center_xy(location: [i32; 2], foundation: &str) -> [i32; 2] {
 pub(crate) fn object_center_xy(entity: &crate::sim::game_entity::GameEntity) -> [i32; 2] {
     let location = position_world_xy(&entity.position);
     if entity.category() == crate::map::entities::EntityCategory::Structure {
-        foundation_center_xy(location, &entity.foundation)
+        foundation_center_xy(location, entity.type_facts.foundation())
     } else {
         location
     }
@@ -419,8 +423,9 @@ impl Simulation {
                     entity.category() == crate::map::entities::EntityCategory::Structure
                 })
                 .map(|building| {
-                    let (width, height) =
-                        crate::rules::foundation::foundation_dimensions(&building.foundation);
+                    let (width, height) = crate::rules::foundation::foundation_dimensions(
+                        building.type_facts.foundation(),
+                    );
                     (i32::from(width), i32::from(height))
                 }),
             crate::sim::combat::TargetKind::Cell(..) => None,
@@ -527,7 +532,7 @@ pub(crate) fn set_height(
     let world_xy = position_world_xy(position);
     let (level, slope) = ground_fields_at(world_xy, terrain, path_grid).unwrap_or((0, 0));
     if let Some(ground) = supported_ground(level, slope, world_xy) {
-        position.exact_z_leptons = Some(z_at_height(ground, height, on_bridge));
+        position.set_exact_z_leptons(Some(z_at_height(ground, height, on_bridge)));
     }
 }
 
@@ -548,7 +553,7 @@ impl Simulation {
             .substrate
             .entities
             .get(id)
-            .is_some_and(|entity| entity.lifecycle.cell_marked);
+            .is_some_and(|entity| entity.lifecycle.cell_marked());
         if marked {
             self.foot_mark_remove(id, rules, registry, effects);
         }
@@ -585,7 +590,7 @@ impl Simulation {
             .substrate
             .entities
             .get(id)
-            .is_some_and(|entity| entity.lifecycle.cell_marked);
+            .is_some_and(|entity| entity.lifecycle.cell_marked());
         if marked {
             self.unmark_entity_remove(id, context);
         }
@@ -607,9 +612,10 @@ impl Simulation {
         let Some(entity) = self.substrate.entities.get_mut(id) else {
             return;
         };
+        let on_bridge = entity.on_bridge();
         set_height(
             &mut entity.position,
-            entity.on_bridge,
+            on_bridge,
             height,
             self.resolved_terrain.as_ref(),
             None,

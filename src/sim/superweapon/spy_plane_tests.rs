@@ -160,7 +160,9 @@ fn spy_planes(sim: &Simulation) -> Vec<u64> {
     sim.substrate
         .entities
         .values()
-        .filter(|entity| sim.interner.resolve(entity.type_ref()) == "SPYP" && !entity.dying)
+        .filter(|entity| {
+            sim.interner.resolve(entity.type_ref()) == "SPYP" && !entity.death.is_dying()
+        })
         .map(|entity| entity.stable_id())
         .collect()
 }
@@ -375,10 +377,14 @@ fn send_spy_planes_matches_native() {
             plane.attack_target.target(),
             Some(TargetKind::Cell(TARGET.0, TARGET.1))
         );
-        assert_eq!(plane.navigation.nav_com, None);
-        assert_eq!((plane.position.rx, plane.position.ry), expected, "{row}");
+        assert_eq!(plane.navigation.nav_com(), None);
         assert_eq!(
-            (plane.position.sub_x, plane.position.sub_y),
+            (plane.position.rx(), plane.position.ry()),
+            expected,
+            "{row}"
+        );
+        assert_eq!(
+            (plane.position.sub_x(), plane.position.sub_y()),
             (SimFixed::from_num(128), SimFixed::from_num(128))
         );
         assert_eq!(plane.body_facing_current(sim.session.binary_frame), 0);
@@ -402,7 +408,16 @@ fn mission_plane(sim: &mut Simulation, rules: &RuleSet, row: &Value) -> u64 {
     // As SendSpyPlanes builds one: mission-only before its Unlimbo.
     let id = sim
         .with_object_placement_scope(|sim| {
-            sim.construct_object_limbo_at_height("SPYP", "Americans", 0, 0, 0, 0, rules)
+            sim.construct_object_limbo_at_height(
+                "SPYP",
+                "Americans",
+                0,
+                0,
+                0,
+                0,
+                rules,
+                crate::sim::world::FrameEffects::default(),
+            )
         })
         .unwrap();
     sim.substrate
@@ -432,7 +447,7 @@ fn mission_plane(sim: &mut Simulation, rules: &RuleSet, row: &Value) -> u64 {
             .get_mut(id)
             .unwrap()
             .navigation
-            .nav_com = Some(NavTargetRef::cell(NAV_CELL.0, NAV_CELL.1));
+            .set_nav_com(Some(NavTargetRef::cell(NAV_CELL.0, NAV_CELL.1)));
     }
     let mission = if row["mission"] == "approach" {
         MissionType::SpyplaneApproach
@@ -446,11 +461,11 @@ fn mission_plane(sim: &mut Simulation, rules: &RuleSet, row: &Value) -> u64 {
             let x = i32::from(PLANE_TARGET.0) * 256 + 128 + dx;
             let y = y + dy;
             let plane = sim.substrate.entities.get_mut(id).unwrap();
-            plane.position.rx = (x / 256) as u16;
-            plane.position.ry = (y / 256) as u16;
-            plane.position.sub_x = SimFixed::from_num(x % 256);
-            plane.position.sub_y = SimFixed::from_num(y % 256);
-            plane.position.exact_z_leptons = Some(1500);
+            plane.position.set_rx((x / 256) as u16);
+            plane.position.set_ry((y / 256) as u16);
+            plane.position.set_sub_x(SimFixed::from_num(x % 256));
+            plane.position.set_sub_y(SimFixed::from_num(y % 256));
+            plane.position.set_exact_z_leptons(Some(1500));
             let entities = &sim.substrate.entities;
             let plane = entities.get(id).unwrap();
             if crate::sim::combat::object_distance_to(plane, &target, entities) == Some(distance) {
@@ -465,9 +480,9 @@ fn mission_plane(sim: &mut Simulation, rules: &RuleSet, row: &Value) -> u64 {
         flag(row, "target").then(|| TargetKind::Cell(PLANE_TARGET.0, PLANE_TARGET.1)),
     );
     if !flag(row, "nav_com") {
-        plane.navigation.nav_com = None;
+        plane.navigation.set_nav_com(None);
     }
-    plane.in_playfield = flag(row, "in_playfield");
+    plane.set_in_playfield(flag(row, "in_playfield"));
     plane.mission.apply_test_fixture(MissionTestFixture {
         current: MissionId::from_known(mission),
         suspended: MissionId::NONE,
@@ -568,7 +583,7 @@ fn spyplane_missions_match_native() {
             }
             Some(_) => opposite.map(|(rx, ry)| NavTargetRef::cell(rx, ry)),
         };
-        assert_eq!(plane.navigation.nav_com, nav, "{row}");
+        assert_eq!(plane.navigation.nav_com(), nav, "{row}");
         let radius = sim
             .fog
             .sight_admissions
@@ -627,7 +642,7 @@ fn retail_spy_plane_photographs_the_target_and_leaves() {
         entity.attack_target.target(),
         Some(TargetKind::Cell(TARGET.0, TARGET.1))
     );
-    assert_eq!(entity.position.rx + entity.position.ry, 36);
+    assert_eq!(entity.position.rx() + entity.position.ry(), 36);
 
     let revealed = |sim: &Simulation| {
         (0..64u16)
@@ -677,8 +692,12 @@ fn retail_spy_plane_flies_with_super_weapons_off() {
     let russians: InternedId = sim.interner.intern("Russians");
     sim.session.game_options.super_weapons = false;
     for (kind, owner, at) in [
+        // Native Grant pauses a fresh Super in low power even when its
+        // type is not IsPowered. This option test supplies working power.
+        ("NANRCT", "Americans", (20, 24)),
         ("NARADR", "Americans", (24, 24)),
         ("NAMISL", "Americans", (28, 24)),
+        ("NANRCT", "Russians", (20, 32)),
         ("NARADR", "Russians", (24, 32)),
     ] {
         sim.spawn_object_at_height(kind, owner, at.0, at.1, 0, 0, &rules)
@@ -694,6 +713,8 @@ fn retail_spy_plane_flies_with_super_weapons_off() {
     };
 
     step(&mut sim, &rules);
+    assert!(!sim.power_states[&americans].is_low_power);
+    assert!(!sim.power_states[&russians].is_low_power);
     assert!(granted(&sim, americans, spy_plane));
     assert!(granted(&sim, russians, spy_plane));
     assert!(!granted(&sim, americans, nuke));

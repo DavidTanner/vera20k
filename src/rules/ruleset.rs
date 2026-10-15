@@ -45,6 +45,7 @@ use crate::rules::voxel_anim_type::{VoxelAnimType, VoxelAnimTypeId};
 use crate::rules::warhead_type::WarheadType;
 use crate::rules::weapon_type::WeaponType;
 use crate::util::fixed_math::{SIM_ONE, SimFixed, sim_from_f32};
+use crate::util::lookup_hash::LookupMap;
 use crate::util::native_x87::{NativeF32Bits, NativeF64Bits};
 
 #[cfg(test)]
@@ -304,13 +305,6 @@ pub struct AnimRef {
     pub name: String,
 }
 
-/// Convert RulesClass `[AudioVisual] SavourDelay` minutes to the signed timer's
-/// ordinary non-negative frame domain. Native multiplies by 900.0 and calls
-/// `Math__ftol`, whose active x87 control word truncates toward zero.
-pub(crate) fn savour_delay_frames(minutes: f64) -> u64 {
-    (minutes * 900.0).clamp(0.0, u64::MAX as f64).trunc() as u64
-}
-
 /// `ftol(minutes * 900.0)` under the process's 53-bit chop control word: the
 /// frames of a rules value authored in minutes (the 900.0 is the double at
 /// `0x007E27F8`).
@@ -562,6 +556,13 @@ pub struct GeneralRules {
     /// centre a team gathers at on script action 54 (`0x006EFB69`).
     /// Retail: 20.
     pub ai_safe_distance: i32,
+    /// `[AI] PatrolScan=` (`Rules+0x1150`, ReadDouble6739BA inside
+    /// ReadAI672AE0). Constructor666E09/666E1A stores the literal double
+    /// 0.016; each reached AI pass retains its prior value as the default.
+    /// Team Script16 uses the signed global frame modulo ftol(value*900),
+    /// without a clamp or a per-team timer. Source: Steam gamemd3e81a617..08600,
+    /// tools/team_recruit_oracle.py --patrol.
+    pub patrol_scan_minutes: NativeF64Bits,
     /// `[General] AITriggerSuccessWeightDelta=` (`Rules+0xC0`, ReadDouble at
     /// `0x006718EC`, constructor 1.0; retail 20).
     pub ai_trigger_success_weight_delta: NativeF64Bits,
@@ -786,6 +787,12 @@ pub struct GeneralRules {
     /// `NavalUnitEmerge`; the native constructor's invalid Voc index is silence
     /// when the key is absent or cannot resolve.
     pub cloak_sound: Option<String>,
+    /// `[AudioVisual] LeaveBioReactorSound=` is RulesClass+0x274, read by
+    /// `RulesClass::ReadAudioVisual @ 0x006691E0` and played by the successful
+    /// InfantryAbsorb arm of `BuildingClass::Mission_Unload @ 0x0044D880`.
+    /// `None` is the constructor's invalid Voc index; the fixed SOUNDMD binder
+    /// resolves the name and retains the prior valid index across rules passes.
+    pub leave_bio_reactor_sound: Option<String>,
     /// `[AudioVisual] UpgradeVeteranSound=` — `RulesClass::ReadAudioVisual @
     /// 0x006691E0` resolves it to a Voc index at `RulesClass+0x228`
     /// (`0x00669CFD..0x00669D27`); `TechnoClass::AI_Update` plays that index
@@ -1211,6 +1218,16 @@ pub struct GeneralRules {
     /// ChronoOutSound=` (stock ships `ChronoMinerTeleport`). A genuinely-absent
     /// key yields `None` = no sound, not a fabricated fallback.
     pub chrono_out_sound: Option<String>,
+    /// Rules+284/+288: ReadAudioVisual6691E0 reads the exact-case
+    /// LetsDoTheTimeWarpOutAgain/InAgain keys at66A2D7..66A34F through
+    /// ReadString128 then VocFind7514D0, retaining the previous valid ID.
+    /// Constructor6659F4/FA stores -1. Use the fixed SOUNDMD binder.
+    time_warp_out_sound: Option<String>,
+    time_warp_in_sound: Option<String>,
+    /// Rules+1C8: ctor6658E0 stores-1; ReadAudioVisual669645..66967B
+    /// reads exact CheerSound through ReadString128/VocFind7514D0 with
+    /// prior-ID retention. The fixed SOUNDMD binder owns name resolution.
+    cheer_sound: Option<String>,
     /// `[AudioVisual] ImpactWaterSound=` / `ImpactLandSound=`
     /// (`RulesClass+0x200` / `+0x204`, `RulesClass::ReadAudioVisual`
     /// `0x00669924` / `0x00669965`): a crash impact's fallback cue when the
@@ -2068,6 +2085,7 @@ impl Default for GeneralRules {
             fill_earliest_team_probability: Vec::new(),
             dissolve_unfilled_team_delay: 5000,
             ai_safe_distance: 8,
+            patrol_scan_minutes: NativeF64Bits::from_bits(0x3f90_624d_d2f1_a9fc),
             ai_trigger_success_weight_delta: NativeF64Bits::ONE,
             ai_trigger_failure_weight_delta: NativeF64Bits::from_bits((-1.0_f64).to_bits()),
             ai_trigger_track_record_coefficient: NativeF64Bits::ONE,
@@ -2157,6 +2175,7 @@ impl Default for GeneralRules {
             cloaking_stages: 9,
             cloak_delay_frames: 18,
             cloak_sound: None,
+            leave_bio_reactor_sound: None,
             upgrade_veteran_sound: None,
             upgrade_elite_sound: None,
             slaves_free_sound: None,
@@ -2240,6 +2259,9 @@ impl Default for GeneralRules {
             fallback_coefficient: SimFixed::lit("0.1"),
             chrono_in_sound: Some("ChronoMinerTeleport".to_string()),
             chrono_out_sound: Some("ChronoMinerTeleport".to_string()),
+            time_warp_out_sound: None,
+            time_warp_in_sound: None,
+            cheer_sound: None,
             impact_water_sound: None,
             impact_land_sound: None,
             sinking_sound: None,
@@ -2680,12 +2702,30 @@ impl GeneralRules {
         self.building_damage_sound.as_deref()
     }
 
+    pub fn time_warp_out_sound(&self) -> Option<&str> {
+        self.time_warp_out_sound.as_deref()
+    }
+
+    pub fn time_warp_in_sound(&self) -> Option<&str> {
+        self.time_warp_in_sound.as_deref()
+    }
+
+    pub(crate) fn cheer_sound(&self) -> Option<&str> {
+        self.cheer_sound.as_deref()
+    }
+
     /// Drive4B3A65, Ship6A30B4 and Foot/Walk's timer producers retain the
     /// configured double until FLD/FMUL900/ftol7C5F00. In particular, authored
     /// decimal .01 is parsed through float by ReadDouble5283D0 and converts to
     /// 8, while 1% converts to9. No clamp, round-to-nearest or u16 narrowing.
     pub fn path_delay_ticks(&self) -> i32 {
         native_minutes_to_frames(self.path_delay)
+    }
+
+    /// Script16's FLD/FMUL900/ftol at6ECD46..6ECD57. Reuse the common,
+    /// deterministic rules-minute converter rather than host float math.
+    pub(crate) fn patrol_scan_frames(&self) -> i32 {
+        native_minutes_to_frames(f64::from_bits(self.patrol_scan_minutes.bits()))
     }
 
     /// `ftol(PlacementDelay * 900.0)`, the computer Construction Yard's retry
@@ -2725,6 +2765,10 @@ impl GeneralRules {
         let audio_visual = ini.section_or_empty("AudioVisual");
         let message_delay_minutes =
             audio_visual.read_double_bits("MessageDelay", defaults.message_delay_minutes);
+        // Steam3e81a617..08600: AudioVisual66B478..66B498 reads SavourDelay
+        // into Rules+14C8; Process668F56 reaches it independently of General.
+        let savour_delay_minutes =
+            audio_visual.read_double("SavourDelay", defaults.savour_delay_minutes);
         let detail = defaults.detail.read_pass(audio_visual);
         let pose_dir = audio_visual.read_int("PoseDir", defaults.pose_dir);
         let deploy_dir = audio_visual
@@ -2762,6 +2806,7 @@ impl GeneralRules {
             .section_or_empty("MultiplayerDialogSettings")
             .read_bool("AlliesAllowed", defaults.allies_allowed);
         let attack_delay = ai.read_double("AttackDelay", defaults.attack_delay);
+        let patrol_scan_minutes = ai.read_double_bits("PatrolScan", defaults.patrol_scan_minutes);
         let path_delay = ai.read_double("PathDelay", defaults.path_delay);
         let blockage_path_delay_ticks =
             ai.read_int("BlockagePathDelay", defaults.blockage_path_delay_ticks);
@@ -2772,6 +2817,7 @@ impl GeneralRules {
         let Some(general) = ini.section("General") else {
             return Self {
                 message_delay_minutes,
+                savour_delay_minutes,
                 detail,
                 pose_dir,
                 deploy_dir,
@@ -2782,6 +2828,7 @@ impl GeneralRules {
                 condition_yellow: condition_yellow_native,
                 condition_red: condition_red_native,
                 path_delay,
+                patrol_scan_minutes,
                 attack_delay,
                 difficulty_rows,
                 blockage_path_delay_ticks,
@@ -2849,8 +2896,7 @@ impl GeneralRules {
             deploy_dir,
             scroll_multiplier: audio_visual
                 .read_double("ScrollMultiplier", defaults.scroll_multiplier),
-            savour_delay_minutes: audio_visual
-                .read_double("SavourDelay", defaults.savour_delay_minutes),
+            savour_delay_minutes,
             condition_red_sparking_probability: condition_red_spark_prob,
             condition_yellow_sparking_probability: condition_yellow_spark_prob,
             condition_red_spark_threshold: damage_spark_spawn_threshold(condition_red_spark_prob),
@@ -2981,6 +3027,7 @@ impl GeneralRules {
                 defaults.dissolve_unfilled_team_delay,
             ),
             ai_safe_distance: general.read_int("AISafeDistance", defaults.ai_safe_distance),
+            patrol_scan_minutes,
             ai_trigger_success_weight_delta: general.read_double_bits(
                 "AITriggerSuccessWeightDelta",
                 defaults.ai_trigger_success_weight_delta,
@@ -3100,6 +3147,9 @@ impl GeneralRules {
             cloak_sound: audio_visual
                 .read_name("CloakSound", 0x80)
                 .map(str::to_owned),
+            // The fixed SOUNDMD binder resolves Rules+0x274 as a Voc index.
+            // Keep the constructor's invalid index until that owner binds it.
+            leave_bio_reactor_sound: None,
             upgrade_veteran_sound: audio_visual
                 .read_name("UpgradeVeteranSound", 0x80)
                 .map(str::to_owned),
@@ -3258,6 +3308,9 @@ impl GeneralRules {
             chrono_out_sound: audio_visual
                 .read_name("ChronoOutSound", 0x80)
                 .map(str::to_owned),
+            time_warp_out_sound: None,
+            time_warp_in_sound: None,
+            cheer_sound: None,
             impact_water_sound: audio_visual
                 .read_name("ImpactWaterSound", 0x80)
                 .map(str::to_owned),
@@ -3536,7 +3589,7 @@ pub struct RuleSet {
     object_list: Vec<ObjectType>,
     /// Uppercase type ID → handle. Uppercase keys give O(1) case-insensitive
     /// resolution, matching the engine's case-insensitive find-or-allocate.
-    object_index: HashMap<String, TypeHandle>,
+    object_index: LookupMap<String, TypeHandle>,
     /// Per-native-registry identity authority. Unlike the broad lookup above,
     /// this retains distinct types when malformed/custom rules list the same
     /// ID in more than one category.
@@ -3797,6 +3850,7 @@ impl RuleSet {
         rules.general.difficulty_rows = *processed.difficulty_rows();
         rules.general.detail = processed.detail();
         rules.general.prism_support = processed.prism_support();
+        rules.general.patrol_scan_minutes = processed.patrol_scan_minutes();
         rules.general.prism_type = processed.prism_type().map(str::to_owned);
         rules.general.prerequisite_proc_alternate =
             processed.prerequisite_proc_alternate().map(str::to_owned);
@@ -3916,6 +3970,9 @@ impl RuleSet {
         ini: &IniFile,
         sounds: &crate::rules::sound_ini::SoundRegistry,
     ) {
+        self.general.leave_bio_reactor_sound = ini
+            .section("AudioVisual")
+            .and_then(|section| sounds.read_rules_reference(section, "LeaveBioReactorSound"));
         self.general.sinking_sound = ini
             .section("AudioVisual")
             .and_then(|section| sounds.read_rules_reference(section, "SinkingSound"));
@@ -3937,6 +3994,15 @@ impl RuleSet {
         self.general.guard_sound = ini
             .section("AudioVisual")
             .and_then(|section| sounds.read_rules_reference(section, "GuardSound"));
+        self.general.time_warp_out_sound = ini
+            .section("AudioVisual")
+            .and_then(|section| sounds.read_rules_reference(section, "LetsDoTheTimeWarpOutAgain"));
+        self.general.time_warp_in_sound = ini
+            .section("AudioVisual")
+            .and_then(|section| sounds.read_rules_reference(section, "LetsDoTheTimeWarpInAgain"));
+        self.general.cheer_sound = ini
+            .section("AudioVisual")
+            .and_then(|section| sounds.read_rules_reference(section, "CheerSound"));
         self.general.scatter_sound = ini
             .section("AudioVisual")
             .and_then(|section| sounds.read_rules_reference(section, "ScatterSound"));
@@ -4025,7 +4091,7 @@ impl RuleSet {
         country_side_registry: ProjectedCountrySideRegistry,
     ) -> Result<Self, RulesError> {
         let mut object_list: Vec<ObjectType> = Vec::new();
-        let mut object_index: HashMap<String, TypeHandle> = HashMap::new();
+        let mut object_index: LookupMap<String, TypeHandle> = LookupMap::default();
         let mut object_category_index: HashMap<(ObjectCategory, String), TypeHandle> =
             HashMap::new();
         let mut type_array_indices: HashMap<(ObjectCategory, String), i32> = HashMap::new();
@@ -4671,7 +4737,13 @@ impl RuleSet {
 
     /// Resolve a type name to its handle, case-insensitively (engine parity).
     pub fn type_handle(&self, id: &str) -> Option<TypeHandle> {
-        self.object_index.get(&id.to_ascii_uppercase()).copied()
+        // The keys are uppercase, so a name without a lowercase letter is its
+        // own key and needs no uppercase copy.
+        if id.bytes().any(|byte| byte.is_ascii_lowercase()) {
+            self.object_index.get(&id.to_ascii_uppercase()).copied()
+        } else {
+            self.object_index.get(id).copied()
+        }
     }
 
     /// Dereference a handle to its object. Handles only originate from this
@@ -4949,6 +5021,7 @@ impl RuleSet {
         self.general.no_parachute_max_fall_rate.hash(&mut hasher);
         self.general.detail.hash(&mut hasher);
         self.general.prism_support.hash(&mut hasher);
+        self.general.patrol_scan_minutes.hash(&mut hasher);
         self.general.default_mirage_disguises.hash(&mut hasher);
         self.general.infantry_blink_disguise_time.hash(&mut hasher);
         // The native type reader retains these flags through missing keys
@@ -6586,6 +6659,7 @@ SpawnCount=3
         assert_eq!(defaults.cloaking_stages, 9);
         assert_eq!(defaults.cloak_delay_frames, 18);
         assert_eq!(defaults.cloak_sound, None);
+        assert_eq!(defaults.leave_bio_reactor_sound, None);
         let parsed = GeneralRules::from_ini(&IniFile::from_str(
             "[General]\nCloakingStages=13\nCloakDelay=.031\n\
              [AudioVisual]\nCloakSound=NavalUnitEmerge\n",
@@ -6593,6 +6667,7 @@ SpawnCount=3
         assert_eq!(parsed.cloaking_stages, 13);
         assert_eq!(parsed.cloak_delay_frames, 27);
         assert_eq!(parsed.cloak_sound.as_deref(), Some("NavalUnitEmerge"));
+        assert_eq!(parsed.leave_bio_reactor_sound, None);
         assert_eq!(
             GeneralRules::from_ini(&IniFile::from_str("[General]\nCloakingStages=9\n")).cloak_sound,
             None,
@@ -6605,6 +6680,31 @@ SpawnCount=3
             .cloak_sound,
             None,
             "empty CloakSound preserves the native invalid-index default"
+        );
+    }
+
+    #[test]
+    fn leave_bio_reactor_sound_resolves_only_registered_vocs() {
+        let sounds = crate::rules::sound_ini::SoundRegistry::from_ini(&IniFile::from_str(
+            "[SoundList]\n0=BioReactorExit\n",
+        ));
+        let ini =
+            IniFile::from_str("[General]\n[AudioVisual]\nLeaveBioReactorSound=BioReactorExit\n");
+        let mut rules = RuleSet::from_ini(&ini).expect("rules");
+        assert_eq!(rules.general.leave_bio_reactor_sound, None);
+        rules.bind_type_sound_references(&ini, &sounds);
+        assert_eq!(
+            rules.general.leave_bio_reactor_sound.as_deref(),
+            Some("BioReactorExit")
+        );
+
+        let unknown_ini =
+            IniFile::from_str("[General]\n[AudioVisual]\nLeaveBioReactorSound=NotRegistered\n");
+        let mut unknown_rules = RuleSet::from_ini(&unknown_ini).expect("rules");
+        unknown_rules.bind_type_sound_references(&unknown_ini, &sounds);
+        assert_eq!(
+            unknown_rules.general.leave_bio_reactor_sound, None,
+            "native Voc lookup leaves the constructor's invalid index on a miss"
         );
     }
 
@@ -7422,14 +7522,37 @@ MutateWarhead=MyMutate\n\
 
     #[test]
     fn gsi_01_04_savour_delay_parses_from_audio_visual_with_native_default() {
+        // The already-executed C4 scalar controls exercise the same double
+        // *900/Math__ftol body and FPCW as FlagWin4FCA35/FlagLose4FCC61.
+        // This is a bounded arithmetic reuse, not a full Flag-body replay.
+        let native: serde_json::Value = serde_json::from_str(crate::test_fixture::text(
+            "tools/rules_oracle/read_double_percent.json",
+        ))
+        .unwrap();
+        let compare_scalar = |minutes: f64, raw: Option<&str>| {
+            let row = native["c4"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|row| row["raw"].as_str() == raw)
+                .unwrap();
+            assert_eq!(
+                format!("{:016x}", minutes.to_bits()),
+                row["bits"].as_str().unwrap()
+            );
+            assert_eq!(
+                i64::from(native_minutes_to_frames(minutes)),
+                row["fuse"].as_i64().unwrap()
+            );
+        };
         let ctor_default = GeneralRules::default().savour_delay_minutes;
         assert_eq!(ctor_default, 0.03);
-        assert_eq!(savour_delay_frames(ctor_default), 27);
+        compare_scalar(ctor_default, None);
         let stock = GeneralRules::from_ini(&IniFile::from_str(
             "[General]\nFlightLevel=500\n[AudioVisual]\nSavourDelay=.1\n",
         ));
         assert_eq!(stock.savour_delay_minutes, 0.1_f32 as f64);
-        assert_eq!(savour_delay_frames(stock.savour_delay_minutes), 90);
+        compare_scalar(stock.savour_delay_minutes, Some("0.1"));
         let explicit_point_zero_three = GeneralRules::from_ini(&IniFile::from_str(
             "[General]\nFlightLevel=500\n[AudioVisual]\nSavourDelay=.03\n",
         ));
@@ -7437,16 +7560,25 @@ MutateWarhead=MyMutate\n\
             explicit_point_zero_three.savour_delay_minutes,
             0.03_f32 as f64
         );
-        assert_eq!(
-            savour_delay_frames(explicit_point_zero_three.savour_delay_minutes),
-            26,
-            "explicit ReadDouble is parsed through f32 before ftol"
-        );
+        compare_scalar(explicit_point_zero_three.savour_delay_minutes, Some(".03"));
         let absent = GeneralRules::from_ini(&IniFile::from_str(
             "[General]\nFlightLevel=500\n[AudioVisual]\n",
         ));
         assert_eq!(absent.savour_delay_minutes, 0.03);
-        assert_eq!(savour_delay_frames(absent.savour_delay_minutes), 27);
+        compare_scalar(absent.savour_delay_minutes, None);
+    }
+
+    #[test]
+    fn retail_savour_delay_uses_production_audio_visual_reader() {
+        let Some(ini) = crate::rules::retail_ini_fixture::retail_ini("rulesmd.ini") else {
+            return;
+        };
+        let parsed = GeneralRules::from_ini(&ini);
+        assert_eq!(
+            parsed.savour_delay_minutes.to_bits(),
+            (0.1_f32 as f64).to_bits()
+        );
+        assert_eq!(native_minutes_to_frames(parsed.savour_delay_minutes), 90);
     }
 
     #[test]
@@ -9174,8 +9306,8 @@ Projectile=Invisible
         // assert both the upper- and lower-cased forms resolve to the same entry.
         // Toggling case guarantees at least one form differs from the stored key,
         // so the case-fold scan path (not just exact match) is exercised.
-        fn check_ci<'a, M, V>(
-            map: &'a HashMap<String, M>,
+        fn check_ci<'a, M, V, S>(
+            map: &'a HashMap<String, M, S>,
             lookup: impl Fn(&str) -> Option<&'a V>,
             label: &str,
         ) where
@@ -10039,6 +10171,38 @@ Projectile=Invisible
             }),
             native["inputs"]["layers"][0]["state"],
         );
+    }
+
+    #[test]
+    fn cheer_sound_binds_registered_names_with_reached_pass_retention() {
+        use crate::rules::native_processing::{RulesLayerKind, RulesLayerStack};
+        use crate::rules::sound_ini::SoundRegistry;
+
+        let sounds = SoundRegistry::from_ini(&IniFile::from_str(
+            "[SoundList]\n0=FirstCheer\n1=MapCheer\n[FirstCheer]\n[MapCheer]\n",
+        ));
+        for (later, expected) in [
+            ("", Some("FirstCheer")),
+            ("CheerSound=\n", Some("FirstCheer")),
+            ("CheerSound=Unknown\n", Some("FirstCheer")),
+            ("cheersound=MapCheer\n", Some("FirstCheer")),
+            ("CheerSound=mapcheer\n", Some("MapCheer")),
+        ] {
+            let mut layers =
+                RulesLayerStack::new(IniFile::from_str("[AudioVisual]\nCheerSound=FirstCheer\n"));
+            layers.push(
+                RulesLayerKind::Scenario,
+                IniFile::from_str(&format!("[AudioVisual]\n{later}")),
+            );
+            let processed = layers.process().unwrap();
+            let mut rules = RuleSet::from_processed_rules(&processed).unwrap();
+            rules.bind_type_sound_references(processed.ini(), &sounds);
+            assert_eq!(rules.general.cheer_sound(), expected, "{later:?}");
+        }
+        let ini = IniFile::empty();
+        let mut absent = RuleSet::from_ini(&ini).unwrap();
+        absent.bind_type_sound_references(&ini, &sounds);
+        assert_eq!(absent.general.cheer_sound(), None, "constructor6658E0=-1");
     }
 
     /// Retail `[ElevationModel]` through the production reader: four levels a

@@ -89,10 +89,10 @@ fn native_fixture(input: &Value, before: &Value) -> (Simulation, RuleSet, u64) {
     entity.set_landing_for_deploy(before["landing"].as_u64().unwrap() != 0);
     entity.install_native_stage_fixture(native_stage(before));
     let height = input["height"].as_i64().unwrap_or(0) as i32;
-    entity.position.exact_z_leptons = Some(height);
+    entity.position.set_exact_z_leptons(Some(height));
     let locomotor = entity.locomotor.as_mut().expect("production Jumpjet");
     if height > 0 {
-        locomotor.layer = crate::sim::movement::locomotor::MovementLayer::Air;
+        locomotor.set_layer(crate::sim::movement::locomotor::MovementLayer::Air);
     }
     if input.get("start").is_some() || input.get("count").is_some() {
         // The signed/overflow corpus supplies raw native AnimType fields, some
@@ -208,8 +208,11 @@ fn updater_reads_the_height_on_any_layer() {
         airborne += 1;
         let (mut sim, rules, id) = native_fixture(&row["input"], &row["before"]);
         let entity = sim.substrate.entities.get_mut(id).unwrap();
-        entity.locomotor.as_mut().unwrap().layer =
-            crate::sim::movement::locomotor::MovementLayer::Ground;
+        entity
+            .locomotor
+            .as_mut()
+            .unwrap()
+            .set_layer(crate::sim::movement::locomotor::MovementLayer::Ground);
         let deploying = row["input"]["entry"].as_u64().unwrap_or(0x739ac0) != 0x739cd0;
         sim.update_unit_simple_deploy(
             id,
@@ -338,7 +341,8 @@ fn synchronized_deploy_obeys_native_event9_actor_guards() {
                     .entities
                     .get_mut(id)
                     .unwrap()
-                    .dock_entered_with = Some(partner);
+                    .tether
+                    .set_for_test(Some(partner));
             }
             "construction" | "selling" => {
                 let mission = if case == "construction" {
@@ -354,7 +358,13 @@ fn synchronized_deploy_obeys_native_event9_actor_guards() {
                 entity.health.set_for_test(0);
                 entity.crash.set_crashing_for_test(true);
             }
-            "dying" => sim.substrate.entities.get_mut(id).unwrap().dying = true,
+            "dying" => sim
+                .substrate
+                .entities
+                .get_mut(id)
+                .unwrap()
+                .death
+                .set_dying_for_test(true),
             _ => unreachable!(),
         }
         let before = sim.state_hash();
@@ -485,7 +495,7 @@ fn begin_landing_cycle() -> (Simulation, RuleSet, u64) {
         "flight at the ordinary move destination",
         |sim| {
             let entity = sim.substrate.entities.get(id).unwrap();
-            altitude(sim, id) == 500 && (entity.position.rx, entity.position.ry) == (12, 12)
+            altitude(sim, id) == 500 && (entity.position.rx(), entity.position.ry()) == (12, 12)
         },
     );
     // Event9 itself clears the previous destination; no test-only Stop, height

@@ -129,7 +129,7 @@ fn current_house_excludes_selection_and_debug_override_but_sandbox_keeps_both() 
         5,
         false,
     );
-    entity.selected = true;
+    entity.selection.set_selected_for_test(true);
     sim.substrate.entities.insert(entity);
     assert_eq!(
         preferred_local_owner_for_sim(&sim, None, &roster, Some("SandboxHouse")).as_deref(),

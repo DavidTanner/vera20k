@@ -21,7 +21,7 @@ fn represented_infantry_destination(actor: &crate::sim::game_entity::GameEntity)
         && actor
             .locomotor
             .as_ref()
-            .is_some_and(|loco| match loco.kind {
+            .is_some_and(|loco| match loco.active_kind() {
                 LocomotorKind::Walk | LocomotorKind::Teleport => true,
                 LocomotorKind::Jumpjet => loco.jumpjet_runtime().is_some(),
                 _ => false,
@@ -601,7 +601,7 @@ impl Simulation {
         let kind = actor
             .locomotor
             .as_ref()
-            .map(|l| l.kind)
+            .map(|l| l.active_kind())
             .expect("represented receiver");
         let human = self.owner_is_human(actor.owner());
         if !self.infantry_destination_inputs_available(id, requested, rules, registry) {
@@ -617,7 +617,7 @@ impl Simulation {
             let actor = self.substrate.entities.get(id).unwrap();
             if jumpjet_type
                 || actor.mission.current().raw() != 1
-                || !super::navcom::nav_targets_same_receiver(actor.navigation.nav_com, requested)
+                || !super::navcom::nav_targets_same_receiver(actor.navigation.nav_com(), requested)
             {
                 self.infantry_stop_driver(id, rules, registry, frame_effects)?;
             }
@@ -632,8 +632,11 @@ impl Simulation {
             .ok_or("destination lost infantry after Stop_Driver")?;
         if human
             && type_allows_up
-            && super::navcom::nav_targets_same_receiver(actor.navigation.nav_com, requested)
-            && actor.infantry.as_ref().is_some_and(|state| state.is_prone)
+            && super::navcom::nav_targets_same_receiver(actor.navigation.nav_com(), requested)
+            && actor
+                .infantry
+                .as_ref()
+                .is_some_and(|state| state.is_prone())
         {
             self.infantry_do_action(id, 7, false, rules, frame_effects)?;
         }

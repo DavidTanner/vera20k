@@ -184,7 +184,7 @@ fn two_paid_rocketeers(rally: Option<(u16, u16)>) {
             if product.placed_frame.is_none() {
                 product.placed_frame = Some(frame);
                 assert_eq!(json!(transmissions), golden["delivery_radio"], "{context}");
-                assert!(entity.dock_entered_with.is_some(), "{context}: tethered");
+                assert!(entity.tether.partner().is_some(), "{context}: tethered");
                 assert_eq!(entity.radio_contacts.slot(0), Some(producer));
                 // 444CA3 skips the exit move and the Archive restore, so the
                 // Unlimbo idle handoff (Foot4D8472..852A) leaves a rally as
@@ -195,7 +195,7 @@ fn two_paid_rocketeers(rally: Option<(u16, u16)>) {
                     "{context}: Archive consumed or absent"
                 );
                 assert_eq!(
-                    entity.navigation.nav_com,
+                    entity.navigation.nav_com(),
                     rally.map(|(rx, ry)| NavTargetRef::cell(rx, ry)),
                     "{context}"
                 );
@@ -209,7 +209,7 @@ fn two_paid_rocketeers(rally: Option<(u16, u16)>) {
             if product.lift_off_frame.is_none() && runtime.phase() == STATE_ASCEND {
                 product.lift_off_frame = Some(frame);
                 assert!(
-                    entity.dock_entered_with.is_some(),
+                    entity.tether.partner().is_some(),
                     "{context}: still tethered when he leaves the ground"
                 );
             }
@@ -225,7 +225,7 @@ fn two_paid_rocketeers(rally: Option<(u16, u16)>) {
                     golden["arrival_radio"],
                     "{context}"
                 );
-                assert!(entity.radio_contacts.is_empty() && entity.dock_entered_with.is_none());
+                assert!(entity.radio_contacts.is_empty() && entity.tether.partner().is_none());
                 assert!(
                     sim.substrate
                         .entities
@@ -240,7 +240,7 @@ fn two_paid_rocketeers(rally: Option<(u16, u16)>) {
                 // owner (51D172); the locomotor keeps its destination.
                 assert!(entity.archive_target().is_none(), "{context}");
                 assert!(
-                    entity.navigation.nav_com.is_none(),
+                    entity.navigation.nav_com().is_none(),
                     "{context}: NavCom cleared"
                 );
                 assert!(runtime.moving(), "{context}: still flying to his cell");
@@ -249,8 +249,10 @@ fn two_paid_rocketeers(rally: Option<(u16, u16)>) {
             // State1 holds for one frame at cruise height before the
             // translate; the hover that counts is over his own destination.
             let destination = runtime.destination();
-            let at_destination = (i32::from(entity.position.rx), i32::from(entity.position.ry))
-                == (destination.x / 256, destination.y / 256);
+            let at_destination = (
+                i32::from(entity.position.rx()),
+                i32::from(entity.position.ry()),
+            ) == (destination.x / 256, destination.y / 256);
             if product.hold_frame.is_none()
                 && product.release_frame.is_some()
                 && runtime.phase() == STATE_HOLD
@@ -259,7 +261,7 @@ fn two_paid_rocketeers(rally: Option<(u16, u16)>) {
                 if let Some((rx, ry)) = rally {
                     // The first takes the rally's air slot; the next finds it
                     // taken and steps to a random neighbour (claim_or_scatter).
-                    let here = (entity.position.rx, entity.position.ry);
+                    let here = (entity.position.rx(), entity.position.ry());
                     if index == 0 {
                         assert_eq!(here, (rx, ry), "{context}");
                     } else {

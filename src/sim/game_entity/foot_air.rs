@@ -91,10 +91,10 @@ impl Simulation {
         if entity.foot_air.air_spatial_bucket.is_some() {
             return;
         }
-        let cell = (entity.position.rx as i16, entity.position.ry as i16);
+        let cell = (entity.position.rx() as i16, entity.position.ry() as i16);
         let bucket = air_spatial_bucket_index(
-            entity.position.rx,
-            entity.position.ry,
+            entity.position.rx(),
+            entity.position.ry(),
             self.session.map_width,
             self.session.map_height,
         );
@@ -154,14 +154,14 @@ impl Simulation {
         });
         let desired = entity.lifecycle.object_alive()
             && !entity.lifecycle.in_limbo()
-            && entity.lifecycle.cell_marked
+            && entity.lifecycle.cell_marked()
             && !entity.passenger_role.is_inside_transport()
             && if explicit_membership {
                 tracked
             } else {
                 air_spatial_tracks_entity(entity, self.resolved_terrain.as_ref())
             };
-        let cell = (entity.position.rx as i16, entity.position.ry as i16);
+        let cell = (entity.position.rx() as i16, entity.position.ry() as i16);
         // Fly Process follows a cell change itself, at its next visit
         // (`0x004CD60E..0x004CD65F`).
         let fly = entity
@@ -387,7 +387,7 @@ mod tests {
         let mut sim = native_control_world();
         let actor = sim.substrate.entities.get_mut(1).unwrap();
         actor.lifecycle.set_in_limbo_for_test(false);
-        actor.lifecycle.cell_marked = true;
+        actor.lifecycle.set_cell_marked(true);
         actor.locomotor = Some(LocomotorState::for_test_kind(LocomotorKind::Jumpjet));
         sim.sync_air_spatial_membership(1);
         assert_eq!(
@@ -405,7 +405,12 @@ mod tests {
             .get(1)
             .unwrap()
             .air_spatial_enter_order();
-        sim.substrate.entities.get_mut(1).unwrap().position.rx = 11;
+        sim.substrate
+            .entities
+            .get_mut(1)
+            .unwrap()
+            .position
+            .set_rx(11);
         sim.sync_air_spatial_membership(1);
         let actor = sim.substrate.entities.get(1).unwrap();
         assert_eq!(actor.air_tracker_cell(), (11, 10));
@@ -470,7 +475,7 @@ mod tests {
         assert_eq!(actor.air_tracker_cell(), cell(&retired["tracker_cell"]));
         assert_eq!(actor.air_slot_cell(), cell(&retired["slot_cell"]));
         assert_eq!(actor.lifecycle.object_alive(), retired["alive"] == 1);
-        assert_eq!(actor.lifecycle.cell_marked, retired["marked"] == 1);
+        assert_eq!(actor.lifecycle.cell_marked(), retired["marked"] == 1);
         assert!(actor.lifecycle.in_limbo());
         assert_eq!(sim.substrate.pending_delete.object_ids(), vec![1]);
         assert_eq!(slot(retired, [10, 10]), "0x20000000");

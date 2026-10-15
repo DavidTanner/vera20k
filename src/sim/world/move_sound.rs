@@ -65,7 +65,7 @@ impl Simulation {
         if entity.category() == EntityCategory::Structure || entity.locomotor.is_none() {
             return;
         }
-        let changed_or_moving = body_frame_before_process != entity.body_frame_counter
+        let changed_or_moving = body_frame_before_process != entity.body_frame_counter.get()
             || crate::sim::movement::motion_query::is_moving_now(
                 entity,
                 rules.map(|rules| {

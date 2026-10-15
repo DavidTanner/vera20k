@@ -187,7 +187,7 @@ pub(crate) fn sell_back(
                 // Get_Mission (`vt+0x184`): the current mission, else the
                 // queued one.
                 entity.mission.effective().known() == Some(MissionType::Selling),
-                entity.pending_c4_detonation.is_some(),
+                entity.pending_c4_detonation.pending().is_some(),
             ))
         })
     else {
@@ -375,7 +375,7 @@ pub(crate) fn sell_stage_zero(
                 .object_type(entity.type_ref(), rules)?
                 .deploy_sound
                 .clone()?;
-            Some((sound, entity.position.rx, entity.position.ry))
+            Some((sound, entity.position.rx(), entity.position.ry()))
         });
         if let Some((sound, rx, ry)) = sound {
             let deploy_sound_id = sim.interner.intern(&sound);
@@ -390,7 +390,7 @@ pub(crate) fn sell_stage_zero(
         .substrate
         .entities
         .get(id)
-        .and_then(|building| building.bunker_occupant)
+        .and_then(|building| building.bunker.occupant())
         .is_some()
     {
         crate::sim::docking::bunker_link::release_sell_destroy(sim, id, frame_effects);
@@ -424,7 +424,7 @@ pub(crate) fn sell_stage_one(
         .substrate
         .entities
         .get(id)
-        .is_none_or(|building| building.dock_entered_with.is_some())
+        .is_none_or(|building| building.tether.partner().is_some())
     {
         return false;
     }
@@ -463,8 +463,8 @@ fn sale_survivors(
         Some((
             sale_archive(entity) && undeploys(rules, object),
             crate::sim::crew_survival::foundation_cells(
-                entity.position.rx,
-                entity.position.ry,
+                entity.position.rx(),
+                entity.position.ry(),
                 &object.foundation,
             ),
         ))
@@ -568,7 +568,6 @@ pub(crate) fn sell_complete(
         id,
         UninitContext::new(Some(rules), registry).with_effects(frame_effects),
     );
-    crate::sim::superweapon::refresh_super_weapons_for_owner(sim, rules, owner);
     false
 }
 
@@ -634,7 +633,6 @@ mod tests {
     use super::*;
     use crate::rules::ini_parser::IniFile;
     use crate::sim::game_entity::GameEntity;
-    use crate::sim::passenger::PassengerRole;
     use crate::sim::passenger::garrison_eject::tests::{
         garrison_map, garrison_rules, insert_player_owned_garrison,
     };
@@ -711,13 +709,13 @@ mod tests {
             .entities
             .get(passenger_id)
             .expect("passenger should survive sell eject");
-        assert!(matches!(passenger.passenger_role, PassengerRole::None));
-        assert!(!passenger.dying);
+        assert!(passenger.passenger_role.is_none());
+        assert!(!passenger.death.is_dying());
         assert!(
-            passenger.position.rx < 10
-                || passenger.position.rx > 11
-                || passenger.position.ry < 10
-                || passenger.position.ry > 11,
+            passenger.position.rx() < 10
+                || passenger.position.rx() > 11
+                || passenger.position.ry() < 10
+                || passenger.position.ry() > 11,
             "passenger should be ejected outside the 2x2 foundation"
         );
 

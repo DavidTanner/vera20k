@@ -387,11 +387,11 @@ pub(crate) fn enter_idle_mode_for(
         ammo: entity
             .aircraft_ammo
             .as_ref()
-            .map_or(-1, |ammo| ammo.current),
+            .map_or(-1, |ammo| ammo.current()),
         type_ammo: object.ammo,
         docks: !object.dock.is_empty(),
         airport_bound: object.airport_bound,
-        in_playfield: entity.in_playfield,
+        in_playfield: entity.in_playfield(),
         landed,
     };
     enter_idle_mode(
@@ -495,7 +495,7 @@ impl IdleHost for WorldIdle<'_> {
     }
 
     fn nav_com(&mut self) -> bool {
-        self.entity().navigation.nav_com.is_some()
+        self.entity().navigation.nav_com().is_some()
     }
 
     fn in_air(&mut self) -> bool {

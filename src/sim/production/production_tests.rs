@@ -543,7 +543,7 @@ pub(super) fn spawn_structure(
         false,
     );
     ge.lifecycle.set_in_limbo_for_test(false);
-    ge.in_playfield = true;
+    ge.set_in_playfield(true);
     ge.finish_building_construction_for_test();
     ge.building_art.set_actually_placed_for_test(true);
     ge.tracking_facts = crate::sim::house_tracking::TrackingFacts::of(
@@ -560,10 +560,9 @@ pub(super) fn spawn_structure(
     // prerequisites read them.
     sim.update_house_tracking(sid, crate::sim::house_tracking::HouseTracking::add_tracking);
     sim.house_added_to_game(sid);
-    sim.update_house_tracking(
-        sid,
-        crate::sim::house_tracking::HouseTracking::increment_factory_count,
-    );
+    sim.update_house_tracking(sid, |tracking, entity| {
+        tracking.increment_factory_count(entity)
+    });
     if sim.substrate.next_stable_object_id <= sid {
         sim.substrate.next_stable_object_id = sid + 1;
     }
@@ -587,7 +586,8 @@ pub(super) fn stamp_type_foundation(sim: &mut Simulation, rules: &RuleSet, sid: 
         .entities
         .get_mut(sid)
         .expect("a spawned structure")
-        .foundation = foundation;
+        .type_facts
+        .set_foundation_for_test(foundation);
 }
 
 /// P5d: arm a registry factory's queue-of-record directly (replaces the retired
@@ -734,7 +734,8 @@ fn war_factory_spawn_contact_is_marked_per_produced_mover() {
             .entities
             .get(produced)
             .unwrap()
-            .dock_entered_with,
+            .tether
+            .partner(),
         Some(10),
         "WF exit must set the dock-entered (+0x418) flag toward the factory"
     );
@@ -743,7 +744,8 @@ fn war_factory_spawn_contact_is_marked_per_produced_mover() {
             .entities
             .get(unrelated)
             .unwrap()
-            .dock_entered_with,
+            .tether
+            .partner(),
         None,
         "unrelated vehicles get no dock-entered flag"
     );
@@ -769,7 +771,16 @@ fn naval_factory_spawn_uses_water_exit_cells() {
     spawn_structure(&mut sim, &rules, 1, "Americans", "GAYARD", 20, 20);
     stamp_type_foundation(&mut sim, &rules, 1);
     let produced = sim
-        .construct_object_limbo_at_height("DEST", "Americans", 0, 0, 0, 0, &rules)
+        .construct_object_limbo_at_height(
+            "DEST",
+            "Americans",
+            0,
+            0,
+            0,
+            0,
+            &rules,
+            crate::sim::world::FrameEffects::default(),
+        )
         .expect("construct the original ExitObject receiver");
     assert_eq!(
         super::production_queue::exit_produced_object(
@@ -786,7 +797,7 @@ fn naval_factory_spawn_uses_water_exit_cells() {
     let produced = sim.substrate.entities.get(produced).unwrap();
 
     assert_eq!(
-        (produced.position.rx, produced.position.ry),
+        (produced.position.rx(), produced.position.ry()),
         (22, 22),
         "4x4 yard fallback starts at BuildingClass::GetCoords foundation centre"
     );
@@ -959,8 +970,8 @@ fn mixed_land_and_naval_factories_bind_independent_vehicle_and_ship_slots() {
                     .eq_ignore_ascii_case("DEST")
         })
         .expect("GAYARD delivered DEST through naval FNPC/Unlimbo");
-    assert_eq!((destroyer.position.rx, destroyer.position.ry), (22, 22));
-    assert!(destroyer.lifecycle.cell_marked && !destroyer.lifecycle.in_limbo());
+    assert_eq!((destroyer.position.rx(), destroyer.position.ry()), (22, 22));
+    assert!(destroyer.lifecycle.cell_marked() && !destroyer.lifecycle.in_limbo());
     assert_eq!(
         sim.production
             .primary_factory(americans, ProductionCategory::Ship)
@@ -1182,7 +1193,7 @@ fn naval_empty_fnpc_refunds_then_a_fresh_successor_records_delivery_once() {
     assert_eq!(factory.progress, 0);
     assert!(factory.queue.is_empty());
     let object = sim.substrate.entities.get(successor).unwrap();
-    assert!(object.lifecycle.in_limbo() && !object.lifecycle.cell_marked);
+    assert!(object.lifecycle.in_limbo() && !object.lifecycle.cell_marked());
     super::lifecycle_tests::assert_constructor_words(&sim, successor, &mut expected);
     assert_eq!(sim.substrate.entities.len(), entity_count);
     assert_eq!(sim.owned_object_counts(americans).1, owned_units);
@@ -1222,7 +1233,7 @@ fn naval_empty_fnpc_refunds_then_a_fresh_successor_records_delivery_once() {
         &mut sim, &rules, None
     ));
     let delivered = sim.substrate.entities.get(successor).unwrap();
-    assert!(delivered.lifecycle.cell_marked && !delivered.lifecycle.in_limbo());
+    assert!(delivered.lifecycle.cell_marked() && !delivered.lifecycle.in_limbo());
     assert_eq!(
         sim.houses[&americans].stats.built(),
         1,
@@ -1261,7 +1272,7 @@ fn naval_delivery_success_uses_producer_rally_then_move_and_recentres() {
     sim.remove_entity_occupancy(1);
     {
         let yard = sim.substrate.entities.get_mut(1).unwrap();
-        yard.foundation = "4x4".to_string();
+        yard.type_facts.set_foundation_for_test("4x4".to_string());
         yard.set_archive_target(Some(crate::sim::combat::TargetKind::Cell(20, 10)));
     }
     sim.add_entity_occupancy(1);
@@ -1297,12 +1308,12 @@ fn naval_delivery_success_uses_producer_rally_then_move_and_recentres() {
         })
         .expect("naval Unit delivered");
     assert_eq!(
-        (produced.position.rx, produced.position.ry),
+        (produced.position.rx(), produced.position.ry()),
         (14, 12),
         "rally fast path walks east out of the 4x4 producer and bypasses FNPC"
     );
     assert_eq!(
-        produced.navigation.nav_com,
+        produced.navigation.nav_com(),
         Some(crate::sim::components::NavTargetRef::cell(20, 10)),
         "the producer rally remains the represented owner destination"
     );
@@ -1329,7 +1340,7 @@ fn naval_delivery_success_uses_producer_rally_then_move_and_recentres() {
         "ExitObject queues Move with commence argument zero after assigning the target"
     );
     assert_eq!(
-        (produced.position.sub_x, produced.position.sub_y),
+        (produced.position.sub_x(), produced.position.sub_y()),
         (
             crate::util::lepton::CELL_CENTER_LEPTON,
             crate::util::lepton::CELL_CENTER_LEPTON,
@@ -1366,7 +1377,7 @@ fn naval_rally_destination_and_move_survive_without_path_grid() {
     sim.remove_entity_occupancy(1);
     {
         let yard = sim.substrate.entities.get_mut(1).unwrap();
-        yard.foundation = "4x4".to_string();
+        yard.type_facts.set_foundation_for_test("4x4".to_string());
         yard.set_archive_target(Some(crate::sim::combat::TargetKind::Cell(20, 10)));
     }
     sim.add_entity_occupancy(1);
@@ -1401,7 +1412,7 @@ fn naval_rally_destination_and_move_survive_without_path_grid() {
         })
         .expect("rally fast path delivers without a PathGrid");
     assert_eq!(
-        produced.navigation.nav_com,
+        produced.navigation.nav_com(),
         Some(crate::sim::components::NavTargetRef::cell(20, 10)),
         "Assign_Destination commits independently of immediate path authority"
     );
@@ -1446,7 +1457,7 @@ fn naval_rally_destination_and_move_survive_beyond_the_path_grid() {
     sim.remove_entity_occupancy(1);
     {
         let yard = sim.substrate.entities.get_mut(1).unwrap();
-        yard.foundation = "4x4".to_string();
+        yard.type_facts.set_foundation_for_test("4x4".to_string());
         yard.set_archive_target(Some(crate::sim::combat::TargetKind::Cell(39, 39)));
     }
     sim.add_entity_occupancy(1);
@@ -1480,9 +1491,9 @@ fn naval_rally_destination_and_move_survive_beyond_the_path_grid() {
                     .eq_ignore_ascii_case("DEST")
         })
         .expect("naval Unit delivers toward a rally beyond the path grid");
-    assert_eq!((produced.position.rx, produced.position.ry), (14, 14));
+    assert_eq!((produced.position.rx(), produced.position.ry()), (14, 14));
     assert_eq!(
-        produced.navigation.nav_com,
+        produced.navigation.nav_com(),
         Some(crate::sim::components::NavTargetRef::cell(39, 39)),
         "the producer-owned destination is published unchanged"
     );
@@ -1561,7 +1572,7 @@ fn harvester_moves_to_ore_and_back_with_path_grid() {
             .substrate
             .entities
             .get(harvester_sid)
-            .map(|e| (e.position.rx, e.position.ry))
+            .map(|e| (e.position.rx(), e.position.ry()))
             .expect("harvester position");
         if pos != (10, 10) {
             moved = true;

@@ -93,7 +93,7 @@ impl Simulation {
                     .substrate
                     .entities
                     .get(id)
-                    .is_some_and(|entity| entity.berserk.active)
+                    .is_some_and(|entity| entity.berserk.is_active())
             })
             .collect()
     }
@@ -240,7 +240,8 @@ impl Simulation {
             }
             return crate::sim::production::undeploy_target(rules, &object.id).is_some();
         }
-        if !self.house_is_human_player(actor.owner()) || actor.bunker_link.installed_in().is_some()
+        if !self.house_is_human_player(actor.owner())
+            || actor.bunker.link().installed_in().is_some()
         {
             return false;
         }
@@ -249,7 +250,7 @@ impl Simulation {
             || actor.is_warped_out()
             || actor.is_warping_in()
             || actor.slave.owner().is_some()
-            || actor.deactivated
+            || actor.deactivated.is_offline()
         {
             return false;
         }
@@ -273,7 +274,7 @@ impl Simulation {
         let Some(actor) = self.substrate.entities.get(id) else {
             return false;
         };
-        !actor.deactivated
+        !actor.deactivated.is_offline()
             && self.house_is_human_player(actor.owner())
             && self
                 .object_type(actor.type_ref(), rules)
@@ -437,7 +438,7 @@ impl Simulation {
         let actor = self.substrate.entities.get(actor_id)?;
         let building = self.substrate.entities.get(building_id)?;
         if actor.category() != EntityCategory::Infantry
-            || actor.navigation.nav_com.is_some()
+            || actor.navigation.nav_com().is_some()
             || building.category() != EntityCategory::Structure
         {
             return None;
@@ -498,7 +499,7 @@ impl Simulation {
             .substrate
             .entities
             .get(building_id)
-            .map(|e| (e.owner(), e.type_ref(), e.position.rx, e.position.ry))
+            .map(|e| (e.owner(), e.type_ref(), e.position.rx(), e.position.ry()))
         else {
             return;
         };
@@ -553,7 +554,7 @@ impl Simulation {
         ) {
             return InfantryPerCellBuildingAdmission::MissionNotAdmitted;
         }
-        let nav_object = match infantry.navigation.nav_com {
+        let nav_object = match infantry.navigation.nav_com() {
             Some(
                 NavTargetRef::Entity { id }
                 | NavTargetRef::Object { id }
@@ -575,7 +576,7 @@ impl Simulation {
         {
             return InfantryPerCellBuildingAdmission::UndeployBuilding;
         }
-        let cell = (infantry.position.rx, infantry.position.ry);
+        let cell = (infantry.position.rx(), infantry.position.ry());
         let Some(building_id) =
             self.substrate
                 .occupancy
@@ -616,9 +617,14 @@ impl Simulation {
         else {
             return Ok(BuildingEntryResult::default());
         };
-        //519B3E's optional hut Tag event1 precedes this type gate. The live
-        //Tag receiver remains a separate required chain; ordinary Hills has
-        //no attached hut/Engineer Tag.519B58 tests Engineer before hut type.
+        //519B3E..519B53 raises the BUILDING attachment with this Infantry
+        //as actor, before the Engineer type gate. Synchronous actions may
+        //change either object; reload the Infantry after returning.
+        let context = super::UninitContext::new(Some(rules), registry).with_effects(frame_effects);
+        self.dispatch_object_tag_event(building_id, 1, Some(engineer_id), None, context);
+        let Some(engineer) = self.substrate.entities.get(engineer_id) else {
+            return Ok(BuildingEntryResult::default());
+        };
         let Some(infantry_type) = self.object_type(engineer.type_ref(), rules) else {
             return Ok(BuildingEntryResult::default());
         };
@@ -632,7 +638,7 @@ impl Simulation {
                 frame_effects,
             );
         }
-        let cell = (engineer.position.rx, engineer.position.ry);
+        let cell = (engineer.position.rx(), engineer.position.ry());
         let owner = engineer.owner();
         let Some(building) = self.substrate.entities.get(building_id) else {
             return Ok(BuildingEntryResult::default());
@@ -685,11 +691,20 @@ impl Simulation {
                 //519DA1's MultiEngineer damage/C4Warhead branch remains a
                 //separate required numeric/damage chain; stock ordinary single
                 //Engineer admission (session option false) reaches this arm.
-                //Attached Building/Engineer Tag events and transfer likewise
-                //remain the trigger mechanism's synchronous residual.
-                if let Some(old_house) = self.houses.get_mut(&building.owner()) {
-                    old_house.notify_building_capture(); //519F4F, Trigger event3 latch
+                //519F44 re-reads the Building Tag and raises Entered again;
+                //do not deduplicate the earlier519B53 call.519F4F then reads
+                //the current owner, followed by optional519F6C Tag transfer.
+                self.dispatch_object_tag_event(building_id, 1, Some(engineer_id), None, context);
+                if let Some(old_owner) = self
+                    .substrate
+                    .entities
+                    .get(building_id)
+                    .map(|building| building.owner())
+                    && let Some(old_house) = self.houses.get_mut(&old_owner)
+                {
+                    old_house.notify_building_capture();
                 }
+                self.transfer_engineer_tag_to_building(engineer_id, building_id);
                 self.announce_engineer_capture(building_id, owner, rules);
                 self.change_owner_with_rules(building_id, owner, rules, registry, frame_effects);
                 if let Some(building) = self.substrate.entities.get_mut(building_id) {
@@ -700,6 +715,7 @@ impl Simulation {
             }
             //519EAACapturable=false consumes too.519FF0 repair and519F9A
             //capture join Tag event48 then virtualUnInit, with no Foot tail.
+            self.dispatch_object_tag_event(engineer_id, 48, Some(engineer_id), None, context);
             self.uninit_with_context(
                 engineer_id,
                 super::UninitContext::new(Some(rules), registry).with_effects(frame_effects),
@@ -709,7 +725,7 @@ impl Simulation {
                 return_before_foot: true,
             });
         }
-        let building_cell = (building.position.rx, building.position.ry);
+        let building_cell = (building.position.rx(), building.position.ry());
         //519BB6 supplies the ENGINEER cell;519C02 supplies building XYZ.
         //519B90/50B6F0 gates insertion itself, including radar dedup state.
         self.announce_bridge_repair(owner, cell, building_cell);
@@ -732,7 +748,8 @@ impl Simulation {
         //Clearing NavCom does not stop a retained Walk head/destination.
         self.expire_infantry_bridge_hut_targets(building_id, rules, registry, frame_effects);
         changed |= self.scatter_building_infantry(building_id, rules, registry, frame_effects)?;
-        // Attached Tag6E53A0 remains a separate synchronous receiver boundary.
+        //51A025 consumption raises own Tag48 before virtual UnInit.
+        self.dispatch_object_tag_event(engineer_id, 48, Some(engineer_id), None, context);
         self.uninit_with_context(
             engineer_id,
             super::UninitContext::new(Some(rules), registry).with_effects(frame_effects),
@@ -754,14 +771,8 @@ impl Simulation {
     /// destination (vt+0x480(NULL, 1)) and scatters from the building's
     /// GetCoords (vt+0x174(coord, 1, 1); `0x0051A03E..0x0051A061`).
     ///
-    /// RESIDUAL: no Tag event is raised (`TagClass::Raise_Event`,
-    /// `0x006E53A0`). The receiver gives the building's Tag event 1 ("entered
-    /// by", `0x00519B3E..0x00519B53`) before its Engineer test, and an
-    /// `Agent=` spy's own Tag event 0x30 after the infiltration
-    /// (`0x0051A010..0x0051A025`); the live Tag dispatcher
-    /// (`sim::trigger_runtime`) has no producer in Per_Cell_Process. Trigger:
-    /// a map Tag on the building or on the spy. Effect: its trigger does not
-    /// spring. A building or spy a house builds has no Tag.
+    /// The common caller raises the Building's Entered1 before this gate.
+    /// Consumption raises the spy's own48 synchronously before UnInit.
     fn infantry_per_cell_infiltrator_entry(
         &mut self,
         infantry_id: u64,
@@ -784,6 +795,13 @@ impl Simulation {
             {
                 self.infiltrate_building(building_id, owner, rules);
             }
+            self.dispatch_object_tag_event(
+                infantry_id,
+                48,
+                Some(infantry_id),
+                None,
+                super::UninitContext::new(Some(rules), registry).with_effects(frame_effects),
+            );
             self.uninit_with_context(
                 infantry_id,
                 super::UninitContext::new(Some(rules), registry).with_effects(frame_effects),
@@ -874,19 +892,19 @@ impl Simulation {
             .entities
             .get(building_id)
             .and_then(|building| {
-                let pending = building.pending_c4_detonation?;
+                let pending = building.pending_c4_detonation.pending()?;
                 let object = rules.object(self.interner.resolve(building.type_ref()))?;
                 Some((
                     pending,
                     building.health.current(),
                     object.bridge_repair_hut,
-                    (building.position.rx, building.position.ry),
+                    (building.position.rx(), building.position.ry()),
                 ))
             })
         else {
             return false;
         };
-        if !pending.timer.expired(self.session.binary_frame as i32) || health <= 0 {
+        if !pending.timer().expired(self.session.binary_frame as i32) || health <= 0 {
             return false;
         }
 
@@ -899,7 +917,7 @@ impl Simulation {
                 frame_effects,
             );
             if let Some(hut) = self.substrate.entities.get_mut(building_id) {
-                hut.pending_c4_detonation = None;
+                hut.pending_c4_detonation.cancel();
             }
             return changed;
         }
@@ -909,7 +927,7 @@ impl Simulation {
             health,
             0,
             pending
-                .source_entity_id
+                .source_entity_id()
                 .unwrap_or(crate::sim::combat::RAD_NO_ATTACKER),
             None,
             self.rule_handles().c4,
@@ -1033,7 +1051,11 @@ mod click_order_receiver_tests {
             spawn("MTNK", 6),
         );
         for id in [gassed_man, gassed_tank] {
-            sim.entities_mut().get_mut(id).unwrap().berserk.active = true;
+            sim.entities_mut()
+                .get_mut(id)
+                .unwrap()
+                .berserk
+                .set_active_for_test(true);
         }
         assert_eq!(
             sim.click_order_receivers(&[gassed_tank, tank, gassed_man, first]),

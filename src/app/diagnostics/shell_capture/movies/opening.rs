@@ -326,6 +326,26 @@ impl OpeningCapture {
             .as_object_mut()
             .expect("camera object")
             .remove("last_ai_frame");
+        for building in projection["building_receivers"]
+            .as_array_mut()
+            .expect("building observations")
+        {
+            for slot in building["anim_slots"]
+                .as_array_mut()
+                .expect("animation slot observations")
+            {
+                slot.as_object_mut().expect("slot object").remove("frame");
+            }
+        }
+        for timer in projection["super_timers"]
+            .as_array_mut()
+            .expect("super timer observations")
+        {
+            timer
+                .as_object_mut()
+                .expect("timer object")
+                .remove("remaining");
+        }
         if self.previous_projection.as_ref() != Some(&projection) {
             self.previous_projection = Some(projection);
             self.observations.push(facts);
@@ -391,6 +411,7 @@ fn opening_observation(state: &AppState) -> Result<Value> {
     };
     let mut active_types = std::collections::BTreeMap::<String, usize>::new();
     let mut flashing = Vec::new();
+    let mut building_receivers = Vec::new();
     for (_, entity) in sim
         .entities()
         .iter_sorted()
@@ -398,8 +419,35 @@ fn opening_observation(state: &AppState) -> Result<Value> {
     {
         let name = sim.interner.resolve(entity.type_ref()).to_owned();
         *active_types.entry(name.clone()).or_default() += 1;
+        if entity.category() == crate::map::entities::EntityCategory::Structure {
+            // Observe existing damage/power owners after exact production
+            // frames; this must never substitute a receiver or recalculate power.
+            building_receivers.push(json!({
+                "id": entity.stable_id(), "type": name,
+                "owner": sim.interner.resolve(entity.owner()),
+                "cell": [entity.position.rx(), entity.position.ry()],
+                "health": entity.health.current(),
+                "estimated_health": entity.estimated_health.get(),
+                "sampled_power_health": entity.building_power_health_sample(),
+                "damaged_mode": entity.building_art.damage_state_active(),
+                "damage_smoke_system": entity.damage_smoke_system_id,
+                "anim_slots": entity.building_art.anim_slots().iter().enumerate()
+                    .filter_map(|(slot, id)| {
+                        let id = (*id)?;
+                        let anim = sim.anim(id)?;
+                        Some(json!({"slot": slot, "id": id,
+                            "type": sim.interner.resolve(anim.type_id),
+                            "frame": anim.runtime.current_frame,
+                            "paused": anim.runtime.paused}))
+                    }).collect::<Vec<_>>(),
+                "house_power": sim.power_states.get(&entity.owner()).map(|power| json!({
+                    "output": power.total_output, "drain": power.total_drain,
+                    "low_power": power.is_low_power,
+                })),
+            }));
+        }
         if entity.flashing.flashed() {
-            let cell = (entity.position.rx, entity.position.ry);
+            let cell = (entity.position.rx(), entity.position.ry());
             flashing.push(json!({"id": entity.stable_id(), "type": name,
                 "cell": cell, "cell_shrouded": cell_shrouded(cell)}));
         }
@@ -439,6 +487,14 @@ fn opening_observation(state: &AppState) -> Result<Value> {
         "camera": camera::saved_tactical_view(state),
         "fog_viewer": viewer.map(|viewer| sim.interner.resolve(viewer)),
         "active_types": active_types, "flashing": flashing, "no_effects_anims": markers,
+        "building_receivers": building_receivers,
+        "super_timers": state.rules().map(|rules|
+            crate::sim::superweapon::super_timer_views(sim, rules).into_iter().map(|view|
+                json!({"owner": sim.interner.resolve(view.owner()),
+                    "type": sim.interner.resolve(view.sw_type()),
+                    "remaining": view.frames_left(), "held": view.on_hold(),
+                    "recharge": view.recharge_frames(), "place": view.place()}))
+                .collect::<Vec<_>>()).unwrap_or_default(),
         "teams": teams, "messages": messages,
         "eva_active": state.audio.sfx_player.as_ref().is_some_and(|sfx| sfx.voices_active()),
     }))

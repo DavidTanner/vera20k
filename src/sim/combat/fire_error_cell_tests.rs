@@ -129,12 +129,16 @@ fn original_object_cell_queries_keep_physical_aliases_and_dummy_fields() {
         sim.resolved_terrain = Some(terrain);
         for id in [1, 2] {
             let entity = sim.substrate.entities.get_mut(id).unwrap();
-            entity.position.rx = (x.max(0) / 256) as u16;
-            entity.position.ry = (y.max(0) / 256) as u16;
-            entity.position.sub_x = SimFixed::from_num(x - i32::from(entity.position.rx) * 256);
-            entity.position.sub_y = SimFixed::from_num(y - i32::from(entity.position.ry) * 256);
-            entity.position.exact_z_leptons = Some(z);
-            entity.lifecycle.cell_marked = row.input.marked != 0;
+            entity.position.set_rx((x.max(0) / 256) as u16);
+            entity.position.set_ry((y.max(0) / 256) as u16);
+            entity.position.set_sub_x(SimFixed::from_num(
+                x - i32::from(entity.position.rx()) * 256,
+            ));
+            entity.position.set_sub_y(SimFixed::from_num(
+                y - i32::from(entity.position.ry()) * 256,
+            ));
+            entity.position.set_exact_z_leptons(Some(z));
+            entity.lifecycle.set_cell_marked(row.input.marked != 0);
         }
         let subject = FireSubject {
             world: &sim,
@@ -170,7 +174,7 @@ fn original_object_cell_queries_keep_physical_aliases_and_dummy_fields() {
             "{}",
             row.input.name
         );
-        assert_eq!(subject.firer.lifecycle.cell_marked, row.input.marked != 0);
+        assert_eq!(subject.firer.lifecycle.cell_marked(), row.input.marked != 0);
     }
 }
 
@@ -189,10 +193,10 @@ fn cell_target_equality_uses_real_aliases_and_one_shared_dummy() {
     terrain.test_set_native_allocated_cells(&[(511, 0)]);
     sim.resolved_terrain = Some(terrain);
     let entity = sim.substrate.entities.get_mut(1).unwrap();
-    entity.position.rx = 511;
-    entity.position.ry = 0;
-    entity.position.sub_x = SimFixed::from_num(128);
-    entity.position.sub_y = SimFixed::from_num(128);
+    entity.position.set_rx(511);
+    entity.position.set_ry(0);
+    entity.position.set_sub_x(SimFixed::from_num(128));
+    entity.position.set_sub_y(SimFixed::from_num(128));
     let subject = FireSubject {
         world: &sim,
         rules: &rules,
@@ -206,8 +210,8 @@ fn cell_target_equality_uses_real_aliases_and_one_shared_dummy() {
     assert_eq!(WorldQuery::new(&subject).firer_cell(), FirerCell::Target);
 
     let entity = sim.substrate.entities.get_mut(1).unwrap();
-    entity.position.rx = 41;
-    entity.position.ry = 41;
+    entity.position.set_rx(41);
+    entity.position.set_ry(41);
     let dummy = sim.resolved_terrain.as_ref().unwrap().shared_cell_dummy();
     dummy.stamp_coord(17, -19);
     dummy.test_set_land_type(6);
@@ -328,14 +332,14 @@ fn original_early_fire_error_retains_cell_between_temporal_and_lifted_gates() {
         let mut sim = bridge_scene("TANK");
         let target = sim.substrate.entities.get_mut(2).unwrap();
         let [x, y, z] = row.supplied.target_xyz;
-        target.position.rx = (x / 256) as u16;
-        target.position.ry = (y / 256) as u16;
-        target.position.sub_x = SimFixed::from_num(x % 256);
-        target.position.sub_y = SimFixed::from_num(y % 256);
-        target.position.exact_z_leptons = Some(z);
+        target.position.set_rx((x / 256) as u16);
+        target.position.set_ry((y / 256) as u16);
+        target.position.set_sub_x(SimFixed::from_num(x % 256));
+        target.position.set_sub_y(SimFixed::from_num(y % 256));
+        target.position.set_exact_z_leptons(Some(z));
         if row.name == "target_cloaked" {
             let mut cloak = crate::sim::cloak_disguise::CloakRuntime::new(0);
-            cloak.state = 2;
+            cloak.set_state_for_test(2);
             target.cloak = Some(cloak);
         }
         let dummy = sim.resolved_terrain.as_ref().unwrap().shared_cell_dummy();

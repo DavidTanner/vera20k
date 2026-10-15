@@ -57,8 +57,8 @@ impl Simulation {
             .filter(|entity| {
                 entity.lifecycle.object_alive()
                     && !entity.lifecycle.in_limbo()
-                    && entity.lifecycle.cell_marked
-                    && !entity.dying
+                    && entity.lifecycle.cell_marked()
+                    && !entity.death.is_dying()
                     && entity.health.current() > 0
             })
             .map(|entity| entity.stable_id())
@@ -90,8 +90,8 @@ impl Simulation {
             return;
         };
         let Some(source) = point_light_from_object(
-            entity.position.rx,
-            entity.position.ry,
+            entity.position.rx(),
+            entity.position.ry(),
             object.light_visibility,
             object.light_intensity,
             [
@@ -181,12 +181,13 @@ impl Simulation {
     /// while its flash fades in (`0x00A9FABC == 1`), else the Ion profile
     /// while a storm rages (`0x00A9FAB4`), else the Dominator's while its
     /// status is neither 0 nor 5 (`0x0053C313..0x0053C31F`), else the
-    /// ordinary one (`RecalcLighting(-1, -1, -1, 0)`). The chrono screen
-    /// (`0x00A9FAB0`), which shares the nuke's arm, is not modelled: map
-    /// trigger action 127 sets it (`0x0053B460`), and VERA does not port
-    /// that action.
+    /// ordinary one (`RecalcLighting(-1, -1, -1, 0)`). Active chrono screen
+    /// (`53BAD0`, set by127/53B460) shares the first nuke arm. Original
+    /// controls: superweapon_oracle.json/update_lighting, chrono=1.
     pub(crate) fn update_lighting(&mut self) {
-        let profile = if self.session.lighting.nuke_flash_fading_in() {
+        let profile = if self.session.lighting.nuke_flash_fading_in()
+            || self.session.chrono_screen().active()
+        {
             ScenarioLightingProfile::Nuke
         } else if crate::sim::superweapon::lightning_storm::raging(self) {
             ScenarioLightingProfile::Ion

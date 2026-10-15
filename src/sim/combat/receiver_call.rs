@@ -161,12 +161,12 @@ fn receiver_effect_coord(
     target: &GameEntity,
     terrain: Option<&crate::map::resolved_terrain::ResolvedTerrainGrid>,
 ) -> ProjectileCoord {
-    let x = i32::from(target.position.rx)
+    let x = i32::from(target.position.rx())
         .wrapping_mul(256)
-        .wrapping_add(target.position.sub_x.to_num::<i32>());
-    let y = i32::from(target.position.ry)
+        .wrapping_add(target.position.sub_x().to_num::<i32>());
+    let y = i32::from(target.position.ry())
         .wrapping_mul(256)
-        .wrapping_add(target.position.sub_y.to_num::<i32>());
+        .wrapping_add(target.position.sub_y().to_num::<i32>());
     let z = object_world_z_leptons(target, terrain);
     ProjectileCoord::new(x, y, z)
 }
@@ -290,12 +290,12 @@ pub(super) fn resolve_receive_damage(
     // 701900 jumps to701BF6 when ignoreDefenses is set, before either linked
     // bunker branch. BlowUpBridge's forced C4 receiver must bypass both arms.
     let bunker_blocked = !receiver_flags.ignore_defenses
-        && if target_is_building && target.bunker_occupant.is_some() {
+        && if target_is_building && target.bunker.occupant().is_some() {
             // Linked Building branch is intentionally the inverse of the installed
             // non-Building branch in TechnoClass::ReceiveDamage.
             warhead.penetrates_bunker
         } else {
-            target.bunker_link.installed_in().is_some() && !warhead.penetrates_bunker
+            target.bunker.link().installed_in().is_some() && !warhead.penetrates_bunker
         };
     let active_invulnerability = target.invulnerability.as_ref().filter(|_| {
         crate::sim::superweapon::invulnerability::is_invulnerable(
@@ -351,7 +351,7 @@ pub(super) fn resolve_receive_damage(
         house_type_armor: crate::util::native_x87::NativeF32Bits::from_bits(
             house_type_armor.to_bits(),
         ),
-        unit_armor: target.armor_multiplier,
+        unit_armor: target.crate_multipliers.armor(),
         rank_armor,
     };
     // `arg6` stays on the ordered call: its Unit-class consumer is the crew
@@ -371,7 +371,7 @@ pub(super) fn resolve_receive_damage(
     let invulnerability_impact = outcome.invulnerability_impact_damage.map(|damage| {
         let flags = match active_invulnerability
             .expect("receiver gate retained active state")
-            .kind
+            .kind()
         {
             crate::sim::superweapon::invulnerability::InvulnKind::IronCurtain => 1,
             crate::sim::superweapon::invulnerability::InvulnKind::ForceShield => 6,
@@ -497,7 +497,8 @@ fn event_arms_ic_isolation(
         && entities.get(event.target_id).is_some_and(|target| {
             has_active_area_invulnerability(target, current_tick)
                 && target.invulnerability.as_ref().is_some_and(|state| {
-                    state.kind == crate::sim::superweapon::invulnerability::InvulnKind::IronCurtain
+                    state.kind()
+                        == crate::sim::superweapon::invulnerability::InvulnKind::IronCurtain
                 })
         })
 }

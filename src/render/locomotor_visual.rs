@@ -80,7 +80,7 @@ fn adjust_for_z_lift_px(leptons: i32) -> f32 {
 /// `ObjectClass__GetCoords` at `0x005F65A0`, which copies exact XYZ and adds no
 /// walking sine bob. Grounded objects therefore have zero additional lift.
 pub fn height_lift_px(entity: &GameEntity) -> f32 {
-    adjust_for_z_lift_px(entity.position.exact_z_leptons.unwrap_or(0))
+    adjust_for_z_lift_px(entity.position.exact_z_leptons().unwrap_or(0))
 }
 
 /// Where this entity is drawn, in world-space screen pixels.
@@ -92,7 +92,7 @@ pub fn height_lift_px(entity: &GameEntity) -> f32 {
 /// A building's *art* is the single exception, and it is a strict addition on
 /// top of this answer rather than a second one: see [`building_art_anchor`].
 pub fn screen_position(entity: &GameEntity) -> (f32, f32) {
-    let (sx, sy) = if entity.position.exact_z_leptons.is_some() {
+    let (sx, sy) = if entity.position.exact_z_leptons().is_some() {
         z_free_screen_position(&entity.position)
     } else {
         ground_screen_position(&entity.position)
@@ -106,10 +106,10 @@ pub fn screen_position(entity: &GameEntity) -> (f32, f32) {
 /// cancels this, as the building draw's `NormalZAdjust - AdjustForZ(Z)` seed
 /// does (`BuildingClass_DrawBody`).
 pub fn screen_lift_px(entity: &GameEntity) -> i32 {
-    match entity.position.exact_z_leptons {
+    match entity.position.exact_z_leptons() {
         Some(z) => crate::util::native_x87::adjust_for_z_standard(z),
         None => crate::util::native_x87::adjust_for_z_standard(
-            i32::from(entity.position.z as i8) * crate::util::lepton::GROUND_LEVEL_HEIGHT_LEPTONS,
+            i32::from(entity.position.z() as i8) * crate::util::lepton::GROUND_LEVEL_HEIGHT_LEPTONS,
         ),
     }
 }
@@ -154,11 +154,11 @@ pub fn building_art_anchor(sx: f32, sy: f32) -> (f32, f32) {
 /// on the entity itself, and for entities that have no height state at all.
 pub fn ground_screen_position(position: &crate::sim::components::Position) -> (f32, f32) {
     crate::util::lepton::lepton_to_screen(
-        position.rx,
-        position.ry,
-        position.sub_x,
-        position.sub_y,
-        position.z,
+        position.rx(),
+        position.ry(),
+        position.sub_x(),
+        position.sub_y(),
+        position.z(),
     )
 }
 
@@ -170,10 +170,10 @@ pub fn ground_screen_position(position: &crate::sim::components::Position) -> (f
 /// adding [`height_lift_px`] back to the drawn row.
 fn z_free_screen_position(position: &crate::sim::components::Position) -> (f32, f32) {
     crate::util::lepton::lepton_to_screen(
-        position.rx,
-        position.ry,
-        position.sub_x,
-        position.sub_y,
+        position.rx(),
+        position.ry(),
+        position.sub_x(),
+        position.sub_y(),
         0,
     )
 }
@@ -190,9 +190,9 @@ mod tests {
         let mut entity = GameEntity::test_default(1, "BEAG", "Americans", 5, 5);
         entity.set_category_for_test(EntityCategory::Aircraft);
         let mut loco = LocomotorState::for_test_kind(kind);
-        loco.layer = MovementLayer::Air;
+        loco.set_layer(MovementLayer::Air);
         entity.locomotor = Some(loco);
-        entity.position.exact_z_leptons = Some(altitude);
+        entity.position.set_exact_z_leptons(Some(altitude));
         entity
     }
 
@@ -298,7 +298,7 @@ mod tests {
     #[test]
     fn adjust_for_z_exact_signed_z_ignores_the_coarse_level() {
         let mut entity = air_unit(LocomotorKind::Fly, -400);
-        entity.position.z = 9;
+        entity.position.set_z(9);
 
         let z_free = z_free_screen_position(&entity.position);
         let drawn = screen_position(&entity);
@@ -310,10 +310,10 @@ mod tests {
     #[test]
     fn gsi_04_15_exact_z_threshold_bonus_starts_at_728() {
         let mut entity = GameEntity::test_default(1, "MTNK", "Americans", 5, 5);
-        entity.position.exact_z_leptons = Some(727);
+        entity.position.set_exact_z_leptons(Some(727));
         assert_eq!(height_lift_px(&entity), 104.0);
 
-        entity.position.exact_z_leptons = Some(728);
+        entity.position.set_exact_z_leptons(Some(728));
         assert_eq!(height_lift_px(&entity), 105.0);
     }
 
@@ -321,7 +321,7 @@ mod tests {
     fn gsi_13_02_building_lift_and_adjust_for_z_remain_separate_exact_steps() {
         let mut entity = GameEntity::test_default(1, "GAPOWR", "Americans", 5, 5);
         entity.set_category_for_test(EntityCategory::Structure);
-        entity.position.exact_z_leptons = Some(728);
+        entity.position.set_exact_z_leptons(Some(728));
 
         let z_free = z_free_screen_position(&entity.position);
         let drawn = screen_position(&entity);
@@ -537,8 +537,8 @@ mod tests {
                 5,
                 EntityCategory::Structure,
             );
-            entity.position.exact_z_leptons = exact_z;
-            entity.position.z = level;
+            entity.position.set_exact_z_leptons(exact_z);
+            entity.position.set_z(level);
             entity
         };
         for entity in [building(Some(52), 0), building(None, 2)] {

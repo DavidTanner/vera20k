@@ -124,7 +124,7 @@ fn fixture(kind: LocomotorKind) -> Simulation {
     entity.set_owner_for_test(sim.intern("Americans"));
     entity.lifecycle.set_object_alive_for_test(true);
     entity.lifecycle.set_in_limbo_for_test(false);
-    entity.lifecycle.cell_marked = true;
+    entity.lifecycle.set_cell_marked(true);
     entity.locomotor = Some(LocomotorState::for_test_kind(kind));
     match kind {
         LocomotorKind::Drive => assert!(
@@ -174,12 +174,12 @@ fn track_entry_matches_all_144_native_rows_and_only_changes_rejected_residual() 
         let kind = family(input);
         let mut sim = fixture(kind);
         let entity = sim.substrate.entities.get_mut(1).unwrap();
-        let track = TrackProgress {
-            turn_index: integer(&input["selector"]),
-            cursor: 19,
-            reversed: true,
-            residual: integer(&case["residual_before"]),
-        };
+        let track = TrackProgress::for_test(
+            integer(&input["selector"]),
+            19,
+            true,
+            integer(&case["residual_before"]),
+        );
         set_retained(
             entity,
             kind,
@@ -188,8 +188,12 @@ fn track_entry_matches_all_144_native_rows_and_only_changes_rejected_residual() 
             track,
         );
         // A consumed prefix must not become the native live queue head.
-        entity.navigation.path_replay.directions = vec![8, integer(&input["queue_head"]) as u8, 6];
-        entity.navigation.path_replay.cursor = 1;
+        entity.navigation.path_replay.set_directions_for_test(vec![
+            8,
+            integer(&input["queue_head"]) as u8,
+            6,
+        ]);
+        entity.navigation.path_replay.set_cursor(1);
         let mut expected = serde_json::to_value(&*entity).unwrap();
         let field = if kind == LocomotorKind::Drive {
             "Drive"
@@ -305,9 +309,10 @@ fn active_dispatch_matches_all_48_native_gate_rows_without_requiring_head() {
             kind,
             bit(&input["track_valid"]),
             bit(&input["latch"]),
-            TrackProgress {
-                turn_index: integer(&input["selector"]),
-                ..Default::default()
+            {
+                let mut value = TrackProgress::default();
+                value.set_turn_index(integer(&input["selector"]));
+                value
             },
         );
         let active = super::super::track_head::active_track_family(entity).is_some();
@@ -335,12 +340,12 @@ fn setup_turn(sim: &mut Simulation, kind: LocomotorKind, live: bool, latch: bool
         kind,
         active,
         latch,
-        TrackProgress {
-            turn_index: if active { 0 } else { -1 },
-            cursor: 0,
-            reversed: false,
-            residual: if active { 0 } else { 4 },
-        },
+        TrackProgress::for_test(
+            if active { 0 } else { -1 },
+            0,
+            false,
+            if active { 0 } else { 4 },
+        ),
     );
     if active {
         let head = Some(DriveCoord {
@@ -392,8 +397,8 @@ fn actual_ground_process_samples_disagreement_and_active_tracks_bypass_it() {
                     super::super::ground_pose::position_world_coord(&entity.position),
                     position
                 );
-                assert_eq!(track.residual, if active { 0 } else { 4 });
-                assert_eq!(track.cursor, 0);
+                assert_eq!(track.residual(), if active { 0 } else { 4 });
+                assert_eq!(track.cursor(), 0);
                 assert_eq!(stats.movers_total, u32::from(active));
             }
         }
@@ -578,10 +583,10 @@ fn actual_entry_turn_gate_precedes_speed_and_points_for_both_families() {
             let mut sim = fixture(kind);
             setup_turn(&mut sim, kind, false, true, true);
             let entity = sim.substrate.entities.get_mut(1).unwrap();
-            entity.drive_accelerates = false;
+            entity.mover_facts.set_drive_accelerates_for_test(false);
             entity.foot_speed.set_speed_fraction(SimFixed::lit("0.25"));
             let (valid, latch, mut track) = retained(entity, kind);
-            track.residual = 17;
+            track.set_residual(17);
             set_retained(entity, kind, valid, latch, track);
             match kind {
                 LocomotorKind::Drive => {
@@ -621,10 +626,10 @@ fn actual_entry_turn_gate_precedes_speed_and_points_for_both_families() {
             );
             if turret {
                 assert_eq!(entity.foot_speed.applied_fraction(), SimFixed::ONE);
-                assert!(track.cursor > 0, "admitted prefix must reach paid points");
+                assert!(track.cursor() > 0, "admitted prefix must reach paid points");
             } else {
                 assert_eq!(entity.foot_speed.applied_fraction(), SimFixed::lit("0.25"));
-                assert_eq!((track.cursor, track.residual), (0, 0));
+                assert_eq!((track.cursor(), track.residual()), (0, 0));
                 assert_eq!(
                     super::super::ground_pose::position_world_coord(&entity.position),
                     before
@@ -666,25 +671,19 @@ fn ordinary_fresh_turn_and_drive_refusal_reach_entry_without_running_speed() {
                 // Facing the path's east octant, the refused mover reaches
                 // Can_Enter_Cell; facing north, the other turns first.
                 entity.body_facing = FacingClass::new(if refused { 0x4000 } else { 0 }, 0);
-                entity.drive_accelerates = false;
+                entity.mover_facts.set_drive_accelerates_for_test(false);
                 entity.foot_speed.set_speed_fraction(SimFixed::lit("0.25"));
                 let speed_before = entity.foot_speed.clone();
-                entity.navigation.nav_com = Some(NavTargetRef::cell(10, 8));
-                entity.navigation.path_replay = FootPathQueue {
-                    directions: vec![2, 2],
-                    cursor: 0,
-                    reference_cell: Some((8, 8)),
-                };
-                set_retained(
-                    entity,
-                    kind,
-                    false,
-                    false,
-                    TrackProgress {
-                        residual,
-                        ..Default::default()
-                    },
-                );
+                entity
+                    .navigation
+                    .set_nav_com(Some(NavTargetRef::cell(10, 8)));
+                entity.navigation.path_replay =
+                    FootPathQueue::for_test(vec![2, 2], 0, Some((8, 8)));
+                set_retained(entity, kind, false, false, {
+                    let mut value = TrackProgress::default();
+                    value.set_residual(residual);
+                    value
+                });
                 super::super::navcom::set_destination_internal_cell(entity, (10, 8), None, 0);
                 let target_fraction = SimFixed::lit("0.375");
                 match kind {
@@ -722,7 +721,7 @@ fn ordinary_fresh_turn_and_drive_refusal_reach_entry_without_running_speed() {
                     blocker.set_owner_for_test(sim.intern("Americans"));
                     blocker.lifecycle.set_object_alive_for_test(true);
                     blocker.lifecycle.set_in_limbo_for_test(false);
-                    blocker.lifecycle.cell_marked = true;
+                    blocker.lifecycle.set_cell_marked(true);
                     sim.substrate.entities.insert(blocker);
                     sim.substrate.occupancy =
                         crate::sim::occupancy::OccupancyGrid::rebuild(&sim.substrate.entities);
@@ -740,7 +739,7 @@ fn ordinary_fresh_turn_and_drive_refusal_reach_entry_without_running_speed() {
                 let (valid, _, track) = retained(entity, kind);
                 assert_eq!(stats.moved_steps, 0, "{kind:?} refused={refused}");
                 assert!(!valid);
-                assert_eq!(track.turn_index, -1);
+                assert_eq!(track.turn_index(), -1);
                 let native_rows: Vec<_> = native["rows"]
                     .as_array()
                     .unwrap()
@@ -763,7 +762,7 @@ fn ordinary_fresh_turn_and_drive_refusal_reach_entry_without_running_speed() {
                     assert_eq!(native["track_called"], true);
                     assert_eq!(native["prefix_eligible"], false);
                     assert_eq!(
-                        track.residual,
+                        track.residual(),
                         integer(&native["after"]["residual"]),
                         "{kind:?} refused={refused} before={residual}"
                     );
@@ -848,13 +847,11 @@ fn live_rotation_returns_before_fresh_selection_with_a_queued_path_and_no_displa
             .active_slope_transition_mut()
             .unwrap()
             .snap(2, 100);
-        entity.drive_accelerates = false;
-        entity.navigation.nav_com = Some(NavTargetRef::cell(8, 7));
-        entity.navigation.path_replay = FootPathQueue {
-            directions: vec![0, 0],
-            cursor: 0,
-            reference_cell: Some((8, 8)),
-        };
+        entity.mover_facts.set_drive_accelerates_for_test(false);
+        entity
+            .navigation
+            .set_nav_com(Some(NavTargetRef::cell(8, 7)));
+        entity.navigation.path_replay = FootPathQueue::for_test(vec![0, 0], 0, Some((8, 8)));
         let before_position = super::super::ground_pose::position_world_coord(&entity.position);
         let before_facing = serde_json::to_value(entity.body_facing).unwrap();
         let before_queue = entity.navigation.path_replay.clone();
@@ -916,26 +913,21 @@ fn actual_turn_and_arrival_crush_use_binary_frame_for_both_shield_kinds() {
                     sim.session.tick = tick;
                     sim.session.binary_frame = frame;
                     let crusher = sim.substrate.entities.get_mut(1).unwrap();
-                    crusher.regular_crusher = true;
-                    crusher.drive_accelerates = false;
+                    crusher.mover_facts.set_regular_crusher_for_test(true);
+                    crusher.mover_facts.set_drive_accelerates_for_test(false);
                     let position = crusher.position;
                     let current = super::super::ground_pose::position_world_coord(&position);
                     let arrival = reason == PerCellReason::Arrival;
-                    set_retained(
-                        crusher,
-                        kind,
-                        arrival,
-                        !arrival,
-                        TrackProgress {
-                            turn_index: if arrival { 0 } else { -1 },
-                            cursor: if arrival {
-                                super::super::drive_track::raw_track_points(1).len() as i32
-                            } else {
-                                0
-                            },
-                            ..Default::default()
-                        },
-                    );
+                    set_retained(crusher, kind, arrival, !arrival, {
+                        let mut value = TrackProgress::default();
+                        value.set_turn_index(if arrival { 0 } else { -1 });
+                        value.set_cursor(if arrival {
+                            super::super::drive_track::raw_track_points(1).len() as i32
+                        } else {
+                            0
+                        });
+                        value
+                    });
                     if arrival {
                         match kind {
                             LocomotorKind::Drive => {
@@ -972,13 +964,13 @@ fn actual_turn_and_arrival_crush_use_binary_frame_for_both_shield_kinds() {
                             crate::sim::mission::leaf::MissionLeafState::for_entity_category(
                                 EntityCategory::Infantry,
                             );
-                        victim.is_voxel = false;
-                        victim.sub_cell = Some(0);
+                        victim.set_is_voxel_for_test(false);
+                        victim.set_sub_cell(Some(0));
                         victim.position = position;
-                        victim.crushable = true;
+                        victim.crushable_facts.set_crushable_for_test(true);
                         victim.lifecycle.set_object_alive_for_test(true);
                         victim.lifecycle.set_in_limbo_for_test(false);
-                        victim.lifecycle.cell_marked = true;
+                        victim.lifecycle.set_cell_marked(true);
                         victim.invulnerability = Some(InvulnerabilityState::new(
                             crate::sim::timer::CdTimer::started((frame - age) as i32, 30),
                             shield,

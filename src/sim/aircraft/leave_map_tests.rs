@@ -59,9 +59,9 @@ fn world(row: &Value) -> Simulation {
         ry,
         EntityCategory::Aircraft,
     );
-    plane.position.sub_x = SimFixed::from_num(128);
-    plane.position.sub_y = SimFixed::from_num(128);
-    plane.position.exact_z_leptons = Some(1500);
+    plane.position.set_sub_x(SimFixed::from_num(128));
+    plane.position.set_sub_y(SimFixed::from_num(128));
+    plane.position.set_exact_z_leptons(Some(1500));
     if flag(row, "target") {
         plane
             .attack_target
@@ -77,7 +77,7 @@ fn world(row: &Value) -> Simulation {
         ai_counter: 0,
         dispatch_timer: MissionDispatchTimer::at_frame(0),
     });
-    plane.in_playfield = flag(row, "in_playfield");
+    plane.set_in_playfield(flag(row, "in_playfield"));
     if flag(row, "mission_only") {
         plane.mark_mission_only();
     }
@@ -183,7 +183,7 @@ fn removal_releases_the_planes_sounds() {
     // the original row's AI-entry pose and retained visited-playfield byte;
     // the excluded flight that reached this boundary is not being replayed.
     plane.position = position;
-    plane.in_playfield = flag(&row, "in_playfield");
+    plane.set_in_playfield(flag(&row, "in_playfield"));
     plane.move_sound = crate::sim::world::MoveSoundState::from_raw_for_test(true, 3);
     assert!(sim.aircraft_may_leave_map(1));
     assert!(sim.remove_aircraft_off_map(

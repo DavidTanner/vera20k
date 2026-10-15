@@ -146,7 +146,7 @@ pub(super) fn radar_pixel_candidate_eligible(
         if !full_visibility {
             let (rx, ry) = projection
                 .pixel_to_cell(entry.x, entry.y)
-                .unwrap_or((entity.position.rx, entity.position.ry));
+                .unwrap_or((entity.position.rx(), entity.position.ry()));
             let owner_is_human =
                 radar_owner_is_human_player(entity.owner(), local_owner, houses, game_mode_nonzero);
             if !fog.is_cell_revealed(local_owner, rx, ry) && !owner_is_human {

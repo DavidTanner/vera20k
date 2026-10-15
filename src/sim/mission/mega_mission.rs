@@ -89,7 +89,17 @@ impl MegaMission {
     /// Whether the MegaTarget or the MegaDestination is this object, which
     /// [`Self::pointer_expired`] then changes.
     pub(crate) fn references(&self, id: u64) -> bool {
-        self.targets(id) || self.destination == Some(TargetKind::Entity(id))
+        self.referenced_ids().any(|referenced| referenced == id)
+    }
+
+    /// The objects the MegaTarget and the MegaDestination name.
+    pub(crate) fn referenced_ids(&self) -> impl Iterator<Item = u64> {
+        [self.target, self.destination]
+            .into_iter()
+            .filter_map(|target| match target {
+                Some(TargetKind::Entity(id)) => Some(id),
+                _ => None,
+            })
     }
 
     /// `FootClass::PointerExpired @ 0x004D9AC9..0x004D9B43`: an expiring

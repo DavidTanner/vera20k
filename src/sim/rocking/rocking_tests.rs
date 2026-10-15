@@ -2,7 +2,7 @@
 
 #![cfg(test)]
 
-use crate::sim::components::RockingState;
+use crate::sim::rocking::RockingState;
 use crate::sim::rocking::impulse::apply_rocker_impulse;
 use crate::sim::rocking::rocking_system::{
     IMPULSE_VEL_CAP, NORMAL_RANGE_PI2, SATURATION_PI4, SATURATION_PI10, TILT_DEADBAND,
@@ -646,4 +646,40 @@ fn unit_crash_spin_matches_native_rocking_update() {
         assert!(!output["damage_called"].as_bool().unwrap());
     }
     assert_eq!(crashing, 135);
+}
+
+#[test]
+fn rocking_default_is_neutral() {
+    let r = RockingState::default();
+    assert!(r.is_neutral());
+}
+
+#[test]
+fn rocking_active_angle_is_not_neutral() {
+    let r = RockingState {
+        angle_sideways: SimFixed::lit("0.01"),
+        ..Default::default()
+    };
+    assert!(!r.is_neutral());
+}
+
+#[test]
+fn rocking_within_deadband_is_neutral() {
+    // SimFixed precision is ~1.5e-5, so 1e-5 rounds to 0; pick a value
+    // strictly between the smallest representable nonzero and DEADBAND.
+    // DEADBAND is 2e-5; SIM_EPSILON is ~1.5e-5 — exactly one delta below.
+    let r = RockingState {
+        angle_sideways: SimFixed::DELTA,
+        ..Default::default()
+    };
+    assert!(r.is_neutral());
+}
+
+#[test]
+fn rocking_ship_rocking_is_not_neutral() {
+    let r = RockingState {
+        is_ship_rocking: true,
+        ..Default::default()
+    };
+    assert!(!r.is_neutral());
 }

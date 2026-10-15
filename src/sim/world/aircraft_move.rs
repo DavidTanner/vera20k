@@ -132,7 +132,7 @@ impl Simulation {
     /// The cell of the NavCom's `vt+0x4C` coordinate (this aircraft asking),
     /// over 256 toward zero, as Mission_Move states 2 and 4 read it.
     fn aircraft_nav_cell(&self, id: u64, rules: &RuleSet) -> Option<(i16, i16)> {
-        let nav = self.substrate.entities.get(id)?.navigation.nav_com?;
+        let nav = self.substrate.entities.get(id)?.navigation.nav_com()?;
         let coord = nav_target_coordinate(
             nav,
             Some(id),
@@ -178,7 +178,7 @@ impl WorldMove<'_> {
             .get(self.id)
             .expect("aircraft dispatch")
             .navigation
-            .nav_com
+            .nav_com()
     }
 }
 

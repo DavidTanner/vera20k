@@ -203,7 +203,7 @@ fn techno_playfield_stored_membership_gates_same_frame_los() {
     );
     assert!(!suppressed.is_cell_visible(intern::test_intern("Americans"), 5, 5));
 
-    store.get_mut(1).unwrap().in_playfield = true;
+    store.get_mut(1).unwrap().set_in_playfield(true);
     let admitted = recompute_owner_visibility(
         &store,
         Some(&PathGrid::new(16, 16)),
@@ -1529,10 +1529,10 @@ fn an_aircrafts_altitude_moves_its_revealed_disc() {
     let mut entity = GameEntity::test_default(1, "BEAG", "Americans", 30, 30);
     entity.set_category_for_test(EntityCategory::Aircraft);
     entity.lifecycle.set_in_limbo_for_test(false);
-    entity.vision_range = 1;
-    entity.position.exact_z_leptons = Some(1500);
+    entity.sight.set_vision_range_for_test(1);
+    entity.position.set_exact_z_leptons(Some(1500));
     let mut loco = LocomotorState::for_test_kind(LocomotorKind::Fly);
-    loco.layer = MovementLayer::Air;
+    loco.set_layer(MovementLayer::Air);
     entity.locomotor = Some(loco);
     store.insert(entity);
 
@@ -1574,11 +1574,11 @@ fn a_jumpjet_below_its_floor_sees_from_its_location_z() {
     let mut store = EntityStore::new();
     let mut entity = GameEntity::test_default(1, "JUMPJET", "Americans", 30, 30);
     entity.lifecycle.set_in_limbo_for_test(false);
-    entity.vision_range = 1;
-    entity.position.z = 4;
-    entity.position.exact_z_leptons = Some(208);
+    entity.sight.set_vision_range_for_test(1);
+    entity.position.set_z(4);
+    entity.position.set_exact_z_leptons(Some(208));
     let mut loco = LocomotorState::for_test_kind(LocomotorKind::Jumpjet);
-    loco.layer = MovementLayer::Air;
+    loco.set_layer(MovementLayer::Air);
     entity.locomotor = Some(loco);
     store.insert(entity);
 

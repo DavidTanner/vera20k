@@ -66,7 +66,7 @@ impl Simulation {
     fn foot_neighbor_position(&self, id: u64) -> Option<(i16, i16)> {
         let entity = self.substrate.entities.get(id)?;
         (entity.category() != EntityCategory::Structure)
-            .then_some((entity.position.rx as i16, entity.position.ry as i16))
+            .then_some((entity.position.rx() as i16, entity.position.ry() as i16))
     }
 
     fn adjust_foot_neighbors(&mut self, cell: (i16, i16), add: bool) {
@@ -266,8 +266,12 @@ mod tests {
             entity.set_type_ref_for_test(sim.intern("ORCA"));
             entity.set_owner_for_test(sim.intern("Americans"));
             entity.lifecycle.set_in_limbo_for_test(false);
-            entity.lifecycle.cell_marked = input["marked"].as_bool().unwrap_or(true);
-            entity.position.exact_z_leptons = Some(input["z"].as_i64().unwrap_or(0) as i32);
+            entity
+                .lifecycle
+                .set_cell_marked(input["marked"].as_bool().unwrap_or(true));
+            entity
+                .position
+                .set_exact_z_leptons(Some(input["z"].as_i64().unwrap_or(0) as i32));
             entity.navigation.neighbor_state.cell = (
                 input["old"][0].as_i64().unwrap() as i16,
                 input["old"][1].as_i64().unwrap() as i16,
@@ -382,7 +386,12 @@ mod tests {
         );
         // The live position changes in flight without a PerCell callback. Save
         // and load must keep its old source, not reconstruct it from position.
-        sim.substrate.entities.get_mut(1).unwrap().position.rx = 5;
+        sim.substrate
+            .entities
+            .get_mut(1)
+            .unwrap()
+            .position
+            .set_rx(5);
         let bytes = GameSnapshot::save(&sim, 0, 0, "neighbor-history", 0);
         let mut restored = GameSnapshot::load(&bytes).unwrap().sim;
         assert_eq!(

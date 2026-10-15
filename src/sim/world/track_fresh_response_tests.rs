@@ -297,7 +297,7 @@ fn compare(sim: &Simulation, id: u64, row: &Value, out: bool) {
             d.destination(),
             d.head_to(),
             d.track_valid(),
-            d.track().turn_index,
+            d.track().turn_index(),
             d.target_speed_fraction(),
         )
     } else {
@@ -311,7 +311,7 @@ fn compare(sim: &Simulation, id: u64, row: &Value, out: bool) {
             s.destination(),
             s.head_to(),
             s.track_valid(),
-            s.track().turn_index,
+            s.track().turn_index(),
             s.target_speed_fraction(),
         )
     };
@@ -319,7 +319,7 @@ fn compare(sim: &Simulation, id: u64, row: &Value, out: bool) {
         let c = c.unwrap_or(DriveCoord { x: 0, y: 0, z: 0 });
         json!([c.x, c.y, c.z])
     };
-    let nav = e.navigation.nav_com.map(|n| match n {
+    let nav = e.navigation.nav_com().map(|n| match n {
         NavTargetRef::Cell { rx, ry } => json!([rx, ry]),
         other => panic!("cell fixture, got {other:?}"),
     });
@@ -329,12 +329,12 @@ fn compare(sim: &Simulation, id: u64, row: &Value, out: bool) {
     let path: Vec<i32> = (0..6)
         .map(|i| {
             queue
-                .directions
-                .get(usize::from(queue.cursor) + i)
+                .directions()
+                .get(usize::from(queue.cursor()) + i)
                 .map_or(-1, |&w| if w == u8::MAX { -1 } else { i32::from(w) })
         })
         .collect();
-    let reference = queue.reference_cell.unwrap_or((0, 0));
+    let reference = queue.reference_cell().unwrap_or((0, 0));
     let p = &e.navigation.path_runtime;
     let fields = [
         ("destination", coord(destination)),
@@ -346,19 +346,25 @@ fn compare(sim: &Simulation, id: u64, row: &Value, out: bool) {
         ("reference", json!([reference.0, reference.1])),
         (
             "movement_timer",
-            json!([p.movement_timer.start_frame(), p.movement_timer.duration()]),
+            json!([
+                p.movement_timer().start_frame(),
+                p.movement_timer().duration()
+            ]),
         ),
         (
             "blocked_timer",
-            json!([p.blocked_timer.start_frame(), p.blocked_timer.duration()]),
+            json!([
+                p.blocked_timer().start_frame(),
+                p.blocked_timer().duration()
+            ]),
         ),
-        ("latched", json!(u8::from(p.path_blocked))),
-        ("retries", json!(p.retries_left)),
+        ("latched", json!(u8::from(p.path_blocked()))),
+        ("retries", json!(p.retries_left())),
         ("facing", json!(e.body_facing.destination())),
         ("mission", json!(e.mission.current().raw())),
         (
             "foot_68b",
-            json!(u8::from(e.runtime_bridge_transition.pending_mismatch)),
+            json!(u8::from(e.runtime_bridge_transition.pending_mismatch())),
         ),
         ("out", json!(u8::from(out))),
     ];
@@ -415,15 +421,15 @@ fn fresh_arm_rows_match_the_original_responses() {
         let movement = frame(input, "movement_timer", [100, 0, 0]);
         let blocked = frame(input, "blocked_timer", [100, 0, 22]);
         let e = sim.substrate.entities.get_mut(id).unwrap();
-        e.navigation.path_replay.directions = route;
-        e.navigation.path_replay.cursor = 0;
-        e.navigation.path_replay.reference_cell = Some((9, 8));
+        e.navigation.path_replay.set_directions_for_test(route);
+        e.navigation.path_replay.set_cursor(0);
+        e.navigation.path_replay.set_reference_cell(Some((9, 8)));
         e.body_facing = FacingClass::with_rate_of(rest, &e.body_facing);
         let runtime = &mut e.navigation.path_runtime;
         runtime.start_movement(movement[0] as u32, movement[2] as i32);
         runtime.start_blocked(blocked[0] as u32, blocked[2] as i32);
-        runtime.path_blocked = input["latched"] == true;
-        runtime.retries_left = input["retries"].as_u64().unwrap_or(10) as u32;
+        runtime.set_path_blocked(input["latched"] == true);
+        runtime.set_retries_left(input["retries"].as_u64().unwrap_or(10) as u32);
         // FootClass ParalysisTimer (+6A0).
         if let Some(paralysis) = input["paralysis"].as_array() {
             e.parasite
@@ -441,7 +447,7 @@ fn fresh_arm_rows_match_the_original_responses() {
                     let mut progress = drive
                         .track_progress(crate::sim::movement::track_process::TrackFamily::Drive)
                         .unwrap();
-                    progress.turn_index = selector as i32;
+                    progress.set_turn_index(selector as i32);
                     assert!(drive.store_track_progress(
                         crate::sim::movement::track_process::TrackFamily::Drive,
                         progress
@@ -455,7 +461,7 @@ fn fresh_arm_rows_match_the_original_responses() {
                     let mut progress = ship
                         .track_progress(crate::sim::movement::track_process::TrackFamily::Ship)
                         .unwrap();
-                    progress.turn_index = selector as i32;
+                    progress.set_turn_index(selector as i32);
                     assert!(ship.store_track_progress(
                         crate::sim::movement::track_process::TrackFamily::Ship,
                         progress
@@ -501,9 +507,11 @@ fn first_code7_scold_request_retains_the_native_byte() {
         rules.general.scold_sound = Some(sound.into());
         order(&mut sim, &rules, id, (13, 10));
         let e = sim.substrate.entities.get_mut(id).unwrap();
-        e.navigation.path_replay.directions = vec![2, 2, 2];
-        e.navigation.path_replay.cursor = 0;
-        e.navigation.path_replay.reference_cell = Some((9, 8));
+        e.navigation
+            .path_replay
+            .set_directions_for_test(vec![2, 2, 2]);
+        e.navigation.path_replay.set_cursor(0);
+        e.navigation.path_replay.set_reference_cell(Some((9, 8)));
         e.body_facing = FacingClass::with_rate_of(2 << 13, &e.body_facing);
         e.navigation.path_runtime.start_movement(100, 0);
         e.navigation

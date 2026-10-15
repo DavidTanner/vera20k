@@ -209,7 +209,7 @@ pub(in crate::sim) fn exit_produced_object(
         return BuildingExit::Failed;
     };
     // Exit443C81 sets Techno+3D5 before RTTI, admission or Unlimbo.
-    entity.in_playfield = true;
+    entity.set_in_playfield(true);
     let owner_id = entity.owner();
     let product_type_id = entity.type_ref();
     let Some(product_type) = sim.object_type(product_type_id, rules) else {
@@ -291,8 +291,8 @@ pub(in crate::sim) fn exit_produced_object(
         rules,
         (
             producer_id,
-            producer.position.rx,
-            producer.position.ry,
+            producer.position.rx(),
+            producer.position.ry(),
             sim.interner.resolve(producer.type_ref()),
         ),
         Some(stable_id),
@@ -484,7 +484,7 @@ pub(in crate::sim) fn exit_produced_object(
                         .substrate
                         .entities
                         .get(spawned)
-                        .and_then(|entity| entity.navigation.nav_com);
+                        .and_then(|entity| entity.navigation.nav_com());
                     // Only a non-JumpJet/non-Teleporter with Unlimbo NavCom
                     // takes444CA3..D0B. No-rally NavNULL skips this whole arm.
                     if !product_type.jumpjet
@@ -627,8 +627,12 @@ pub(in crate::sim) fn exit_produced_object(
         {
             // Native +0x124/+0x1B4/+0x124 success tail writes the
             // selected CellClass centre after rally/mission assignment.
-            entity.position.sub_x = crate::util::lepton::CELL_CENTER_LEPTON;
-            entity.position.sub_y = crate::util::lepton::CELL_CENTER_LEPTON;
+            entity
+                .position
+                .set_sub_x(crate::util::lepton::CELL_CENTER_LEPTON);
+            entity
+                .position
+                .set_sub_y(crate::util::lepton::CELL_CENTER_LEPTON);
         }
     }
     BuildingExit::Placed

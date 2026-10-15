@@ -39,7 +39,7 @@ fn fixture() -> (Simulation, RuleSet, MatchInputState) {
         );
         entity.lifecycle.set_object_alive_for_test(true);
         entity.lifecycle.set_in_limbo_for_test(false);
-        entity.selected = id != 2;
+        entity.selection.set_selected_for_test(id != 2);
         sim.entities_mut().insert(entity);
     }
     let mut input = MatchInputState::new(Default::default());
@@ -158,8 +158,8 @@ fn pending_selection_survives_load_until_the_existing_queue_owner_drains_it() {
         bincode::serialize(&sim.pending_command_snapshot()).unwrap(),
         queued_before
     );
-    assert!(!sim.entities().get(2).unwrap().selected);
-    assert!(sim.entities().get(3).unwrap().selected);
+    assert!(!sim.entities().get(2).unwrap().selection.is_selected());
+    assert!(sim.entities().get(3).unwrap().selection.is_selected());
 
     // Model the existing queue receiver draining/refusing this command. The
     // shared reconciliation closes pending mode against committed flags;

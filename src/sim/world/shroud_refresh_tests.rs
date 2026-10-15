@@ -2,12 +2,13 @@
 use super::*;
 use crate::map::entities::EntityCategory;
 use crate::sim::combat::Health;
-use crate::sim::game_entity::{GameEntity, TechnoDiscoveryHistory};
+use crate::sim::game_entity::GameEntity;
 use crate::sim::house_state::HouseState;
 use crate::sim::intern::InternedId;
 use crate::sim::movement::locomotor::MovementLayer;
 use crate::sim::occupancy::CellListInsertion;
 use crate::sim::vision::{assert_native_cell_history, discovery_corpus, native_map_cell_fixture};
+use crate::sim::world::TechnoDiscoveryHistory;
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
 
@@ -67,11 +68,17 @@ fn actor(
         false,
         0,
     );
-    entity.position.sub_x = crate::util::fixed_math::SimFixed::from_num(offset.0);
-    entity.position.sub_y = crate::util::fixed_math::SimFixed::from_num(offset.1);
+    entity
+        .position
+        .set_sub_x(crate::util::fixed_math::SimFixed::from_num(offset.0));
+    entity
+        .position
+        .set_sub_y(crate::util::fixed_math::SimFixed::from_num(offset.1));
     // The corpus executes original6F322F before the callback corridor.
     // This is its declared constructor prestate, not an alternative producer.
-    entity.discovery.owned_by_current_house = Some(owner) == sim.session.current_house;
+    entity
+        .discovery
+        .set_owned_by_current_house_for_test(Some(owner) == sim.session.current_house);
     sim.substrate.entities.insert(entity)
 }
 
@@ -94,9 +101,9 @@ fn put(sim: &mut Simulation, id: u64, cell: (u16, u16), upper: bool) {
 fn discovery(sim: &Simulation, id: u64) -> Value {
     let h = sim.substrate.entities.get(id).unwrap().discovery;
     json!([
-        u8::from(h.owned_by_current_house),
-        u8::from(h.discovered_by_current_house),
-        u8::from(h.discovered_by_other_house)
+        u8::from(h.owned_by_current_house()),
+        u8::from(h.discovered_by_current_house()),
+        u8::from(h.discovered_by_other_house())
     ])
 }
 

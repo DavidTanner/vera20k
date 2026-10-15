@@ -14,7 +14,6 @@
 use std::collections::BTreeMap;
 
 use crate::map::resolved_terrain::ResolvedTerrainCell;
-use crate::rules::ini_parser::IniFile;
 use crate::rules::missile_spawn::MissileFamily;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::combat::TargetKind;
@@ -37,7 +36,8 @@ fn make_spawner_rules_with_hornet_strength(strength: i32) -> RuleSet {
         "[HORNET]\nName=Hornet\nStrength=75",
         &format!("[HORNET]\nName=Hornet\nStrength={strength}"),
     );
-    RuleSet::from_ini(&IniFile::from_str(&text)).expect("spawner rules should parse")
+    RuleSet::from_ini(&crate::sim::arena_fixture::clear_ground_ini(&text))
+        .expect("spawner rules should parse")
 }
 
 fn spawner_rules_text() -> &'static str {
@@ -289,6 +289,8 @@ fn flat_sim() -> Simulation {
         HEIGHT,
         flat_terrain_cell,
     ));
+    sim.playfield_size_height = Some(HEIGHT.into());
+    crate::sim::arena_fixture::supply_native_map(&mut sim);
     sim
 }
 
@@ -309,10 +311,12 @@ fn move_target_to_x_distance(sim: &mut Simulation, target_id: u64, distance_lept
         .entities
         .get_mut(target_id)
         .expect("target remains live before manager update");
-    target.position.rx = world_x.div_euclid(256) as u16;
-    target.position.ry = 10;
-    target.position.sub_x = SimFixed::from_num(world_x.rem_euclid(256));
-    target.position.sub_y = SimFixed::from_num(128);
+    target.position.set_rx(world_x.div_euclid(256) as u16);
+    target.position.set_ry(10);
+    target
+        .position
+        .set_sub_x(SimFixed::from_num(world_x.rem_euclid(256)));
+    target.position.set_sub_y(SimFixed::from_num(128));
 }
 
 #[test]
@@ -344,7 +348,11 @@ fn v3_launcher_gets_a_missile_pool_on_spawn() {
         child.lifecycle.in_limbo(),
         "a docked spawn child sits in limbo until launch"
     );
-    assert_eq!(child.spawn_owner_id, Some(v3), "back-pointer to the parent");
+    assert_eq!(
+        child.spawn_owner_id.owner(),
+        Some(v3),
+        "back-pointer to the parent"
+    );
 }
 
 #[test]
@@ -530,7 +538,7 @@ fn gsi_05_08_idle_legality_uses_effective_3d_distance() {
         .get_mut(target)
         .expect("target remains live")
         .position
-        .exact_z_leptons = Some(TARGET_Z_LEPTONS);
+        .set_exact_z_leptons(Some(TARGET_Z_LEPTONS));
     spawn_manager_ai(
         &mut sim,
         &rules,
@@ -764,7 +772,7 @@ fn a_missile_that_lost_its_target_retreats_for_good() {
     use crate::sim::mission::{MissionDispatchTimer, MissionId, MissionType};
     use crate::sim::world::edge_cell::{Edge, find_paradrop_edge_cell};
     let text = spawner_rules_text().replace("[V3ROCKET]\n", "[V3ROCKET]\nSelectable=no\n");
-    let rules = RuleSet::from_ini(&IniFile::from_str(&text)).unwrap();
+    let rules = RuleSet::from_ini(&crate::sim::arena_fixture::clear_ground_ini(&text)).unwrap();
     let mut sim = missile_sim();
     let v3 = sim
         .spawn_object("V3", "Russians", 10, 10, 0, &rules)
@@ -841,7 +849,8 @@ fn a_missile_that_lost_its_target_retreats_for_good() {
     assert_eq!(entity.mission.queued(), MissionId::NONE);
     assert_eq!(entity.mission.handler_state(), 0, "the Commence zeroes it");
     assert_eq!(
-        entity.navigation.nav_com, None,
+        entity.navigation.nav_com(),
+        None,
         "idle mode drops the edge cell"
     );
     assert_eq!(entity.mission.dispatch_timer().delay(), 1);
@@ -849,7 +858,10 @@ fn a_missile_that_lost_its_target_retreats_for_good() {
     sim.session.binary_frame += 1;
     crate::sim::aircraft::dispatch_mission(&mut sim, missile, &rules, Default::default());
     let entity = sim.substrate.entities.get(missile).unwrap();
-    assert_eq!(entity.navigation.nav_com, Some(NavTargetRef::cell(rx, ry)));
+    assert_eq!(
+        entity.navigation.nav_com(),
+        Some(NavTargetRef::cell(rx, ry))
+    );
     assert_eq!(entity.mission.dispatch_timer().delay(), 3);
     assert_eq!(
         sim.scenario_rng.logical_state(),
@@ -993,14 +1005,14 @@ fn missile_impact_kills_through_the_shared_death_pipeline() {
     let _ = sim.try_reveal_entity(
         child_id,
         crate::sim::world::RevealRequest {
-            position: crate::sim::world::RevealPosition {
-                exact_z_leptons: Some(0),
-                rx: 20,
-                ry: 20,
-                z: 0,
-                sub_x: SimFixed::from_num(128),
-                sub_y: SimFixed::from_num(128),
-            },
+            position: crate::sim::world::RevealPosition::new(
+                20,
+                20,
+                0,
+                Some(0),
+                SimFixed::from_num(128),
+                SimFixed::from_num(128),
+            ),
             placement: crate::sim::world::PlacementEvidence::MarkSucceeded,
             logic_eligible: true,
         },
@@ -1043,7 +1055,7 @@ fn missile_impact_kills_through_the_shared_death_pipeline() {
         sim.substrate
             .entities
             .get(target)
-            .is_none_or(|t| t.dying || !t.lifecycle.object_alive()),
+            .is_none_or(|t| t.death.is_dying() || !t.lifecycle.object_alive()),
         "a target the missile takes to zero must actually die, not stand at 0 HP"
     );
 }
@@ -1083,7 +1095,7 @@ fn v3_attack_order_damages_the_target_through_the_spawned_rocket() {
             .substrate
             .entities
             .get(target)
-            .is_none_or(|t| t.dying || !t.lifecycle.object_alive());
+            .is_none_or(|t| t.death.is_dying() || !t.lifecycle.object_alive());
         if gone {
             destroyed = true;
             break;
@@ -1174,7 +1186,7 @@ fn a_live_spawners_own_expiry_rebuilds_its_docked_missile() {
         sim.substrate
             .entities
             .get(docked)
-            .is_none_or(|c| c.dying || !c.lifecycle.object_alive()),
+            .is_none_or(|c| c.death.is_dying() || !c.lifecycle.object_alive()),
         "the docked missile UnInits"
     );
     let frame = sim.session.binary_frame as i32;
@@ -1203,7 +1215,12 @@ fn a_live_spawners_own_expiry_rebuilds_its_docked_missile() {
     let rebuilt = manager(&sim).slots[0].spawn.expect("the slot is rebuilt");
     assert_ne!(rebuilt, docked);
     assert_eq!(
-        sim.substrate.entities.get(rebuilt).unwrap().spawn_owner_id,
+        sim.substrate
+            .entities
+            .get(rebuilt)
+            .unwrap()
+            .spawn_owner_id
+            .owner(),
         Some(v3)
     );
 }
@@ -1232,7 +1249,7 @@ fn owner_death_destroys_docked_children() {
             sim.substrate
                 .entities
                 .get(child)
-                .is_none_or(|c| c.dying || !c.lifecycle.object_alive()),
+                .is_none_or(|c| c.death.is_dying() || !c.lifecycle.object_alive()),
             "docked children die with the parent (Kill_All_Spawns)"
         );
     }
@@ -1418,7 +1435,7 @@ fn launcher_death_destroys_a_missile_already_in_flight() {
         sim.substrate
             .entities
             .get(child_id)
-            .is_none_or(|c| c.dying || !c.lifecycle.object_alive()),
+            .is_none_or(|c| c.death.is_dying() || !c.lifecycle.object_alive()),
         "an in-flight missile dies with its launcher (Kill_All_Spawns state-1 arm)"
     );
 }
@@ -1560,7 +1577,7 @@ fn ownership_change_clears_the_pool_and_rearms_without_a_regen_wait() {
             sim.substrate
                 .entities
                 .get(child)
-                .is_none_or(|c| c.dying || !c.lifecycle.object_alive()),
+                .is_none_or(|c| c.death.is_dying() || !c.lifecycle.object_alive()),
             "docked children of the previous owner are destroyed"
         );
     }
@@ -1837,7 +1854,7 @@ fn a_dead_carriers_airborne_hornet_crashes() {
         .expect("a Hornet is off the deck");
     // Airborne over the flat level-0 map.
     let entity = sim.substrate.entities.get_mut(hornet).unwrap();
-    entity.position.exact_z_leptons = Some(600);
+    entity.position.set_exact_z_leptons(Some(600));
 
     sim.uninit_with_rules(carrier, &rules);
 
@@ -1848,12 +1865,12 @@ fn a_dead_carriers_airborne_hornet_crashes() {
         .expect("a crashing Hornet stays represented until its impact");
     assert!(hornet.crash.is_crashing() && hornet.lifecycle.object_alive());
     assert_eq!(hornet.health.current(), 0);
-    assert_eq!(hornet.spawn_owner_id, None);
+    assert_eq!(hornet.spawn_owner_id.owner(), None);
     assert!(
         hornet
             .rocking
             .as_ref()
-            .is_some_and(|rocking| rocking.vel_sideways != SimFixed::ZERO),
+            .is_some_and(|rocking| rocking.vel_sideways() != SimFixed::ZERO),
         "Crash drew the spin"
     );
     let manager_slot = sim
@@ -1925,7 +1942,7 @@ fn a_dead_carriers_hornets_crash_from_the_last_slot() {
     assert!(wing.len() >= 2, "two Hornets off the deck: {wing:?}");
     for &(_, hornet) in &wing {
         let entity = sim.substrate.entities.get_mut(hornet).unwrap();
-        entity.position.exact_z_leptons = Some(600);
+        entity.position.set_exact_z_leptons(Some(600));
     }
     // The three draws each crash takes, in the order they are taken.
     let mut rng = sim.scenario_rng.clone();
@@ -1952,7 +1969,7 @@ fn a_dead_carriers_hornets_crash_from_the_last_slot() {
                 .get(hornet)
                 .and_then(|e| e.rocking.as_ref())
                 .expect("a crashing Hornet spins")
-                .vel_sideways
+                .vel_sideways()
         })
         .collect();
     for (rate, &(_, sign)) in rates.iter().zip(&draws) {
@@ -2027,8 +2044,8 @@ fn a_hornet_docks_by_its_z_above_the_carrier() {
         // height over the carrier.
         let deck = {
             let owner = sim.substrate.entities.get_mut(carrier).unwrap();
-            let z = owner.position.exact_z_leptons.expect("revealed carrier") + 100;
-            owner.position.exact_z_leptons = Some(z);
+            let z = owner.position.exact_z_leptons().expect("revealed carrier") + 100;
+            owner.position.set_exact_z_leptons(Some(z));
             owner.position
         };
         {
@@ -2045,7 +2062,9 @@ fn a_hornet_docks_by_its_z_above_the_carrier() {
         {
             let child = sim.substrate.entities.get_mut(hornet).unwrap();
             child.position = deck;
-            child.position.exact_z_leptons = deck.exact_z_leptons.map(|z| z + above_owner);
+            child
+                .position
+                .set_exact_z_leptons(deck.exact_z_leptons().map(|z| z + above_owner));
         }
         tick(&mut sim);
 
@@ -2552,12 +2571,18 @@ fn a_hornet_mid_pass_keeps_its_run_through_the_managers_re_issue() {
     child
         .attack_target
         .set_for_test(Some(crate::sim::combat::TargetKind::Entity(target)));
-    child.rearm_timer = crate::sim::timer::CdTimer::started(frame, 7);
+    child
+        .rearm_timer
+        .set_for_test(crate::sim::timer::CdTimer::started(frame, 7));
     child.mission.set_current_for_test(
         crate::sim::mission::MissionId::from_known(crate::sim::mission::MissionType::Attack),
         7,
     );
-    child.aircraft_ammo.as_mut().expect("Hornet ammo").current = 1;
+    child
+        .aircraft_ammo
+        .as_mut()
+        .expect("Hornet ammo")
+        .set_current_for_test(1);
 
     pass(&mut sim, None);
     let child = sim.substrate.entities.get(hornet).unwrap();
@@ -2568,13 +2593,13 @@ fn a_hornet_mid_pass_keeps_its_run_through_the_managers_re_issue() {
         "the same target is not re-assigned"
     );
     assert_eq!(
-        child.rearm_timer,
+        child.rearm_timer.timer(),
         crate::sim::timer::CdTimer::started(frame, 7)
     );
 
     pass(&mut sim, Some(other));
     let child = sim.substrate.entities.get(hornet).unwrap();
-    assert_eq!(child.aircraft_ammo.as_ref().unwrap().current, 0);
+    assert_eq!(child.aircraft_ammo.as_ref().unwrap().current(), 0);
     assert!(
         child.attack_target.target().is_none(),
         "the aircraft arm drops it"
@@ -2648,13 +2673,42 @@ AG=yes
 CurleyShuffle=yes
 ",
         );
-    let rules = RuleSet::from_ini(&IniFile::from_str(&text)).expect("strafing carrier rules");
-    let mut sim = flat_sim();
+    let rules = RuleSet::from_ini(&crate::sim::arena_fixture::clear_ground_ini(&text))
+        .expect("strafing carrier rules");
+    let mut sim = Simulation::new();
+    // The sortie needs a real Size diamond as well as its LocalSize. The
+    // shared flat fixture's Size width0 admits no cell at native568300 once
+    // a height is supplied; mission-only cruising Hornets can then leave.
+    sim.session.map_width = 65;
+    sim.session.map_height = 65;
+    sim.install_resolved_terrain_for_new_map(crate::map::resolved_terrain::test_flat_ground_grid(
+        65,
+    ));
+    sim.install_playfield_from_map_header(&crate::map::map_file::MapHeader {
+        theater: "TEMPERATE".into(),
+        fill: "Clear".into(),
+        level: 0,
+        width: 32,
+        height: 32,
+        local_left: 2,
+        local_top: 2,
+        local_width: 28,
+        local_height: 24,
+    });
+    assert!(sim.rebuild_dynamic_navigation(&rules));
+    for cell in [(20, 20), (34, 20)] {
+        assert!(sim.map_cell_in_bounds(cell), "sortie start {cell:?}");
+        assert!(crate::sim::cell_rect::cell_is_in_playfield_height_aware(
+            (i32::from(cell.0), i32::from(cell.1)),
+            sim.playfield_bounds,
+            sim.resolved_terrain.as_ref(),
+        ));
+    }
     let carrier = sim
-        .spawn_object("CARRIER", "Americans", 10, 10, 0, &rules)
+        .spawn_object("CARRIER", "Americans", 20, 20, 0, &rules)
         .expect("spawn CARRIER");
     let target = sim
-        .spawn_object("TARGET", "Yuri", 24, 10, 0, &rules)
+        .spawn_object("TARGET", "Yuri", 34, 20, 0, &rules)
         .expect("spawn TARGET");
     let wing: Vec<u64> = sim
         .substrate
@@ -2691,7 +2745,7 @@ CurleyShuffle=yes
                 .substrate
                 .entities
                 .get(hornet)
-                .and_then(|h| h.navigation.nav_com);
+                .and_then(|h| h.navigation.nav_com());
             let seen = navs.entry(hornet).or_default();
             if seen.last().is_none_or(|&(_, last)| last != nav) {
                 seen.push((frame, nav));
@@ -2743,7 +2797,7 @@ fn every_hornet_of_a_carrier_wing_flies_a_whole_strafe_pass() {
                     .entities
                     .get(*hornet)
                     .and_then(|h| h.aircraft_ammo.as_ref())
-                    .map(|a| a.current),
+                    .map(|a| a.current()),
                 Some(0),
                 "{shape} Hornet {hornet}: the pass paid its one ammo"
             );
@@ -2826,7 +2880,16 @@ fn retail_launches(
     }
     // MarkSucceeded seats a ship on this dry fixture ground.
     let owner = sim
-        .construct_object_limbo_at_height(owner_type, "Russians", 10, 10, 0x20, 4, rules)
+        .construct_object_limbo_at_height(
+            owner_type,
+            "Russians",
+            10,
+            10,
+            0x20,
+            4,
+            rules,
+            crate::sim::world::FrameEffects::default(),
+        )
         .expect("construct owner");
     assert!(
         sim.reveal_constructed_object_at_height(
@@ -2877,7 +2940,7 @@ fn retail_launches(
             child,
             RetailLaunch {
                 missile: position_world_coord(&missile.position),
-                missile_exact_z: missile.position.exact_z_leptons,
+                missile_exact_z: missile.position.exact_z_leptons(),
                 missile_height: crate::sim::movement::air_movement::current_fly_height(
                     missile,
                     sim.resolved_terrain.as_ref(),

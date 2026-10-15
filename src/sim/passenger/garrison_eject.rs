@@ -136,7 +136,7 @@ fn sellbuilding_direct_scatter_handoff(
     };
     if pax.category() != EntityCategory::Infantry
         || !pax.is_alive()
-        || pax.dying
+        || pax.death.is_dying()
         || pax.passenger_role.is_inside_transport()
         || pax.locomotor.is_none()
     {
@@ -188,7 +188,7 @@ fn place_garrison_passenger_at_cell(
         .substrate
         .entities
         .get(passenger_id)
-        .map(|pax| pax.sub_cell)
+        .map(|pax| pax.sub_cell())
     else {
         return false;
     };
@@ -203,14 +203,7 @@ fn place_garrison_passenger_at_cell(
     let reveal = sim.try_reveal_entity_with_context(
         passenger_id,
         RevealRequest {
-            position: RevealPosition {
-                exact_z_leptons: None,
-                rx,
-                ry,
-                z,
-                sub_x,
-                sub_y,
-            },
+            position: RevealPosition::new(rx, ry, z, None, sub_x, sub_y),
             // The selected exit/fallback is this caller's bounded admission
             // evidence; the exact native placement oracle remains separate.
             placement: PlacementEvidence::MarkSucceeded,
@@ -342,9 +335,9 @@ pub(crate) fn eject_garrison_occupants(
         };
         let (fw, fh) = foundation_dimensions(&obj.foundation);
         (
-            entity.position.rx,
-            entity.position.ry,
-            entity.position.z,
+            entity.position.rx(),
+            entity.position.ry(),
+            entity.position.z(),
             fw,
             fh,
             cargo.passengers.clone(),
@@ -479,9 +472,9 @@ pub(crate) fn sell_building_occupants(
         }
         let (fw, fh) = foundation_dimensions(&obj.foundation);
         (
-            entity.position.rx,
-            entity.position.ry,
-            entity.position.z,
+            entity.position.rx(),
+            entity.position.ry(),
+            entity.position.z(),
             fw,
             fh,
             entity.owner(),
@@ -607,7 +600,7 @@ pub(crate) mod tests {
             0,
             EntityCategory::Infantry,
         );
-        pax.sub_cell = sub_cell;
+        pax.set_sub_cell(sub_cell);
         pax.set_owner_for_test(sim.interner.intern(owner));
         pax.set_type_ref_for_test(sim.interner.intern("E1"));
         pax.passenger_role.set_inside_transport(transport_id, false);
@@ -689,12 +682,13 @@ pub(crate) mod tests {
             10,
             EntityCategory::Structure,
         );
-        building.foundation = "2x2".to_string();
+        building
+            .type_facts
+            .set_foundation_for_test("2x2".to_string());
         building.set_owner_for_test(americans);
         building.set_type_ref_for_test(sim.interner.intern(type_id));
-        building.passenger_role = PassengerRole::Transport {
-            cargo: crate::sim::passenger::PassengerCargo::new(5, 1),
-        };
+        building.passenger_role =
+            PassengerRole::transport(crate::sim::passenger::PassengerCargo::new(5, 1));
         if let Some(cargo) = building.passenger_role.cargo_mut() {
             assert!(cargo.board(passenger_id, 1));
         }
@@ -835,8 +829,8 @@ pub(crate) mod tests {
             .entities
             .get(passenger_id)
             .expect("passenger should remain");
-        assert!(matches!(passenger.passenger_role, PassengerRole::None));
-        assert!(!passenger.dying);
+        assert!(passenger.passenger_role.is_none());
+        assert!(!passenger.death.is_dying());
     }
 
     #[test]
@@ -880,15 +874,15 @@ pub(crate) mod tests {
                 .get(pax_id)
                 .expect("passenger should remain");
             assert_eq!(
-                (pax.position.rx, pax.position.ry),
+                (pax.position.rx(), pax.position.ry()),
                 expected_cell,
                 "destroyed garrison should reuse the one chosen SellBuilding exit coordinate"
             );
             assert!(
-                pax.position.rx < 10
-                    || pax.position.rx > 11
-                    || pax.position.ry < 10
-                    || pax.position.ry > 11,
+                pax.position.rx() < 10
+                    || pax.position.rx() > 11
+                    || pax.position.ry() < 10
+                    || pax.position.ry() > 11,
                 "destroyed garrison should not place passengers inside the foundation"
             );
             assert_eq!(
@@ -896,11 +890,11 @@ pub(crate) mod tests {
                 owner,
                 "destruction keeps death-time building owner"
             );
-            assert!(matches!(pax.passenger_role, PassengerRole::None));
-            assert!(!pax.dying);
+            assert!(pax.passenger_role.is_none());
+            assert!(!pax.death.is_dying());
             assert!(!pax.lifecycle.in_limbo());
-            assert!(pax.lifecycle.cell_marked);
-            assert!(pax.in_logic_vector);
+            assert!(pax.lifecycle.cell_marked());
+            assert!(pax.in_logic_vector.is_member());
         }
 
         let occupancy_ids: Vec<u64> = sim
@@ -992,9 +986,9 @@ pub(crate) mod tests {
             .entities
             .get(passenger_id)
             .expect("player-sell no-exit passenger should remain");
-        assert_eq!((passenger.position.rx, passenger.position.ry), (11, 11));
-        assert!(!passenger.dying);
-        assert!(matches!(passenger.passenger_role, PassengerRole::None));
+        assert_eq!((passenger.position.rx(), passenger.position.ry()), (11, 11));
+        assert!(!passenger.death.is_dying());
+        assert!(passenger.passenger_role.is_none());
         assert_eq!(sim.scenario_rng.state(), rng_before);
 
         let cargo = sim
@@ -1041,11 +1035,11 @@ pub(crate) mod tests {
         // the class setter's cell NavCom.
         assert!(
             matches!(
-                passenger.navigation.nav_com,
+                passenger.navigation.nav_com(),
                 Some(crate::sim::components::NavTargetRef::Cell { .. })
             ),
             "successful Scatter should set a cell NavCom after its RNG draw: {:?}",
-            passenger.navigation.nav_com
+            passenger.navigation.nav_com()
         );
     }
 
@@ -1079,8 +1073,8 @@ pub(crate) mod tests {
             .get(passenger_id)
             .expect("UnInit keeps the no-exit occupant resolvable until the drain");
         assert_eq!(passenger.health.current(), 0);
-        assert!(passenger.dying);
-        assert!(matches!(passenger.passenger_role, PassengerRole::None));
+        assert!(passenger.death.is_dying());
+        assert!(passenger.passenger_role.is_none());
         assert!(!passenger.lifecycle.object_alive());
         assert!(passenger.lifecycle.in_limbo());
         assert!(sim.substrate.pending_delete.contains_object(&passenger_id));

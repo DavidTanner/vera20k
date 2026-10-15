@@ -103,7 +103,7 @@ fn set_nav_com(sim: &mut Simulation, actor: u64, nav: NavTargetRef) {
         .get_mut(actor)
         .unwrap()
         .navigation
-        .nav_com = Some(nav);
+        .set_nav_com(Some(nav));
 }
 
 /// A computer's Rhino takes a GI a cell away as its destination; a human's
@@ -164,7 +164,8 @@ fn battle_fortress_heads_for_infantry_it_targets() {
             .entities
             .get_mut(fortress)
             .unwrap()
-            .passively_acquired_target = passive;
+            .passive_scan
+            .set_passively_acquired_target_for_test(passive);
         sim.unit_approach_head(fortress, &rules) == Some(NavTargetRef::object(victim))
     };
     assert!(head("Americans", ("E1", "Russians"), false));
@@ -197,7 +198,7 @@ fn a_crush_charge_takes_the_per_cell_range_stop() {
     )
     .unwrap();
     let entity = sim.substrate.entities.get(rhino).unwrap();
-    assert_eq!(entity.navigation.nav_com, None);
+    assert_eq!(entity.navigation.nav_com(), None);
     assert!(sim.substrate.entities.contains(gi));
     assert_eq!(
         sim.unit_approach_head(rhino, &rules),

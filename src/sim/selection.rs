@@ -1,11 +1,12 @@
 //! Unit selection system — tracks which entities the player has selected.
 //!
 //! Manages selection state: click-to-select single units, drag-to-select
-//! groups, and the Selected marker component on entities. The render loop
-//! reads Selected components to draw selection highlights.
+//! groups, and each object's IsSelected byte ([`Selection`]). The render loop
+//! reads it to draw selection highlights.
 //!
 //! ## Design
-//! - `Selected` is a zero-size marker component in sim/components.rs.
+//! - [`Selection`] is the object's IsSelected byte, which `Select` and
+//!   `Deselect` write.
 //! - `SelectionState` tracks the current drag rectangle (if any) and provides
 //!   methods for selecting entities by screen-space rectangle or single click.
 //! - Selection is player-side state, not part of the deterministic simulation.
@@ -17,6 +18,44 @@
 
 #[cfg(test)]
 use crate::sim::entity_store::EntityStore;
+
+/// `ObjectClass+0x83`, IsSelected: the object is in the player's current
+/// selection. `ObjectClass::Select @ 0x005F4520` sets it ([`Self::select`]);
+/// `ObjectClass::Deselect @ 0x005F44A0` clears it ([`Self::deselect`]).
+/// `Command::Select` commits it through `apply_selection_snapshot`; Limbo,
+/// Destroy, a Temporal erase, a power-down, a lift, a bunker install and the
+/// crew and parasite paths call Select or Deselect too. VERA keeps the
+/// current-objects vector as the app's selection ledger (input order and
+/// pending commands), which it reconciles with this byte after the frame.
+/// Combat reads it for selected-unit effects.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(transparent)]
+pub(crate) struct Selection {
+    selected: bool,
+}
+
+impl Selection {
+    /// The object is selected.
+    pub(crate) const fn is_selected(self) -> bool {
+        self.selected
+    }
+
+    /// `ObjectClass::Select`'s write.
+    pub(crate) fn select(&mut self) {
+        self.selected = true;
+    }
+
+    /// `ObjectClass::Deselect`'s write.
+    pub(crate) fn deselect(&mut self) {
+        self.selected = false;
+    }
+
+    /// Install a fixture's byte.
+    #[cfg(test)]
+    pub(crate) fn set_selected_for_test(&mut self, selected: bool) {
+        self.selected = selected;
+    }
+}
 
 /// Drag phase tracks the two-stage selection state machine:
 /// mouse-down sets `Pending`, reaching the effective 5px threshold activates
@@ -191,12 +230,12 @@ pub enum SelectAction {
 pub fn deselect_all(entities: &mut EntityStore) {
     let selected_ids: Vec<u64> = entities
         .values()
-        .filter(|e| e.selected)
+        .filter(|e| e.selection.is_selected())
         .map(|e| e.stable_id())
         .collect();
     for id in selected_ids {
         if let Some(e) = entities.get_mut(id) {
-            e.selected = false;
+            e.selection.deselect();
         }
     }
 }
@@ -324,10 +363,14 @@ mod tests {
     fn test_deselect_all() {
         let mut store = EntityStore::new();
         let e1 = spawn_unit(&mut store, 1, "Americans");
-        store.get_mut(e1).unwrap().selected = true;
-        assert!(store.get(e1).unwrap().selected);
+        store
+            .get_mut(e1)
+            .unwrap()
+            .selection
+            .set_selected_for_test(true);
+        assert!(store.get(e1).unwrap().selection.is_selected());
         deselect_all(&mut store);
-        assert!(!store.get(e1).unwrap().selected);
+        assert!(!store.get(e1).unwrap().selection.is_selected());
     }
 
     #[test]

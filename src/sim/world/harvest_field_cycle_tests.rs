@@ -28,11 +28,11 @@ fn frame(s: &mut Scene) -> Sample {
     let miner = s.sim.substrate.entities.get(s.miner).unwrap();
     let state = miner.miner.as_ref().unwrap();
     Sample {
-        cell: (miner.position.rx, miner.position.ry),
+        cell: (miner.position.rx(), miner.position.ry()),
         state: miner.miner_state(),
-        bales: state.cargo.len(),
-        harvesting: state.harvesting,
-        driving: miner.navigation.nav_com.is_some(),
+        bales: state.cargo().len(),
+        harvesting: state.harvesting(),
+        driving: miner.navigation.nav_com().is_some(),
     }
 }
 
@@ -87,7 +87,7 @@ fn war_miner_without_a_target_leaves_attack_through_its_idle_hook() {
         let miner = s.sim.substrate.entities.get(s.miner).unwrap();
         assert_eq!(miner.mission.current().known(), Some(expected));
         assert_eq!(miner.mission.handler_state(), 0, "Commence resets cursor");
-        assert_eq!(miner.miner.as_ref().unwrap().cargo.len(), 0);
+        assert_eq!(miner.miner.as_ref().unwrap().cargo().len(), 0);
     }
 }
 
@@ -188,8 +188,8 @@ fn war_miner_cuts_the_cell_it_drove_onto_from_every_side() {
         let miner = s.sim.substrate.entities.get(s.miner).unwrap();
         assert_eq!(
             (
-                miner.position.sub_x.to_num::<i32>(),
-                miner.position.sub_y.to_num::<i32>()
+                miner.position.sub_x().to_num::<i32>(),
+                miner.position.sub_y().to_num::<i32>()
             ),
             (128, 128),
             "{label}: at the cell centre"
@@ -205,7 +205,7 @@ fn war_miner_cuts_the_cell_it_drove_onto_from_every_side() {
             "{label}: the cell behind is untouched"
         );
         assert_eq!(
-            miner.miner.as_ref().unwrap().cargo[0].resource_type,
+            miner.miner.as_ref().unwrap().cargo()[0].resource_type,
             ResourceType::Ore
         );
     }
@@ -285,7 +285,10 @@ fn a_return_order_ends_the_harvesting_byte_and_oregath() {
     assert!(!sample.harvesting, "Unit+0x6D2 cleared by the unit AI");
     let miner = s.sim.substrate.entities.get(s.miner).unwrap();
     assert!(
-        miner.harvest_overlay.as_ref().is_none_or(|ho| !ho.visible),
+        miner
+            .harvest_overlay
+            .as_ref()
+            .is_none_or(|ho| !ho.visible()),
         "OREGATH hidden with the byte"
     );
 }
@@ -415,7 +418,7 @@ fn retail_war_miner_attacks_without_cutting_ore_and_resumes_its_idle_mission() {
                     .miner
                     .as_ref()
                     .unwrap()
-                    .cargo
+                    .cargo()
                     .is_empty()
             {
                 break;
@@ -430,7 +433,7 @@ fn retail_war_miner_attacks_without_cutting_ore_and_resumes_its_idle_mission() {
             .miner
             .as_ref()
             .unwrap()
-            .cargo
+            .cargo()
             .len();
         assert_eq!(bales, usize::from(on_ore), "initial field gate");
         let ore_before = bales_at(&s, (15, 15));
@@ -476,7 +479,7 @@ fn retail_war_miner_attacks_without_cutting_ore_and_resumes_its_idle_mission() {
             let miner = s.sim.substrate.entities.get(s.miner).unwrap();
             if miner.mission.current().known() == Some(MissionType::Attack) {
                 assert_eq!(
-                    miner.miner.as_ref().unwrap().cargo.len(),
+                    miner.miner.as_ref().unwrap().cargo().len(),
                     bales,
                     "Attack does not harvest"
                 );
@@ -486,7 +489,7 @@ fn retail_war_miner_attacks_without_cutting_ore_and_resumes_its_idle_mission() {
                     "Attack leaves the field alone"
                 );
                 assert!(
-                    !miner.miner.as_ref().unwrap().harvesting,
+                    !miner.miner.as_ref().unwrap().harvesting(),
                     "Unit AI clears OREGATH before fire"
                 );
             } else if !s.sim.substrate.entities.contains(victim) {
@@ -505,12 +508,12 @@ fn retail_war_miner_attacks_without_cutting_ore_and_resumes_its_idle_mission() {
             s.sim.substrate.entities.get(s.miner).map(|e| (
                 e.mission.current(),
                 e.mission.queued(),
-                e.navigation.nav_com,
+                e.navigation.nav_com(),
                 e.attack_target.target(),
             )),
             s.sim.substrate.entities.get(victim).map(|e| (
                 e.health.current(),
-                e.dying,
+                e.death.is_dying(),
                 e.is_object_alive(),
                 e.infantry_sprite_pose(),
             )),
@@ -527,7 +530,7 @@ fn retail_war_miner_attacks_without_cutting_ore_and_resumes_its_idle_mission() {
                     .miner
                     .as_ref()
                     .unwrap()
-                    .cargo
+                    .cargo()
                     .len()
                     > bales
                 {

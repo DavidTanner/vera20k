@@ -386,11 +386,11 @@ pub(crate) fn place_production_with_overlays(
         // a tile above this (render's building render-coordinate lift); this is
         // a debug log, and sim/ cannot call render/ to apply it.
         let screen = crate::util::lepton::lepton_to_screen(
-            ge.position.rx,
-            ge.position.ry,
-            ge.position.sub_x,
-            ge.position.sub_y,
-            ge.position.z,
+            ge.position.rx(),
+            ge.position.ry(),
+            ge.position.sub_x(),
+            ge.position.sub_y(),
+            ge.position.z(),
         );
         log::info!(
             "  → spawned sid={} screen=({:.0},{:.0}) foundation_cells: ({},{})..({},{})",
@@ -407,8 +407,7 @@ pub(crate) fn place_production_with_overlays(
     // (`Simulation::building_enter_idle_mode`); the HELLO above kept its
     // cell-put discovery from opening it. A computer house's yard places its
     // own through `sim::ai_base_building::exit_building`.
-    // Refresh superweapon grants — newly placed building may provide a SW.
-    crate::sim::superweapon::refresh_super_weapons_for_owner(sim, rules, owner_id);
+    // Shared Building Unlimbo requested the owner's native1FC House tail.
 
     held.release_after_placement(sim, rules, effects);
     crate::sim::radio::transmit(
@@ -544,7 +543,10 @@ fn evaluate_building_placement(
                 let bn = rules.object(type_str).is_some_and(|o| o.base_normal);
                 format!(
                     "{}@({},{}) bn={}",
-                    type_str, e.position.rx, e.position.ry, bn
+                    type_str,
+                    e.position.rx(),
+                    e.position.ry(),
+                    bn
                 )
             })
             .collect();
@@ -603,7 +605,7 @@ fn is_within_build_area(
     }
     for e in sim.substrate.entities.values() {
         // A dying structure provides no build-area adjacency during its window.
-        if e.dying || e.lifecycle.in_limbo() {
+        if e.death.is_dying() || e.lifecycle.in_limbo() {
             continue;
         }
         if e.category() != EntityCategory::Structure {
@@ -627,8 +629,8 @@ fn is_within_build_area(
         if provider_intersects_build_area_ring(
             (rx, ry, width, height),
             (
-                e.position.rx,
-                e.position.ry,
+                e.position.rx(),
+                e.position.ry(),
                 provider_width,
                 provider_height,
             ),

@@ -55,7 +55,7 @@ impl Fixture {
     /// `Can_Add`'s mission and recruit gates.
     fn new(script: &[(i32, i32)], returns: bool) -> Self {
         let rules = RuleSet::from_ini_with_fixed_art_for_test(
-            &IniFile::from_str(RULES),
+            &crate::sim::arena_fixture::clear_ground_ini(RULES),
             &IniFile::from_str("[GAPOWR]\nFoundation=2x2\n"),
         )
         .expect("transport action rules");
@@ -145,10 +145,7 @@ impl Fixture {
                     .entities
                     .get_mut(passenger)
                     .unwrap()
-                    .passenger_role = PassengerRole::Inside {
-                    transport_id: transport,
-                    open_topped: false,
-                };
+                    .passenger_role = PassengerRole::inside_for_test(transport, false);
                 passenger
             })
             .collect()
@@ -194,12 +191,12 @@ impl Fixture {
     }
 
     fn boarding(&self, id: u64) -> Option<u64> {
-        match self.sim.substrate.entities.get(id)?.passenger_role {
-            PassengerRole::Boarding {
-                target_transport_id,
-            } => Some(target_transport_id),
-            _ => None,
-        }
+        self.sim
+            .substrate
+            .entities
+            .get(id)?
+            .passenger_role
+            .boarding_transport_id()
     }
 
     fn cargo(&self, transport: u64) -> Vec<u64> {
@@ -208,7 +205,7 @@ impl Fixture {
             .entities
             .get(transport)
             .and_then(|entity| entity.passenger_role.cargo())
-            .map(|cargo| cargo.passengers.clone())
+            .map(|cargo| cargo.passengers().to_vec())
             .unwrap_or_default()
     }
 
@@ -269,7 +266,7 @@ fn the_passengers_are_sent_aboard_one_per_update_and_leave_the_team() {
     assert_eq!(f.boarding(second), None, "one member is ordered per update");
     let entity = f.entity(first);
     assert_eq!(ordered(entity), Some(MissionType::Enter));
-    assert_eq!(entity.navigation.nav_com, Some(NavTargetRef::object(apc)));
+    assert_eq!(entity.navigation.nav_com(), Some(NavTargetRef::object(apc)));
 
     f.run_past(team, 1, 900);
     assert_eq!(f.cursor(team), 2, "actions 14 and 43 are finished");
@@ -385,7 +382,7 @@ fn unload_orders_each_loaded_transport_off_buildings() {
     assert!(!f.finished(team));
     let entity = f.entity(apc);
     assert_eq!(ordered(entity), Some(MissionType::Unload));
-    assert_eq!(entity.navigation.nav_com, None);
+    assert_eq!(entity.navigation.nav_com(), None);
     assert!(entity.attack_target.target().is_none());
 
     let parked = f.spawn("APC", 24, 24);
@@ -393,8 +390,8 @@ fn unload_orders_each_loaded_transport_off_buildings() {
     f.spawn("GAPOWR", 8, 20);
     {
         let entity = f.sim.substrate.entities.get_mut(parked).unwrap();
-        entity.position.rx = 9;
-        entity.position.ry = 21;
+        entity.position.set_rx(9);
+        entity.position.set_ry(21);
     }
     let before = ordered(f.entity(parked));
     let team = f.team(&[parked]);
@@ -460,7 +457,7 @@ fn unload_argument_decides_who_leaves_the_team() {
         let transport = f.entity(apc);
         if returns {
             assert_eq!(
-                transport.navigation.nav_com,
+                transport.navigation.nav_com(),
                 Some(NavTargetRef::cell(5, 6)),
                 "{case:?}"
             );
@@ -843,11 +840,13 @@ impl OracleTeam {
                     u32::try_from(passengers.max(0)).unwrap(),
                     0,
                 );
-                cargo.passengers = vec![u64::MAX; count];
-                cargo.passenger_sizes = vec![1; count];
-                entity.passenger_role = PassengerRole::Transport { cargo };
+                cargo.set_passengers_for_test(vec![u64::MAX; count]);
+                cargo.set_passenger_sizes_for_test(vec![1; count]);
+                entity.passenger_role = PassengerRole::transport(cargo);
             }
-            entity.navigation.nav_com = flag(&member["nav"]).then(|| NavTargetRef::cell(1, 1));
+            entity
+                .navigation
+                .set_nav_com(flag(&member["nav"]).then(|| NavTargetRef::cell(1, 1)));
             entity
                 .mission
                 .set_current_for_test(MissionId::from_raw(int(&member["mission"])), 0);
@@ -961,7 +960,7 @@ impl OracleTeam {
                     }
                     Some(target) => Some(NavTargetRef::object(self.members[slot(target)])),
                 };
-                assert_eq!(entity.navigation.nav_com, nav, "{at}: NavCom");
+                assert_eq!(entity.navigation.nav_com(), nav, "{at}: NavCom");
                 assert_eq!(
                     entity.attack_target.target(),
                     (!untargeted[index]).then_some(crate::sim::combat::TargetKind::Cell(2, 2)),
@@ -996,11 +995,8 @@ impl OracleTeam {
                 && entity.passenger_role.cargo().is_none()
             {
                 assert!(
-                    matches!(
-                        entity.passenger_role,
-                        PassengerRole::Boarding { target_transport_id }
-                            if target_transport_id == self.members[slot(target)]
-                    ),
+                    entity.passenger_role.boarding_transport_id()
+                        == Some(self.members[slot(target)]),
                     "{at}: boarding"
                 );
             }
@@ -1088,13 +1084,16 @@ fn deploy_matches_the_original() {
             let id = team.members[index];
             let entity = team.sim.substrate.entities.get(id).unwrap();
             let at = format!("case {case} member {index}");
-            let cell = [i64::from(entity.position.rx), i64::from(entity.position.ry)];
+            let cell = [
+                i64::from(entity.position.rx()),
+                i64::from(entity.position.ry()),
+            ];
             match kind {
                 "mark" => assert!(
-                    entity.lifecycle.cell_marked
+                    entity.lifecycle.cell_marked()
                         && team.sim.substrate.occupancy.contains_entity(
-                            entity.position.rx,
-                            entity.position.ry,
+                            entity.position.rx(),
+                            entity.position.ry(),
                             id
                         ),
                     "{at}: put back"

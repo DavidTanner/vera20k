@@ -96,11 +96,117 @@ use crate::sim::combat::combat_weapon::{self, WeaponSlot};
 use crate::sim::combat::fire_error::FireError;
 use crate::sim::combat::gattling::{StageCall, is_elite};
 use crate::sim::combat::{BuildingShot, fire_coord};
-use crate::sim::game_entity::{DelayedFire, PendingBuildingFire};
 use crate::sim::mission::authority::LiveReadyInputProvider;
 use crate::sim::mission::{MissionId, MissionType};
 use crate::sim::projectile::ProjectilePayload;
 use crate::sim::world::Simulation;
+
+/// A building's delayed fire (`BuildingClass+0x704` mode, `+0x714`
+/// countdown, `+0x708..+0x710` payload), armed by Mission_Attack and served by
+/// ProcessDelayedFire (`0x004503F0`) when the countdown ends.
+///
+/// A shot captures no target: expiry reads the building's live
+/// `attack_target`, with the weapon Mission_Attack saved.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub(crate) struct PendingBuildingFire {
+    /// Signed native timer value, clamped to zero by ProcessDelayedFire after
+    /// its pre-decrement.
+    remaining_ticks: i32,
+    fire: DelayedFire,
+}
+
+impl PendingBuildingFire {
+    /// A fire `remaining_ticks` frames from its end.
+    pub(crate) const fn new(remaining_ticks: i32, fire: DelayedFire) -> Self {
+        Self {
+            remaining_ticks,
+            fire,
+        }
+    }
+
+    /// The countdown (`+0x714`).
+    pub(crate) const fn remaining_ticks(self) -> i32 {
+        self.remaining_ticks
+    }
+
+    /// What it fires (`+0x704` mode, `+0x708..+0x710` payload).
+    pub(crate) const fn fire(self) -> DelayedFire {
+        self.fire
+    }
+}
+
+/// What a delayed fire does when its countdown ends.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub(crate) enum DelayedFire {
+    /// Mode 1: FireAt the live target with the saved weapon (`+0x708`).
+    Weapon(WeaponSlot),
+    /// Mode 2: a Prism support beam (`0x0044ABD0`) to the master's weapon-0
+    /// FLH as it stood at recruitment (`+0x708..+0x710`, world leptons).
+    SupportBeam {
+        to: crate::sim::projectile::ProjectileCoord,
+    },
+}
+
+impl std::hash::Hash for PendingBuildingFire {
+    /// A weapon shot folds as the pre-support latch did (countdown, then the
+    /// slot); a support beam folds a third tag and its point.
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.remaining_ticks.hash(state);
+        match self.fire {
+            DelayedFire::Weapon(slot) => slot.hash(state),
+            DelayedFire::SupportBeam { to } => {
+                2isize.hash(state);
+                to.hash(state);
+            }
+        }
+    }
+}
+
+/// The building's delayed-fire slot: `None` until Mission_Attack arms it
+/// ([`Self::arm`]); ProcessDelayedFire counts it down and ends it
+/// ([`Self::count_down`]).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(transparent)]
+pub(crate) struct BuildingDelayedFire {
+    pending: Option<PendingBuildingFire>,
+}
+
+impl BuildingDelayedFire {
+    /// The armed fire.
+    pub(crate) const fn pending(self) -> Option<PendingBuildingFire> {
+        self.pending
+    }
+
+    /// The countdown (`+0x714`): zero while no fire is armed, the
+    /// constructor's value and the one every end leaves.
+    pub(crate) fn remaining_ticks(self) -> i32 {
+        self.pending.map_or(0, |pending| pending.remaining_ticks)
+    }
+
+    /// Mission_Attack's arm: `fire` ends `delay` frames on.
+    fn arm(&mut self, delay: i32, fire: DelayedFire) {
+        self.pending = Some(PendingBuildingFire::new(delay, fire));
+    }
+
+    /// ProcessDelayedFire's countdown (`0x00450401..0x00450419`): an armed
+    /// fire's `+0x714` drops by one, a signed pre-decrement. At zero or below
+    /// it ends, clearing the mode (`0x00450452`, `0x004504D7`), and answers
+    /// what it fires.
+    fn count_down(&mut self) -> Option<DelayedFire> {
+        let pending = self.pending.as_mut()?;
+        pending.remaining_ticks = pending.remaining_ticks.wrapping_sub(1);
+        if pending.remaining_ticks > 0 {
+            return None;
+        }
+        self.pending.take().map(|pending| pending.fire)
+    }
+
+    /// Install a fixture's fire.
+    #[cfg(test)]
+    pub(crate) fn set_for_test(&mut self, pending: Option<PendingBuildingFire>) {
+        self.pending = pending;
+    }
+}
 
 /// The MissionClass stubs a building's table holds for every mission it has
 /// no handler of its own for (`0x005B2E10..0x005B2FC0`; its Capture,
@@ -299,18 +405,25 @@ fn mission_construction(
 
 /// `BuildingClass::Mission_Unload` (`0x0044D880`). A building with
 /// occupants (`vt+0x408`) first hands every one to `SellBuilding(0, 0)`
-/// (`0x0044D89C`). An absorber holding passengers (`InfantryAbsorb=` /
-/// `UnitAbsorb=`, Type `+0x16AE`/`+0x16AF`, Passengers `+0x114`) and a
-/// `WeaponsFactory=` (`+0x16BD`) then take their own arms. The absorber's
-/// passenger mechanism remains with its existing owner; the factory arm
-/// below uses the shared Techno Door, Drive track and Unit PerCell owners.
+/// (`0x0044D89C`). Native admits the shared absorber scan when either
+/// `UnitAbsorb=` (`Type+0x16AE`) or `InfantryAbsorb=` (`+0x16AF`) is set
+/// (`0x0044D8A7..0x0044D8DF`); the later success tail independently checks
+/// `InfantryAbsorb` (`0x0044DBA9..0x0044DBB7`). VERA runs that scan for
+/// `InfantryAbsorb=` only.
+///
+/// Residual: a loaded `UnitAbsorb=`-only building stops here without running
+/// the scan, so its vehicles stay inside. No retail type sets `UnitAbsorb=`.
+///
+/// A `WeaponsFactory=` (`+0x16BD`)
+/// then takes its own arm; the factory arm below uses the shared Techno Door,
+/// Drive track and Unit PerCell owners.
 /// Every other building queues Guard
 /// (`vt+0x1E8(5, 0)` at `0x0044E379`) and returns 1.
 ///
 /// Residual: a gap generator (`+0xCD1` and `+0xCD3`) first re-toggles its
 /// gap (`0x0044E2BE..0x0044E365`: vt+0x418, `+0x26C`, vt+0x350), not ported;
 /// its Guard tail is. No retail gap generator takes an Unload order (the app
-/// offers Unload only to `CanBeOccupied=` types).
+/// offers Unload only to `CanBeOccupied=` and loaded `InfantryAbsorb=` types).
 fn mission_unload(
     sim: &mut Simulation,
     id: u64,
@@ -330,7 +443,18 @@ fn mission_unload(
         .passenger_role
         .cargo()
         .is_some_and(|cargo| !cargo.is_empty());
-    if (object.infantry_absorb || object.unit_absorb) && holds_passengers {
+    if object.infantry_absorb && holds_passengers {
+        return Some(
+            crate::sim::transport_unload::building_mission_unload_absorber(
+                sim,
+                rules,
+                id,
+                ctx.overlay_registry,
+                ctx.effects,
+            ),
+        );
+    }
+    if object.unit_absorb && holds_passengers {
         return None;
     }
     if object.weapons_factory {
@@ -371,7 +495,7 @@ fn mission_factory_unload(
     let naval = object.naval;
     let phase = entity.door_phase();
     let contact = entity.radio_contacts.slot(0);
-    let tethered = entity.dock_entered_with.is_some();
+    let tethered = entity.tether.partner().is_some();
     let location = crate::sim::movement::ground_pose::position_world_coord(&entity.position);
     let track = crate::sim::movement::factory_exit_track_coordinate(location, object);
     let damaged = requested_damage_state(
@@ -421,7 +545,7 @@ fn mission_factory_unload(
                     .get(product)
                     .and_then(|unit| unit.locomotor.as_ref())
                     .is_some_and(|loco| {
-                        loco.kind == crate::rules::locomotor_type::LocomotorKind::Drive
+                        loco.active_kind() == crate::rules::locomotor_type::LocomotorKind::Drive
                     });
                 if drive {
                     sim.force_track(
@@ -817,10 +941,45 @@ fn waits(sim: &Simulation, id: u64) -> bool {
     })
 }
 
+/// `BuildingClass+0x664`, the supporters a Prism master has recruited for its
+/// next shot. The constructor clears it (`0x0043B895`); Mission_Attack counts
+/// each recruit (`0x0044B4D7`, [`Self::recruit`]); the shot's bonus
+/// (`0x004504CD`), a support beam (`0x0044ACCA`) and Mission_Attack's
+/// null-target and drop tails (`0x0044AF9F`, `0x0044B0ED`) reset it
+/// ([`Self::reset`]). The laser's Prism arm reads it through the fire path.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(transparent)]
+pub(crate) struct PrismSupport {
+    count: i32,
+}
+
+impl PrismSupport {
+    /// The recruited supporters.
+    pub(crate) const fn count(self) -> i32 {
+        self.count
+    }
+
+    /// Mission_Attack's recruit (`0x0044B4D7`); a native dword, so it wraps.
+    fn recruit(&mut self) {
+        self.count = self.count.wrapping_add(1);
+    }
+
+    /// `+0x664 = 0`.
+    fn reset(&mut self) {
+        self.count = 0;
+    }
+
+    /// Install a fixture's count.
+    #[cfg(test)]
+    pub(crate) fn set_for_test(&mut self, count: i32) {
+        self.count = count;
+    }
+}
+
 /// `+0x664 = 0`, the Prism support count, after both tails' SetTarget(0).
 fn clear_support_count(sim: &mut Simulation, id: u64) {
     if let Some(entity) = sim.substrate.entities.get_mut(id) {
-        entity.prism_support_count = 0;
+        entity.prism_support_count.reset();
     }
 }
 
@@ -873,7 +1032,7 @@ fn gattling_step(
 /// `+0x148 += 1`, the voxel turret's animation counter.
 fn advance_turret_anim(sim: &mut Simulation, id: u64) {
     if let Some(entity) = sim.substrate.entities.get_mut(id) {
-        entity.turret_anim_frame = entity.turret_anim_frame.wrapping_add(1);
+        entity.turret_anim_frame.advance();
     }
 }
 
@@ -906,18 +1065,18 @@ pub(super) fn gattling_idle(sim: &mut Simulation, id: u64, rules: &RuleSet) {
         return;
     };
     if entity.gattling.value() > 0 {
-        entity.turret_anim_frame = entity.turret_anim_frame.wrapping_add(1);
+        entity.turret_anim_frame.advance();
     }
     if entity.mission.effective() == MissionId::from_known(MissionType::Attack) {
         return;
     }
-    let since = now.wrapping_sub(entity.last_fire_frame as i32);
+    let since = now.wrapping_sub(entity.last_fire_frame.frame() as i32);
     if since > rules.general.guard_area_targeting_delay.wrapping_add(5) {
         let elite = is_elite(entity);
         entity.gattling.idle_decay(&obj.gattling_stages, elite);
     }
     if entity.gattling.value() > 0 {
-        entity.turret_anim_frame = entity.turret_anim_frame.wrapping_add(1);
+        entity.turret_anim_frame.advance();
     }
 }
 
@@ -1002,10 +1161,7 @@ fn arm_delayed_fire(
     let Some(entity) = sim.substrate.entities.get_mut(id) else {
         return;
     };
-    entity.pending_building_fire = Some(PendingBuildingFire {
-        remaining_ticks: delay,
-        fire,
-    });
+    entity.pending_building_fire.arm(delay, fire);
     let damaged =
         requested_damage_state(entity.health, obj.strength, rules.general.condition_yellow);
     sim.clear_building_anim_slot(id, ACTIVE_ANIM_SLOT);
@@ -1036,7 +1192,7 @@ fn prism_arm(
     let Some(master) = sim.substrate.entities.get(id) else {
         return;
     };
-    let supporter = (master.prism_support_count < rules.general.prism_support.max)
+    let supporter = (master.prism_support_count.count() < rules.general.prism_support.max)
         .then(|| prism_supporter(sim, id, rules, obj))
         .flatten();
     let Some(supporter) = supporter else {
@@ -1051,7 +1207,7 @@ fn prism_arm(
         return;
     };
     if let Some(master) = sim.substrate.entities.get_mut(id) {
-        master.prism_support_count = master.prism_support_count.wrapping_add(1);
+        master.prism_support_count.recruit();
     }
     // `vt+0xB0(out, 0, {0, 0, 0})` (`0x0044B4F6`): the master's weapon-0 FLH.
     let Some(master) = sim.substrate.entities.get(id) else {
@@ -1114,10 +1270,7 @@ fn prism_supporter(
         let admitted = candidate.lifecycle.object_alive()
             && candidate.type_ref() == master.type_ref()
             && candidate.rearm_timer.remaining(now) == 0
-            && candidate
-                .pending_building_fire
-                .map_or(0, |pending| pending.remaining_ticks)
-                == 0
+            && candidate.pending_building_fire.remaining_ticks() == 0
             && candidate.drain.draining_me().is_none()
             && candidate.mission.effective() != attack
             && candidate_id != id;
@@ -1170,18 +1323,12 @@ pub(super) fn process_delayed_fire(
         return;
     };
     // Health 0 returned before the call (`0x00440072`).
-    if entity.dying || entity.health.current() == 0 {
+    if entity.death.is_dying() || entity.health.current() == 0 {
         return;
     }
-    let Some(pending) = entity.pending_building_fire.as_mut() else {
+    let Some(fire) = entity.pending_building_fire.count_down() else {
         return;
     };
-    pending.remaining_ticks = pending.remaining_ticks.wrapping_sub(1);
-    if pending.remaining_ticks > 0 {
-        return;
-    }
-    let fire = pending.fire;
-    entity.pending_building_fire = None;
     match fire {
         DelayedFire::Weapon(slot) => {
             let Some(target) = entity.attack_target.target() else {
@@ -1214,7 +1361,7 @@ pub(super) fn process_delayed_fire(
                 .entities
                 .get_mut(id)
                 .expect("live support source");
-            entity.prism_support_count = 0;
+            entity.prism_support_count.reset();
             entity
                 .rearm_timer
                 .start(now, rules.general.prism_support.delay);
@@ -1303,7 +1450,7 @@ pub(super) fn range_drop(sim: &mut Simulation, id: u64, rules: &RuleSet, ctx: Ob
         return;
     };
     // Health 0 returned before it (`0x00440072`).
-    if entity.dying || entity.health.current() == 0 {
+    if entity.death.is_dying() || entity.health.current() == 0 {
         return;
     }
     let Some(target) = entity.attack_target.target() else {
@@ -1340,11 +1487,11 @@ impl Simulation {
         let Some(entity) = self.substrate.entities.get_mut(id) else {
             return ProjectilePayload::UNSCALED;
         };
-        let count = entity.prism_support_count;
+        let count = entity.prism_support_count.count();
         if count == 0 {
             return ProjectilePayload::UNSCALED;
         }
-        entity.prism_support_count = 0;
+        entity.prism_support_count.reset();
         support_multiplier(rules.general.prism_support.modifier, count)
     }
 

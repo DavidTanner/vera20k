@@ -127,7 +127,7 @@ impl Simulation {
         }
         let facts = ApproachCrush {
             controlled_by_human: self.owner_is_human(actor.owner()),
-            nav_com: actor.navigation.nav_com.is_some(),
+            nav_com: actor.navigation.nav_com().is_some(),
             crusher,
             reach: rules.combat_damage.crush,
             techno: true,
@@ -137,7 +137,7 @@ impl Simulation {
                 .houses
                 .get(&actor.owner())
                 .is_some_and(|house| house.is_human),
-            passive: actor.passively_acquired_target,
+            passive: actor.passive_scan.acquired(),
         };
         Some((facts, target))
     }
@@ -439,7 +439,7 @@ impl Simulation {
         };
         // 4D56A1..56B1: a Magnetron holding its target (+2AC == TarCom)
         // does not approach it.
-        if matches!(target, TargetKind::Entity(target) if actor.locomotor_target == Some(target)) {
+        if matches!(target, TargetKind::Entity(target) if actor.lift.target() == Some(target)) {
             return Ok(None);
         }
         let object = self
@@ -510,7 +510,7 @@ impl Simulation {
             .is_none_or(|h| h.is_controlled_by_human(self.session.game_mode_nonzero));
         let may_approach = object.can_approach_target
             && actor.drain.target().is_none()
-            && actor.bunker_link.installed_in().is_none()
+            && actor.bunker.link().installed_in().is_none()
             && !actor.passenger_role.in_open_transport();
         if !can_fire
             && (mission == Some(MissionType::Sticky)
@@ -529,7 +529,7 @@ impl Simulation {
         // fresh coord-to-Cell query: a Dummy may already have been restamped.
         let cells = NativeCellQuery::canonical(terrain);
         let mut clear_nav = false;
-        if let Some(nav) = actor.navigation.nav_com
+        if let Some(nav) = actor.navigation.nav_com()
             && object.can_recalc_approach_target
             && !can_fire
         {
@@ -546,20 +546,20 @@ impl Simulation {
         let actor = self.substrate.entities.get(id).unwrap();
         let terrain = self.resolved_terrain.as_ref().unwrap();
         let cells = NativeCellQuery::canonical(terrain);
-        if actor.navigation.nav_com.is_some()
+        if actor.navigation.nav_com().is_some()
             && !super::air_movement::is_high_flying_in_query(
                 actor,
                 &cells,
                 Some((rules, &self.interner)),
             )
-            || can_fire && actor.in_playfield
+            || can_fire && actor.in_playfield()
         {
             return Ok(None);
         }
         //4D5A4D..5ABB: the first queued destination (+0x58C, a Cell or an
         // object) is taken (vt+0x480 with 0), leaves the queue and is the
         // answer.
-        if let Some(entry) = actor.navigation.nav_queue.first().copied() {
+        if let Some(entry) = actor.navigation.nav_queue().first().copied() {
             self.assign_destination_keeping_queue(
                 id,
                 Some(entry),
@@ -568,16 +568,12 @@ impl Simulation {
                 frame_effects,
             )
             .map_err(|e| format!("Approach queued destination: {e}"))?;
-            let queue = &mut self
-                .substrate
+            self.substrate
                 .entities
                 .get_mut(id)
                 .unwrap()
                 .navigation
-                .nav_queue;
-            if !queue.is_empty() {
-                queue.remove(0);
-            }
+                .pop_nav_queue_front();
             return Ok(Some(entry));
         }
 
@@ -627,7 +623,7 @@ impl Simulation {
                 .filter(|t| t.category() == EntityCategory::Structure)
                 .map(|t| {
                     let (width, height) =
-                        crate::rules::foundation::foundation_dimensions(&t.foundation);
+                        crate::rules::foundation::foundation_dimensions(t.type_facts.foundation());
                     (i32::from(width), i32::from(height))
                 }),
             TargetKind::Cell(..) => None,
@@ -643,7 +639,7 @@ impl Simulation {
         let target_bridge = match target {
             TargetKind::Cell(..) => cells.flags(identity.unwrap()) & 0x100 != 0,
             TargetKind::Entity(id) => self.substrate.entities.get(id).is_some_and(|target| {
-                target.category() != EntityCategory::Structure && target.on_bridge
+                target.category() != EntityCategory::Structure && target.on_bridge()
             }),
         };
         let category = actor.category();
@@ -803,7 +799,7 @@ impl Simulation {
                     &cells,
                     source_nav,
                     source,
-                    actor.on_bridge,
+                    actor.on_bridge(),
                     actor.low_bridge_tube_state.is_some(),
                 )?;
                 if self.estimate_zone_cost(
@@ -1130,7 +1126,7 @@ impl Simulation {
                 cells.terrain(),
                 (source.0 as u16, source.1 as u16),
                 object.movement_zone,
-                actor.on_bridge,
+                actor.on_bridge(),
                 Some(cells),
             )
             .ok_or("Approach source zone absent")?;
@@ -1187,7 +1183,7 @@ impl Simulation {
             cells,
             source,
             super::ground_pose::position_world_coord(&actor.position),
-            actor.on_bridge,
+            actor.on_bridge(),
             actor.low_bridge_tube_state.is_some(),
         )?;
         let source = coord_cell(source);

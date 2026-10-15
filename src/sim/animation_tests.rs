@@ -225,7 +225,7 @@ fn test_shp_vehicle_non_eight_facings_draws_slot_zero() {
 
 fn gsi_13_06_active_shp_unit(type_name: &str, kind: LocomotorKind) -> GameEntity {
     let mut entity = GameEntity::test_default(13_006, type_name, "Soviet", 5, 5);
-    entity.is_voxel = false;
+    entity.set_is_voxel_for_test(false);
     entity.lifecycle.set_in_limbo_for_test(false);
     entity.locomotor = Some(LocomotorState::for_test_kind(kind));
     let head = DriveCoord::cell(6, 5, 0);
@@ -313,13 +313,13 @@ fn gsi_13_06_body_counter_uses_absolute_precommit_binary_frame_phase() {
     for kind in [LocomotorKind::Drive, LocomotorKind::Ship] {
         let mut entity = gsi_13_06_active_shp_unit("DRON", kind);
         tick_unit_body_frame_counter(&mut entity, speed.rules(), cadence, false, false, None, 3);
-        assert_eq!(entity.body_frame_counter, 0);
+        assert_eq!(entity.body_frame_counter.get(), 0);
         tick_unit_body_frame_counter(&mut entity, speed.rules(), cadence, false, false, None, 4);
-        assert_eq!(entity.body_frame_counter, 1);
+        assert_eq!(entity.body_frame_counter.get(), 1);
         tick_unit_body_frame_counter(&mut entity, speed.rules(), cadence, false, false, None, 5);
-        assert_eq!(entity.body_frame_counter, 1);
+        assert_eq!(entity.body_frame_counter.get(), 1);
         tick_unit_body_frame_counter(&mut entity, speed.rules(), cadence, false, false, None, 8);
-        assert_eq!(entity.body_frame_counter, 2);
+        assert_eq!(entity.body_frame_counter.get(), 2);
     }
 }
 
@@ -327,7 +327,7 @@ fn gsi_13_06_body_counter_uses_absolute_precommit_binary_frame_phase() {
 fn gsi_13_06_body_counter_wraps_and_survives_moving_idle_transitions() {
     let speed = Gsi1306Speed::new();
     let mut entity = gsi_13_06_active_shp_unit("DRON", LocomotorKind::Drive);
-    entity.body_frame_counter = u32::MAX;
+    entity.body_frame_counter.set_for_test(u32::MAX);
     tick_unit_body_frame_counter(
         &mut entity,
         speed.rules(),
@@ -340,9 +340,9 @@ fn gsi_13_06_body_counter_wraps_and_survives_moving_idle_transitions() {
         None,
         4,
     );
-    assert_eq!(entity.body_frame_counter, 0, "native dword wraps");
+    assert_eq!(entity.body_frame_counter.get(), 0, "native dword wraps");
 
-    entity.body_frame_counter = 9;
+    entity.body_frame_counter.set_for_test(9);
     if let Some(drive) = entity
         .locomotor
         .as_mut()
@@ -371,7 +371,8 @@ fn gsi_13_06_body_counter_wraps_and_survives_moving_idle_transitions() {
         8,
     );
     assert_eq!(
-        entity.body_frame_counter, 10,
+        entity.body_frame_counter.get(),
+        10,
         "switching to idle changes only the absolute divisor"
     );
 }
@@ -393,7 +394,7 @@ fn gsi_13_06_counter_suppressions_hold_the_persistent_value() {
     dead.lifecycle.set_object_alive_for_test(false);
     variants.push(("not native-alive", dead));
     let mut dying = base.clone();
-    dying.dying = true;
+    dying.death.set_dying_for_test(true);
     variants.push(("dying", dying));
     let mut falling = base.clone();
     falling.set_falling_down_for_test(true);
@@ -411,13 +412,13 @@ fn gsi_13_06_counter_suppressions_hold_the_persistent_value() {
     )));
     variants.push(("warp in", warp_in));
     let mut swapped = base.clone();
-    swapped.foot_locomotor_swap_active = true;
+    swapped.lift.set_swap_active_for_test(true);
     variants.push(("locomotor swap", swapped));
 
     for (name, mut entity) in variants {
-        entity.body_frame_counter = 17;
+        entity.body_frame_counter.set_for_test(17);
         tick_unit_body_frame_counter(&mut entity, speed.rules(), cadence, false, false, None, 1);
-        assert_eq!(entity.body_frame_counter, 17, "{name}");
+        assert_eq!(entity.body_frame_counter.get(), 17, "{name}");
     }
 }
 
@@ -449,7 +450,11 @@ fn gsi_13_06_draw_and_cadence_use_distinct_movement_predicates() {
             None,
             4,
         );
-        assert_eq!(entity.body_frame_counter, 0, "IdleRate=0 holds the counter");
+        assert_eq!(
+            entity.body_frame_counter.get(),
+            0,
+            "IdleRate=0 holds the counter"
+        );
     }
 }
 
@@ -484,7 +489,7 @@ fn gsi_13_06_positive_fraction_below_get_current_speed_threshold_is_idle() {
             None,
             1,
         );
-        assert_eq!(entity.body_frame_counter, 0, "{name} remains idle");
+        assert_eq!(entity.body_frame_counter.get(), 0, "{name} remains idle");
 
         entity.foot_speed.set_speed_fraction(SimFixed::from_num(1));
         assert!(
@@ -871,7 +876,16 @@ fn infantry_action_fixture(
         crate::sim::house_state::HouseState::new(house, 0, None, true, 0, 10),
     );
     let id = sim
-        .construct_object_limbo_at_height("E1", "Americans", 10, 10, 0, 0, &rules)
+        .construct_object_limbo_at_height(
+            "E1",
+            "Americans",
+            10,
+            10,
+            0,
+            0,
+            &rules,
+            crate::sim::world::FrameEffects::default(),
+        )
         .unwrap();
     sim.substrate
         .entities
@@ -955,7 +969,7 @@ fn infantry_limbo_stops_walk_animation_and_resets_water_state() {
     assert_infantry_pose(&sim, id, 3, SequenceKind::Walk, 0);
     let actor = sim.substrate.entities.get_mut(id).unwrap();
     actor.mission_leaf.install_infantry_water_state_fixture(1);
-    actor.infantry.as_mut().unwrap().is_prone = true;
+    actor.infantry.as_mut().unwrap().set_is_prone_for_test(true);
     let _ = sim.techno_limbo(id);
     let actor = sim.substrate.entities.get(id).unwrap();
     assert_eq!(
@@ -965,7 +979,7 @@ fn infantry_limbo_stops_walk_animation_and_resets_water_state() {
     let leaf = actor.mission_leaf.as_infantry().unwrap();
     assert_eq!(leaf.water_state(), 2);
     assert_eq!(leaf.doing(), 0);
-    assert!(!actor.infantry.as_ref().unwrap().is_prone);
+    assert!(!actor.infantry.as_ref().unwrap().is_prone());
 }
 
 #[test]
@@ -1138,7 +1152,7 @@ fn infantry_prone_state_drives_prone_crawl_and_fireprone_actions() {
         .infantry
         .as_mut()
         .unwrap()
-        .is_prone = true;
+        .set_is_prone_for_test(true);
     assert!(
         sim.infantry_do_action(
             id,
@@ -1175,7 +1189,7 @@ fn infantry_prone_state_drives_prone_crawl_and_fireprone_actions() {
             .infantry
             .as_ref()
             .unwrap()
-            .is_prone
+            .is_prone()
     );
 }
 
@@ -1200,7 +1214,7 @@ fn infantry_down_and_up_remain_uninterruptible_until_sequence_completion() {
             .infantry
             .as_ref()
             .unwrap()
-            .is_prone
+            .is_prone()
     );
     assert!(
         !sim.infantry_do_action(
@@ -1245,7 +1259,7 @@ fn infantry_down_and_up_remain_uninterruptible_until_sequence_completion() {
             .infantry
             .as_ref()
             .unwrap()
-            .is_prone
+            .is_prone()
     );
     assert!(
         !sim.infantry_do_action(
@@ -1287,7 +1301,7 @@ fn presentation_skips_dying_infantry_without_changing_its_stage_or_action() {
         .unwrap()
     );
     let actor = sim.substrate.entities.get_mut(id).unwrap();
-    actor.dying = true;
+    actor.death.set_dying_for_test(true);
     actor.health.set_for_test(0);
     actor.set_native_stage_value(14);
     let dead = tick_animations(
@@ -1315,7 +1329,7 @@ fn completed_infantry_death_is_removed_by_the_class_sequencer() {
         .unwrap()
     );
     let actor = sim.substrate.entities.get_mut(id).unwrap();
-    actor.dying = true;
+    actor.death.set_dying_for_test(true);
     actor.health.set_for_test(0);
     actor.set_native_stage_value(15);
     assert!(sim.infantry_sequencer(id, &rules, crate::sim::world::FrameEffects::default()));
@@ -1347,7 +1361,7 @@ fn infantry_death_finishes_at_its_sequence_count_and_not_one_frame_early() {
         .unwrap()
     );
     let actor = sim.substrate.entities.get_mut(id).unwrap();
-    actor.dying = true;
+    actor.death.set_dying_for_test(true);
     actor.health.set_for_test(0);
     actor.set_native_stage_value(14);
     assert_eq!(
@@ -1494,8 +1508,8 @@ fn mirage_voxel_unit_shp_layout_does_not_create_a_second_stand_walk_clock() {
     // Is_Moving itself.
     for sequence in [SequenceKind::Stand, SequenceKind::Walk] {
         let actor = sim.substrate.entities.get_mut(id).unwrap();
-        assert!(actor.is_voxel);
-        actor.body_frame_counter = 17;
+        assert!(actor.is_voxel());
+        actor.body_frame_counter.set_for_test(17);
         actor.animation = Some(Animation {
             sequence,
             frame_index: 3,
@@ -1524,7 +1538,8 @@ fn mirage_voxel_unit_shp_layout_does_not_create_a_second_stand_walk_clock() {
                 (sequence, 3, 2)
             );
             assert_eq!(
-                actor.body_frame_counter, 17,
+                actor.body_frame_counter.get(),
+                17,
                 "only the reached Foot AI owns this counter"
             );
         }
@@ -1681,13 +1696,17 @@ fn unit_body_counter_matches_original_foot_cadence() {
             [MovementLayer::Air, MovementLayer::Ground].map(|layer| (voxel, layer))
         }) {
             let mut entity = gsi_13_06_active_shp_unit("DRON", LocomotorKind::Drive);
-            entity.is_voxel = voxel;
-            entity.body_frame_counter = input["counter"].as_u64().unwrap_or(0) as u32;
+            entity.set_is_voxel_for_test(voxel);
+            entity
+                .body_frame_counter
+                .set_for_test(input["counter"].as_u64().unwrap_or(0) as u32);
             entity
                 .foot_speed
                 .set_speed_fraction(SimFixed::from_num(i32::from(flag("moving"))));
-            entity.position.exact_z_leptons = Some(integer("height", 0));
-            entity.locomotor.as_mut().unwrap().layer = layer;
+            entity
+                .position
+                .set_exact_z_leptons(Some(integer("height", 0)));
+            entity.locomotor.as_mut().unwrap().set_layer(layer);
             if let Some(flags) = input["flags"].as_array() {
                 entity.set_unit_simple_deploy_for_test(
                     flags[0].as_u64().unwrap() != 0,
@@ -1700,7 +1719,7 @@ fn unit_body_counter_matches_original_foot_cadence() {
                     .attack_target
                     .set_for_test(Some(TargetKind::Entity(42)));
             }
-            entity.foot_locomotor_swap_active = flag("locomotor_swap");
+            entity.lift.set_swap_active_for_test(flag("locomotor_swap"));
             // BeingWarpedOut (`+0x270`) through a Temporal chain's head,
             // WarpingIn (`+0x271`) through the teleport's warp-in.
             if flag("warp_out") {
@@ -1727,7 +1746,7 @@ fn unit_body_counter_matches_original_foot_cadence() {
                 integer("frame", 0) as u32,
             );
             assert_eq!(
-                u64::from(entity.body_frame_counter),
+                u64::from(entity.body_frame_counter.get()),
                 row["counter"].as_u64().unwrap(),
                 "{input}, voxel={voxel}, {layer:?}"
             );

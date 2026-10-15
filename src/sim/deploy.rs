@@ -22,7 +22,7 @@ pub(crate) fn issue_order(
     if !sim.substrate.entities.get(id).is_some_and(|e| {
         e.lifecycle.object_alive()
             && !e.lifecycle.in_limbo()
-            && e.dock_entered_with.is_none()
+            && e.tether.partner().is_none()
             && (crate::sim::mcv_deploy::is_mcv(sim, e, rules)
                 || crate::sim::unit_simple_deploy::is_simple_deployer(sim, e, rules))
     }) {
@@ -33,7 +33,7 @@ pub(crate) fn issue_order(
     // EMP504 has no active state producer in this engine yet.
     if let Some(terrain) = sim.resolved_terrain.as_ref() {
         let actor = sim.substrate.entities.get(id).expect("admitted Unit");
-        if !actor.on_bridge {
+        if !actor.on_bridge() {
             let cells = crate::map::resolved_terrain::NativeCellQuery::canonical(terrain);
             let [x, y] = crate::sim::movement::ground_pose::position_world_xy(&actor.position);
             if cells.ground_fields(cells.lookup_world(x, y)).1 == 0
@@ -61,7 +61,7 @@ pub(crate) fn issue_order(
     // foundation scan stands in), so an MCV still leaving its factory stays.
     let (rx, ry) = {
         let entity = sim.substrate.entities.get(id).unwrap();
-        (entity.position.rx, entity.position.ry)
+        (entity.position.rx(), entity.position.ry())
     };
     if crate::sim::credit_income::building_at_cell(sim, rx, ry)
         .and_then(|building| sim.substrate.entities.get(building))
@@ -115,7 +115,7 @@ impl Simulation {
         let Some(sound) = sound else {
             return Ok(());
         };
-        let (rx, ry) = (actor.position.rx, actor.position.ry);
+        let (rx, ry) = (actor.position.rx(), actor.position.ry());
         let sound_id = self.interner.intern(sound);
         self.sound_events.push(if requested == 27 {
             SimSoundEvent::EntityDeployed {

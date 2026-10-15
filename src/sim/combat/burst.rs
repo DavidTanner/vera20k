@@ -91,7 +91,9 @@ mod tests {
                 .unwrap();
             let entity = sim.substrate.entities.get_mut(id).unwrap();
             represented_assign_target(entity, Some(TargetKind::Cell(5, 4)));
-            entity.passively_acquired_target = true;
+            entity
+                .passive_scan
+                .set_passively_acquired_target_for_test(true);
             entity.weapon_burst.complete_shot(2);
             assert_eq!(entity.weapon_burst.index(), 1);
             let command = match order {
@@ -114,7 +116,7 @@ mod tests {
             assert!(sim.apply_command("Americans", &command, Some(&rules)));
             let entity = sim.substrate.entities.get_mut(id).unwrap();
             assert!(entity.attack_target.target().is_none(), "{command:?}");
-            assert!(!entity.passively_acquired_target, "{command:?}");
+            assert!(!entity.passive_scan.acquired(), "{command:?}");
             assert_eq!(entity.weapon_burst.index(), 0, "{command:?}");
             // A later non-null assignment preserves the reset value, so FLH
             // and GetROF start the new burst at its first shot.
@@ -180,7 +182,9 @@ mod tests {
                 if had_target {
                     represented_assign_target(actor, Some(TargetKind::Cell(6, 4)));
                 }
-                actor.passively_acquired_target = true;
+                actor
+                    .passive_scan
+                    .set_passively_acquired_target_for_test(true);
                 actor.weapon_burst.complete_shot(2);
                 let command = match order {
                     0 => Command::RepairAtDepot {
@@ -212,7 +216,7 @@ mod tests {
                     had_target,
                     "{command:?}"
                 );
-                assert!(actor.passively_acquired_target, "{command:?}");
+                assert!(actor.passive_scan.acquired(), "{command:?}");
                 assert_eq!(actor.weapon_burst.index(), 1, "{command:?}");
 
                 assert!(
@@ -221,7 +225,7 @@ mod tests {
                 );
                 let actor = sim.substrate.entities.get_mut(id).unwrap();
                 assert!(actor.attack_target.target().is_none(), "{command:?}");
-                assert!(!actor.passively_acquired_target, "{command:?}");
+                assert!(!actor.passive_scan.acquired(), "{command:?}");
                 assert_eq!(
                     actor.weapon_burst.index(),
                     i32::from(!had_target),
@@ -255,7 +259,9 @@ mod tests {
             let mut entity = GameEntity::test_default(1, "MTNK", "Americans", 4, 4);
             represented_assign_target(&mut entity, target(&row["previous"]));
             entity.weapon_burst.index = row["index"].as_i64().unwrap() as i32;
-            entity.passively_acquired_target = row["passive"].as_u64().unwrap() != 0;
+            entity
+                .passive_scan
+                .set_passively_acquired_target_for_test(row["passive"].as_u64().unwrap() != 0);
             represented_assign_target(&mut entity, target(&row["requested"]));
             assert_eq!(
                 entity.weapon_burst.index(),
@@ -263,7 +269,7 @@ mod tests {
                 "{row}"
             );
             assert_eq!(
-                entity.passively_acquired_target,
+                entity.passive_scan.acquired(),
                 row["next_passive"].as_u64().unwrap() != 0,
                 "{row}"
             );

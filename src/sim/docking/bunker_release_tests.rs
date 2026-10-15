@@ -3,6 +3,7 @@
 //! integration tests, not native executable comparisons or exit-search parity.
 use super::*;
 use crate::sim::components::{DriveCoord, NavTargetRef};
+use crate::sim::docking::bunker_install::BunkerState;
 use crate::sim::game_entity::GameEntity;
 use crate::sim::movement::ground_pose::position_world_coord;
 use crate::sim::radio::{Contacts, RadioTestEvent};
@@ -29,12 +30,12 @@ pub(super) fn record(sim: &Simulation, building: u64, unit: u64, name: &'static 
     TRACE.with(|trace| {
         trace.borrow_mut().push(Boundary {
             name,
-            unit_link: unit.map(|unit| unit.bunker_link),
+            unit_link: unit.map(|unit| unit.bunker.link()),
             building_link: sim
                 .substrate
                 .entities
                 .get(building)
-                .and_then(|b| b.bunker_occupant),
+                .and_then(|b| b.bunker.occupant()),
             powered: unit
                 .and_then(|unit| unit.locomotor.as_ref())
                 .is_some_and(|loco| loco.is_powered()),
@@ -66,10 +67,12 @@ fn take_trace() -> Vec<Boundary> {
 fn release_fixture() -> Simulation {
     let mut sim = super::tests::installed_sim();
     let building = sim.substrate.entities.get_mut(2).unwrap();
-    building.foundation = "2x3".to_owned();
-    building.position.sub_x = SimFixed::from_num(64);
-    building.position.sub_y = SimFixed::from_num(192);
-    building.position.exact_z_leptons = Some(731);
+    building
+        .type_facts
+        .set_foundation_for_test("2x3".to_owned());
+    building.position.set_sub_x(SimFixed::from_num(64));
+    building.position.set_sub_y(SimFixed::from_num(192));
+    building.position.set_exact_z_leptons(Some(731));
     building.radio_contacts.insert(1);
     let unit = sim.substrate.entities.get_mut(1).unwrap();
     unit.radio_contacts.insert(2);
@@ -80,7 +83,7 @@ fn release_fixture() -> Simulation {
         let mut progress = drive
             .track_progress(crate::sim::movement::track_process::TrackFamily::Drive)
             .unwrap();
-        progress.residual = 971;
+        progress.set_residual(971);
         assert!(drive.store_track_progress(
             crate::sim::movement::track_process::TrackFamily::Drive,
             progress
@@ -90,7 +93,7 @@ fn release_fixture() -> Simulation {
         let mut progress = drive
             .track_progress(crate::sim::movement::track_process::TrackFamily::Drive)
             .unwrap();
-        progress.reversed = true;
+        progress.set_reversed(true);
         assert!(drive.store_track_progress(
             crate::sim::movement::track_process::TrackFamily::Drive,
             progress
@@ -153,14 +156,14 @@ fn sell_release_uses_building_center_preserves_pose_and_orders_links_after_speed
         .unwrap();
     assert_eq!(
         (
-            drive.track().turn_index,
-            drive.track().cursor,
-            drive.track().residual
+            drive.track().turn_index(),
+            drive.track().cursor(),
+            drive.track().residual()
         ),
         (0x47, 0, 971)
     );
-    assert!(drive.track().reversed);
-    assert!(!unit.lifecycle.in_limbo() && unit.in_logic_vector);
+    assert!(drive.track().reversed());
+    assert!(!unit.lifecycle.in_limbo() && unit.in_logic_vector.is_member());
     assert!(!unit.radio_contacts.contains(2));
     assert!(
         !sim.substrate
@@ -222,7 +225,7 @@ fn normal_release_clears_unit_first_and_assigns_destination_without_teleport() {
     assert_eq!(trace[5].building_link, Some(1));
     let unit = sim.substrate.entities.get(1).unwrap();
     assert_eq!(position_world_coord(&unit.position), pose);
-    assert_eq!(unit.navigation.nav_com, Some(NavTargetRef::cell(9, 11)));
+    assert_eq!(unit.navigation.nav_com(), Some(NavTargetRef::cell(9, 11)));
     assert_eq!(
         unit.mission.queued(),
         MissionId::from_known(MissionType::Move)
@@ -232,7 +235,7 @@ fn normal_release_clears_unit_first_and_assigns_destination_without_teleport() {
         building.mission.queued(),
         MissionId::from_known(MissionType::Guard)
     );
-    assert_eq!(building.bunker_runtime.unwrap().state, BunkerState::Idle);
+    assert_eq!(building.bunker_runtime.unwrap().state(), BunkerState::Idle);
 }
 
 #[test]
@@ -253,7 +256,7 @@ fn force_limbo_early_return_does_not_skip_caller_speed_links_or_break() {
         "release must not resurrect/reveal"
     );
     assert_eq!(unit.foot_speed.applied_fraction(), SIM_ONE);
-    assert_eq!(unit.bunker_link, BunkerLink::None);
+    assert_eq!(unit.bunker.link(), BunkerLink::None);
     assert!(!unit.radio_contacts.contains(2));
     let drive = unit
         .locomotor
@@ -263,9 +266,12 @@ fn force_limbo_early_return_does_not_skip_caller_speed_links_or_break() {
         .unwrap();
     assert_eq!(drive.head_to(), None);
     assert!(!drive.track_valid());
-    assert_eq!(drive.track().turn_index, 0x47);
+    assert_eq!(drive.track().turn_index(), 0x47);
     assert_eq!(drive.destination(), Some(DriveCoord::cell(7, 8, 417)));
-    assert_eq!(sim.substrate.entities.get(2).unwrap().bunker_occupant, None);
+    assert_eq!(
+        sim.substrate.entities.get(2).unwrap().bunker.occupant(),
+        None
+    );
 }
 
 #[test]
@@ -354,13 +360,13 @@ fn nonunit_link_does_not_release_or_reset_bunker() {
         }
         assert!(take_trace().is_empty());
         let unit = sim.substrate.entities.get(1).unwrap();
-        assert_eq!(unit.bunker_link, BunkerLink::Installed(2));
+        assert_eq!(unit.bunker.link(), BunkerLink::Installed(2));
         assert!(!unit.locomotor.as_ref().unwrap().is_powered());
         assert_eq!(unit.foot_speed.applied_fraction(), SimFixed::lit("0.25"));
         let building = sim.substrate.entities.get(2).unwrap();
-        assert_eq!(building.bunker_occupant, Some(1));
+        assert_eq!(building.bunker.occupant(), Some(1));
         assert_eq!(
-            building.bunker_runtime.unwrap().state,
+            building.bunker_runtime.unwrap().state(),
             BunkerState::Occupied
         );
     }

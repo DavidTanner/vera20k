@@ -177,14 +177,14 @@ fn recalc_matches_the_original() {
 fn center_member(id: u64, row: &Value) -> GameEntity {
     let [x, y, _] = xyz(&row["xyz"]);
     let mut entity = GameEntity::test_default(id, "E1", "OWNER", (x >> 8) as u16, (y >> 8) as u16);
-    entity.position.sub_x = SimFixed::from_num(x & 0xFF);
-    entity.position.sub_y = SimFixed::from_num(y & 0xFF);
+    entity.position.set_sub_x(SimFixed::from_num(x & 0xFF));
+    entity.position.set_sub_y(SimFixed::from_num(y & 0xFF));
     entity
         .lifecycle
         .set_object_alive_for_test(flag(&row["active"]));
     entity.health.set_for_test(int(&row["health"]));
     entity.lifecycle.set_in_limbo_for_test(flag(&row["limbo"]));
-    entity.in_playfield = flag(&row["in_playfield"]);
+    entity.set_in_playfield(flag(&row["in_playfield"]));
     entity.set_category_for_test(if flag(&row["aircraft"]) {
         EntityCategory::Aircraft
     } else {

@@ -110,7 +110,7 @@ fn pips_positive(entity: &GameEntity, object: &ObjectType) -> bool {
         && entity
             .miner
             .as_ref()
-            .is_some_and(|miner| !miner.cargo.is_empty())
+            .is_some_and(|miner| !miner.cargo().is_empty())
 }
 
 impl Simulation {
@@ -141,8 +141,8 @@ impl Simulation {
                         .is_some_and(|object| object.weapons_factory)
             })
             && self.substrate.occupancy.first_building_on_layer(
-                unit.position.rx,
-                unit.position.ry,
+                unit.position.rx(),
+                unit.position.ry(),
                 MovementLayer::Ground,
             ) == Some(factory)
     }
@@ -185,7 +185,7 @@ impl Simulation {
         let owner = unit.owner();
         if unit.category() != EntityCategory::Unit
             || self.team_script_vm.team_for_member(id).is_some()
-            || unit.dock_entered_with.is_some()
+            || unit.tether.partner().is_some()
             || crate::sim::combat::combat_weapon::is_ally_by_object(
                 Some(&self.house_alliances),
                 &self.interner,

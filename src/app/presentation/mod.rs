@@ -11,6 +11,7 @@ pub(crate) mod instances;
 pub(crate) mod ion_blasts;
 pub(crate) mod lasers;
 pub(crate) mod line_trails;
+pub(crate) mod outcome_banner;
 pub(crate) mod overlay_index;
 pub(crate) mod render;
 pub(crate) mod selection_brackets;

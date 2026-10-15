@@ -26,7 +26,7 @@ fn authority(sim: &Simulation, source: u64, expected_load: bool) -> Value {
         })
         .collect();
     json!({
-        "actor":actor,"actor_in_logic":actor.in_logic_vector,
+        "actor":actor,"actor_in_logic":actor.in_logic_vector.is_member(),
         "bullets":bullets,
         "anims":sim.substrate.anims.iter().map(|(_, anim)|
             json!({"state":anim,"in_logic":anim.in_logic_vector,
@@ -61,7 +61,7 @@ fn transient_ids(sim: &Simulation, ambient: &AmbientAnims) -> Vec<u64> {
 fn settled(sim: &Simulation, source: u64, ambient: &AmbientAnims) -> bool {
     let actor = sim.substrate.entities.get(source).unwrap();
     actor.attack_target.target().is_none()
-        && actor.navigation.nav_com.is_none()
+        && actor.navigation.nav_com().is_none()
         && actor
             .locomotor
             .as_ref()
@@ -145,7 +145,7 @@ fn retail_fv_pursuit_missiles_collapse_and_guard_survive_restore() {
         let actor = sim.substrate.entities.get(source).unwrap();
         let name = match checkpoints.len() {
             0 if actor.attack_target.target().is_some()
-                && actor.navigation.nav_com.is_some()
+                && actor.navigation.nav_com().is_some()
                 && actor
                     .locomotor
                     .as_ref()

@@ -256,11 +256,12 @@ pub(crate) fn building_at_cell(sim: &Simulation, rx: u16, ry: u16) -> Option<u64
 /// `Simulation` while it applies fire emissions).
 pub(crate) fn building_at_cell_in_store(entities: &EntityStore, rx: u16, ry: u16) -> Option<u64> {
     entities.values().find_map(|entity| {
-        if entity.category() != EntityCategory::Structure || entity.dying {
+        if entity.category() != EntityCategory::Structure || entity.death.is_dying() {
             return None;
         }
-        let (width, height) = crate::rules::foundation::foundation_dimensions(&entity.foundation);
-        let (bx, by) = (entity.position.rx, entity.position.ry);
+        let (width, height) =
+            crate::rules::foundation::foundation_dimensions(entity.type_facts.foundation());
+        let (bx, by) = (entity.position.rx(), entity.position.ry());
         (rx >= bx && rx < bx.saturating_add(width) && ry >= by && ry < by.saturating_add(height))
             .then_some(entity.stable_id())
     })
@@ -282,7 +283,7 @@ pub(crate) fn install_drain_link(sim: &mut Simulation, drainer_id: u64, victim_i
         .substrate
         .entities
         .get(drainer_id)
-        .map(|entity| (entity.position.rx, entity.position.ry))
+        .map(|entity| (entity.position.rx(), entity.position.ry()))
     else {
         return false;
     };
@@ -451,7 +452,7 @@ pub(crate) fn drain_unit_ai_step(sim: &mut Simulation, stable_id: u64) {
         entity
             .drain
             .target
-            .map(|target| (target, entity.position.rx, entity.position.ry))
+            .map(|target| (target, entity.position.rx(), entity.position.ry()))
     }) else {
         return;
     };
@@ -534,9 +535,9 @@ mod tests {
     /// Test-only relocation that keeps the transient occupancy index coherent.
     fn move_disc(sim: &mut Simulation, disk: u64, rx: u16, ry: u16) {
         let entity = sim.substrate.entities.get_mut(disk).expect("disc present");
-        let (old_rx, old_ry) = (entity.position.rx, entity.position.ry);
-        entity.position.rx = rx;
-        entity.position.ry = ry;
+        let (old_rx, old_ry) = (entity.position.rx(), entity.position.ry());
+        entity.position.set_rx(rx);
+        entity.position.set_ry(ry);
         let layer = sim.substrate.occupancy.listed_layer(old_rx, old_ry, disk);
         if let Some(layer) = layer {
             sim.substrate.occupancy.move_entity(
@@ -905,7 +906,7 @@ mod tests {
             disc.attack_target.target().is_none(),
             "Assign_Target(NULL) at 0x006FDF97 leaves no Target on the same tick (tick {linked_at})"
         );
-        assert!(!disc.passively_acquired_target);
+        assert!(!disc.passive_scan.acquired());
         assert_eq!(
             sim.substrate
                 .entities

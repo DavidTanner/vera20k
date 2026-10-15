@@ -58,6 +58,29 @@ use crate::sim::world::Simulation;
 
 use super::ResourceType;
 
+/// The type whose model a harvester shows while its unload latch
+/// (Unit+0x6D1) is set: the type's `UnloadingClass=`, which raising the latch
+/// installs and dropping it clears. Only the latch's two writers here touch
+/// it; the unit drawers read it in place of the object's own type.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(transparent)]
+pub(crate) struct UnloadImage {
+    image: Option<crate::sim::intern::InternedId>,
+}
+
+impl UnloadImage {
+    /// The unloading type, while the latch is set.
+    pub(crate) const fn image(self) -> Option<crate::sim::intern::InternedId> {
+        self.image
+    }
+
+    /// Install a fixture's image.
+    #[cfg(test)]
+    pub(crate) fn set_for_test(&mut self, image: Option<crate::sim::intern::InternedId>) {
+        self.image = image;
+    }
+}
+
 /// The body facing the Unload window centres on (`0x0073DF8A`).
 const UNLOAD_FACING: u16 = crate::sim::radio::receive::DOCK_FACING;
 
@@ -89,7 +112,7 @@ pub(crate) fn mission_unload(
     // (raw 0x3F80..=0x407F); otherwise turn (unless the turret is mid-swing).
     let raw = entity.body_facing_current(now);
     if (((u32::from(raw) >> 7) + 1) & 0x1FE) != 0x80 {
-        if !entity.turret_rotation_latch
+        if !entity.turret_rotation_latch.is_set()
             && let Some(entity) = sim.substrate.entities.get_mut(id)
         {
             crate::sim::movement::drive_do_turn(entity, UNLOAD_FACING, now);
@@ -313,7 +336,7 @@ fn set_unload_latch(sim: &mut Simulation, rules: &RuleSet, id: u64, active: bool
     if let Some(miner) = entity.miner.as_mut() {
         miner.unload_active = true;
     }
-    entity.display_type_override = image;
+    entity.display_type_override.image = image;
 }
 
 /// Drop Unit+0x6D1: the ordinary image returns. The StageClass keeps
@@ -328,7 +351,7 @@ pub(crate) fn clear_unload_latch(sim: &mut Simulation, id: u64) -> bool {
     };
     let was_set = miner.unload_active;
     miner.unload_active = false;
-    entity.display_type_override = None;
+    entity.display_type_override.image = None;
     was_set
 }
 
@@ -336,10 +359,10 @@ pub(crate) fn clear_unload_latch(sim: &mut Simulation, id: u64) -> bool {
 /// (`AdjacentCell[W]`, `0x0089F6A0`): the refinery for a miner on its pad.
 fn unload_building(sim: &Simulation, id: u64) -> Option<u64> {
     let entity = sim.substrate.entities.get(id)?;
-    let x = (entity.position.rx as i16).wrapping_sub(1) as u16;
+    let x = (entity.position.rx() as i16).wrapping_sub(1) as u16;
     sim.substrate
         .occupancy
-        .first_building_on_layer(x, entity.position.ry, MovementLayer::Ground)
+        .first_building_on_layer(x, entity.position.ry(), MovementLayer::Ground)
 }
 
 /// `0x0073E539` / `0x0073E1F0`: a NavCom and a queued mission other than
@@ -347,7 +370,7 @@ fn unload_building(sim: &Simulation, id: u64) -> Option<u64> {
 fn new_order_pending(sim: &Simulation, id: u64) -> bool {
     sim.substrate.entities.get(id).is_some_and(|entity| {
         let queued = entity.mission.queued();
-        entity.navigation.nav_com.is_some()
+        entity.navigation.nav_com().is_some()
             && queued != MissionId::NONE
             && queued != MissionId::from_known(MissionType::Harvest)
     })

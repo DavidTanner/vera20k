@@ -145,7 +145,7 @@ impl Simulation {
         };
         let navigation = super::foot_coordinate::navigation_coordinate(foot, Some(terrain))?;
         let seed = ((navigation.x / 256) as i16, (navigation.y / 256) as i16);
-        let on_bridge = foot.on_bridge;
+        let on_bridge = foot.on_bridge();
         let destination = select_neighbor(seed, start, |candidate, direction| {
             let cells = NativeCellQuery::canonical(terrain);
             // Preserve the retained Cell identity across the height-aware

@@ -16,18 +16,13 @@ fn fixture(family: TrackFamily, budget: i32) -> (Simulation, TrackInvocation, i3
     ));
     entity.lifecycle.set_object_alive_for_test(true);
     entity.lifecycle.set_in_limbo_for_test(false);
-    entity.lifecycle.cell_marked = true;
+    entity.lifecycle.set_cell_marked(true);
     let head = DriveCoord {
         x: 10 * 256 + 128,
         y: 9 * 256 + 128,
         z: 0,
     };
-    let track = TrackProgress {
-        turn_index: 0,
-        cursor: 0,
-        reversed: false,
-        residual: 0,
-    };
+    let track = TrackProgress::for_test(0, 0, false, 0);
     match family {
         TrackFamily::Drive => {
             assert!(
@@ -99,7 +94,7 @@ fn terminal_horizontal_gate_uses_installed_owner_and_retires_with_class() {
     use crate::sim::components::NavTargetRef;
     let (mut sim, _, _) = fixture(TrackFamily::Drive, 0);
     let e = sim.substrate.entities.get_mut(1).unwrap();
-    e.navigation.nav_com = Some(NavTargetRef::cell(20, 20));
+    e.navigation.set_nav_com(Some(NavTargetRef::cell(20, 20)));
     assert!(
         e.locomotor
             .as_mut()
@@ -121,7 +116,7 @@ fn terminal_horizontal_gate_uses_installed_owner_and_retires_with_class() {
         .get_mut(1)
         .unwrap()
         .navigation
-        .nav_com = Some(NavTargetRef::cell(10, 10));
+        .set_nav_com(Some(NavTargetRef::cell(10, 10)));
     assert!(
         sim.track_reached_destination(1, TrackFamily::Drive, None)
             .unwrap()
@@ -139,7 +134,7 @@ fn terminal_horizontal_gate_uses_installed_owner_and_retires_with_class() {
         .get_mut(1)
         .unwrap()
         .navigation
-        .nav_com = Some(NavTargetRef::cell(20, 20));
+        .set_nav_com(Some(NavTargetRef::cell(20, 20)));
     assert!(
         !sim.track_reached_destination(1, TrackFamily::Drive, None)
             .unwrap()
@@ -167,7 +162,7 @@ fn building_navigation_reaches_drive_and_ship_terminal_callbacks() {
                 8,
                 EntityCategory::Structure,
             );
-            building.foundation = "3x3".into();
+            building.type_facts.set_foundation_for_test("3x3".into());
             building.radio_contacts.set_capacity(3);
             for id in [100, 101, if contacted { 1 } else { 102 }] {
                 building.radio_contacts.insert(id);
@@ -177,7 +172,9 @@ fn building_navigation_reaches_drive_and_ship_terminal_callbacks() {
             sim.interner = crate::sim::intern::test_interner();
             let mover = sim.substrate.entities.get_mut(1).unwrap();
             let destination = head(mover, family);
-            mover.navigation.nav_com = Some(NavTargetRef::Building { id: 2 });
+            mover
+                .navigation
+                .set_nav_com(Some(NavTargetRef::Building { id: 2 }));
             match family {
                 TrackFamily::Drive => {
                     assert!(mover.locomotor.as_mut().unwrap().store_track_destination(
@@ -194,7 +191,7 @@ fn building_navigation_reaches_drive_and_ship_terminal_callbacks() {
             }
             let loco = mover.locomotor.as_mut().unwrap();
             let mut state = loco.track_progress(family).unwrap();
-            state.cursor = super::super::drive_track::raw_track_points(1).len() as i32;
+            state.set_cursor(super::super::drive_track::raw_track_points(1).len() as i32);
             assert!(loco.store_track_progress(family, state));
             let mut callbacks = 0;
             sim.run_track_points_observed(
@@ -219,7 +216,11 @@ fn building_navigation_reaches_drive_and_ship_terminal_callbacks() {
             );
             assert_eq!(callbacks, 1);
             let mover = sim.substrate.entities.get(1).unwrap();
-            assert_eq!(mover.navigation.nav_com.is_none(), contacted, "{family:?}");
+            assert_eq!(
+                mover.navigation.nav_com().is_none(),
+                contacted,
+                "{family:?}"
+            );
             assert_eq!(
                 match family {
                     TrackFamily::Drive => mover
@@ -255,7 +256,9 @@ fn terminal_queries_retained_target_after_clearing_own_head_before_per_cell() {
         let (mut sim, invocation, budget) = fixture(family, 8);
         let mover = sim.substrate.entities.get_mut(1).unwrap();
         let destination = head(mover, family);
-        mover.navigation.nav_com = Some(NavTargetRef::Entity { id: 2 });
+        mover
+            .navigation
+            .set_nav_com(Some(NavTargetRef::Entity { id: 2 }));
         match family {
             TrackFamily::Drive => {
                 assert!(mover.locomotor.as_mut().unwrap().store_track_destination(
@@ -272,7 +275,7 @@ fn terminal_queries_retained_target_after_clearing_own_head_before_per_cell() {
         }
         let loco = mover.locomotor.as_mut().unwrap();
         let mut state = loco.track_progress(family).unwrap();
-        state.cursor = super::super::drive_track::raw_track_points(1).len() as i32;
+        state.set_cursor(super::super::drive_track::raw_track_points(1).len() as i32);
         assert!(loco.store_track_progress(family, state));
         let mut target = GameEntity::test_default(2, "E1", "Americans", 20, 20);
         target.set_category_for_test(EntityCategory::Infantry);
@@ -316,7 +319,7 @@ fn terminal_queries_retained_target_after_clearing_own_head_before_per_cell() {
         });
         assert_eq!(per_cell, 1);
         assert_eq!(
-            sim.substrate.entities.get(1).unwrap().navigation.nav_com,
+            sim.substrate.entities.get(1).unwrap().navigation.nav_com(),
             None
         );
     }
@@ -341,7 +344,7 @@ fn production_host_keeps_budget_and_live_cursor_across_world_coordinate_effect()
                             .as_mut()
                             .unwrap();
                         let mut state = loco.track_progress(family).unwrap();
-                        state.cursor = 2;
+                        state.set_cursor(2);
                         assert!(loco.store_track_progress(family, state));
                     }
                 }
@@ -349,10 +352,11 @@ fn production_host_keeps_budget_and_live_cursor_across_world_coordinate_effect()
         let state = progress(sim.substrate.entities.get(1).unwrap(), family).unwrap();
         assert_eq!(moved, 3);
         assert_eq!(
-            state.cursor, 5,
+            state.cursor(),
+            5,
             "finish the same paid point with the live cursor"
         );
-        assert_eq!(state.residual, 1);
+        assert_eq!(state.residual(), 1);
         assert!(callbacks >= 3);
     }
 }
@@ -371,7 +375,7 @@ fn production_host_lifecycle_exit_does_not_store_call_local_residual() {
             .unwrap()
             .track_progress(crate::sim::movement::track_process::TrackFamily::Drive)
             .unwrap();
-        progress.residual = 4;
+        progress.set_residual(4);
         assert!(
             sim.substrate
                 .entities
@@ -397,8 +401,8 @@ fn production_host_lifecycle_exit_does_not_store_call_local_residual() {
         }
     });
     let state = progress(sim.substrate.entities.get(1).unwrap(), TrackFamily::Drive).unwrap();
-    assert_eq!(state.residual, 4);
-    assert_eq!(state.cursor, 0);
+    assert_eq!(state.residual(), 4);
+    assert_eq!(state.cursor(), 0);
 }
 
 #[test]
@@ -413,7 +417,7 @@ fn crossing_mark_state_and_open_topped_cargo_are_visible_before_paid_continuatio
     sim.interner = crate::sim::intern::test_interner();
     let mut cargo = PassengerCargo::new(2, 1);
     assert!(cargo.board(2, 1));
-    sim.substrate.entities.get_mut(1).unwrap().passenger_role = PassengerRole::Transport { cargo };
+    sim.substrate.entities.get_mut(1).unwrap().passenger_role = PassengerRole::transport(cargo);
     let passenger = GameEntity::test_default(2, "E1", "Americans", 4, 4);
     sim.substrate.entities.insert(passenger);
     // Force a cell crossing on the first raw point; this test observes the
@@ -443,7 +447,7 @@ fn crossing_mark_state_and_open_topped_cargo_are_visible_before_paid_continuatio
                 TrackWorldEvent::MarkRemove | TrackWorldEvent::SetCoords | TrackWorldEvent::MarkPut
             ) {
                 let entity = sim.substrate.entities.get(id).unwrap();
-                events.push((event, entity.lifecycle.cell_marked));
+                events.push((event, entity.lifecycle.cell_marked()));
                 if event == TrackWorldEvent::SetCoords {
                     assert_eq!(
                         position_world_coord(&sim.substrate.entities.get(2).unwrap().position),
@@ -464,7 +468,7 @@ fn crossing_mark_state_and_open_topped_cargo_are_visible_before_paid_continuatio
     assert_eq!(
         progress(sim.substrate.entities.get(1).unwrap(), TrackFamily::Drive)
             .unwrap()
-            .cursor,
+            .cursor(),
         1
     );
 }
@@ -482,10 +486,11 @@ fn nonterminal_limbo_and_falling_do_not_add_an_early_survival_gate() {
         });
         let state = progress(sim.substrate.entities.get(1).unwrap(), family).unwrap();
         assert_eq!(
-            state.cursor, 2,
+            state.cursor(),
+            2,
             "4B1A77 tests alive only before common cursor increment"
         );
-        assert_eq!(state.residual, 1);
+        assert_eq!(state.residual(), 1);
     }
 }
 
@@ -496,7 +501,9 @@ fn terminal_per_cell_limbo_keeps_retained_residual_and_navcom() {
         let (mut sim, invocation, budget) = fixture(family, 22);
         let entity = sim.substrate.entities.get_mut(1).unwrap();
         let target = head(entity, family);
-        entity.navigation.nav_com = Some(NavTargetRef::cell(10, 9));
+        entity
+            .navigation
+            .set_nav_com(Some(NavTargetRef::cell(10, 9)));
         match family {
             TrackFamily::Drive => {
                 assert!(entity.locomotor.as_mut().unwrap().store_track_destination(
@@ -513,15 +520,15 @@ fn terminal_per_cell_limbo_keeps_retained_residual_and_navcom() {
         }
         let loco = entity.locomotor.as_mut().unwrap();
         let mut state = loco.track_progress(family).unwrap();
-        state.cursor = super::super::drive_track::raw_track_points(1).len() as i32;
-        state.residual = 4;
+        state.set_cursor(super::super::drive_track::raw_track_points(1).len() as i32);
+        state.set_residual(4);
         assert!(loco.store_track_progress(family, state));
         let mut calls = 0;
         sim.run_track_points_observed(invocation, budget, None, None, &mut |sim, id, event| {
             if event == TrackWorldEvent::PerCell {
                 calls += 1;
                 let entity = sim.substrate.entities.get_mut(id).unwrap();
-                assert!(entity.navigation.nav_com.is_some());
+                assert!(entity.navigation.nav_com().is_some());
                 assert_eq!(head(entity, family), DriveCoord { x: 0, y: 0, z: 0 });
                 assert!(!valid(entity, family));
                 entity.lifecycle.set_in_limbo_for_test(true);
@@ -529,9 +536,9 @@ fn terminal_per_cell_limbo_keeps_retained_residual_and_navcom() {
         });
         let entity = sim.substrate.entities.get(1).unwrap();
         assert_eq!(calls, 1);
-        assert_eq!(progress(entity, family).unwrap().residual, 4);
+        assert_eq!(progress(entity, family).unwrap().residual(), 4);
         assert!(
-            entity.navigation.nav_com.is_some(),
+            entity.navigation.nav_com().is_some(),
             "limbo returns before saved-reached FootStop"
         );
     }
@@ -542,7 +549,9 @@ fn terminal_saved_reached_clears_callback_navcom_and_only_live_queue_head() {
     use crate::sim::components::{FootPathQueue, NavTargetRef};
     let (mut sim, invocation, budget) = fixture(TrackFamily::Drive, 8);
     let entity = sim.substrate.entities.get_mut(1).unwrap();
-    entity.navigation.nav_com = Some(NavTargetRef::cell(10, 9));
+    entity
+        .navigation
+        .set_nav_com(Some(NavTargetRef::cell(10, 9)));
     let drive = entity.locomotor.as_mut().unwrap();
     assert!(drive.store_track_destination(
         crate::sim::movement::track_process::TrackFamily::Drive,
@@ -552,7 +561,7 @@ fn terminal_saved_reached_clears_callback_navcom_and_only_live_queue_head() {
         let mut progress = drive
             .track_progress(crate::sim::movement::track_process::TrackFamily::Drive)
             .unwrap();
-        progress.cursor = super::super::drive_track::raw_track_points(1).len() as i32;
+        progress.set_cursor(super::super::drive_track::raw_track_points(1).len() as i32);
         assert!(drive.store_track_progress(
             crate::sim::movement::track_process::TrackFamily::Drive,
             progress
@@ -561,7 +570,7 @@ fn terminal_saved_reached_clears_callback_navcom_and_only_live_queue_head() {
     sim.run_track_points_observed(invocation, budget, None, None, &mut |sim, id, event| {
         if event == TrackWorldEvent::PerCell {
             let entity = sim.substrate.entities.get_mut(id).unwrap();
-            assert_eq!(entity.navigation.nav_com, Some(NavTargetRef::cell(10, 9)));
+            assert_eq!(entity.navigation.nav_com(), Some(NavTargetRef::cell(10, 9)));
             assert!(
                 entity
                     .locomotor
@@ -572,19 +581,17 @@ fn terminal_saved_reached_clears_callback_navcom_and_only_live_queue_head() {
                     .destination()
                     .is_none()
             );
-            entity.navigation.nav_com = Some(NavTargetRef::cell(25, 25));
-            entity.navigation.path_replay = FootPathQueue {
-                directions: vec![1, 2, 3],
-                cursor: 1,
-                reference_cell: Some((7, 8)),
-            };
+            entity
+                .navigation
+                .set_nav_com(Some(NavTargetRef::cell(25, 25)));
+            entity.navigation.path_replay = FootPathQueue::for_test(vec![1, 2, 3], 1, Some((7, 8)));
         }
     });
     let entity = sim.substrate.entities.get(1).unwrap();
-    assert!(entity.navigation.nav_com.is_none());
-    assert_eq!(entity.navigation.path_replay.directions, vec![1, 255, 3]);
-    assert_eq!(entity.navigation.path_replay.cursor, 1);
-    assert_eq!(entity.navigation.path_replay.reference_cell, Some((7, 8)));
+    assert!(entity.navigation.nav_com().is_none());
+    assert_eq!(entity.navigation.path_replay.directions(), vec![1, 255, 3]);
+    assert_eq!(entity.navigation.path_replay.cursor(), 1);
+    assert_eq!(entity.navigation.path_replay.reference_cell(), Some((7, 8)));
 }
 
 #[test]
@@ -638,23 +645,17 @@ fn accepted_chain_preserves_call_budget_and_reloads_callback_queue_once() {
         let entity = sim.substrate.entities.get_mut(1).unwrap();
         if family == TrackFamily::Ship {
             let loco = entity.locomotor.as_mut().unwrap();
-            loco.movement_zone = crate::rules::locomotor_type::MovementZone::Water;
-            loco.speed_type = crate::rules::locomotor_type::SpeedType::Float;
+            loco.set_movement_zone_for_test(crate::rules::locomotor_type::MovementZone::Water);
+            loco.set_speed_type_for_test(crate::rules::locomotor_type::SpeedType::Float);
         }
-        assert!(entity.locomotor.as_mut().unwrap().store_track_progress(
-            family,
-            TrackProgress {
-                turn_index: 1,
-                cursor: 37,
-                reversed: false,
-                residual: 0,
-            }
-        ));
-        entity.navigation.path_replay = FootPathQueue {
-            directions: vec![2, 3],
-            cursor: 0,
-            reference_cell: Some((10, 10)),
-        };
+        assert!(
+            entity
+                .locomotor
+                .as_mut()
+                .unwrap()
+                .store_track_progress(family, TrackProgress::for_test(1, 37, false, 0))
+        );
+        entity.navigation.path_replay = FootPathQueue::for_test(vec![2, 3], 0, Some((10, 10)));
         let saved_fraction = entity.foot_speed.applied_fraction();
         let mut callbacks = 0;
         sim.run_track_points_observed(
@@ -668,18 +669,15 @@ fn accepted_chain_preserves_call_budget_and_reloads_callback_queue_once() {
                     let entity = sim.substrate.entities.get_mut(id).unwrap();
                     let loco = entity.locomotor.as_mut().unwrap();
                     let mut state = loco.track_progress(family).unwrap();
-                    assert_eq!(state.turn_index, selected.turn_track_index as i32);
-                    assert_eq!(state.cursor, i32::from(selected.entry_index) - 1);
-                    state.cursor += 1;
+                    assert_eq!(state.turn_index(), selected.turn_track_index as i32);
+                    assert_eq!(state.cursor(), i32::from(selected.entry_index) - 1);
+                    state.set_cursor(state.cursor() + 1);
                     assert!(loco.store_track_progress(family, state));
                     assert_eq!(head(entity, family), DriveCoord { x: 0, y: 0, z: 0 });
                     assert!(valid(entity, family));
                     set_head(entity, family, Some(DriveCoord::cell(1, 1, 0)));
-                    entity.navigation.path_replay = FootPathQueue {
-                        directions: vec![7, 3, 4],
-                        cursor: 0,
-                        reference_cell: Some((6, 7)),
-                    };
+                    entity.navigation.path_replay =
+                        FootPathQueue::for_test(vec![7, 3, 4], 0, Some((6, 7)));
                     entity
                         .foot_speed
                         .set_speed_fraction(SimFixed::from_num(0.25));
@@ -697,7 +695,7 @@ fn accepted_chain_preserves_call_budget_and_reloads_callback_queue_once() {
             // it never reaches accepted candidate publication or restoration.
             assert!(!valid(entity, family));
             assert_eq!(head(entity, family), DriveCoord::cell(1, 1, 0));
-            assert_eq!(entity.navigation.path_replay.cursor, 0);
+            assert_eq!(entity.navigation.path_replay.cursor(), 0);
             assert_eq!(
                 entity.navigation.path_replay.remaining_directions(),
                 &[7, 3, 4]
@@ -710,9 +708,9 @@ fn accepted_chain_preserves_call_budget_and_reloads_callback_queue_once() {
         }
         assert_eq!(head(entity, family), DriveCoord::cell(11, 9, 0));
         assert!(valid(entity, family));
-        assert!(progress(entity, family).unwrap().cursor > i32::from(selected.entry_index));
-        assert_eq!(progress(entity, family).unwrap().residual, 1);
-        assert_eq!(entity.navigation.path_replay.cursor, 1);
+        assert!(progress(entity, family).unwrap().cursor() > i32::from(selected.entry_index));
+        assert_eq!(progress(entity, family).unwrap().residual(), 1);
+        assert_eq!(entity.navigation.path_replay.cursor(), 1);
         assert_eq!(
             entity.navigation.path_replay.remaining_directions(),
             &[3, 4]
@@ -726,16 +724,14 @@ fn apply_one_marks_handoff_and_full_head_without_foot_enable() {
     for family in [TrackFamily::Drive, TrackFamily::Ship] {
         let (mut sim, _, _) = fixture(family, 0);
         let entity = sim.substrate.entities.get_mut(1).unwrap();
-        entity.foot_occupation_enabled = false;
-        assert!(entity.locomotor.as_mut().unwrap().store_track_progress(
-            family,
-            TrackProgress {
-                turn_index: 1,
-                cursor: 0,
-                reversed: false,
-                residual: 0,
-            }
-        ));
+        entity.set_foot_occupation_enabled(false);
+        assert!(
+            entity
+                .locomotor
+                .as_mut()
+                .unwrap()
+                .store_track_progress(family, TrackProgress::for_test(1, 0, false, 0))
+        );
         sim.track_apply_occupation(1, family, true);
         // Drive/Ship Apply1 invokes raw marks directly regardless of +6B6.
         assert_eq!(
@@ -770,7 +766,7 @@ fn apply_one_marks_handoff_and_full_head_without_foot_enable() {
                 .entities
                 .get(1)
                 .unwrap()
-                .foot_occupation_enabled
+                .foot_occupation_enabled()
         );
     }
 }
@@ -797,12 +793,17 @@ fn bridge_placement_retains_selected_cell_but_reads_fresh_world_attributes() {
                 grid.set_cell_for_test(10, 10, 4, false, false);
                 grid.set_cell_for_test(10, 9, 0, true, false);
                 sim.path_grid = Some(std::sync::Arc::new(grid));
-                sim.substrate.entities.get_mut(id).unwrap().position.rx = 20;
+                sim.substrate
+                    .entities
+                    .get_mut(id)
+                    .unwrap()
+                    .position
+                    .set_rx(20);
             }
         },
         crate::sim::world::FrameEffects::default(),
     );
-    assert!(sim.substrate.entities.get(1).unwrap().on_bridge);
+    assert!(sim.substrate.entities.get(1).unwrap().on_bridge());
 }
 
 #[test]
@@ -819,7 +820,7 @@ fn ordinary_foot_limbo_releases_live_head_and_handoff_for_both_families() {
             .as_mut()
             .unwrap();
         let mut state = loco.track_progress(family).unwrap();
-        state.turn_index = 1;
+        state.set_turn_index(1);
         assert!(loco.store_track_progress(family, state));
         sim.track_apply_occupation(1, family, true);
         let entity = sim.substrate.entities.get(1).unwrap();
@@ -890,7 +891,7 @@ fn raw_clear_retires_aliasing_roles_before_reconciliation() {
             .as_mut()
             .unwrap();
         let mut state = loco.track_progress(family).unwrap();
-        state.turn_index = 1;
+        state.set_turn_index(1);
         assert!(loco.store_track_progress(family, state));
         sim.track_apply_occupation(1, family, true);
         let entity = sim.substrate.entities.get(1).unwrap();
@@ -940,7 +941,7 @@ fn repeated_foot_limbo_does_not_clear_a_new_raw_head_claim() {
             .as_mut()
             .unwrap();
         let mut state = loco.track_progress(family).unwrap();
-        state.turn_index = 1;
+        state.set_turn_index(1);
         assert!(loco.store_track_progress(family, state));
         let supplied = head(sim.substrate.entities.get(1).unwrap(), family);
         sim.track_apply_occupation(1, family, true);
@@ -982,7 +983,7 @@ fn terminal_retires_the_head_before_callback_and_keeps_a_new_order() {
                 .unwrap()
                 .track_progress(crate::sim::movement::track_process::TrackFamily::Drive)
                 .unwrap();
-            progress.cursor = super::super::drive_track::raw_track_points(1).len() as i32;
+            progress.set_cursor(super::super::drive_track::raw_track_points(1).len() as i32);
             assert!(entity.locomotor.as_mut().unwrap().store_track_progress(
                 crate::sim::movement::track_process::TrackFamily::Drive,
                 progress
@@ -995,7 +996,9 @@ fn terminal_retires_the_head_before_callback_and_keeps_a_new_order() {
                 let entity = sim.substrate.entities.get_mut(id).unwrap();
                 assert!(crate::sim::movement::track_head::committed_track_head(entity).is_none());
                 if retarget {
-                    entity.navigation.nav_com = Some(NavTargetRef::cell(12, 9));
+                    entity
+                        .navigation
+                        .set_nav_com(Some(NavTargetRef::cell(12, 9)));
                     // The callback's new route: Foot+5E0 words from (10,9).
                     entity.navigation.path_replay =
                         crate::sim::movement::fixture_path_replay(&[(10, 9), (11, 9), (12, 9)]);
@@ -1003,7 +1006,7 @@ fn terminal_retires_the_head_before_callback_and_keeps_a_new_order() {
             }
         });
         let entity = sim.substrate.entities.get(1).unwrap();
-        assert_eq!(entity.navigation.nav_com.is_some(), retarget);
+        assert_eq!(entity.navigation.nav_com().is_some(), retarget);
         assert_eq!(
             entity
                 .navigation
@@ -1012,7 +1015,7 @@ fn terminal_retires_the_head_before_callback_and_keeps_a_new_order() {
                 .is_empty(),
             !retarget
         );
-        assert!(!entity.navigation.pending_destination_setter);
+        assert!(!entity.navigation.pending_destination_setter());
     }
 }
 
@@ -1035,7 +1038,7 @@ fn per_cell_promotes_queued_mission_before_tail_without_dispatching_handler() {
             None
         ));
         let mut miner = Miner::new(MinerKind::War, &MinerConfig::default(), 0);
-        miner.unload_active = unload_active;
+        miner.set_unload_active_for_test(unload_active);
         entity.miner = Some(miner);
         entity.mission.apply_test_fixture(MissionTestFixture {
             current: MissionId::from_known(MissionType::Move),
@@ -1125,11 +1128,11 @@ fn factory_per_cell_fixture(
     );
     producer.set_type_ref_for_test(sim.intern("GAWEAP"));
     producer.set_owner_for_test(owner);
-    producer.foundation = "1x1".into();
-    producer.on_bridge = producer_on_bridge;
+    producer.type_facts.set_foundation_for_test("1x1".into());
+    producer.set_on_bridge(producer_on_bridge);
     producer.lifecycle.set_object_alive_for_test(true);
     producer.lifecycle.set_in_limbo_for_test(false);
-    producer.lifecycle.cell_marked = true;
+    producer.lifecycle.set_cell_marked(true);
     producer.mission.apply_test_fixture(guard);
     sim.substrate.entities.insert(producer);
     sim.substrate.occupancy =
@@ -1178,8 +1181,10 @@ fn per_cell_factory_clearance_precedes_ready_and_preserves_foot_stop_scope() {
 
     let (mut sim, rules) = factory_per_cell_fixture(true, false, "");
     let unit = sim.substrate.entities.get_mut(1).unwrap();
-    unit.navigation.nav_com_aux = Some(NavTargetRef::cell(11, 10));
-    unit.navigation.suspended_nav_com = Some(NavTargetRef::cell(12, 10));
+    unit.navigation
+        .set_nav_com_aux(Some(NavTargetRef::cell(11, 10)));
+    unit.navigation
+        .set_suspended_nav_com(Some(NavTargetRef::cell(12, 10)));
     unit.mission.apply_test_fixture(MissionTestFixture {
         current: MissionId::from_known(MissionType::Guard),
         suspended: MissionId::NONE,
@@ -1234,7 +1239,7 @@ fn per_cell_factory_clearance_precedes_ready_and_preserves_foot_stop_scope() {
     for id in [1, 2] {
         let entity = sim.substrate.entities.get(id).unwrap();
         assert_eq!(entity.radio_contacts.slot(0), None);
-        assert_eq!(entity.dock_entered_with, None);
+        assert_eq!(entity.tether.partner(), None);
     }
     let unit = sim.substrate.entities.get(1).unwrap();
     assert_eq!(unit.mission.current().known(), Some(MissionType::Unload));
@@ -1257,10 +1262,10 @@ fn per_cell_factory_clearance_precedes_ready_and_preserves_foot_stop_scope() {
         drive
     );
     assert_eq!(unit.navigation.path_runtime, path_runtime);
-    assert_eq!(unit.navigation.nav_com, None);
-    assert_eq!(unit.navigation.nav_com_aux, None);
+    assert_eq!(unit.navigation.nav_com(), None);
+    assert_eq!(unit.navigation.nav_com_aux(), None);
     assert_eq!(
-        unit.navigation.suspended_nav_com,
+        unit.navigation.suspended_nav_com(),
         Some(NavTargetRef::cell(12, 10))
     );
     assert_eq!(
@@ -1385,7 +1390,7 @@ fn per_cell_factory_clearance_keeps_reason_mission_rtti_and_ground_building_gate
     for (name, reason, tethered, deck, current, queued, nav_com, sends_clearance) in cases {
         let (mut sim, rules) = factory_per_cell_fixture(tethered, deck, "");
         let unit = sim.substrate.entities.get_mut(1).unwrap();
-        unit.navigation.nav_com = nav_com;
+        unit.navigation.set_nav_com(nav_com);
         unit.mission.apply_test_fixture(MissionTestFixture {
             current: MissionId::from_raw(current),
             suspended: MissionId::NONE,
@@ -1467,7 +1472,8 @@ fn per_cell_factory_clearance_keeps_reason_mission_rtti_and_ground_building_gate
         let target = GameEntity::test_default_of_category(3, "MTNK", "Americans", 12, 10, category);
         sim.substrate.entities.insert(target);
         let unit = sim.substrate.entities.get_mut(1).unwrap();
-        unit.navigation.nav_com = Some(NavTargetRef::Entity { id: 3 });
+        unit.navigation
+            .set_nav_com(Some(NavTargetRef::Entity { id: 3 }));
         unit.mission.apply_test_fixture(MissionTestFixture {
             current: MissionId::from_raw(7),
             suspended: MissionId::NONE,
@@ -1517,7 +1523,7 @@ fn per_cell_factory_clearance_reads_unit_archive_through_the_shared_setter() {
         Some(8)
     );
     let unit = sim.substrate.entities.get(1).unwrap();
-    assert_eq!(unit.navigation.nav_com, Some(NavTargetRef::cell(12, 10)));
+    assert_eq!(unit.navigation.nav_com(), Some(NavTargetRef::cell(12, 10)));
     assert_eq!(
         unit.locomotor
             .as_ref()
@@ -1561,7 +1567,7 @@ fn per_cell_factory_harvester_queue_uses_live_readiness_and_preserves_miner_stat
             );
             if middle_row_underneath {
                 let producer = sim.substrate.entities.get_mut(2).unwrap();
-                producer.foundation = "1x2".into();
+                producer.type_facts.set_foundation_for_test("1x2".into());
                 super::super::ground_pose::put_location(
                     &mut producer.position,
                     DriveCoord::cell(10, 9, 0),
@@ -1571,7 +1577,8 @@ fn per_cell_factory_harvester_queue_uses_live_readiness_and_preserves_miner_stat
             }
             let unit = sim.substrate.entities.get_mut(1).unwrap();
             unit.miner = Some(Miner::new(MinerKind::War, &MinerConfig::default(), 0));
-            unit.navigation.nav_com_aux = Some(NavTargetRef::cell(13, 10));
+            unit.navigation
+                .set_nav_com_aux(Some(NavTargetRef::cell(13, 10)));
             unit.mission.apply_test_fixture(MissionTestFixture {
                 current: MissionId::from_known(MissionType::Guard),
                 suspended: MissionId::NONE,
@@ -1616,15 +1623,15 @@ fn per_cell_factory_harvester_queue_uses_live_readiness_and_preserves_miner_stat
                 serde_json::to_value(unit.position).unwrap(),
                 serde_json::to_value(position).unwrap()
             );
-            assert_eq!(unit.navigation.nav_com, None);
+            assert_eq!(unit.navigation.nav_com(), None);
             assert_eq!(
-                unit.navigation.nav_com_aux,
+                unit.navigation.nav_com_aux(),
                 Some(NavTargetRef::cell(13, 10))
             );
             for id in [1, 2] {
                 let entity = sim.substrate.entities.get(id).unwrap();
                 assert_eq!(entity.radio_contacts.slot(0), None);
-                assert_eq!(entity.dock_entered_with, None);
+                assert_eq!(entity.tether.partner(), None);
             }
             assert_eq!(
                 sim.rng_state(),
@@ -1646,13 +1653,17 @@ fn idle_receiver_cancels_burst_through_the_shared_target_setter() {
             entity
                 .attack_target
                 .set_for_test(Some(TargetKind::Cell(12, 10)));
-            entity.passively_acquired_target = true;
+            entity
+                .passive_scan
+                .set_passively_acquired_target_for_test(true);
             entity.weapon_burst.complete_shot(2);
-            entity.navigation.nav_com = has_destination.then(|| NavTargetRef::cell(12, 10));
+            entity
+                .navigation
+                .set_nav_com(has_destination.then(|| NavTargetRef::cell(12, 10)));
             sim.unit_enter_idle_mode(1, None, false, crate::sim::world::FrameEffects::default());
             let entity = sim.substrate.entities.get(1).unwrap();
             assert_eq!(entity.weapon_burst.index(), i32::from(has_destination));
-            assert_eq!(entity.passively_acquired_target, has_destination);
+            assert_eq!(entity.passive_scan.acquired(), has_destination);
             assert_eq!(
                 entity.attack_target.target(),
                 has_destination.then_some(TargetKind::Cell(12, 10)),
@@ -1755,14 +1766,14 @@ fn native_depot_arrival_uses_the_original_terminal_handoff() {
             "spent": house.economy.spent_credits(),
             "unit_mission": unit.mission.current().raw(),
             "unit_queued": unit.mission.queued().raw(),
-            "unit_nav": nav(unit.navigation.nav_com),
-            "unit_nav_aux": nav(unit.navigation.nav_com_aux),
+            "unit_nav": nav(unit.navigation.nav_com()),
+            "unit_nav_aux": nav(unit.navigation.nav_com_aux()),
             "unit_archive": target(unit.archive_target()),
             "pending_entry": name(unit.pending_entry()),
             "unit_contacts": (0..unit.radio_contacts.capacity()).map(|n| name(unit.radio_contacts.slot(n))).collect::<Vec<_>>(),
             "building_contacts": (0..building.radio_contacts.capacity()).map(|n| name(building.radio_contacts.slot(n))).collect::<Vec<_>>(),
-            "unit_tether": u8::from(unit.dock_entered_with.is_some()),
-            "building_tether": u8::from(building.dock_entered_with.is_some()),
+            "unit_tether": u8::from(unit.tether.partner().is_some()),
+            "building_tether": u8::from(building.tether.partner().is_some()),
             "building_mission": building.mission.current().raw(),
             "building_queued": building.mission.queued().raw(),
             "status": building.mission.handler_state(),
@@ -1823,7 +1834,15 @@ fn native_depot_arrival_uses_the_original_terminal_handoff() {
                 "[VehicleTypes]\n0=HTNK\n1=MTNK\n[BuildingTypes]\n0=NADEPT\n1=GADEPT\n{}",
                 ini_text(&sections)
             );
-            let ini = IniFile::from_str(&text);
+            // This bounded native arrival control supplies admitted actors
+            // on clear ground, but its selected-key packet omits LandType.
+            // Supply that synthetic construction prior in the first layer;
+            // the extracted retail keys and later passes keep precedence.
+            let ini = if base["file"] == "RULESMD.INI" {
+                crate::sim::arena_fixture::clear_ground_ini(&text)
+            } else {
+                IniFile::from_str(&text)
+            };
             match base["file"].as_str().unwrap() {
                 "RULESMD.INI" => stack = Some(RulesLayerStack::new(ini)),
                 name => stack.as_mut().unwrap().push(
@@ -1943,7 +1962,9 @@ fn native_depot_arrival_uses_the_original_terminal_handoff() {
             if before[contacts][0].is_string() {
                 entity.radio_contacts.insert(peer);
             }
-            entity.dock_entered_with = (integer(&before[tether]) != 0).then_some(peer);
+            entity
+                .tether
+                .set_for_test((integer(&before[tether]) != 0).then_some(peer));
         }
         let at = &before["unit_coordinate"];
         let coordinate = DriveCoord {
@@ -1952,17 +1973,21 @@ fn native_depot_arrival_uses_the_original_terminal_handoff() {
             z: integer(&at[2]),
         };
         let unit = sim.substrate.entities.get_mut(tank).unwrap();
-        unit.position.rx = (coordinate.x / 256) as u16;
-        unit.position.ry = (coordinate.y / 256) as u16;
-        unit.position.sub_x = SimFixed::from_num(coordinate.x % 256);
-        unit.position.sub_y = SimFixed::from_num(coordinate.y % 256);
-        unit.position.exact_z_leptons = Some(coordinate.z);
+        unit.position.set_rx((coordinate.x / 256) as u16);
+        unit.position.set_ry((coordinate.y / 256) as u16);
+        unit.position
+            .set_sub_x(SimFixed::from_num(coordinate.x % 256));
+        unit.position
+            .set_sub_y(SimFixed::from_num(coordinate.y % 256));
+        unit.position.set_exact_z_leptons(Some(coordinate.z));
         unit.health.set_for_test(integer(&before["health"]));
         unit.estimated_health = EstimatedHealth::from_raw(integer(&before["estimate"]));
-        unit.navigation.nav_com = before["unit_nav"]
-            .is_string()
-            .then_some(NavTargetRef::Building { id: depot });
-        unit.navigation.nav_com_aux = None;
+        unit.navigation.set_nav_com(
+            before["unit_nav"]
+                .is_string()
+                .then_some(NavTargetRef::Building { id: depot }),
+        );
+        unit.navigation.set_nav_com_aux(None);
         unit.attack_target
             .set_for_test(other.map(TargetKind::Entity));
         let destination = &before["locomotor_destination"];
@@ -1982,12 +2007,12 @@ fn native_depot_arrival_uses_the_original_terminal_handoff() {
                             (destination != DriveCoord { x: 0, y: 0, z: 0 }).then_some(destination)
                         )
                         .with_head_to_for_test(terminal.then_some(coordinate))
-                        .with_track_for_test(TrackProgress {
-                            turn_index: integer(&row["supplied_before"]["track_selector"]),
-                            cursor: integer(&row["supplied_before"]["track_cursor"]),
-                            reversed: false,
-                            residual: 0,
-                        })
+                        .with_track_for_test(TrackProgress::for_test(
+                            integer(&row["supplied_before"]["track_selector"]),
+                            integer(&row["supplied_before"]["track_cursor"]),
+                            false,
+                            0
+                        ))
                         .with_track_valid_for_test(terminal)
                 ))
         );
@@ -2141,7 +2166,7 @@ fn idle_base_fixture(category: EntityCategory) -> Simulation {
     actor.locomotor = None;
     actor.lifecycle.set_object_alive_for_test(true);
     actor.lifecycle.set_in_limbo_for_test(false);
-    actor.lifecycle.cell_marked = false;
+    actor.lifecycle.set_cell_marked(false);
     sim.substrate.entities.insert(actor);
     sim.substrate.next_stable_object_id = 2;
     sim
@@ -2191,8 +2216,8 @@ fn foot_idle_empty_queue_admission_matches_original_latch_rows() {
             actor.mission_leaf.foot_idle_entry_latch(),
             row["after"]["latch"].as_u64().unwrap() as u8
         );
-        assert!(actor.navigation.nav_queue.is_empty());
-        assert_eq!(actor.navigation.nav_com, None);
+        assert!(actor.navigation.nav_queue().is_empty());
+        assert_eq!(actor.navigation.nav_com(), None);
         assert_eq!(sim.rng_state(), rng);
         compared += 1;
     }
@@ -2226,8 +2251,7 @@ fn foot_idle_set_latch_refuses_queue_and_speed_setters_without_effects() {
         .set_foot_idle_entry_latch(row["before"]["latch"].as_u64().unwrap() as u8);
     actor
         .navigation
-        .nav_queue
-        .push(crate::sim::components::NavTargetRef::cell(20, 20));
+        .push_nav_queue_for_test(crate::sim::components::NavTargetRef::cell(20, 20));
     actor.foot_speed.set_speed_fraction(SimFixed::lit("0.625"));
     let before = bincode::serialize(actor).unwrap();
     let hash = sim.state_hash();
@@ -2298,7 +2322,7 @@ fn foot_idle_ends_a_warp_teleport_like_original_end_rows() {
         let locomotor = actor.locomotor.as_ref().unwrap();
         let restored = events.contains(&"restore");
         assert_eq!(locomotor.active_kind() == LocomotorKind::Drive, restored);
-        assert_eq!(locomotor.piggyback.is_none(), restored);
+        assert_eq!(locomotor.piggyback().is_none(), restored);
         assert_eq!(
             actor.foot_speed.applied_fraction() == crate::util::fixed_math::SIM_ZERO,
             events.contains(&"speed")

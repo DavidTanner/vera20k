@@ -57,18 +57,27 @@ pub(crate) fn candidate(input: &Value, id: u64, type_name: &str) -> GameEntity {
     });
     entity.mission_leaf =
         crate::sim::mission::MissionLeafState::for_entity_category(entity.category());
-    entity.position.rx = (current.x / 256).clamp(0, i32::from(u16::MAX)) as u16;
-    entity.position.ry = (current.y / 256).clamp(0, i32::from(u16::MAX)) as u16;
-    entity.position.sub_x = SimFixed::from_num(current.x - i32::from(entity.position.rx) * 256);
-    entity.position.sub_y = SimFixed::from_num(current.y - i32::from(entity.position.ry) * 256);
-    entity.position.exact_z_leptons = Some(current.z);
-    entity.on_bridge = input["on_bridge"].as_bool().unwrap();
+    entity
+        .position
+        .set_rx((current.x / 256).clamp(0, i32::from(u16::MAX)) as u16);
+    entity
+        .position
+        .set_ry((current.y / 256).clamp(0, i32::from(u16::MAX)) as u16);
+    entity.position.set_sub_x(SimFixed::from_num(
+        current.x - i32::from(entity.position.rx()) * 256,
+    ));
+    entity.position.set_sub_y(SimFixed::from_num(
+        current.y - i32::from(entity.position.ry()) * 256,
+    ));
+    entity.position.set_exact_z_leptons(Some(current.z));
+    entity.set_on_bridge(input["on_bridge"].as_bool().unwrap());
     if input["locomotor_present"].as_bool().unwrap() {
         entity.locomotor = Some(LocomotorState::for_test_kind(kind));
-        let track = crate::sim::components::TrackProgress {
-            turn_index: input["turn_index"].as_i64().unwrap_or(-1) as i32,
-            cursor: input["cursor"].as_i64().unwrap_or(0) as i32,
-            ..Default::default()
+        let track = {
+            let mut value = crate::sim::components::TrackProgress::default();
+            value.set_turn_index(input["turn_index"].as_i64().unwrap_or(-1) as i32);
+            value.set_cursor(input["cursor"].as_i64().unwrap_or(0) as i32);
+            value
         };
         match kind {
             LocomotorKind::Drive => {
@@ -107,18 +116,18 @@ pub(crate) fn candidate(input: &Value, id: u64, type_name: &str) -> GameEntity {
         }
     }
     if input["tube"].is_array() {
-        entity.low_bridge_tube_state = Some(LowBridgeTubeMovementState {
-            tube_id: TubeId(0),
-            cursor: 0,
-            target: DriveCoord { x: 0, y: 0, z: 0 },
-        });
+        entity.low_bridge_tube_state = Some(LowBridgeTubeMovementState::for_test(
+            TubeId(0),
+            0,
+            DriveCoord { x: 0, y: 0, z: 0 },
+        ));
     }
     if input["nav_com_coord"].is_array() {
         let nav = coord(&input["nav_com_coord"]);
-        entity.navigation.nav_com = Some(NavTargetRef::Cell {
+        entity.navigation.set_nav_com(Some(NavTargetRef::Cell {
             rx: (nav.x / 256) as u16,
             ry: (nav.y / 256) as u16,
-        });
+        }));
     }
     entity
 }

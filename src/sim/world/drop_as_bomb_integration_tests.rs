@@ -10,7 +10,6 @@ use crate::sim::{
     components::DriveCoord,
     house_state::HouseState,
     movement::{PerCellReason, ground_pose, locomotor::MovementLayer},
-    passenger::PassengerRole,
 };
 use crate::util::lepton::BRIDGE_DECK_HEIGHT_LEPTONS;
 
@@ -56,13 +55,13 @@ fn boarded_transport(sim: &mut Simulation, rules: &RuleSet, kind: &str) -> (u64,
         "board failed: passenger={:?} transport={:?} admitted={}",
         sim.substrate.entities.get(passenger).map(|e| (
             e.is_deployed(),
-            e.position.rx,
-            e.position.ry,
+            e.position.rx(),
+            e.position.ry(),
             e.lifecycle.in_limbo()
         )),
         sim.substrate.entities.get(carrier).map(|e| (
-            e.position.rx,
-            e.position.ry,
+            e.position.rx(),
+            e.position.ry(),
             e.lifecycle.in_limbo()
         )),
         crate::sim::passenger::can_enter_transport(sim, rules, passenger, carrier)
@@ -81,10 +80,15 @@ fn boarded_transport(sim: &mut Simulation, rules: &RuleSet, kind: &str) -> (u64,
             break;
         }
     }
-    assert!(matches!(
-        sim.substrate.entities.get(passenger).unwrap().passenger_role,
-        PassengerRole::Inside { transport_id, .. } if transport_id == carrier
-    ));
+    assert_eq!(
+        sim.substrate
+            .entities
+            .get(passenger)
+            .unwrap()
+            .passenger_role
+            .inside_transport_id(),
+        Some(carrier)
+    );
     assert_eq!(
         sim.substrate
             .entities
@@ -93,7 +97,7 @@ fn boarded_transport(sim: &mut Simulation, rules: &RuleSet, kind: &str) -> (u64,
             .passenger_role
             .cargo()
             .unwrap()
-            .passengers,
+            .passengers(),
         [passenger],
     );
     assert!(
@@ -130,8 +134,8 @@ fn put_on_deck(sim: &mut Simulation, rules: &RuleSet, id: u64, water: bool) {
     }
     let entity = sim.substrate.entities.get_mut(id).unwrap();
     let at = ground_pose::position_world_coord(&entity.position);
-    entity.on_bridge = true;
-    entity.position.z = 4;
+    entity.set_on_bridge(true);
+    entity.position.set_z(4);
     ground_pose::put_location(
         &mut entity.position,
         DriveCoord {
@@ -184,7 +188,7 @@ fn run_drop(sim: &mut Simulation, rules: &RuleSet, carrier: u64, passenger: u64,
     blow_up_bridge_cell_fallout(sim, rules, CELL.0, CELL.1, None, FrameEffects::default());
     let transport = sim.substrate.entities.get(carrier).unwrap();
     assert!(transport.is_falling_down() && transport.was_dropped_as_bomb());
-    assert!(!transport.on_bridge);
+    assert!(!transport.on_bridge());
     assert_eq!(
         transport.health.current(),
         37,
@@ -347,12 +351,12 @@ fn vanished_structural_deck_per_cell_arms_the_same_object_fall() {
     assert!(
         entity.is_falling_down() && entity.was_dropped_as_bomb(),
         "percell state: on_bridge={} marked={} z={:?} layer={:?}",
-        entity.on_bridge,
-        entity.lifecycle.cell_marked,
-        entity.position.exact_z_leptons,
-        entity.locomotor.as_ref().map(|l| l.layer)
+        entity.on_bridge(),
+        entity.lifecycle.cell_marked(),
+        entity.position.exact_z_leptons(),
+        entity.locomotor.as_ref().map(|l| l.layer())
     );
-    assert!(!entity.on_bridge);
+    assert!(!entity.on_bridge());
     assert_eq!(
         ground_pose::position_world_coord(&entity.position).z,
         BRIDGE_DECK_HEIGHT_LEPTONS
@@ -423,7 +427,7 @@ fn a_transport_shot_mid_fall_kills_its_passenger_without_the_landing_force_flags
             .passenger_role
             .cargo()
             .unwrap()
-            .passengers
+            .passengers()
             .is_empty()
     );
 }

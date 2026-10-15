@@ -54,12 +54,12 @@ fn insert(sim: &mut Simulation, id: u64, owner: InternedId, name: &str, x: u16, 
         false,
     );
     entity.lifecycle.set_in_limbo_for_test(false);
-    entity.lifecycle.cell_marked = false;
-    entity.in_playfield = true;
+    entity.lifecycle.set_cell_marked(false);
+    entity.set_in_playfield(true);
     if name == "SIGHT" {
         let mut loco = LocomotorState::for_test_kind(LocomotorKind::Jumpjet);
-        loco.layer = MovementLayer::Air;
-        entity.position.exact_z_leptons = Some(208);
+        loco.set_layer(MovementLayer::Air);
+        entity.position.set_exact_z_leptons(Some(208));
 
         // The kernel target height is left unset on purpose: the corpus outcome
         // below holds only while the kernel is not holding the unit at 208.
@@ -214,8 +214,8 @@ pub(crate) fn gap_operational_power_loss_views() -> Vec<(
             .get(30)
             .unwrap()
             .gap_generator
-            .viewers[&viewer]
-            .active
+            .viewers()[&viewer]
+            .active()
     );
     assert!(!sim.fog.is_cell_revealed(viewer, 12, 12));
     sim.scenario_rng = crate::sim::rng::SimRng::new(0); // native Scenario load reset
@@ -331,11 +331,12 @@ fn gap_operational_spy_sat_rechecks_live_candidates_per_viewer() {
             .get(1)
             .unwrap()
             .building_last_operational
+            .is_operational()
     );
-    assert!(!gap.viewers[&a].active);
-    assert!(gap.viewers[&b].active);
+    assert!(!gap.viewers()[&a].active());
+    assert!(gap.viewers()[&b].active());
     assert!(
-        gap.viewers[&owner].active,
+        gap.viewers()[&owner].active(),
         "friendly269 is independent of hostile receipts"
     );
     assert!(
@@ -352,7 +353,15 @@ fn gap_operational_spy_sat_rechecks_live_candidates_per_viewer() {
     power(&mut sim, &rules);
     sim.uninit(2); // actual loss invokes the reset bracket at House
     sim.reconcile_active_vision_structures(&rules);
-    assert!(sim.substrate.entities.get(1).unwrap().gap_generator.viewers[&a].active);
+    assert!(
+        sim.substrate
+            .entities
+            .get(1)
+            .unwrap()
+            .gap_generator
+            .viewers()[&a]
+            .active()
+    );
     assert_eq!(sim.fog.gap_sources[&a].len(), 1);
 }
 
@@ -373,11 +382,32 @@ fn gap_operational_owner_change_reveals_sight_before_new_gap_and_death_removes()
     assert!(sim.fog.is_cell_revealed(a, 12, 12));
     assert!(sim.fog.gap_sources[&a].is_empty());
     assert_eq!(sim.fog.gap_sources[&owner].len(), 1);
-    let radius = sim.substrate.entities.get(1).unwrap().gap_generator.viewers[&owner].radius;
+    let radius = sim
+        .substrate
+        .entities
+        .get(1)
+        .unwrap()
+        .gap_generator
+        .viewers()[&owner]
+        .radius();
     damage(&mut sim, &rules, 1, 1000); // ordinary Explodes=no GAGAP synchronously UnInits
-    assert!(!sim.substrate.entities.get(1).unwrap().gap_generator.viewers[&owner].active);
+    assert!(
+        !sim.substrate
+            .entities
+            .get(1)
+            .unwrap()
+            .gap_generator
+            .viewers()[&owner]
+            .active()
+    );
     assert_eq!(
-        sim.substrate.entities.get(1).unwrap().gap_generator.viewers[&owner].radius,
+        sim.substrate
+            .entities
+            .get(1)
+            .unwrap()
+            .gap_generator
+            .viewers()[&owner]
+            .radius(),
         radius
     );
     assert!(sim.fog.gap_sources[&owner].is_empty());
@@ -402,7 +432,15 @@ fn gap_operational_events_invalidate_map_reveal_latch_including_friendly_reentry
     insert(&mut sim, 2, viewer, "GASPYSAT", 1, 1);
     sim.reconcile_active_vision_structures(&rules);
     assert!(sim.fog.is_cell_revealed(viewer, 12, 12));
-    assert!(!sim.substrate.entities.get(1).unwrap().gap_generator.viewers[&viewer].active);
+    assert!(
+        !sim.substrate
+            .entities
+            .get(1)
+            .unwrap()
+            .gap_generator
+            .viewers()[&viewer]
+            .active()
+    );
     assert!(
         sim.fog.whole_map_revealed_for_owner(viewer),
         "rejected post-bulk add must not clear the new mapping latch"
@@ -423,7 +461,15 @@ fn gap_operational_events_invalidate_map_reveal_latch_including_friendly_reentry
     );
     insert(&mut sim, 2, viewer, "GASPYSAT", 1, 1);
     sim.reconcile_active_vision_structures(&rules);
-    assert!(sim.substrate.entities.get(1).unwrap().gap_generator.viewers[&viewer].active);
+    assert!(
+        sim.substrate
+            .entities
+            .get(1)
+            .unwrap()
+            .gap_generator
+            .viewers()[&viewer]
+            .active()
+    );
     assert!(
         !sim.fog.whole_map_revealed_for_owner(viewer),
         "successful friendly re-admission follows the bulk240=true store"

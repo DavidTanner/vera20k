@@ -33,8 +33,8 @@
 
 use crate::map::entities::EntityCategory;
 use crate::rules::ruleset::RuleSet;
-use crate::sim::components::RockingState;
 use crate::sim::movement::air_movement::current_fly_height;
+use crate::sim::rocking::RockingState;
 use crate::sim::world::FrameEffects;
 use crate::util::fixed_math::SimFixed;
 use crate::util::native_x87::{NativeF64Bits, X87Chop53};
@@ -150,16 +150,14 @@ impl Simulation {
             // for the killer's house (no attacker: the loss alone), then
             // `0x004DEC72` zeroes Health unless a Magnetron lifted the object
             // (Foot+6AD, `0x004DEC68`).
-            let killer = attacker.and_then(|a| self.substrate.entities.get(a).map(|k| k.owner()));
             self.record_the_kill(
                 id,
-                attacker,
-                killer,
+                crate::sim::combat::KillSource::Techno(attacker),
                 crate::sim::combat::KillCallback::Terminal,
-                rules,
+                UninitContext::new(Some(rules), registry).with_effects(frame_effects),
             );
             if let Some(entity) = self.substrate.entities.get_mut(id)
-                && !entity.foot_locomotor_swap_active
+                && !entity.lift.swap_active()
             {
                 entity.health.set(0);
             }
@@ -189,9 +187,7 @@ impl Simulation {
             }
             let vel_forwards = spin_rate(forwards, SPIN_TENTH, None);
             if let Some(entity) = self.substrate.entities.get_mut(id) {
-                let rocking = entity.rocking.get_or_insert_with(RockingState::default);
-                rocking.vel_sideways = vel_sideways;
-                rocking.vel_forwards = vel_forwards;
+                RockingState::spin_for_crash(&mut entity.rocking, vel_sideways, vel_forwards);
             }
         }
         self.detach_all_pointer_expired(id, rules, registry, frame_effects);
@@ -358,7 +354,7 @@ impl Simulation {
             .substrate
             .entities
             .get(id)
-            .is_some_and(|entity| entity.foot_locomotor_swap_active)
+            .is_some_and(|entity| entity.lift.swap_active())
         {
             self.falling_damage(id, rules, overlay_registry, frame_effects)
         } else {
@@ -367,8 +363,7 @@ impl Simulation {
         };
         // `0x0054D097..0x0054D0A7`: after the notice, the drop's credit goes.
         if let Some(entity) = self.substrate.entities.get_mut(id) {
-            entity.manipulated_by = None;
-            entity.warped_by_house = None;
+            entity.drop_credit.forget();
         }
         bridge_state_changed
     }
@@ -425,7 +420,7 @@ impl Simulation {
             )),
         ))
         .max(0);
-        let attacker = entity.manipulated_by.unwrap_or(id);
+        let attacker = entity.drop_credit.manipulated_by().unwrap_or(id);
         let coords = crate::sim::movement::ground_pose::object_get_coords(
             entity,
             self.resolved_terrain.as_ref(),
@@ -457,7 +452,11 @@ impl Simulation {
             bullet(crush, coords.z.wrapping_sub(height)).as_slice(),
             effects,
         );
-        self.record_manipulated_kill(id, id, rules);
+        self.record_manipulated_kill(
+            id,
+            id,
+            UninitContext::new(Some(rules), registry).with_effects(effects),
+        );
         bridge_state_changed |= self.commit_logic_projectile_detonations(
             rules,
             registry,
@@ -504,7 +503,7 @@ impl Simulation {
         let water = self
             .resolved_terrain
             .as_ref()
-            .and_then(|terrain| terrain.cell(entity.position.rx, entity.position.ry))
+            .and_then(|terrain| terrain.cell(entity.position.rx(), entity.position.ry()))
             .is_some_and(|cell| {
                 cell.yr_cell_land_type == crate::rules::terrain_rules::LandType::Water.as_index()
             });
@@ -677,16 +676,14 @@ impl Simulation {
         registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
         frame_effects: FrameEffects<'_>,
     ) {
-        let killer = attacker.and_then(|a| self.substrate.entities.get(a).map(|k| k.owner()));
         if let Some(entity) = self.substrate.entities.get_mut(victim) {
             entity.health.set(0);
         }
         self.record_the_kill(
             victim,
-            attacker,
-            killer,
+            crate::sim::combat::KillSource::Techno(attacker),
             crate::sim::combat::KillCallback::Terminal,
-            rules,
+            UninitContext::new(Some(rules), registry).with_effects(frame_effects),
         );
         self.uninit_with_context(
             victim,
@@ -706,10 +703,10 @@ fn voc_at(
     super::SimSoundEvent::VocAt {
         sound_id,
         audible_to,
-        rx: entity.position.rx,
-        ry: entity.position.ry,
-        sub_x: entity.position.sub_x,
-        sub_y: entity.position.sub_y,
+        rx: entity.position.rx(),
+        ry: entity.position.ry(),
+        sub_x: entity.position.sub_x(),
+        sub_y: entity.position.sub_y(),
         world_z_leptons: location.z,
     }
 }

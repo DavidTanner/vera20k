@@ -4,16 +4,14 @@
 //! pathfinding owner. This adapter supplies map identity, concrete Foot entry
 //! and the marker lifetime; it does not split paths at layer transitions.
 
-use super::{MoverPathFacts, PathfindingContext};
+use super::PathfindingContext;
 use crate::map::cell_index::NativeCellIdentity;
 use crate::map::resolved_terrain::NativeCellQuery;
-use crate::rules::locomotor_type::MovementZone;
 use crate::sim::movement::locomotor::MovementLayer;
-use crate::sim::pathfinding::cell_entry::{CanEnterCellContext, evaluate_can_enter_cell};
 use crate::sim::pathfinding::path_smooth::{self, PathFinishingContext};
-use crate::sim::pathfinding::terrain_cost::TerrainCostGrid;
 use crate::sim::pathfinding::{
-    LayeredPath, LayeredPathStep, PathGrid, SearchFootEntry, SearchMarkerOverlay,
+    LayeredPath, LayeredPathStep, PathGrid, SearchEntryCandidate, SearchEntryQuery,
+    SearchFootEntry, SearchMarkerOverlay,
 };
 use crate::util::native_x87::NativeF64Bits;
 
@@ -27,10 +25,7 @@ struct Finishing<'a> {
     cells: Option<NativeCellQuery<'a>>,
     grid: &'a PathGrid,
     context: PathfindingContext<'a>,
-    foot: Option<&'a dyn SearchFootEntry>,
-    terrain_costs: Option<&'a TerrainCostGrid>,
-    movement_zone: Option<MovementZone>,
-    facts: MoverPathFacts,
+    foot: &'a dyn SearchFootEntry,
     markers: Option<&'a SearchMarkerOverlay>,
 }
 
@@ -89,67 +84,23 @@ impl PathFinishingContext for Finishing<'_> {
         }
     }
     fn can_enter(&self, cell: Cell, direction: i32, height: i32) -> Result<u8, String> {
-        let coord = self.coord(cell);
-        let target = (coord.0 as u16, coord.1 as u16);
-        if let Some(foot) = self.foot {
-            let result = foot.classify(crate::sim::pathfinding::SearchEntryQuery {
-                from: None,
-                candidate: match cell {
-                    Cell::Native(cell) => {
-                        crate::sim::pathfinding::SearchEntryCandidate::RetainedNativeCell(cell)
-                    }
-                    Cell::Compatibility(_) => {
-                        crate::sim::pathfinding::SearchEntryCandidate::CopiedCoord(target)
-                    }
-                },
-                direction,
-                path_height: height,
-            })?;
-            return Ok(result);
-        }
-        // Searches without a class receiver carry a terrain projection. Keep
-        // that boundary explicit; the live Foot route above never reduces
-        // CanEnter to a walkability predicate.
-        let layer = if self.flags(cell) & 0x100 != 0 && height - self.ground_level(cell) == 4 {
-            MovementLayer::Bridge
-        } else {
-            MovementLayer::Ground
-        };
-        Ok(
-            if evaluate_can_enter_cell(CanEnterCellContext {
-                target,
-                terrain_layer: layer,
-                movement_zone: self.movement_zone,
-                speed_type: self.facts.speed_type,
-                path_grid: Some(self.grid),
-                resolved_terrain: self.context.resolved_terrain,
-                terrain_costs: self.terrain_costs,
-                is_infantry: self.facts.is_infantry,
-                mover_is_crusher: self.facts.mover_is_crusher,
-            })
-            .is_clear()
-            {
-                0
-            } else {
-                7
+        self.foot.classify(SearchEntryQuery {
+            from: None,
+            candidate: match cell {
+                Cell::Native(cell) => SearchEntryCandidate::RetainedNativeCell(cell),
+                Cell::Compatibility(coord) => {
+                    SearchEntryCandidate::CopiedCoord((coord.0 as u16, coord.1 as u16))
+                }
             },
-        )
+            direction,
+            path_height: height,
+        })
     }
     fn house_threat(&self, coord: (i16, i16)) -> Result<i32, String> {
-        if let Some(foot) = self.foot {
-            foot.finishing_house_threat(coord)
-        } else {
-            // No House is represented by the legacy grid-only API. Its
-            // compatibility domain has zero coefficient, never a live claim.
-            let _ = self.get_cell(coord);
-            Ok(0)
-        }
+        self.foot.finishing_house_threat(coord)
     }
     fn threat_coefficient(&self) -> Result<NativeF64Bits, String> {
-        self.foot.map_or(
-            Ok(NativeF64Bits::POSITIVE_ZERO),
-            SearchFootEntry::finishing_threat_coefficient,
-        )
+        self.foot.finishing_threat_coefficient()
     }
     fn tube_exit(&self, cell: Cell) -> Option<(i16, i16)> {
         let Cell::Native(cell) = cell else {
@@ -166,16 +117,13 @@ pub(super) fn finish(
     path: Vec<LayeredPathStep>,
     context: PathfindingContext<'_>,
     grid: &PathGrid,
-    foot: Option<&dyn SearchFootEntry>,
-    terrain_costs: Option<&TerrainCostGrid>,
-    movement_zone: Option<MovementZone>,
-    facts: MoverPathFacts,
+    foot: &dyn SearchFootEntry,
     markers: Option<&SearchMarkerOverlay>,
 ) -> Result<LayeredPath, String> {
     if path.is_empty() {
         return Ok((Vec::new(), Vec::new()));
     }
-    let prepared_markers = foot.and_then(SearchFootEntry::prepared_search_markers);
+    let prepared_markers = foot.prepared_search_markers();
     let markers = prepared_markers.as_deref().or(markers);
     let start = (path[0].rx as i16, path[0].ry as i16);
     let ctx = Finishing {
@@ -183,9 +131,6 @@ pub(super) fn finish(
         grid,
         context,
         foot,
-        terrain_costs,
-        movement_zone,
-        facts,
         markers,
     };
     let mut directions = Vec::with_capacity(path.len() - 1);

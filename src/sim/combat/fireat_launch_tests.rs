@@ -347,11 +347,12 @@ fn target_uninit_clears_tarcom_before_aim_query_and_physical_removal() {
             .entities
             .get(source)
             .unwrap()
-            .passive_scan_timer;
+            .passive_scan
+            .timer();
         // MissionTimer owns the native +180 start/+188 duration. The
         // intervening +184 DWORD is not a represented cadence input.
-        assert_eq!(u64::from(timer.start_frame), native[0].as_u64().unwrap());
-        assert_eq!(u64::from(timer.duration), native[2].as_u64().unwrap());
+        assert_eq!(u64::from(timer.start_frame()), native[0].as_u64().unwrap());
+        assert_eq!(u64::from(timer.duration()), native[2].as_u64().unwrap());
     };
     duel.sim.session.binary_frame = expiry["before"]["source"]["frame"].as_u64().unwrap() as u32;
     let before_timer = &expiry["before"]["targeting_timer"];
@@ -360,7 +361,8 @@ fn target_uninit_clears_tarcom_before_aim_query_and_physical_removal() {
         .entities
         .get_mut(source)
         .unwrap()
-        .passive_scan_timer
+        .passive_scan
+        .timer_mut_for_test()
         .arm(
             before_timer[0].as_u64().unwrap() as u32,
             before_timer[2].as_u64().unwrap() as u32,
@@ -492,7 +494,7 @@ fn grand_cannon_recoil_follows_successful_launch_ai_and_snapshot() {
         "retail cannon launch: error={fire_error:?}, mission={:?}, target={:?}, last_fire={}, actually_placed={}, body={:?}, facing={:?}",
         actor.mission,
         actor.attack_target,
-        actor.last_fire_frame,
+        actor.last_fire_frame.frame(),
         actor.building_art.actually_placed(),
         actor.building_body_state(),
         actor.body_facing
@@ -665,8 +667,8 @@ impl Duel {
     fn location(&self, id: u64) -> ProjectileCoord {
         let entity = self.sim.substrate.entities.get(id).unwrap();
         ProjectileCoord::new(
-            i32::from(entity.position.rx) * 256 + entity.position.sub_x.to_num::<i32>(),
-            i32::from(entity.position.ry) * 256 + entity.position.sub_y.to_num::<i32>(),
+            i32::from(entity.position.rx()) * 256 + entity.position.sub_x().to_num::<i32>(),
+            i32::from(entity.position.ry()) * 256 + entity.position.sub_y().to_num::<i32>(),
             crate::sim::movement::ground_pose::object_world_z_leptons(
                 entity,
                 self.sim.resolved_terrain.as_ref(),
@@ -684,10 +686,10 @@ impl Duel {
             actor.health.current(),
             actor.mission,
             actor.attack_target,
-            actor.navigation.nav_com,
+            actor.navigation.nav_com(),
             crate::sim::movement::motion_query::is_moving(actor),
             actor.foot_speed.applied_fraction(),
-            actor.last_fire_frame,
+            actor.last_fire_frame.frame(),
         )
     }
 

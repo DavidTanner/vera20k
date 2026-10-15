@@ -8,7 +8,6 @@ use crate::sim::command::{Command, CommandEnvelope};
 use crate::sim::house_state::HouseState;
 use crate::sim::mission::MissionType;
 use crate::sim::movement::ground_pose::position_world_coord;
-use crate::sim::passenger::PassengerRole;
 use crate::sim::world::{SimFrameOutput, TickLane};
 
 /// A loaded Battle Fortress on retail Dustbowl.
@@ -226,26 +225,20 @@ fn retail_dustbowl_battle_fortress_riders_fire_from_its_ports() {
         let transport = sim.substrate.entities.get(bfrt).unwrap();
         let cargo = transport.passenger_role.cargo().expect("a transport");
         assert_eq!(
-            cargo.passengers,
+            cargo.passengers(),
             gis.iter().rev().copied().collect::<Vec<_>>()
         );
         for &id in &gis {
             let gi = sim.substrate.entities.get(id).unwrap();
-            assert!(matches!(
-                gi.passenger_role,
-                PassengerRole::Inside {
-                    transport_id,
-                    open_topped: true,
-                } if transport_id == bfrt
-            ));
+            assert_eq!(gi.passenger_role.inside_transport(), Some((bfrt, true)));
             assert!(gi.lifecycle.in_limbo());
             assert_eq!(gi.mission.current().known(), Some(MissionType::Guard));
             assert!(gi.attack_target.target().is_none());
             // Native51A441..51A46E preserves the arrival subcell; a later
             // carrier SetLocation copies its coordinate through4DB88A/7104F0.
             assert_eq!(
-                (gi.position.rx, gi.position.ry),
-                (transport.position.rx, transport.position.ry),
+                (gi.position.rx(), gi.position.ry()),
+                (transport.position.rx(), transport.position.ry()),
                 "GI {id} boards in the Fortress's cell"
             );
         }
@@ -320,7 +313,11 @@ fn retail_dustbowl_battle_fortress_riders_fire_from_its_ports() {
             .passenger_role
             .cargo()
             .unwrap();
-        let port = cargo.passengers.iter().position(|&id| id == rider).unwrap();
+        let port = cargo
+            .passengers()
+            .iter()
+            .position(|&id| id == rider)
+            .unwrap();
         // Real sequential boarding retains each rider's own scan/animation
         // cadence; it does not synchronize their first shots into one frame.
         firing_ports.insert(port);
@@ -460,7 +457,7 @@ fn retail_dustbowl_battle_fortress_orders_reach_its_riders() {
     let passive = |fortress: &Fortress| {
         gis.iter().all(|&id| {
             let gi = fortress.scenario.sim().substrate.entities.get(id).unwrap();
-            gi.passively_acquired_target
+            gi.passive_scan.acquired()
                 && gi.attack_target.target() == Some(TargetKind::Entity(apocalypse))
         })
     };
@@ -581,20 +578,16 @@ fn retail_dustbowl_battle_fortress_rider_walks_in_and_stays_put() {
     );
     retail_frame(&mut fortress.scenario, vec![enter]);
     let inside = |fortress: &Fortress| {
-        matches!(
-            fortress
-                .scenario
-                .sim()
-                .substrate
-                .entities
-                .get(gi)
-                .unwrap()
-                .passenger_role,
-            PassengerRole::Inside {
-                open_topped: true,
-                ..
-            }
-        )
+        fortress
+            .scenario
+            .sim()
+            .substrate
+            .entities
+            .get(gi)
+            .unwrap()
+            .passenger_role
+            .inside_transport()
+            .is_some_and(|(_, open)| open == true)
     };
     let mut frames = 0;
     while !inside(&fortress) {
@@ -664,7 +657,7 @@ fn retail_battle_fortress_player_boarding_retires_walking_speed() {
         println!(
             "{kind} speed={:?} nav={:?} doing={:?}",
             actor.foot_speed.applied_fraction(),
-            actor.navigation.nav_com,
+            actor.navigation.nav_com(),
             actor.mission_leaf.as_infantry().map(|leaf| leaf.doing())
         );
         assert_eq!(

@@ -45,7 +45,7 @@ pub(super) fn accept_fresh_progress(loco: &mut LocomotorState, turn_index: usize
         return;
     };
     progress.accept_fresh();
-    let family = TrackFamily::from_kind(loco.kind).unwrap();
+    let family = TrackFamily::from_kind(loco.active_kind()).unwrap();
     loco.store_track_progress(family, progress);
     // Drive ProcessMovement4B46C5 publishes +63 before the accepted head
     // and Apply1, even when this invocation cannot pay a point.
@@ -59,7 +59,7 @@ pub(super) fn select_fresh_progress(
     loco: &mut LocomotorState,
     turn_index: usize,
 ) -> Option<crate::sim::components::TrackProgress> {
-    let family = TrackFamily::from_kind(loco.kind)?;
+    let family = TrackFamily::from_kind(loco.active_kind())?;
     loco.ensure_installed_track_state();
     let mut progress = loco.track_progress(family)?;
     progress.select_fresh(turn_index);
@@ -74,9 +74,9 @@ pub(super) fn active_track_family(
     entity: &GameEntity,
 ) -> Option<super::track_process::TrackFamily> {
     let loco = entity.locomotor.as_ref()?;
-    let family = TrackFamily::from_kind(loco.kind)?;
+    let family = TrackFamily::from_kind(loco.active_kind())?;
     let valid = loco.track_valid(family)?;
-    let selector = loco.track_progress(family)?.turn_index;
+    let selector = loco.track_progress(family)?.turn_index();
     (valid && selector != -1).then_some(family)
 }
 
@@ -84,10 +84,10 @@ pub(super) fn active_track_family(
 /// Native callbacks may clear the head while leaving a selector installed.
 pub(crate) fn committed_track_head(entity: &GameEntity) -> Option<DriveCoord> {
     let loco = entity.locomotor.as_ref()?;
-    let family = TrackFamily::from_kind(loco.kind)?;
+    let family = TrackFamily::from_kind(loco.active_kind())?;
     let head = loco.track_head(family)?;
     let track = loco.track_progress(family)?;
-    (track.turn_index >= 0).then_some(head)
+    (track.turn_index() >= 0).then_some(head)
 }
 
 #[cfg(test)]

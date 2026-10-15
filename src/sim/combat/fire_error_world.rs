@@ -204,12 +204,12 @@ impl<'a> FireSubject<'a> {
             enslaved: firer.slave.owner().is_some(),
             warped_out: firer.is_warped_out(),
             warping_in: firer.is_warping_in(),
-            robot_offline: firer.deactivated,
-            on_bridge: firer.on_bridge,
+            robot_offline: firer.deactivated.is_offline(),
+            on_bridge: firer.on_bridge(),
             z: self.terrain().map_or(0, |terrain| {
                 crate::sim::movement::ground_pose::object_world_z_leptons(firer, Some(terrain))
             }),
-            berserk: firer.berserk.active,
+            berserk: firer.berserk.is_active(),
             falling: firer.is_falling_down(),
             sinking: firer.sinking.is_active(),
             in_open_transport: firer.passenger_role.in_open_transport(),
@@ -231,18 +231,22 @@ impl<'a> FireSubject<'a> {
             // `+0x308`: the damage-spark system, armed and expired on
             // `session.tick` by `techno_ai`'s common post step (`0` none,
             // `u64::MAX` held).
-            spark_particles_live: self.world.session.tick < firer.damage_particle_live_until,
+            spark_particles_live: self.world.session.tick
+                < firer.damage_particle_live_until.live_until(),
             // T45: the object's own rearm countdown (`+0x2EC`).
             rearming: firer
                 .rearm_timer
                 .remaining(self.world.session.binary_frame as i32)
                 != 0,
-            ammo: firer.aircraft_ammo.as_ref().map_or(-1, |ammo| ammo.current),
-            cloak_state: firer.cloak.as_ref().map_or(0, |cloak| cloak.state),
+            ammo: firer
+                .aircraft_ammo
+                .as_ref()
+                .map_or(-1, |ammo| ammo.current()),
+            cloak_state: firer.cloak.as_ref().map_or(0, |cloak| cloak.state()),
             current_weapon: combat_weapon::attacker_facts(firer, obj).current_weapon_number,
             draining_me: firer.drain.draining_me().is_some(),
             drain_target: link(firer.drain.target()),
-            locomotor_target: link(firer.locomotor_target),
+            locomotor_target: link(firer.lift.target()),
             temporal: firer
                 .temporal
                 .has_link()
@@ -268,11 +272,11 @@ impl<'a> FireSubject<'a> {
                 .map_or(firer.body_facing_current(frame), |facing| {
                     facing.current(frame)
                 }),
-            magnetron_lifted: firer.foot_locomotor_swap_active,
-            navcom: firer.navigation.nav_com.is_some(),
+            magnetron_lifted: firer.lift.swap_active(),
+            navcom: firer.navigation.nav_com().is_some(),
             moving_faster_than_tenth: firer.foot_speed.above_tenth(),
             deploying: firer.unit_deploying(),
-            tethered: firer.dock_entered_with.is_some(),
+            tethered: firer.tether.partner().is_some(),
             radio_link: match radio_link {
                 None => RadioLink::None,
                 Some(contact) if contact.category() == EntityCategory::Structure => {
@@ -283,15 +287,13 @@ impl<'a> FireSubject<'a> {
             // `+0x6AF` as it stood before this frame's `Facing_Update`: Unit AI
             // runs `Fire_At_Target @ 0x007365E1` first, and VERA commits the
             // new latch in `apply_unit_facing` after the fire phase.
-            turret_rotation_latch: firer.turret_rotation_latch,
+            turret_rotation_latch: firer.turret_rotation_latch.is_set(),
             sequence: firer
                 .mission_leaf
                 .as_infantry()
                 .map_or(-1, |leaf| leaf.doing()),
             effective_mission: firer.mission.effective().raw(),
-            delayed_fire_counter: firer
-                .pending_building_fire
-                .map_or(0, |pending| pending.remaining_ticks),
+            delayed_fire_counter: firer.pending_building_fire.remaining_ticks(),
             ..FirerFacts::default()
         };
         let firer_type = FirerTypeFacts {
@@ -340,7 +342,7 @@ impl<'a> FireSubject<'a> {
                         bomb: entity.bomb.is_some(),
                         in_limbo: entity.lifecycle.in_limbo(),
                         sinking: entity.sinking.is_active(),
-                        on_bridge: entity.on_bridge,
+                        on_bridge: entity.on_bridge(),
                         z: self.terrain().map_or(0, |terrain| {
                             crate::sim::movement::ground_pose::object_world_z_leptons(
                                 entity,
@@ -355,7 +357,7 @@ impl<'a> FireSubject<'a> {
                         draining_me: entity.drain.draining_me().is_some(),
                         warped_out: entity.is_warped_out(),
                         chrono_warp_latch: entity.chrono_warp_latch(),
-                        bunkered: entity.bunker_link.installed_in().is_some(),
+                        bunkered: entity.bunker.link().installed_in().is_some(),
                         health: entity.health,
                         parasite_lock_until: entity.parasite.launch_lock() as i32,
                         deploying: entity.unit_deploying(),
@@ -532,10 +534,10 @@ impl FireQuery for WorldQuery<'_, '_> {
             }),
             None => super::is_within_range_leptons(
                 super::lepton_distance_sq_raw(
-                    firer.position.rx,
-                    firer.position.ry,
-                    firer.position.sub_x,
-                    firer.position.sub_y,
+                    firer.position.rx(),
+                    firer.position.ry(),
+                    firer.position.sub_x(),
+                    firer.position.sub_y(),
                     rx,
                     ry,
                     sub_x,
@@ -576,8 +578,8 @@ impl FireQuery for WorldQuery<'_, '_> {
         let sensed = subject.fog.is_some_and(|fog| {
             fog.has_sensor_for_house(
                 subject.firer.owner(),
-                target.position.rx,
-                target.position.ry,
+                target.position.rx(),
+                target.position.ry(),
             )
         });
         i32::from(target.visual_character(
@@ -762,7 +764,7 @@ impl FireQuery for WorldQuery<'_, '_> {
             .locomotor
             .as_ref()
             .is_some_and(|locomotor| {
-                locomotor.kind == crate::rules::locomotor_type::LocomotorKind::Jumpjet
+                locomotor.active_kind() == crate::rules::locomotor_type::LocomotorKind::Jumpjet
             })
     }
 
@@ -827,10 +829,10 @@ impl WorldQuery<'_, '_> {
         }
         subject.target_point().map_or(0, |(rx, ry, sub_x, sub_y)| {
             crate::sim::movement::turret::facing_toward_lepton(
-                firer.position.rx,
-                firer.position.ry,
-                firer.position.sub_x,
-                firer.position.sub_y,
+                firer.position.rx(),
+                firer.position.ry(),
+                firer.position.sub_x(),
+                firer.position.sub_y(),
                 rx,
                 ry,
                 sub_x,

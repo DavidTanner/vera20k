@@ -62,7 +62,10 @@ pub(crate) fn dispatch_foot_mission(
         // Mission5B306C..5B30AC admits only an alive, positive-health receiver.
         // Pin direct receiver calls as well as the enclosing object-AI host:
         // harvest_attack_return.json dead_source / zero_health_source.
-        if entity.dying || !entity.is_object_alive() || !super::mission_handlers_run(sim, id) {
+        if entity.death.is_dying()
+            || !entity.is_object_alive()
+            || !super::mission_handlers_run(sim, id)
+        {
             return bridge_changed;
         }
         let category = entity.category();
@@ -84,11 +87,11 @@ pub(crate) fn dispatch_foot_mission(
                 .get(id)
                 .is_some_and(crate::sim::game_entity::GameEntity::is_harvester);
         let entry_adapter = entity.passenger_role.boarding_transport_id().is_some()
-            || entity.bunker_link.approaching().is_some();
+            || entity.bunker.link().approaching().is_some();
         // `FootClass::Mission_Move @ 0x004D4200` keeps its cadence while the
         // NavCom is set (`0x004D4203`) or the locomotor's `Is_Moving` holds
         // (`0x004D422A`); the order itself is not an input.
-        let moving = entity.navigation.nav_com.is_some()
+        let moving = entity.navigation.nav_com().is_some()
             || crate::sim::movement::motion_query::is_moving(entity) == Some(true);
         MissionHandlerInput {
             category,
@@ -103,7 +106,7 @@ pub(crate) fn dispatch_foot_mission(
             // motion" test above: the idle-mode selector branches on exactly
             // that one field.
             #[cfg(test)]
-            has_destination: entity.navigation.nav_com.is_some(),
+            has_destination: entity.navigation.nav_com().is_some(),
             #[cfg(test)]
             effective_mission: entity.mission.effective().known(),
             // Infantry Mission_Attack51F4D3 and Guard shim521320 read
@@ -898,7 +901,7 @@ fn infantry_automatic_guard_delay(
         || !object.deployer
         || !object.deploy_fire
         || object.undeploy_delay > -1
-        || actor.navigation.nav_com.is_some()
+        || actor.navigation.nav_com().is_some()
     {
         return -1;
     }
@@ -1006,7 +1009,7 @@ impl Simulation {
             entity.category(),
             entity.mission.current().known(),
             entity.attack_target.target().is_some(),
-            entity.navigation.nav_com.is_some(),
+            entity.navigation.nav_com().is_some(),
             entity.mission.effective().known(),
         );
         match selection {
@@ -1455,7 +1458,10 @@ fn c4_sabotage_building(sim: &Simulation, id: u64, rules: &RuleSet) -> Option<u6
         return None;
     };
     let target = sim.substrate.entities.get(building)?;
-    if target.category() != EntityCategory::Structure || target.dying || !target.is_alive() {
+    if target.category() != EntityCategory::Structure
+        || target.death.is_dying()
+        || !target.is_alive()
+    {
         return None;
     }
     sim.object_type(target.type_ref(), rules)
@@ -1508,7 +1514,10 @@ fn computer_capture_building(sim: &Simulation, id: u64, rules: &RuleSet) -> Opti
         return None;
     };
     let target = sim.substrate.entities.get(building)?;
-    if target.category() != EntityCategory::Structure || target.dying || !target.is_alive() {
+    if target.category() != EntityCategory::Structure
+        || target.death.is_dying()
+        || !target.is_alive()
+    {
         return None;
     }
     let object = sim.object_type(entity.type_ref(), rules)?;
@@ -1590,7 +1599,7 @@ fn evaluate_foot_rescue(
         return MissionHandlerEvaluation::cadence(1);
     };
     let state = actor.mission.handler_state();
-    if state == 1 && actor.navigation.nav_com.is_none() {
+    if state == 1 && actor.navigation.nav_com().is_none() {
         sim.substrate
             .entities
             .get_mut(id)
@@ -1737,7 +1746,7 @@ pub(super) fn evaluate_foot_area_guard(
         .substrate
         .entities
         .get(id)
-        .is_some_and(|entity| entity.bunker_link.installed_in().is_some())
+        .is_some_and(|entity| entity.bunker.link().installed_in().is_some())
     {
         let now = sim.session.binary_frame;
         let _ = sim.mission_queue_exact(
@@ -1779,7 +1788,8 @@ pub(super) fn evaluate_foot_area_guard(
         leash = rules.general.guard_mode_stray;
     }
     let may_return = sim.substrate.entities.get(id).is_some_and(|entity| {
-        entity.navigation.nav_com.is_none() && entity.mission_leaf.foot_firing_sequence_latch() == 0
+        entity.navigation.nav_com().is_none()
+            && entity.mission_leaf.foot_firing_sequence_latch() == 0
     });
     if let Some(post) = archive
         && may_return
@@ -1820,7 +1830,7 @@ pub(super) fn evaluate_foot_area_guard(
         .substrate
         .entities
         .get(id)
-        .is_some_and(|entity| entity.passive_scan_timer.due(sim.session.binary_frame));
+        .is_some_and(|entity| entity.passive_scan.timer().due(sim.session.binary_frame));
     if needs_target && can_acquire_target(sim, id, rules) && timer_due {
         let point = archive
             .and_then(|post| {
@@ -1896,8 +1906,9 @@ pub(super) fn evaluate_foot_area_guard(
 /// garrison seek (vt+0x348, [`Simulation::foot_enter_battle_bunker`]);
 /// either answer is unread, and the handler returns the then-current
 /// mission's `ftol(Rate × 900)` (`0x005B3A00`) with no draw: Capture's,
-/// once a garrison seek has commenced it. `+0x691` (vt+0x34C) follows; no
-/// VERA code sets it (`sim::building_entry`).
+/// once a garrison seek has commenced it. `+0x691` (vt+0x34C) follows,
+/// seeking across the entire Building registry for script64's civilian
+/// garrison teams (`sim::building_entry`).
 fn foot_building_entry_head(
     sim: &mut Simulation,
     rules: &RuleSet,
@@ -1910,6 +1921,8 @@ fn foot_building_entry_head(
         let _ = sim.foot_enter_bio_reactor(id, rules, ctx.overlay_registry, ctx.effects);
     } else if latches.should_enter_occupiable() {
         let _ = sim.foot_enter_battle_bunker(id, rules, ctx.overlay_registry, ctx.effects);
+    } else if latches.should_enter_nearest_occupiable() {
+        let _ = sim.foot_enter_nearest_occupiable(id, rules, ctx.overlay_registry, ctx.effects);
     } else {
         return None;
     }
@@ -1989,11 +2002,6 @@ fn foot_building_entry_head(
 ///   plants; VERA's shoots it instead. Frequency: every Guard dispatch of such
 ///   a computer-owned infantryman with a building target.
 ///   `+0xEC2` is UNCHECKED.
-/// - **the third building-entry latch.** The head
-///   ([`foot_building_entry_head`]) tests `+0x68F`, then `+0x690` (vt+0x348)
-///   and `+0x691` (vt+0x34C); no VERA code sets the last (script action 64,
-///   which no retail script uses, `sim::building_entry`), so its arm never
-///   runs.
 /// - **Tesla charging adjacency** (0x004D5116-0x004D51D2; AreaGuard4D6F44).
 ///   A secondary weapon's ElectricAssault warhead (`+0x158`)
 ///   admits an adjacent allied Overpowerable building (`+0x1575`, reader460029).
@@ -2103,7 +2111,10 @@ fn harvester_guard_override_requeues_harvest(sim: &Simulation, id: u64, rules: &
     if !unit_type.teleporter {
         return false;
     }
-    let (rx, ry) = (i32::from(entity.position.rx), i32::from(entity.position.ry));
+    let (rx, ry) = (
+        i32::from(entity.position.rx()),
+        i32::from(entity.position.ry()),
+    );
     for (dx, dy) in CELL_DELTAS {
         let (Ok(cx), Ok(cy)) = (u16::try_from(rx + dx), u16::try_from(ry + dy)) else {
             continue;
@@ -2116,7 +2127,7 @@ fn harvester_guard_override_requeues_harvest(sim: &Simulation, id: u64, rules: &
             .any(|sid| {
                 sim.substrate.entities.get(sid).is_some_and(|building| {
                     building.category() == EntityCategory::Structure
-                        && !building.dying
+                        && !building.death.is_dying()
                         && building.owner() == entity.owner()
                         && sim
                             .object_type(building.type_ref(), rules)
@@ -2301,8 +2312,8 @@ fn native_distance_is_in_cadence_band(
     let lepton = |cell: u16, sub: crate::util::fixed_math::SimFixed| -> i64 {
         cell as i64 * 256 + sub.to_num::<i64>()
     };
-    let dx = lepton(from.rx, from.sub_x) - lepton(to.rx, to.sub_x);
-    let dy = lepton(from.ry, from.sub_y) - lepton(to.ry, to.sub_y);
+    let dx = lepton(from.rx(), from.sub_x()) - lepton(to.rx(), to.sub_x());
+    let dy = lepton(from.ry(), from.sub_y()) - lepton(to.ry(), to.sub_y());
     let (Ok(dx), Ok(dy)) = (i32::try_from(dx), i32::try_from(dy)) else {
         // Native holds both differences in 32-bit registers; a map large
         // enough to overflow one cannot exist.
@@ -2432,7 +2443,7 @@ fn attack_target_is_stale(sim: &Simulation, id: u64) -> bool {
     !sim.substrate
         .entities
         .get(target_id)
-        .is_some_and(|target| !target.dying && target.is_alive())
+        .is_some_and(|target| !target.death.is_dying() && target.is_alive())
 }
 
 #[cfg(test)]
@@ -2534,13 +2545,15 @@ mod harvester_guard_override_tests {
     fn fill_cargo(sim: &mut Simulation) {
         let entity = sim.substrate.entities.get_mut(MINER_ID).expect("miner");
         let miner = entity.miner.as_mut().expect("miner");
-        let capacity = miner.capacity_bales;
-        miner.cargo = (0..capacity)
-            .map(|_| CargoBale {
-                resource_type: ResourceType::Ore,
-                value: 25,
-            })
-            .collect();
+        let capacity = miner.capacity_bales();
+        miner.set_cargo_for_test(
+            (0..capacity)
+                .map(|_| CargoBale {
+                    resource_type: ResourceType::Ore,
+                    value: 25,
+                })
+                .collect(),
+        );
     }
 
     fn dispatch(sim: &mut Simulation, rules: &RuleSet) {
@@ -2903,8 +2916,12 @@ mod guard_rearm_tests {
             let mut sim = Simulation::with_seed(1);
             sim.session.binary_frame = field("frame") as u32;
             let mut entity = GameEntity::test_default(1, "TEST", "Americans", 5, 5);
-            entity.rearm_timer =
-                crate::sim::timer::CdTimer::from_raw(field("start"), field("duration"));
+            entity
+                .rearm_timer
+                .set_for_test(crate::sim::timer::CdTimer::from_raw(
+                    field("start"),
+                    field("duration"),
+                ));
             sim.substrate.entities.insert(entity);
             let before = sim.scenario_rng.logical_state();
 

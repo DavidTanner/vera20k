@@ -355,7 +355,18 @@ const MIN_DISTINCT_DECK_CELLS: usize = 6;
 // with a hash that skips only that fold) gives this value in the same
 // test, with every tripwire above green.
 // Control removed. Previous: 0x13A7_184B_5F5F_A088.
-const BRIDGE_HARNESS_FINAL_HASH: u64 = 0x7762_A172_3DBE_DA89;
+// Integrated StateHasher pin after executed scoped feed attribution. The test
+// below recovers current main exactly with retired feeds and preserves serialized
+// gameplay, the live Dummy and all three RNG streams; this is a Rust ratchet.
+const BRIDGE_HARNESS_FINAL_HASH: u64 = 0x4C4F_3B6D_6A3A_B21F;
+
+// ALL01 r6 (fork-local schema345) used DefaultHasher before main's
+// pinned StateHasher, entity/fog digests and owner migrations. These remain
+// historical Rust receipts; they are not comparable to current u64 outputs.
+const BRIDGE_HARNESS_INCOMING_HASH: u64 = 0x38EB_6DC4_C87D_4E43;
+const BRIDGE_HARNESS_R6_FINAL_HASH: u64 = 0xA333_077C_B5E5_6DA3;
+// The legacy-feed control uses this main StateHasher reference.
+const BRIDGE_HARNESS_MAIN_HASH: u64 = 0x7762_A172_3DBE_DA89;
 
 fn bridge_ini() -> IniFile {
     // One armed ground vehicle and one distant infantryman on a second house, so
@@ -723,11 +734,11 @@ fn bridge_crossing_replay_is_deterministic_and_baseline_stable() {
         // plus one Foot+5E0 word per later cell.
         if order_accepted_path.is_none()
             && crate::sim::movement::motion_query::is_moving(&entity) == Some(true)
-            && !entity.navigation.path_replay.directions.is_empty()
+            && !entity.navigation.path_replay.directions().is_empty()
         {
-            order_accepted_path = Some(entity.navigation.path_replay.directions.len() + 1);
+            order_accepted_path = Some(entity.navigation.path_replay.directions().len() + 1);
         }
-        let cell = (entity.position.rx, entity.position.ry);
+        let cell = (entity.position.rx(), entity.position.ry());
         let facts = grid
             .cell(cell.0, cell.1)
             .copied()
@@ -735,8 +746,8 @@ fn bridge_crossing_replay_is_deterministic_and_baseline_stable() {
         frames.push(CrossingFrame {
             tick,
             cell,
-            z: entity.position.z,
-            on_bridge: entity.on_bridge,
+            z: entity.position.z(),
+            on_bridge: entity.on_bridge(),
             terrain_level: facts.signed_level(),
             structural: facts.has_structural_bridge(),
         });
@@ -850,7 +861,7 @@ fn bridge_crossing_replay_is_deterministic_and_baseline_stable() {
 
     let arrived = rec.substrate.entities.get(TANK_ID).unwrap();
     assert!(
-        arrived.navigation.nav_com.is_none(),
+        arrived.navigation.nav_com().is_none(),
         "arrival must clear NavCom"
     );
     assert!(
@@ -933,6 +944,14 @@ fn bridge_crossing_replay_is_deterministic_and_baseline_stable() {
         "bridge absolute RNG states changed",
     );
     let final_hash = *replayed.last().expect("at least one tick replayed");
+    println!(
+        "[bridge historical hash receipts] archived_default_incoming={BRIDGE_HARNESS_INCOMING_HASH:016X} archived_r6={BRIDGE_HARNESS_R6_FINAL_HASH:016X}"
+    );
+    super::global_parity_harness_tests::assert_announcement_feed_retirement_hash_control(
+        "bridge",
+        &rep,
+        BRIDGE_HARNESS_MAIN_HASH,
+    );
     assert_eq!(
         final_hash, BRIDGE_HARNESS_FINAL_HASH,
         "committed bridge-harness baseline drifted. Do not paste the observed value \

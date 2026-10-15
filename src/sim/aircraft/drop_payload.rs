@@ -196,10 +196,7 @@ fn add_ammo(sim: &mut Simulation, id: u64, delta: i32) -> i32 {
         .entities
         .get_mut(id)
         .and_then(|plane| plane.aircraft_ammo.as_mut())
-        .map_or(0, |ammo| {
-            ammo.current = ammo.current.wrapping_add(delta);
-            ammo.current
-        })
+        .map_or(0, |ammo| ammo.add(delta))
 }
 
 /// From the landing point through SpawnParachuted
@@ -351,7 +348,7 @@ fn paradrop(
         .map(|rider| rider.position)
         .ok_or(DepartureFailure::MissingPassenger)?;
     ground_pose::set_position_world_xy(&mut position, [landing.x, landing.y]);
-    let (rx, ry) = (position.rx, position.ry);
+    let (rx, ry) = (position.rx(), position.ry());
     let flags = sim.resolved_terrain.as_ref().map_or(0, |terrain| {
         terrain.native_cell_flags(
             NativeCellQuery::canonical(terrain).lookup_world(landing.x, landing.y),
@@ -364,9 +361,9 @@ fn paradrop(
     if flags & BRIDGE_FLAG_STRUCTURAL != 0
         && let Some(rider) = sim.substrate.entities.get_mut(passenger)
     {
-        rider.on_bridge = true;
+        rider.set_on_bridge(true);
         if let Some(locomotor) = rider.locomotor.as_mut() {
-            locomotor.layer = MovementLayer::Bridge;
+            locomotor.set_layer(MovementLayer::Bridge);
         }
     }
     if flags & BRIDGE_FLAG_STRUCTURAL != 0 && flags & BRIDGE_FLAG_TRANSITION == 0 {
@@ -384,13 +381,13 @@ fn paradrop(
             rider
                 .locomotor
                 .as_ref()
-                .map(|locomotor| locomotor.speed_type)
+                .map(|locomotor| locomotor.speed_type())
                 .or_else(|| object_type.map(|object_type| object_type.speed_type))
                 .unwrap_or(crate::rules::locomotor_type::SpeedType::Foot),
             rider
                 .locomotor
                 .as_ref()
-                .map(|locomotor| locomotor.movement_zone)
+                .map(|locomotor| locomotor.movement_zone())
                 .or_else(|| object_type.map(|object_type| object_type.movement_zone))
                 .unwrap_or(crate::rules::locomotor_type::MovementZone::Normal),
         )
@@ -444,9 +441,9 @@ fn paradrop(
         .entities
         .get_mut(passenger)
         .is_some_and(|rider| {
-            rider.sub_cell = (rider.category() == EntityCategory::Infantry).then_some(spot);
+            rider.set_sub_cell((rider.category() == EntityCategory::Infantry).then_some(spot));
             rider.passenger_role.clear_carrier_relation();
-            rider.on_bridge
+            rider.on_bridge()
         });
     if !begin_parachute_descent(&mut sim.substrate.entities, passenger, landing.z) {
         return Err(DepartureFailure::ParachuteAttach);
@@ -459,14 +456,7 @@ fn paradrop(
     let outcome = sim.try_reveal_entity_with_context(
         passenger,
         RevealRequest {
-            position: RevealPosition {
-                exact_z_leptons: None,
-                rx,
-                ry,
-                z: level,
-                sub_x: position.sub_x,
-                sub_y: position.sub_y,
-            },
+            position: RevealPosition::new(rx, ry, level, None, position.sub_x(), position.sub_y()),
             placement: PlacementEvidence::MarkSucceeded,
             logic_eligible: true,
         },
@@ -499,8 +489,8 @@ fn land_tail(
         observe(Observed::PlayAt([location.x, location.y, location.z]));
     }
     sim.sound_events.push(SimSoundEvent::ChuteSound {
-        rx: plane_entity.position.rx,
-        ry: plane_entity.position.ry,
+        rx: plane_entity.position.rx(),
+        ry: plane_entity.position.ry(),
     });
     #[cfg(test)]
     observe(Observed::CellAt([landing.x, landing.y, landing.z]));
@@ -584,7 +574,7 @@ mod tests {
         aircraft.aircraft_ammo = Some(AircraftAmmo::new(4));
         let mut cargo = PassengerCargo::new(8, 0);
         cargo.board_forced(passenger_id, 1);
-        aircraft.passenger_role = PassengerRole::Transport { cargo };
+        aircraft.passenger_role = PassengerRole::transport(cargo);
         sim.substrate.entities.insert(aircraft);
 
         let mut passenger = GameEntity::new_at_frame_zero_for_test(
@@ -601,12 +591,9 @@ mod tests {
             0,
             false,
         );
-        passenger.is_voxel = false;
-        passenger.sub_cell = Some(2);
-        passenger.passenger_role = PassengerRole::Inside {
-            transport_id: aircraft_id,
-            open_topped: false,
-        };
+        passenger.set_is_voxel_for_test(false);
+        passenger.set_sub_cell(Some(2));
+        passenger.passenger_role = PassengerRole::inside_for_test(aircraft_id, false);
         sim.substrate.entities.insert(passenger);
     }
 
@@ -618,7 +605,7 @@ mod tests {
             .aircraft_ammo
             .as_mut()
             .unwrap()
-            .current = ammo;
+            .set_current_for_test(ammo);
     }
 
     fn ammo(sim: &Simulation, id: u64) -> i32 {
@@ -629,7 +616,7 @@ mod tests {
             .aircraft_ammo
             .as_ref()
             .unwrap()
-            .current
+            .current()
     }
 
     fn cargo(sim: &Simulation, id: u64) -> Vec<u64> {
@@ -640,8 +627,8 @@ mod tests {
             .passenger_role
             .cargo()
             .unwrap()
-            .passengers
-            .clone()
+            .passengers()
+            .to_vec()
     }
 
     fn chute_sounds(sim: &Simulation) -> Vec<(u16, u16)> {
@@ -660,10 +647,13 @@ mod tests {
             blocker.set_owner_for_test(sim.interner.intern("Americans"));
             blocker.set_type_ref_for_test(sim.interner.intern("E1"));
             blocker.set_category_for_test(EntityCategory::Infantry);
-            blocker.is_voxel = false;
-            blocker.sub_cell = Some(subcell);
-            (blocker.position.sub_x, blocker.position.sub_y) =
-                lepton::subcell_lepton_offset(Some(subcell));
+            blocker.set_is_voxel_for_test(false);
+            blocker.set_sub_cell(Some(subcell));
+            {
+                let (sub_x, sub_y) = lepton::subcell_lepton_offset(Some(subcell));
+                blocker.position.set_sub_x(sub_x);
+                blocker.position.set_sub_y(sub_y);
+            }
             sim.substrate.entities.insert(blocker);
             assert!(matches!(sim.reveal(id), RevealOutcome::Revealed { .. }));
         }
@@ -708,7 +698,7 @@ mod tests {
                 assert!(cargo(&sim, 1).is_empty(), "native row={row}");
                 let passenger = sim.substrate.entities.get(2).unwrap();
                 assert_eq!(
-                    (passenger.position.rx, passenger.position.ry),
+                    (passenger.position.rx(), passenger.position.ry()),
                     expected_cell,
                     "native row={row}, post_count={}",
                     sweep["post_count"],
@@ -800,7 +790,10 @@ mod tests {
                 assert!(!passenger.is_falling_down());
             } else {
                 assert!(cargo(&sim, 1).is_empty());
-                assert_eq!((passenger.position.rx, passenger.position.ry), native_cell);
+                assert_eq!(
+                    (passenger.position.rx(), passenger.position.ry()),
+                    native_cell
+                );
                 assert!(!passenger.lifecycle.in_limbo());
             }
         }
@@ -910,7 +903,7 @@ mod tests {
             .get_mut(aircraft_id)
             .unwrap()
             .position
-            .exact_z_leptons = Some(1500);
+            .set_exact_z_leptons(Some(1500));
         drop_payload(
             &mut sim,
             aircraft_id,
@@ -1020,7 +1013,7 @@ mod tests {
         // In flight 1500 leptons over its level-2 cell, as the Fly host keeps it.
         let plane_z = 2 * 104 + 1500;
         let plane = sim.substrate.entities.get_mut(aircraft_id).unwrap();
-        plane.position.exact_z_leptons = Some(plane_z);
+        plane.position.set_exact_z_leptons(Some(plane_z));
         plane.locomotor = Some(LocomotorState::for_test_kind(LocomotorKind::Fly));
 
         drop_payload(
@@ -1032,12 +1025,12 @@ mod tests {
         );
         let passenger = sim.substrate.entities.get(passenger_id).unwrap();
         assert_eq!(
-            (passenger.position.rx, passenger.position.ry),
+            (passenger.position.rx(), passenger.position.ry()),
             (51, 20),
             "the landing cell is at level 0"
         );
         assert!(passenger.is_falling_down());
-        assert_eq!(passenger.position.exact_z_leptons, Some(plane_z));
+        assert_eq!(passenger.position.exact_z_leptons(), Some(plane_z));
     }
 
     /// Over a structural bridge cell (`+0x140 & 0x100`) Paradrop sets OnBridge
@@ -1077,8 +1070,8 @@ mod tests {
             );
             let passenger = sim.substrate.entities.get(2).unwrap();
             (
-                matches!(passenger.passenger_role, PassengerRole::Inside { .. }),
-                passenger.on_bridge,
+                passenger.passenger_role.is_inside_transport(),
+                passenger.on_bridge(),
             )
         };
 
@@ -1123,14 +1116,14 @@ mod tests {
         let (plane, passenger) = (1, 2);
         insert_loaded_paradrop_pair(&mut sim, plane, passenger);
         let plane_entity = sim.substrate.entities.get_mut(plane).unwrap();
-        plane_entity.position.exact_z_leptons = Some(1500);
+        plane_entity.position.set_exact_z_leptons(Some(1500));
         plane_entity.locomotor = Some(LocomotorState::for_test_kind(LocomotorKind::Fly));
         let effects = crate::sim::world::FrameEffects::default();
 
         drop_payload(&mut sim, plane, &rules, None, effects);
         let rider = sim.substrate.entities.get(passenger).unwrap();
-        assert!(matches!(rider.passenger_role, PassengerRole::Inside { .. }));
-        assert!(rider.on_bridge, "the refusal keeps OnBridge");
+        assert!(rider.passenger_role.is_inside_transport());
+        assert!(rider.on_bridge(), "the refusal keeps OnBridge");
 
         // The plane flies on; its next drop is over plain ground at (51, 24).
         let plane_entity = sim.substrate.entities.get_mut(plane).unwrap();
@@ -1140,8 +1133,8 @@ mod tests {
         );
         drop_payload(&mut sim, plane, &rules, None, effects);
         let rider = sim.substrate.entities.get(passenger).unwrap();
-        assert_eq!((rider.position.rx, rider.position.ry), (51, 24));
-        assert!(rider.on_bridge);
+        assert_eq!((rider.position.rx(), rider.position.ry()), (51, 24));
+        assert!(rider.on_bridge());
 
         let max_fall_rate = rules.general.parachute_max_fall_rate;
         let mut frames = 0;
@@ -1150,7 +1143,7 @@ mod tests {
             assert!(frames < 10_000, "the fall ends");
         }
         let rider = sim.substrate.entities.get(passenger).unwrap();
-        assert!(rider.on_bridge);
+        assert!(rider.on_bridge());
         assert_eq!(
             ground_pose::object_world_z_leptons(rider, sim.resolved_terrain.as_ref()),
             lepton::BRIDGE_DECK_HEIGHT_LEPTONS,
@@ -1174,7 +1167,9 @@ mod tests {
         sim.session.binary_frame = 77;
         let plane = sim.substrate.entities.get_mut(aircraft_id).unwrap();
         plane.mission_leaf.set_paradrop_passes_for_test(-2);
-        plane.rearm_timer = crate::sim::timer::CdTimer::started(3, 40);
+        plane
+            .rearm_timer
+            .set_for_test(crate::sim::timer::CdTimer::started(3, 40));
 
         drop_payload(
             &mut sim,
@@ -1191,22 +1186,22 @@ mod tests {
             5
         );
         assert_eq!(
-            plane.rearm_timer,
+            plane.rearm_timer.timer(),
             crate::sim::timer::CdTimer::started(77, 0)
         );
         assert_eq!(ammo(&sim, aircraft_id), 3);
         let passenger = sim.substrate.entities.get(passenger_id).unwrap();
         assert!(passenger.lifecycle.object_alive());
         assert!(!passenger.lifecycle.in_limbo());
-        assert!(passenger.lifecycle.cell_marked);
-        assert!(passenger.in_logic_vector);
-        assert_eq!((passenger.position.rx, passenger.position.ry), (51, 20));
+        assert!(passenger.lifecycle.cell_marked());
+        assert!(passenger.in_logic_vector.is_member());
+        assert_eq!((passenger.position.rx(), passenger.position.ry()), (51, 20));
         let sub_cell = passenger
-            .sub_cell
+            .sub_cell()
             .expect("placed infantry should have a subcell");
         assert!(crate::sim::movement::bump_crush::FUNCTIONAL_SUB_CELLS.contains(&sub_cell));
         assert_eq!(
-            (passenger.position.sub_x, passenger.position.sub_y),
+            (passenger.position.sub_x(), passenger.position.sub_y()),
             lepton::subcell_lepton_offset(Some(sub_cell))
         );
         // Unlimbo faces it south (`0x005F5A35`).
@@ -1245,7 +1240,7 @@ mod tests {
                 .get_mut(passenger_id)
                 .unwrap()
                 .discovery
-                .discovered_by_current_house = true;
+                .set_discovered_by_current_house_for_test(true);
             sim.substrate
                 .entities
                 .get_mut(aircraft_id)
@@ -1253,7 +1248,13 @@ mod tests {
                 .mission_leaf
                 .set_paradrop_passes_for_test(2);
             block_three_spots(&mut sim, (51, 20));
-            let rearm = sim.substrate.entities.get(aircraft_id).unwrap().rearm_timer;
+            let rearm = sim
+                .substrate
+                .entities
+                .get(aircraft_id)
+                .unwrap()
+                .rearm_timer
+                .timer();
 
             drop_payload(
                 &mut sim,
@@ -1271,16 +1272,16 @@ mod tests {
                 plane.mission_leaf.as_aircraft().unwrap().paradrop_passes(),
                 2
             );
-            assert_eq!(plane.rearm_timer, rearm);
+            assert_eq!(plane.rearm_timer.timer(), rearm);
             let passenger = sim.substrate.entities.get(passenger_id).unwrap();
-            assert!(matches!(
-                passenger.passenger_role,
-                PassengerRole::Inside { transport_id, .. } if transport_id == aircraft_id
-            ));
+            assert_eq!(
+                passenger.passenger_role.inside_transport_id(),
+                Some(aircraft_id)
+            );
             assert!(!passenger.is_falling_down());
             assert!(passenger.lifecycle.object_alive() && passenger.lifecycle.in_limbo());
-            assert!(!passenger.lifecycle.cell_marked && !passenger.in_logic_vector);
-            assert_eq!(passenger.discovery.discovered_by_current_house, human);
+            assert!(!passenger.lifecycle.cell_marked() && !passenger.in_logic_vector.is_member());
+            assert_eq!(passenger.discovery.discovered_by_current_house(), human);
             assert!(
                 !sim.substrate
                     .occupancy
@@ -1343,12 +1344,12 @@ mod tests {
             let rules = drop_test_rules();
             insert_loaded_paradrop_pair(&mut sim, 1, 2);
             let mut loco = LocomotorState::from_object_type(rules.object("E1").unwrap(), 0);
-            loco.layer = MovementLayer::Bridge;
+            loco.set_layer(MovementLayer::Bridge);
             {
                 let passenger = sim.substrate.entities.get_mut(2).unwrap();
                 passenger.locomotor = Some(loco);
                 passenger.lifecycle.set_object_alive_for_test(post_attach);
-                passenger.lifecycle.cell_marked = post_attach;
+                passenger.lifecycle.set_cell_marked(post_attach);
             }
             let mut peer = GameEntity::test_default(9, "E1", "Americans", 30, 30);
             peer.mark_live_contact_with(2);
@@ -1357,12 +1358,12 @@ mod tests {
                 let aircraft = sim.substrate.entities.get_mut(1).unwrap();
                 aircraft.set_gunner_selection_for_test(99, -1);
                 let cargo = aircraft.passenger_role.cargo_mut().unwrap();
-                cargo.passenger_sizes[0] = 7;
-                cargo.total_size = 7;
-                cargo.board_forced(1234, 3);
-                // Put the real passenger back at the head, preserving mixed sizes.
-                cargo.passengers.swap(0, 1);
-                cargo.passenger_sizes.swap(0, 1);
+                // The real passenger (admitted at size 7) at the head, then
+                // a size-3 entry: mixed sizes.
+                let real = cargo.passengers()[0];
+                cargo.set_passengers_for_test(vec![real, 1234]);
+                cargo.set_passenger_sizes_for_test(vec![7, 3]);
+                cargo.set_total_size_for_test(10);
             }
             let held = serde_json::to_value(
                 sim.substrate
@@ -1391,11 +1392,11 @@ mod tests {
             let passenger = sim.substrate.entities.get(2).unwrap();
             assert_eq!(passenger.passenger_role.inside_transport_id(), Some(1));
             assert!(passenger.lifecycle.in_limbo());
-            assert_eq!(passenger.lifecycle.cell_marked, post_attach);
-            assert!(!passenger.in_logic_vector);
+            assert_eq!(passenger.lifecycle.cell_marked(), post_attach);
+            assert!(!passenger.in_logic_vector.is_member());
             assert!(!passenger.is_falling_down());
             assert_eq!(
-                passenger.locomotor.as_ref().unwrap().layer,
+                passenger.locomotor.as_ref().unwrap().layer(),
                 MovementLayer::Bridge
             );
             assert_eq!(
@@ -1406,7 +1407,21 @@ mod tests {
                     .has_live_contact_with(2),
                 !post_attach
             );
-            assert!(sim.sound_events.is_empty());
+            // Reboarding runs shared Techno Limbo:6F6C6B releases the
+            // passenger's Gattling handle even when already in Limbo. A
+            // first Foot Limbo may also detach its positional sound. Neither
+            // cleanup request is the success-only415DF6 parachute cue.
+            let gattling_owner = crate::sim::combat::gattling::gattling_sound_owner(2);
+            assert!(
+                sim.sound_events.iter().all(|event| match event {
+                    SimSoundEvent::ObjectSoundDetached { owner: 2 } => true,
+                    SimSoundEvent::GattlingLoopRelease { owner } => *owner == gattling_owner,
+                    _ => false,
+                }),
+                "post_attach={post_attach}: {:?}",
+                sim.sound_events
+            );
+            assert!(chute_sounds(&sim).is_empty());
             if !post_attach {
                 assert_eq!(sim.scenario_rng.state(), rng_before);
             }
@@ -1416,7 +1431,7 @@ mod tests {
                     .get_mut(2)
                     .unwrap()
                     .lifecycle
-                    .cell_marked = false;
+                    .set_cell_marked(false);
                 drop_payload(
                     &mut sim,
                     1,
@@ -1432,12 +1447,12 @@ mod tests {
                     .passenger_role
                     .cargo()
                     .unwrap();
-                assert_eq!(cargo.passengers, vec![1234]);
-                assert_eq!(cargo.passenger_sizes, vec![3]);
-                assert_eq!(cargo.total_size, 3);
+                assert_eq!(cargo.passengers(), vec![1234]);
+                assert_eq!(cargo.passenger_sizes(), vec![3]);
+                assert_eq!(cargo.total_size(), 3);
                 let passenger = sim.substrate.entities.get(2).unwrap();
                 assert!(passenger.is_falling_down());
-                assert!(passenger.lifecycle.cell_marked && passenger.in_logic_vector);
+                assert!(passenger.lifecycle.cell_marked() && passenger.in_logic_vector.is_member());
                 assert!(!passenger.passenger_role.is_inside_transport());
                 assert_eq!(chute_sounds(&sim).len(), 1);
             }

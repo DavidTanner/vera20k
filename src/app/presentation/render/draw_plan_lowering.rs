@@ -498,8 +498,10 @@ mod tests {
                 5,
                 true,
             );
-            entity.position.sub_x = SimFixed::from_num(128 + actor["delta"][0].as_i64().unwrap());
-            entity.position.sub_y = SimFixed::from_num(128);
+            entity.position.set_sub_x(SimFixed::from_num(
+                128 + actor["delta"][0].as_i64().unwrap(),
+            ));
+            entity.position.set_sub_y(SimFixed::from_num(128));
             sim.entities_mut().insert(entity);
         }
         sim.set_logic_order_for_test(vec![4, 3, 2, 1]);
@@ -514,10 +516,12 @@ mod tests {
                 "submit" => sim.submit_object_display(id.unwrap(), DisplayLayer::GROUND, None),
                 "coordinates" => {
                     let entity = sim.entities_mut().get_mut(id.unwrap()).unwrap();
-                    entity.position.sub_x =
-                        SimFixed::from_num(step["xyz"][0].as_i64().unwrap() - 2560);
-                    entity.position.sub_y =
-                        SimFixed::from_num(step["xyz"][1].as_i64().unwrap() - 2560);
+                    entity
+                        .position
+                        .set_sub_x(SimFixed::from_num(step["xyz"][0].as_i64().unwrap() - 2560));
+                    entity
+                        .position
+                        .set_sub_y(SimFixed::from_num(step["xyz"][1].as_i64().unwrap() - 2560));
                 }
                 "sort" => {
                     sim.advance_tick(&[], None, None, None, 50);

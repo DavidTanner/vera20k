@@ -134,7 +134,8 @@ fn is_visible(
     if owner == entity_owner {
         return true;
     }
-    fog.is_cell_revealed(owner, pos.rx, pos.ry) && !fog.is_cell_gap_covered(owner, pos.rx, pos.ry)
+    fog.is_cell_revealed(owner, pos.rx(), pos.ry())
+        && !fog.is_cell_gap_covered(owner, pos.rx(), pos.ry())
 }
 
 /// Compute the 8 corners of a building's isometric bounding box in screen space.
@@ -355,7 +356,7 @@ pub(crate) fn build_selection_bracket_instances(
     let mut out = SelectionBracketInstances::default();
 
     for e in sim.entities().values() {
-        if e.category() != EntityCategory::Structure || !e.selected {
+        if e.category() != EntityCategory::Structure || !e.selection.is_selected() {
             continue;
         }
         let type_str = sim.interner.resolve(e.type_ref());
@@ -416,7 +417,7 @@ pub(crate) fn build_selection_bracket_instances(
         }
         // --- 12 edges of the isometric bounding box ---
         // Indices: FL=0, FR=1, BL=2, BR=3
-        let ctx = BracketDepthCtx::from_state(state, e.position.z);
+        let ctx = BracketDepthCtx::from_state(state, e.position.z());
         let gc: [Corner; 4] = [
             Corner {
                 pt: g[0],

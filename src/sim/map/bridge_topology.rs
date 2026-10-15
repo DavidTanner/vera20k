@@ -135,7 +135,9 @@ impl CellBridgeView {
 
 // --- Bridge traversal notes ---------------------------------------------------
 //
-// The traversal gate is owned by `pathfinding::check_bridge_traversal`.
+// The traversal gate is Foot `0x004D9C60`, owned by
+// `movement::infantry_entry::adjust_height_and_list` inside the class's
+// Can_Enter_Cell.
 //
 // GATE A4 inventory (verified, `GATE_BRIDGE_TRAVERSAL_RESOLUTION_GHIDRA_REPORT.md`):
 //   - In gamemd the ground-unit bridge-traversal validator is dispatched via the

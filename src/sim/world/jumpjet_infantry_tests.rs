@@ -266,8 +266,8 @@ fn retail_dustbowl_rocketeer_flies_hovers_and_fires_in_its_airborne_poses() {
         // Within the 20mm's five cells while still faster than a tenth: the
         // Infantry fire error's I4 holds the shot.
         let shooter = sim.substrate.entities.get(rocketeer).expect("rocketeer");
-        let in_range = shooter.position.rx.abs_diff(target.position.rx) <= 4
-            && shooter.position.ry.abs_diff(target.position.ry) <= 1;
+        let in_range = shooter.position.rx().abs_diff(target.position.rx()) <= 4
+            && shooter.position.ry().abs_diff(target.position.ry()) <= 1;
         if in_range && now.fraction > 6553 && shooter.attack_target.target().is_some() {
             held_by_speed += 1;
         }
@@ -362,10 +362,10 @@ fn retail_dustbowl_parked_rocketeer_engages_nearby_enemies() {
         "parked on Move"
     );
     assert_eq!(
-        parked.navigation.nav_com,
+        parked.navigation.nav_com(),
         Some(crate::sim::components::NavTargetRef::cell(
-            parked.position.rx,
-            parked.position.ry
+            parked.position.rx(),
+            parked.position.ry()
         )),
         "parked on its NavCom's cell"
     );
@@ -463,9 +463,10 @@ fn a_parked_rocketeer_scans_and_fires_on_move() {
             .unwrap()
             .jumpjet_runtime()
             .unwrap();
-        if entity.position.rx == 56
+        if entity.position.rx() == 56
             && runtime.phase() == 2
-            && entity.navigation.nav_com == Some(crate::sim::components::NavTargetRef::cell(56, 52))
+            && entity.navigation.nav_com()
+                == Some(crate::sim::components::NavTargetRef::cell(56, 52))
         {
             parked = true;
             break;
@@ -479,11 +480,11 @@ fn a_parked_rocketeer_scans_and_fires_on_move() {
     sim.remove_entity_occupancy(shooter);
     {
         let enemy = sim.substrate.entities.get_mut(shooter).unwrap();
-        enemy.position.rx = 59;
-        enemy.position.ry = 52;
+        enemy.position.set_rx(59);
+        enemy.position.set_ry(52);
     }
     sim.add_entity_occupancy(shooter);
-    let rearm = sim.substrate.entities.get(1).unwrap().rearm_timer;
+    let rearm = sim.substrate.entities.get(1).unwrap().rearm_timer.timer();
     let mut acquired = false;
     let mut fired = false;
     for _ in 0..120 {
@@ -494,7 +495,7 @@ fn a_parked_rocketeer_scans_and_fires_on_move() {
         assert_eq!(entity.mission.current().known(), Some(MissionType::Move));
         acquired |=
             entity.attack_target.target() == Some(crate::sim::combat::TargetKind::Entity(shooter));
-        fired |= entity.rearm_timer != rearm;
+        fired |= entity.rearm_timer.timer() != rearm;
         if fired {
             break;
         }
@@ -663,7 +664,7 @@ fn retail_dustbowl_shot_down_rocketeer_falls_and_leaves_no_body() {
             pose: entity.map(|_| pose(sim, rocketeer)),
             health: entity.map_or(0, |entity| entity.health.current()),
             crashing: entity.is_some_and(|entity| entity.crash.is_crashing()),
-            rearm: entity.map(|entity| entity.rearm_timer),
+            rearm: entity.map(|entity| entity.rearm_timer.timer()),
             anims,
             crash_sounds,
         });
@@ -831,14 +832,14 @@ fn rocketeer_crash_fixture(
             sim.try_reveal_entity(
                 id,
                 RevealRequest {
-                    position: RevealPosition {
-                        exact_z_leptons: None,
+                    position: RevealPosition::new(
                         rx,
                         ry,
-                        z: 0,
-                        sub_x: SimFixed::from_num(128),
-                        sub_y: SimFixed::from_num(128),
-                    },
+                        0,
+                        None,
+                        SimFixed::from_num(128),
+                        SimFixed::from_num(128)
+                    ),
                     placement: PlacementEvidence::MarkSucceeded,
                     logic_eligible: true,
                 }
@@ -868,7 +869,7 @@ fn rocketeer_crash_fixture(
     {
         let entity = sim.substrate.entities.get_mut(1).unwrap();
         entity.animation = Some(crate::sim::animation::Animation::new(SequenceKind::Stand));
-        entity.infantry = Some(crate::sim::game_entity::InfantryRuntime::new());
+        entity.infantry = Some(crate::sim::infantry::InfantryRuntime::new());
         entity.mission_leaf = crate::sim::mission::leaf::MissionLeafState::for_entity_category(
             EntityCategory::Infantry,
         );
@@ -885,7 +886,7 @@ fn rocketeer_crash_fixture(
     {
         let entity = sim.substrate.entities.get_mut(1).unwrap();
         entity.health.set_for_test(125);
-        entity.position.exact_z_leptons = Some(height);
+        entity.position.set_exact_z_leptons(Some(height));
         entity.body_facing = crate::sim::movement::FacingClass::new(0x4000, 127);
         entity
             .foot_speed
@@ -893,10 +894,10 @@ fn rocketeer_crash_fixture(
         let loco = entity.locomotor.as_mut().unwrap();
         let runtime = loco.jumpjet_runtime_mut().unwrap();
         let mut flight = runtime.flight();
-        flight.facing.snap(0x4000, 1000);
+        flight.facing_mut().snap(0x4000, 1000);
         // The oracle's locomotor holds `JumpjetHeight=` as its target height
         // whatever the row's height (`jumpjet_infantry_actions` ROCKETEER).
-        flight.target_height = 500;
+        flight.set_target_height(500);
         *runtime = runtime
             .clone()
             .with_phase_for_test(input["owner"]["phase"].as_i64().unwrap() as i32)
@@ -1050,7 +1051,10 @@ fn a_shot_down_rocketeer_falls_like_the_native_crash() {
         }
         let entity = entity.expect("a crashing Rocketeer stays");
         let crash = output["kills"][0].as_array().unwrap().last().unwrap()["after"].clone();
-        assert!(entity.crash.is_crashing() && !entity.dying, "{name}");
+        assert!(
+            entity.crash.is_crashing() && !entity.death.is_dying(),
+            "{name}"
+        );
         assert_eq!(entity.health.current(), 0, "{name}");
         assert_eq!(
             i64::from(entity.mission_leaf.as_infantry().unwrap().doing()),
@@ -1114,14 +1118,14 @@ fn a_shot_down_rocketeer_falls_like_the_native_crash() {
                 "{at}: Health"
             );
             assert_eq!(
-                i64::from(entity.position.exact_z_leptons.unwrap()),
+                i64::from(entity.position.exact_z_leptons().unwrap()),
                 expected["coord"][2].as_i64().unwrap(),
                 "{at}: height"
             );
             assert_eq!(
                 sim.substrate
                     .occupancy
-                    .get(entity.position.rx, entity.position.ry)
+                    .get(entity.position.rx(), entity.position.ry())
                     .is_some_and(|cell| {
                         cell.iter_layer(crate::sim::movement::locomotor::MovementLayer::Ground)
                             .any(|object| object.entity_id == 1)
@@ -1175,7 +1179,7 @@ fn a_rocketeer_lifting_off_clears_his_sub_cell() {
     sim.advance_tick(&[], Some(&rules), Some(&grid), None, 67);
     let rocketeer = sim.substrate.entities.get(1).unwrap();
     assert!(
-        rocketeer.position.exact_z_leptons.unwrap() > 0,
+        rocketeer.position.exact_z_leptons().unwrap() > 0,
         "he lifted off"
     );
     assert_eq!(sim.substrate.raw_cell_occupation.ground_bits(52, 52), 0);
@@ -1214,7 +1218,7 @@ fn a_rocketeer_lifting_off_leaves_his_cell_list_at_two_levels() {
         let listed = sim
             .substrate
             .occupancy
-            .get(rocketeer.position.rx, rocketeer.position.ry)
+            .get(rocketeer.position.rx(), rocketeer.position.ry())
             .is_some_and(|cell| {
                 cell.iter_layer(crate::sim::movement::locomotor::MovementLayer::Ground)
                     .any(|occupant| occupant.entity_id == 1)
@@ -1254,7 +1258,7 @@ fn grounded_rocketeer() -> (super::Simulation, crate::rules::ruleset::RuleSet, u
         .locomotor
         .as_mut()
         .unwrap()
-        .layer = crate::sim::movement::locomotor::MovementLayer::Ground;
+        .set_layer(crate::sim::movement::locomotor::MovementLayer::Ground);
     (sim, rules, shooter)
 }
 
@@ -1278,7 +1282,7 @@ fn a_ground_route_order_gives_a_rocketeer_his_navcom_and_move_to() {
     .unwrap();
     let rocketeer = sim.substrate.entities.get(1).unwrap();
     assert_eq!(
-        rocketeer.navigation.nav_com,
+        rocketeer.navigation.nav_com(),
         Some(crate::sim::components::NavTargetRef::cell(60, 52))
     );
     let runtime = rocketeer
@@ -1296,8 +1300,8 @@ fn move_shooter(sim: &mut super::Simulation, shooter: u64, cell: (u16, u16)) {
     sim.remove_entity_occupancy(shooter);
     {
         let unit = sim.substrate.entities.get_mut(shooter).unwrap();
-        unit.position.rx = cell.0;
-        unit.position.ry = cell.1;
+        unit.position.set_rx(cell.0);
+        unit.position.set_ry(cell.1);
         unit.locomotor = Some(
             crate::sim::movement::locomotor::LocomotorState::for_test_kind(
                 crate::rules::locomotor_type::LocomotorKind::Drive,
@@ -1322,7 +1326,7 @@ fn assert_rocketeer_flies_near(sim: &super::Simulation, near: (u16, u16)) {
     let destination = runtime.destination();
     let placed = ((destination.x / 256) as u16, (destination.y / 256) as u16);
     assert_eq!(
-        rocketeer.navigation.nav_com,
+        rocketeer.navigation.nav_com(),
         Some(crate::sim::components::NavTargetRef::cell(
             placed.0, placed.1
         )),
@@ -1415,7 +1419,7 @@ fn an_order_to_a_rocketeers_own_cell_is_ignored() {
         "the void setter still dispatched"
     );
     let rocketeer = sim.substrate.entities.get(1).unwrap();
-    assert_eq!(rocketeer.navigation.nav_com, None);
+    assert_eq!(rocketeer.navigation.nav_com(), None);
     assert!(
         !rocketeer
             .locomotor
@@ -1444,7 +1448,7 @@ fn an_object_order_into_a_rocketeers_own_cell_is_ignored() {
         Ok(true)
     );
     let rocketeer = sim.substrate.entities.get(1).unwrap();
-    assert_eq!(rocketeer.navigation.nav_com, None);
+    assert_eq!(rocketeer.navigation.nav_com(), None);
     assert!(
         !rocketeer
             .locomotor
@@ -1544,8 +1548,14 @@ fn a_moving_rocketeers_reorder_runs_stop_driver_first() {
             crate::sim::mission::MissionId::from_known(crate::sim::mission::MissionType::Attack),
             0,
         );
-        rocketeer.navigation.nav_com = Some(crate::sim::components::NavTargetRef::cell(60, 52));
-        rocketeer.infantry.as_mut().unwrap().cell_entry_blocked = held;
+        rocketeer
+            .navigation
+            .set_nav_com(Some(crate::sim::components::NavTargetRef::cell(60, 52)));
+        rocketeer
+            .infantry
+            .as_mut()
+            .unwrap()
+            .set_cell_entry_blocked_for_test(held);
         order(&mut sim, &rules, (60, 52));
         assert_rocketeer_flies_near(&sim, (60, 52));
         sim.substrate
@@ -1555,7 +1565,7 @@ fn a_moving_rocketeers_reorder_runs_stop_driver_first() {
             .infantry
             .as_ref()
             .unwrap()
-            .cell_entry_blocked
+            .cell_entry_blocked()
     };
     assert_eq!(answer(false), answer(true));
 }
@@ -1570,7 +1580,8 @@ fn foot_admission_refuses_a_rocketeers_order_during_a_locomotor_swap() {
         .entities
         .get_mut(1)
         .unwrap()
-        .foot_locomotor_swap_active = true;
+        .lift
+        .set_swap_active_for_test(true);
     assert_eq!(
         sim.assign_infantry_destination(
             1,
@@ -1583,7 +1594,7 @@ fn foot_admission_refuses_a_rocketeers_order_during_a_locomotor_swap() {
         "the void setter still dispatched"
     );
     let rocketeer = sim.substrate.entities.get(1).unwrap();
-    assert_eq!(rocketeer.navigation.nav_com, None);
+    assert_eq!(rocketeer.navigation.nav_com(), None);
     assert!(
         !rocketeer
             .locomotor
@@ -1659,7 +1670,7 @@ fn a_rocketeer_taken_over_in_flight_stops_over_his_cell() {
             .unwrap()
             .jumpjet_runtime()
             .unwrap();
-        runtime.phase() == STATE_TRANSLATE && rocketeer.position.rx >= 55
+        runtime.phase() == STATE_TRANSLATE && rocketeer.position.rx() >= 55
     };
     for _ in 0..240 {
         if cruising(&sim) {
@@ -1685,8 +1696,8 @@ fn a_rocketeer_taken_over_in_flight_stops_over_his_cell() {
     );
     let rocketeer = sim.substrate.entities.get(1).unwrap();
     let here = (
-        i32::from(rocketeer.position.rx),
-        i32::from(rocketeer.position.ry),
+        i32::from(rocketeer.position.rx()),
+        i32::from(rocketeer.position.ry()),
     );
     let runtime = rocketeer
         .locomotor
@@ -1700,17 +1711,17 @@ fn a_rocketeer_taken_over_in_flight_stops_over_his_cell() {
         here,
         "the re-target is the cell he is over"
     );
-    assert_eq!(rocketeer.navigation.nav_com, None);
+    assert_eq!(rocketeer.navigation.nav_com(), None);
     for _ in 0..120 {
         sim.advance_tick(&[], Some(&rules), Some(&grid), None, 67);
     }
     let rocketeer = sim.substrate.entities.get(1).unwrap();
     assert!(
-        i32::from(rocketeer.position.rx) <= here.0 + 1,
+        i32::from(rocketeer.position.rx()) <= here.0 + 1,
         "he stopped near ({}, {}) instead of flying on: now at ({}, {})",
         here.0,
         here.1,
-        rocketeer.position.rx,
-        rocketeer.position.ry
+        rocketeer.position.rx(),
+        rocketeer.position.ry()
     );
 }

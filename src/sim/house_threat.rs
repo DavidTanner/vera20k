@@ -128,7 +128,7 @@ impl Simulation {
     ) -> Option<(i16, i16)> {
         let actor = self.substrate.entities.get(id)?;
         let terrain = terrain.or(self.resolved_terrain.as_ref())?;
-        let coord = (actor.position.rx as i16, actor.position.ry as i16);
+        let coord = (actor.position.rx() as i16, actor.position.ry() as i16);
         Some(terrain.native_cell_coord(terrain.native_cell_identity(coord)))
     }
 
@@ -287,7 +287,7 @@ impl Simulation {
         if old == (0, 0) {
             return;
         }
-        let current = (actor.position.rx as i16, actor.position.ry as i16);
+        let current = (actor.position.rx() as i16, actor.position.ry() as i16);
         if HouseSpatialThreat::index(old) == HouseSpatialThreat::index(current) {
             return;
         }

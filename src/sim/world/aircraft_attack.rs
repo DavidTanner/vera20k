@@ -50,7 +50,7 @@ impl Simulation {
                 crate::sim::combat::target_present(Some(target), &self.substrate.entities)
             })
             .map(NavTargetRef::from);
-        let ammo = entity.aircraft_ammo.as_ref().map_or(-1, |a| a.current);
+        let ammo = entity.aircraft_ammo.as_ref().map_or(-1, |a| a.current());
         let state = if target.is_some() && ammo != 0 {
             let destination = self.aircraft_find_fire_location(id, target, rules);
             self.assign_aircraft_destination(id, destination, rules, effects);
@@ -60,7 +60,7 @@ impl Simulation {
                 .get(id)
                 .unwrap()
                 .navigation
-                .nav_com
+                .nav_com()
                 .is_some()
             {
                 3
@@ -109,7 +109,7 @@ impl Simulation {
         if entity
             .aircraft_ammo
             .as_ref()
-            .is_some_and(|a| a.current == 0)
+            .is_some_and(|a| a.current() == 0)
         {
             return 10;
         }
@@ -139,7 +139,7 @@ impl Simulation {
             return 4;
         }
         let entity = self.substrate.entities.get(id).unwrap();
-        let Some(nav) = entity.navigation.nav_com else {
+        let Some(nav) = entity.navigation.nav_com() else {
             return 1;
         };
         let distance = crate::sim::combat::object_distance_to(
@@ -202,7 +202,7 @@ impl Simulation {
         let entity = self.substrate.entities.get(id).expect("aircraft dispatch");
         let attack = entity.attack_target.target();
         let target = crate::sim::combat::target_present(attack, &self.substrate.entities);
-        let ammo = entity.aircraft_ammo.as_ref().map_or(-1, |a| a.current);
+        let ammo = entity.aircraft_ammo.as_ref().map_or(-1, |a| a.current());
         attack.is_some() && !attack_mission::strike_leaves(state, target, ammo)
     }
 
@@ -216,7 +216,7 @@ impl Simulation {
     ) -> (u8, i32) {
         let entity = self.substrate.entities.get(id).expect("aircraft dispatch");
         let facts = attack_mission::ExitFacts {
-            ammo: entity.aircraft_ammo.as_ref().map_or(-1, |a| a.current),
+            ammo: entity.aircraft_ammo.as_ref().map_or(-1, |a| a.current()),
             target: crate::sim::combat::target_present(
                 entity.attack_target.target(),
                 &self.substrate.entities,

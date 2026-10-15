@@ -62,6 +62,7 @@ fn joined_fixture(rules: &RuleSet, row: &Value) -> (Simulation, u64) {
     // The joined original fixture stores3 at GameOptionsClass0xA8EB60.
     sim.session.game_options.game_speed = 3;
     sim.install_resolved_terrain_for_new_map(test_flat_ground_grid(24));
+    crate::sim::arena_fixture::supply_native_map(&mut sim);
     let owner = sim.interner.intern("Americans");
     let mut house = HouseState::new(owner, 0, Some(owner), route == "player", 5000, 10);
     house.current_iq = 0;
@@ -72,7 +73,7 @@ fn joined_fixture(rules: &RuleSet, row: &Value) -> (Simulation, u64) {
         let entity = sim.substrate.entities.get_mut(yard).unwrap();
         entity.finish_building_construction_for_test();
         entity.building_art.set_actually_placed_for_test(true);
-        entity.building_last_operational = true;
+        entity.building_last_operational.set_for_test(true);
     }
     // The original corpus supplies these already admitted actors, then starts
     // its Scenario ID cursor and streams before the entry under comparison.
@@ -172,7 +173,7 @@ fn assert_joined_frame(sim: &Simulation, id: u64, frame: &Value, context: &str) 
         "{context}: placement"
     );
     assert_eq!(
-        u64::from(entity.building_last_operational),
+        u64::from(entity.building_last_operational.is_operational()),
         frame["old_operational"].as_u64().unwrap(),
         "{context}: operational sample"
     );
@@ -545,7 +546,7 @@ fn place_selects_the_original_house_order_and_primary_factory() {
     let corpus = corpus();
     let controls = &corpus["factory_controls"];
     let fixture = |naval: bool| {
-        let rules = RuleSet::from_ini(&IniFile::from_str(&format!(
+        let rules = RuleSet::from_ini(&crate::sim::arena_fixture::clear_ground_ini(&format!(
             "[Countries]\n0=Americans\n[Sides]\nGDI=Americans\n\
              [BuildingTypes]\n0=GACNST\n1=GAPOWR\n\
              [GACNST]\nFactory=BuildingType\nOwner=Americans\nNaval={naval}\n\
@@ -554,6 +555,7 @@ fn place_selects_the_original_house_order_and_primary_factory() {
         .unwrap();
         let mut sim = Simulation::new();
         sim.install_resolved_terrain_for_new_map(test_flat_ground_grid(24));
+        crate::sim::arena_fixture::supply_native_map(&mut sim);
         let owner = sim.interner.intern("Americans");
         sim.houses.insert(
             owner,

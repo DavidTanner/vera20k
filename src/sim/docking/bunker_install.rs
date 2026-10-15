@@ -10,7 +10,7 @@
 use crate::map::entities::EntityCategory;
 use crate::rules::overlay_types::OverlayTypeRegistry;
 use crate::rules::ruleset::RuleSet;
-use crate::sim::game_entity::BunkerLink;
+use crate::sim::docking::bunker_link::BunkerLink;
 use crate::sim::movement;
 use crate::sim::movement::ScatterFlags;
 use crate::sim::movement::ground_pose::object_get_coords;
@@ -50,13 +50,50 @@ pub enum BunkerState {
 /// `bunker_runtime.is_some()`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
 pub struct BunkerRuntime {
-    pub state: BunkerState,
+    state: BunkerState,
     /// Candidate unit during ArriveWait..TurnSouth; `None` when Idle/Occupied
     /// (Occupied tracks the occupant via `GameEntity.bunker_occupant`).
-    pub installing_unit: Option<u64>,
+    installing_unit: Option<u64>,
 }
 
 impl BunkerRuntime {
+    /// The install machine's state.
+    pub(crate) fn state(&self) -> BunkerState {
+        self.state
+    }
+
+    /// The unit the machine is installing.
+    pub(crate) fn installing_unit(&self) -> Option<u64> {
+        self.installing_unit
+    }
+
+    /// The bunker's DockNow answer: an idle bunker starts installing `unit`.
+    pub(crate) fn dock_now(&mut self, unit: u64) {
+        if self.state == BunkerState::Idle {
+            self.state = BunkerState::ArriveWait;
+            self.installing_unit = Some(unit);
+        }
+    }
+
+    /// Install state 5's end (`0x00459301..0x00459337`): the links are made,
+    /// so the bunker is occupied and installs no one.
+    pub(crate) fn occupy(&mut self) {
+        self.state = BunkerState::Occupied;
+        self.installing_unit = None;
+    }
+
+    /// Install a fixture's state.
+    #[cfg(test)]
+    pub(crate) fn set_state_for_test(&mut self, state: BunkerState) {
+        self.state = state;
+    }
+
+    /// Install a fixture's installing unit.
+    #[cfg(test)]
+    pub(crate) fn set_installing_unit_for_test(&mut self, unit: Option<u64>) {
+        self.installing_unit = unit;
+    }
+
     /// An empty, idle bunker (seeded at spawn for `Bunker=yes` buildings).
     pub fn idle() -> Self {
         Self {
@@ -120,7 +157,7 @@ fn step_install(
         .substrate
         .entities
         .get(unit_id)
-        .is_some_and(|u| u.bunker_link == BunkerLink::Approaching(building_id));
+        .is_some_and(|u| u.bunker.link() == BunkerLink::Approaching(building_id));
     if !approaching {
         set_state(sim, building_id, BunkerState::Idle, None);
         return;
@@ -217,8 +254,8 @@ fn is_turning(sim: &Simulation, unit_id: u64) -> bool {
 fn arrived_and_stopped(sim: &Simulation, building_id: u64, unit_id: u64) -> bool {
     sim.substrate.entities.get(unit_id).is_some_and(|unit| {
         sim.substrate.occupancy.first_building_on_layer(
-            unit.position.rx,
-            unit.position.ry,
+            unit.position.rx(),
+            unit.position.ry(),
             movement::locomotor::MovementLayer::Ground,
         ) == Some(building_id)
             && movement::motion_query::is_moving(unit) != Some(true)
@@ -234,14 +271,14 @@ fn footprint_clear_of_others(sim: &Simulation, building_id: u64, unit_id: u64) -
     !sim.substrate.entities.iter_sorted().any(|(id, e)| {
         id != unit_id
             && id != building_id
-            && e.in_logic_vector
+            && e.in_logic_vector.is_member()
             && matches!(
                 e.category(),
                 EntityCategory::Unit | EntityCategory::Infantry
             )
             && footprint
                 .iter()
-                .any(|&(cx, cy)| cx == e.position.rx && cy == e.position.ry)
+                .any(|&(cx, cy)| cx == e.position.rx() && cy == e.position.ry())
     })
 }
 
@@ -277,14 +314,14 @@ fn shove_footprint_blockers(
         .filter(|(id, e)| {
             *id != unit_id
                 && *id != building_id
-                && e.in_logic_vector
+                && e.in_logic_vector.is_member()
                 && matches!(
                     e.category(),
                     EntityCategory::Unit | EntityCategory::Infantry
                 )
                 && footprint
                     .iter()
-                    .any(|&(cx, cy)| cx == e.position.rx && cy == e.position.ry)
+                    .any(|&(cx, cy)| cx == e.position.rx() && cy == e.position.ry())
         })
         .map(|(id, _)| id)
         .collect();
@@ -484,7 +521,9 @@ mod tests {
             spawn_bunker(&mut sim, 2);
             spawn_tank_on(&mut sim, 1, 10, 10);
             let building = sim.substrate.entities.get_mut(2).unwrap();
-            building.foundation = rules.object("NATBNK").unwrap().foundation.clone();
+            building
+                .type_facts
+                .set_foundation_for_test(rules.object("NATBNK").unwrap().foundation.clone());
             put_location(&mut building.position, coord(&input["building_location"]));
             let unit = sim.substrate.entities.get_mut(1).unwrap();
             put_location(&mut unit.position, coord(&input["unit_location"]));
@@ -492,7 +531,8 @@ mod tests {
                 integer(&input["initial_facing"]) as u16,
                 integer(&input["rot"]),
             );
-            unit.bunker_link = BunkerLink::Approaching(2);
+            unit.bunker
+                .set_bunker_link_for_test(BunkerLink::Approaching(2));
             assert!(matches!(sim.reveal(1), RevealOutcome::Revealed { .. }));
             set_state(&mut sim, 2, BunkerState::ClearWait, Some(1));
             step_install(&mut sim, &rules, None, 2, FrameEffects::default());
@@ -542,7 +582,7 @@ mod tests {
                 .retained()
                 .unwrap();
             assert_eq!(
-                drive.track().turn_index,
+                drive.track().turn_index(),
                 integer(&expected["selector"]),
                 "{name}"
             );
@@ -569,8 +609,12 @@ mod tests {
         let mut sim = Simulation::new();
         spawn_bunker(&mut sim, 2);
         spawn_tank_on(&mut sim, 1, 10, 10);
-        sim.substrate.entities.get_mut(2).unwrap().foundation =
-            retail.rules.object("NATBNK").unwrap().foundation.clone();
+        sim.substrate
+            .entities
+            .get_mut(2)
+            .unwrap()
+            .type_facts
+            .set_foundation_for_test(retail.rules.object("NATBNK").unwrap().foundation.clone());
         assert!(matches!(sim.reveal(1), RevealOutcome::Revealed { .. }));
         let building = sim.substrate.entities.get(2).unwrap();
         // Steam459164 calls Building447AC0 even when both raw cells match.
@@ -612,8 +656,12 @@ mod tests {
         spawn_tank_on(&mut sim, 1, 9, 10);
         {
             let building = sim.substrate.entities.get_mut(2).unwrap();
-            building.position.sub_x = crate::util::fixed_math::SimFixed::from_num(96);
-            building.position.sub_y = crate::util::fixed_math::SimFixed::from_num(160);
+            building
+                .position
+                .set_sub_x(crate::util::fixed_math::SimFixed::from_num(96));
+            building
+                .position
+                .set_sub_y(crate::util::fixed_math::SimFixed::from_num(160));
         }
         assert!(matches!(sim.reveal(1), RevealOutcome::Revealed { .. }));
 
@@ -672,7 +720,12 @@ mod tests {
         spawn_tank_on(&mut sim, 1, 10, 10); // already on the anchor cell
         assert!(matches!(sim.reveal(2), RevealOutcome::Revealed { .. }));
         assert!(matches!(sim.reveal(1), RevealOutcome::Revealed { .. }));
-        sim.substrate.entities.get_mut(1).unwrap().bunker_link = BunkerLink::Approaching(2);
+        sim.substrate
+            .entities
+            .get_mut(1)
+            .unwrap()
+            .bunker
+            .set_bunker_link_for_test(BunkerLink::Approaching(2));
         set_state(&mut sim, 2, BunkerState::ArriveWait, Some(1));
 
         // ArriveWait -> ClearWait (in the bunker's cell, stopped).
@@ -751,21 +804,26 @@ mod tests {
         );
         assert_eq!(rt(&sim, 2).state, BunkerState::Occupied);
         assert_eq!(
-            sim.substrate.entities.get(2).unwrap().bunker_occupant,
+            sim.substrate.entities.get(2).unwrap().bunker.occupant(),
             Some(1)
         );
         assert_eq!(
-            sim.substrate.entities.get(1).unwrap().bunker_link,
+            sim.substrate.entities.get(1).unwrap().bunker.link(),
             BunkerLink::Installed(2)
         );
         assert!(
-            sim.substrate.entities.get(1).unwrap().in_logic_vector,
+            sim.substrate
+                .entities
+                .get(1)
+                .unwrap()
+                .in_logic_vector
+                .is_member(),
             "installed unit remains in LogicVector"
         );
         let installed = sim.substrate.entities.get(1).unwrap();
         assert!(installed.lifecycle.object_alive());
         assert!(!installed.lifecycle.in_limbo());
-        assert!(installed.lifecycle.cell_marked);
+        assert!(installed.lifecycle.cell_marked());
         assert_eq!(
             sim.bunker_wall_events.iter().filter(|e| e.up).count(),
             1,
@@ -790,7 +848,12 @@ mod tests {
             spawn_tank_on(&mut sim, 1, 9, 10);
             assert!(matches!(sim.reveal(2), RevealOutcome::Revealed { .. }));
             assert!(matches!(sim.reveal(1), RevealOutcome::Revealed { .. }));
-            sim.substrate.entities.get_mut(1).unwrap().bunker_link = BunkerLink::Approaching(2);
+            sim.substrate
+                .entities
+                .get_mut(1)
+                .unwrap()
+                .bunker
+                .set_bunker_link_for_test(BunkerLink::Approaching(2));
             set_state(&mut sim, 2, waiting, Some(1));
             let tick = |sim: &mut Simulation| {
                 tick_bunker_install(
@@ -805,7 +868,7 @@ mod tests {
             assert_eq!(rt(&sim, 2).state, waiting, "not in its cell");
 
             let unit = sim.substrate.entities.get_mut(1).unwrap();
-            unit.position.rx = 10;
+            unit.position.set_rx(10);
             assert!(unit.locomotor.as_mut().unwrap().store_track_destination(
                 movement::track_process::TrackFamily::Drive,
                 Some(crate::sim::components::DriveCoord::cell(10, 10, 0)),
@@ -856,7 +919,12 @@ mod tests {
         assert!(matches!(sim.reveal(2), RevealOutcome::Revealed { .. }));
         assert!(matches!(sim.reveal(1), RevealOutcome::Revealed { .. }));
         assert!(matches!(sim.reveal(3), RevealOutcome::Revealed { .. }));
-        sim.substrate.entities.get_mut(1).unwrap().bunker_link = BunkerLink::Approaching(2);
+        sim.substrate
+            .entities
+            .get_mut(1)
+            .unwrap()
+            .bunker
+            .set_bunker_link_for_test(BunkerLink::Approaching(2));
         set_state(&mut sim, 2, BunkerState::ArriveWait, Some(1));
 
         // ArriveWait -> ClearWait.
@@ -886,7 +954,7 @@ mod tests {
                 .get(3)
                 .unwrap()
                 .navigation
-                .nav_com
+                .nav_com()
                 .is_some(),
             "the footprint blocker was scattered"
         );
@@ -894,7 +962,7 @@ mod tests {
         // Simulate the blocker physically leaving the footprint cell.
         {
             let b = sim.substrate.entities.get_mut(3).unwrap();
-            b.position.rx = 20;
+            b.position.set_rx(20);
         }
 
         // Footprint clear now → advance.

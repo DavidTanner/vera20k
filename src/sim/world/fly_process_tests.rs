@@ -141,11 +141,13 @@ fn fixture(input: &serde_json::Value) -> (Simulation, RuleSet) {
     let entity = sim.substrate.entities.get_mut(AIRCRAFT).unwrap();
     entity.lifecycle.set_object_alive_for_test(true);
     entity.lifecycle.set_in_limbo_for_test(false);
-    entity.position.rx = x as u16;
-    entity.position.ry = y as u16;
-    entity.position.sub_x = SimFixed::from_num(128);
-    entity.position.sub_y = SimFixed::from_num(128);
-    entity.position.exact_z_leptons = Some(int(input, "z", 1500) as i32);
+    entity.position.set_rx(x as u16);
+    entity.position.set_ry(y as u16);
+    entity.position.set_sub_x(SimFixed::from_num(128));
+    entity.position.set_sub_y(SimFixed::from_num(128));
+    entity
+        .position
+        .set_exact_z_leptons(Some(int(input, "z", 1500) as i32));
     entity.health.set_for_test(int(input, "health", 150) as i32);
     let facing = int(input, "facing", 0x4000) as u16;
     let rot = int(input, "rot", 3) as i32;
@@ -162,24 +164,24 @@ fn fixture(input: &serde_json::Value) -> (Simulation, RuleSet) {
         dispatch_timer: MissionDispatchTimer::at_frame(frame),
     });
     let mut ammo = AircraftAmmo::new(1);
-    ammo.current = int(input, "ammo", 1) as i32;
+    ammo.set_current_for_test(int(input, "ammo", 1) as i32);
     entity.aircraft_ammo = Some(ammo);
     if input["target"].is_array() {
         entity
             .attack_target
             .set_for_test(Some(TargetKind::Entity(TARGET)));
     }
-    entity.navigation.nav_com = match &input["nav_com"] {
+    entity.navigation.set_nav_com(match &input["nav_com"] {
         serde_json::Value::String(kind) if kind == "dock" => {
             Some(NavTargetRef::Building { id: DOCK })
         }
         serde_json::Value::Bool(true) => Some(NavTargetRef::cell(80, 64)),
         _ => None,
-    };
+    });
     if flag(input, "loaner", false) {
         entity.mark_mission_only();
     }
-    entity.in_playfield = flag(input, "in_playfield", true);
+    entity.set_in_playfield(flag(input, "in_playfield", true));
     entity
         .mission_leaf
         .set_aircraft_action_latch(flag(input, "locked", false));
@@ -207,8 +209,10 @@ fn fixture(input: &serde_json::Value) -> (Simulation, RuleSet) {
         "airport_bound": flag(input, "airport_bound", false),
     }))
     .unwrap();
-    fly.target_speed = SimFixed::from_num(input["target_speed"].as_f64().unwrap_or(1.0));
-    fly.current_speed = SimFixed::from_num(input["speed"].as_f64().unwrap_or(1.0));
+    fly.set_target_speed(SimFixed::from_num(
+        input["target_speed"].as_f64().unwrap_or(1.0),
+    ));
+    fly.set_current_speed(SimFixed::from_num(input["speed"].as_f64().unwrap_or(1.0)));
     sim.aircraft_tracker_add(AIRCRAFT);
     sim.add_entity_occupancy(AIRCRAFT);
     sim.submit_entity_display(AIRCRAFT, Some(&rules), None);
@@ -231,9 +235,9 @@ fn fixture(input: &serde_json::Value) -> (Simulation, RuleSet) {
             true,
         );
         target.lifecycle.set_object_alive_for_test(true);
-        target.position.sub_x = SimFixed::from_num(tx % 256);
-        target.position.sub_y = SimFixed::from_num(ty % 256);
-        target.position.exact_z_leptons = Some(tz);
+        target.position.set_sub_x(SimFixed::from_num(tx % 256));
+        target.position.set_sub_y(SimFixed::from_num(ty % 256));
+        target.position.set_exact_z_leptons(Some(tz));
         sim.substrate.entities.insert(target);
     }
     let dock = &input["dock"];
@@ -255,8 +259,10 @@ fn fixture(input: &serde_json::Value) -> (Simulation, RuleSet) {
             true,
         );
         building.lifecycle.set_object_alive_for_test(true);
-        building.foundation = format!("{width}x{height}");
-        building.position.exact_z_leptons = Some(0);
+        building
+            .type_facts
+            .set_foundation_for_test(format!("{width}x{height}"));
+        building.position.set_exact_z_leptons(Some(0));
         building
             .radio_contacts
             .set_capacity(dock_offsets(dock).len());
@@ -292,11 +298,15 @@ fn stop_fixture(input: &serde_json::Value) -> (Simulation, RuleSet) {
     }
     if input["location"].is_array() {
         let [x, y, z] = ints(&input["location"], [0; 3]);
-        entity.position.rx = (x.div_euclid(256)).max(0) as u16;
-        entity.position.ry = (y.div_euclid(256)).max(0) as u16;
-        entity.position.sub_x = SimFixed::from_num(x - i32::from(entity.position.rx) * 256);
-        entity.position.sub_y = SimFixed::from_num(y - i32::from(entity.position.ry) * 256);
-        entity.position.exact_z_leptons = Some(z);
+        entity.position.set_rx((x.div_euclid(256)).max(0) as u16);
+        entity.position.set_ry((y.div_euclid(256)).max(0) as u16);
+        entity.position.set_sub_x(SimFixed::from_num(
+            x - i32::from(entity.position.rx()) * 256,
+        ));
+        entity.position.set_sub_y(SimFixed::from_num(
+            y - i32::from(entity.position.ry()) * 256,
+        ));
+        entity.position.set_exact_z_leptons(Some(z));
     }
     let empty = Vec::new();
     for (n, techno) in input["technos"]
@@ -327,9 +337,9 @@ fn stop_fixture(input: &serde_json::Value) -> (Simulation, RuleSet) {
         unit.lifecycle.set_object_alive_for_test(true);
         unit.lifecycle
             .set_in_limbo_for_test(flag(techno, "limbo", false));
-        unit.position.sub_x = SimFixed::from_num(x % 256);
-        unit.position.sub_y = SimFixed::from_num(y % 256);
-        unit.position.exact_z_leptons = Some(z);
+        unit.position.set_sub_x(SimFixed::from_num(x % 256));
+        unit.position.set_sub_y(SimFixed::from_num(y % 256));
+        unit.position.set_exact_z_leptons(Some(z));
         sim.substrate.entities.insert(unit);
     }
     let mut list = Vec::new();
@@ -362,8 +372,10 @@ fn stop_fixture(input: &serde_json::Value) -> (Simulation, RuleSet) {
             true,
         );
         structure.lifecycle.set_object_alive_for_test(true);
-        structure.foundation = format!("{width}x{height}");
-        structure.position.exact_z_leptons = Some(0);
+        structure
+            .type_facts
+            .set_foundation_for_test(format!("{width}x{height}"));
+        structure.position.set_exact_z_leptons(Some(0));
         sim.substrate.entities.insert(structure);
         if flag(building, "limbo", false) {
             sim.substrate
@@ -413,7 +425,7 @@ fn frame_mismatch(
         "cruise": u8::from(fly.cruise_mode()),
         "mission": [entity.mission.current().raw(), entity.mission.queued().raw()],
         "locked": entity.mission_leaf.as_aircraft()?.action_latch(),
-        "in_playfield": u8::from(entity.in_playfield),
+        "in_playfield": u8::from(entity.in_playfield()),
     });
     for (key, value) in actual.as_object()? {
         if &expected[key] != value {
@@ -425,8 +437,8 @@ fn frame_mismatch(
     // to a target, which with the start value's rounding keeps the current
     // speed within 4.5 quanta. The coordinates above compare exactly.
     for (key, value) in [
-        ("target_speed", fly.target_speed),
-        ("speed", fly.current_speed),
+        ("target_speed", fly.target_speed()),
+        ("speed", fly.current_speed()),
     ] {
         let native = expected[key].as_f64()?;
         if (value.to_num::<f64>() - native).abs() > 4.5 / 65536.0 {
@@ -586,7 +598,7 @@ fn fly_map_edge_gate_matches_native_rows() {
         if flag(input, "mission_only", true) {
             entity.mark_mission_only();
         }
-        entity.in_playfield = flag(input, "in_playfield", true);
+        entity.set_in_playfield(flag(input, "in_playfield", true));
         if flag(input, "target", false) {
             entity
                 .attack_target
@@ -796,6 +808,6 @@ fn stop_command_sends_a_flying_aircraft_to_the_cell_under_it() {
         (destination.x, destination.y),
         (60 * 256 + 128, 64 * 256 + 128)
     );
-    assert_eq!(entity.navigation.nav_com, None);
+    assert_eq!(entity.navigation.nav_com(), None);
     assert_eq!(sim.scenario_rng.clone().next_u32(), before);
 }

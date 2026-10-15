@@ -38,12 +38,12 @@ fn fixture(selector: i32) -> Simulation {
         GameEntity::test_default(1, "MTNK", "Americans", (x / 256) as u16, (y / 256) as u16);
     entity.set_owner_for_test(sim.intern("Americans"));
     entity.set_type_ref_for_test(sim.intern("MTNK"));
-    entity.position.sub_x = SimFixed::from_num(x % 256);
-    entity.position.sub_y = SimFixed::from_num(y % 256);
-    entity.position.exact_z_leptons = Some(0);
+    entity.position.set_sub_x(SimFixed::from_num(x % 256));
+    entity.position.set_sub_y(SimFixed::from_num(y % 256));
+    entity.position.set_exact_z_leptons(Some(0));
     entity.body_facing.snap(u16::from(facing) << 8, 0);
-    entity.drive_accelerates = false;
-    entity.is_voxel = false;
+    entity.mover_facts.set_drive_accelerates_for_test(false);
+    entity.set_is_voxel_for_test(false);
     entity.locomotor = Some(LocomotorState::for_test_kind(LocomotorKind::Drive));
     assert!(
         entity
@@ -115,12 +115,12 @@ fn every_bunker_selector_restores_before_first_point_midcurve_and_paid_sentinel(
                 .and_then(|r| r.retained())
                 .unwrap()
                 .track();
-            if track.turn_index < 0 {
+            if track.turn_index() < 0 {
                 break;
             }
-            let stage = if track.cursor == 0 {
+            let stage = if track.cursor() == 0 {
                 0
-            } else if track.cursor == count {
+            } else if track.cursor() == count {
                 2
             } else {
                 1
@@ -168,7 +168,7 @@ fn every_bunker_selector_restores_before_first_point_midcurve_and_paid_sentinel(
                 );
                 restored_probes.push((stage, restored));
             }
-            let before_cursor = track.cursor;
+            let before_cursor = track.cursor();
             let stats = tick(&mut sim, &rules, frame);
             // Compare every complete state after the explicit sound-reset
             // boundary, through retirement. The control's non-audio authority
@@ -202,7 +202,7 @@ fn every_bunker_selector_restores_before_first_point_midcurve_and_paid_sentinel(
                         .and_then(|r| r.retained())
                         .unwrap()
                         .track()
-                        .cursor,
+                        .cursor(),
                     before_cursor,
                     "first visit retains an unpaid cursor"
                 );
@@ -218,7 +218,7 @@ fn every_bunker_selector_restores_before_first_point_midcurve_and_paid_sentinel(
                 .and_then(|r| r.retained())
                 .unwrap()
                 .track()
-                .turn_index,
+                .turn_index(),
             -1
         );
         assert_eq!(
@@ -241,8 +241,8 @@ fn forced_object_turn_queries_live_speed_and_advances_shp_once() {
         .and_then(|r| r.retained())
         .unwrap()
         .track()
-        .cursor;
-    let before_body = entity.body_frame_counter;
+        .cursor();
+    let before_body = entity.body_frame_counter.get();
     let outcome = tick(&mut sim, &rules(6), 1);
     let entity = sim.substrate.entities.get(1).unwrap();
     assert!(
@@ -253,9 +253,9 @@ fn forced_object_turn_queries_live_speed_and_advances_shp_once() {
             .and_then(|r| r.retained())
             .unwrap()
             .track()
-            .cursor
+            .cursor()
             > before + 1
     );
     assert!(outcome.moved_steps > 1);
-    assert_eq!(entity.body_frame_counter, before_body + 1);
+    assert_eq!(entity.body_frame_counter.get(), before_body + 1);
 }

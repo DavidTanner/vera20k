@@ -47,14 +47,14 @@ fn frame(s: &mut Scene) -> Sample {
     let miner = s.sim.substrate.entities.get(s.miner).unwrap();
     let state = miner.miner.as_ref().unwrap();
     Sample {
-        cell: (miner.position.rx, miner.position.ry),
+        cell: (miner.position.rx(), miner.position.ry()),
         mission: miner.mission.current(),
         contact: miner.radio_contacts.slot(0),
-        tethered: miner.dock_entered_with.is_some(),
-        unloading: state.unload_active,
+        tethered: miner.tether.partner().is_some(),
+        unloading: state.unload_active(),
         facing: miner.body_facing_current(s.sim.session.binary_frame),
         ore: state
-            .cargo
+            .cargo()
             .iter()
             .filter(|b| b.resource_type == ResourceType::Ore)
             .count(),
@@ -102,7 +102,7 @@ fn returning_input(cell: (u16, u16)) -> serde_json::Value {
 fn assert_whole_visit(s: &mut Scene, drives: bool) -> Vec<Sample> {
     let start = {
         let position = &s.sim.substrate.entities.get(s.miner).unwrap().position;
-        (position.rx, position.ry)
+        (position.rx(), position.ry())
     };
     let mut samples = Vec::new();
     for _ in 0..1500 {
@@ -169,7 +169,7 @@ fn assert_whole_visit(s: &mut Scene, drives: bool) -> Vec<Sample> {
     assert_ne!(end.mission, MissionId::from_known(MissionType::Unload));
     let refinery = s.sim.substrate.entities.get(s.refinery).unwrap();
     assert!(refinery.radio_contacts.is_empty(), "the slot is free again");
-    assert_eq!(refinery.dock_entered_with, None);
+    assert_eq!(refinery.tether.partner(), None);
     samples
 }
 
@@ -200,13 +200,13 @@ fn spawn_returning_cmin(s: &mut Scene, cell: (u16, u16)) -> u64 {
     entity
         .mission
         .set_handler_state(MinerState::ReturnToRefinery.cursor());
-    entity.miner.as_mut().unwrap().cargo = vec![
+    entity.miner.as_mut().unwrap().set_cargo_for_test(vec![
         CargoBale {
             resource_type: ResourceType::Ore,
             value: 25,
         };
         20
-    ];
+    ]);
     id
 }
 
@@ -216,7 +216,8 @@ fn tethered(s: &Scene, id: u64) -> bool {
         .entities
         .get(id)
         .unwrap()
-        .dock_entered_with
+        .tether
+        .partner()
         .is_some()
 }
 
@@ -438,7 +439,7 @@ fn selling_the_refinery_mid_unload_hands_the_chrono_miner_to_harvest() {
         .miner
         .as_ref()
         .unwrap()
-        .cargo
+        .cargo()
         .len();
     let refinery = s.refinery;
     let type_id = s
@@ -475,32 +476,32 @@ fn selling_the_refinery_mid_unload_hands_the_chrono_miner_to_harvest() {
             .miner
             .as_ref()
             .unwrap()
-            .unload_active,
+            .unload_active(),
         "the order's frame changes nothing"
     );
     step(&mut s);
     let miner = s.sim.substrate.entities.get(s.miner).unwrap();
     let state = miner.miner.as_ref().unwrap();
-    assert!(!state.unload_active, "RUN_AWAY dropped the latch");
-    assert!(miner.dock_entered_with.is_some());
+    assert!(!state.unload_active(), "RUN_AWAY dropped the latch");
+    assert!(miner.tether.partner().is_some());
     assert_eq!(
         miner.radio_contacts.slot(0),
         Some(refinery),
         "RUN_AWAY keeps the contact"
     );
-    assert_eq!(state.cargo.len(), before, "nothing more was dumped");
+    assert_eq!(state.cargo().len(), before, "nothing more was dumped");
     assert_eq!(
         miner.mission.current(),
         MissionId::from_known(MissionType::Harvest)
     );
-    assert_eq!((miner.position.rx, miner.position.ry), PAD);
+    assert_eq!((miner.position.rx(), miner.position.ry()), PAD);
     assert_eq!(
         miner.locomotor.as_ref().unwrap().active_kind(),
         LocomotorKind::Teleport
     );
     step(&mut s);
     let miner = s.sim.substrate.entities.get(s.miner).unwrap();
-    assert_eq!(miner.dock_entered_with, None, "OVER_OUT released the miner");
+    assert_eq!(miner.tether.partner(), None, "OVER_OUT released the miner");
     assert_eq!(miner.radio_contacts.slot(0), None);
-    assert_eq!(miner.miner.as_ref().unwrap().cargo.len(), before);
+    assert_eq!(miner.miner.as_ref().unwrap().cargo().len(), before);
 }

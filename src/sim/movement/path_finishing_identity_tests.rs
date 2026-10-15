@@ -93,15 +93,7 @@ fn production_finisher_forwards_native_real_and_mutable_dummy_receipts() {
                     playfield_bounds: None,
                     blocker_neighbor_counts: None,
                 },
-                foot: Some(&entry),
-                terrain_costs: None,
-                movement_zone: None,
-                facts: MoverPathFacts {
-                    urgency: 0,
-                    mover_is_crusher: false,
-                    is_infantry: false,
-                    speed_type: None,
-                },
+                foot: &entry,
                 markers: None,
             };
             let cell = Cell::Native(candidate);

@@ -352,7 +352,7 @@ impl Simulation {
     }
 
     /// Publish one wall-sale RecalcAttributes result to the transaction-local
-    /// path/cost view and the retained base movement-class topology. Zone ID
+    /// path view and the retained base movement-class topology. Zone ID
     /// assignment remains owned by the ordered native repair callback.
     fn refresh_wall_sale_recalc_prefix(
         &mut self,
@@ -366,11 +366,6 @@ impl Simulation {
         };
 
         if navigation_changed {
-            crate::sim::pathfinding::terrain_cost::refresh_canonical_terrain_costs_at(
-                &mut self.terrain_costs,
-                terrain,
-                (rx, ry),
-            );
             if tail_grid.as_ref().is_some_and(|tail| {
                 tail.width() != terrain.width() || tail.height() != terrain.height()
             }) {
@@ -512,7 +507,6 @@ impl Simulation {
                     radar_dirty_cells: &mut self.radar_terrain_dirty_cells,
                     radar_dirty_generation: &mut self.radar_terrain_dirty_generation,
                     tactical_dirty_cells: &mut self.tactical_dirty_cells,
-                    terrain_costs: &mut self.terrain_costs,
                     zone_grid: &mut self.zone_grid,
                     path_grid: &mut self.path_grid,
                     bridge_state: self.bridge_state.as_ref(),
@@ -649,7 +643,7 @@ impl Simulation {
                         actor.category().is_foot()
                             && actor.lifecycle.object_alive()
                             && !actor.lifecycle.in_limbo()
-                            && actor.dock_entered_with.is_none()
+                            && actor.tether.partner().is_none()
                     });
                 if !admitted {
                     return false;
@@ -710,15 +704,15 @@ impl Simulation {
                 // The IDLE arm returns at `0x004C7504..0x004C750C` when the
                 // object's tether byte (`+0x418`) is set: a miner that has
                 // entered its dock ignores Stop and finishes unloading, and so
-                // does a vehicle still leaving its war factory (the other
-                // writer of `dock_entered_with`). Current missions 0x12/0x13
+                // does a vehicle still leaving its war factory (the tether's
+                // other writer). Current missions 0x12/0x13
                 // also return before radio, destination and target writes.
                 if self
                     .substrate
                     .entities
                     .get(*entity_id)
                     .is_some_and(|entity| {
-                        entity.dock_entered_with.is_some()
+                        entity.tether.partner().is_some()
                             || matches!(entity.mission.current().raw(), 0x12 | 0x13)
                     })
                 {
@@ -1224,7 +1218,7 @@ impl Simulation {
                     .entities
                     .get(*entity_id)
                     .and_then(|e| e.miner.as_ref())
-                    .and_then(|m| m.reserved_refinery);
+                    .and_then(|m| m.reserved_refinery());
                 let explicit_refinery_changed = explicit_refinery
                     .is_some_and(|refinery_id| previous_refinery != Some(refinery_id));
                 if explicit_refinery_changed && let Some(old_refinery) = previous_refinery {
@@ -1246,7 +1240,7 @@ impl Simulation {
                     return false;
                 };
                 if let Some(refinery_id) = explicit_refinery {
-                    miner.reserved_refinery = Some(refinery_id);
+                    miner.reserve_refinery(refinery_id);
                 }
                 // Commit the Harvest mission and the ForcedReturn cursor of
                 // record. Assign resets the handler state and dispatch timer
@@ -1301,7 +1295,7 @@ impl Simulation {
                         && self
                             .object_type(e.type_ref(), rules)
                             .is_some_and(|object| e.health.current() < object.strength)
-                        && !e.dying
+                        && !e.death.is_dying()
                 });
                 if !entity_ok {
                     return false;
@@ -1657,7 +1651,7 @@ impl Simulation {
                         if b.category() != crate::map::entities::EntityCategory::Structure {
                             return None;
                         }
-                        if b.dying {
+                        if b.death.is_dying() {
                             return None;
                         }
                         let obj = self.object_type(b.type_ref(), rules)?;
@@ -1910,7 +1904,7 @@ impl Simulation {
                     .substrate
                     .entities
                     .get(*bunker_id)
-                    .is_some_and(|b| b.bunker_occupant.is_some());
+                    .is_some_and(|b| b.bunker.occupant().is_some());
                 if !has_occupant {
                     return false;
                 }
@@ -1996,7 +1990,7 @@ impl Simulation {
             if !requested.contains(&id)
                 && let Some(e) = self.substrate.entities.get_mut(id)
             {
-                e.selected = false;
+                e.selection.deselect();
             }
         }
         // Iterate the original payload, not the membership set: source order is
@@ -2016,7 +2010,7 @@ impl Simulation {
             return false;
         };
         if entity.category() != crate::map::entities::EntityCategory::Structure
-            && entity.foot_locomotor_swap_active
+            && entity.lift.swap_active()
         {
             return false;
         }
@@ -2066,13 +2060,13 @@ impl Simulation {
                 .substrate
                 .entities
                 .get(stable_id)
-                .is_some_and(|e| e.selected)
+                .is_some_and(|e| e.selection.is_selected())
         {
             return false;
         }
         match self.substrate.entities.get_mut(stable_id) {
             Some(entity) => {
-                entity.selected = true;
+                entity.selection.select();
                 true
             }
             None => false,
@@ -2220,7 +2214,7 @@ impl Simulation {
         if refinery.category() != crate::map::entities::EntityCategory::Structure {
             return false;
         }
-        if refinery.health.current() == 0 || refinery.dying || refinery.building_up() {
+        if refinery.health.current() == 0 || refinery.death.is_dying() || refinery.building_up() {
             return false;
         }
         let refinery_owner = self.interner.resolve(refinery.owner());
@@ -2584,9 +2578,13 @@ mod tests {
             obj,
             sim.session.binary_frame,
         ));
-        entity.regular_crusher = obj.crusher;
-        entity.drive_accelerates = obj.accelerates;
-        entity.omni_crusher = obj.omni_crusher;
+        entity.mover_facts.set_regular_crusher_for_test(obj.crusher);
+        entity
+            .mover_facts
+            .set_drive_accelerates_for_test(obj.accelerates);
+        entity
+            .mover_facts
+            .set_omni_crusher_for_test(obj.omni_crusher);
         // A directly-inserted GameEntity keeps the constructed `in_limbo`
         // byte; production spawns clear it through Reveal. Order admission
         // reads that byte, so the fixture must model a revealed object.
@@ -2605,20 +2603,22 @@ mod tests {
         sim.session.binary_frame = 100;
         spawn_rule_backed_unit(&mut sim, 1, "AMCV", &rules);
         let entity = sim.substrate.entities.get_mut(1).unwrap();
-        entity.navigation.nav_queue = vec![crate::sim::components::NavTargetRef::cell(25, 20)];
+        entity
+            .navigation
+            .set_nav_queue_for_test(vec![crate::sim::components::NavTargetRef::cell(25, 20)]);
         entity.navigation.path_runtime.start_movement(40, 30);
         entity.mega_mission = crate::sim::mission::mega_mission::MegaMission::attack_move(Some(
             crate::sim::combat::TargetKind::Cell(12, 12),
         ));
-        assert!(entity.navigation.nav_com.is_none());
+        assert!(entity.navigation.nav_com().is_none());
         assert!(sim.apply_command("Americans", &Command::Stop { entity_id: 1 }, Some(&rules)));
         let entity = sim.substrate.entities.get(1).unwrap();
         assert!(
             entity.mega_mission.is_attack_move(),
             "the IDLE arm calls no MegaMission body"
         );
-        assert_eq!(entity.navigation.nav_queue.len(), 1);
-        let timer = entity.navigation.path_runtime.movement_timer;
+        assert_eq!(entity.navigation.nav_queue().len(), 1);
+        let timer = entity.navigation.path_runtime.movement_timer();
         assert_eq!((timer.start_frame(), timer.duration()), (40, 30));
     }
 
@@ -2982,8 +2982,12 @@ mod tests {
                 ai_counter: 0,
                 dispatch_timer: before_timer,
             });
-            actor.suspended_attack_target = Some(combat::TargetKind::Entity(2));
-            actor.navigation.suspended_nav_com = Some(NavTargetRef::cell(12, 12));
+            actor
+                .suspended_attack_target
+                .set_for_test(Some(combat::TargetKind::Entity(2)));
+            actor
+                .navigation
+                .set_suspended_nav_com(Some(NavTargetRef::cell(12, 12)));
             actor.set_archive_target(Some(combat::TargetKind::Cell(5, 5)));
             actor.mega_mission = crate::sim::mission::mega_mission::MegaMission::attack_move(Some(
                 crate::sim::combat::TargetKind::Cell(12, 12),
@@ -3012,15 +3016,15 @@ mod tests {
                 MissionId::from_known(MissionType::Attack)
             );
             assert_eq!(actor.mission.dispatch_timer(), before_timer);
-            assert!(actor.suspended_attack_target.is_none());
-            assert!(actor.navigation.suspended_nav_com.is_none());
+            assert!(actor.suspended_attack_target.target().is_none());
+            assert!(actor.navigation.suspended_nav_com().is_none());
             assert!(actor.attack_target.target().is_none());
             assert!(
                 !actor.mega_mission.is_attack_move(),
                 "Assign_Target_Command answers Area Guard with Clear_All_TarCom"
             );
             assert_eq!(actor.archive_target(), post);
-            assert_eq!(actor.navigation.nav_com, post.map(Into::into));
+            assert_eq!(actor.navigation.nav_com(), post.map(Into::into));
         }
     }
 
@@ -3124,7 +3128,7 @@ mod tests {
         assert!(move_onto(&mut sim, 2));
         let actor = sim.substrate.entities.get(1).unwrap();
         assert_eq!(
-            actor.navigation.nav_com,
+            actor.navigation.nav_com(),
             Some(crate::sim::components::NavTargetRef::Entity { id: 2 })
         );
         assert_eq!(
@@ -3133,7 +3137,7 @@ mod tests {
         );
         sim.detach_all_pointer_expired(2, &rules, None, crate::sim::world::FrameEffects::default());
         assert_eq!(
-            sim.substrate.entities.get(1).unwrap().navigation.nav_com,
+            sim.substrate.entities.get(1).unwrap().navigation.nav_com(),
             None
         );
 
@@ -3146,14 +3150,14 @@ mod tests {
             .set_for_test(0);
         assert!(!move_onto(&mut sim, 2));
         assert_eq!(
-            sim.substrate.entities.get(1).unwrap().navigation.nav_com,
+            sim.substrate.entities.get(1).unwrap().navigation.nav_com(),
             Some(crate::sim::components::NavTargetRef::Entity { id: 2 }),
             "the refused event leaves the previous destination"
         );
 
         assert!(move_onto(&mut sim, 99));
         let actor = sim.substrate.entities.get(1).unwrap();
-        assert_eq!(actor.navigation.nav_com, None);
+        assert_eq!(actor.navigation.nav_com(), None);
         assert_eq!(
             actor.mission.queued(),
             MissionId::from_known(MissionType::Move)
@@ -3204,7 +3208,7 @@ mod tests {
         );
         assert!(cargo.board(3, rules.object("E1").unwrap().size));
         sim.substrate.entities.get_mut(1).unwrap().passenger_role =
-            crate::sim::passenger::PassengerRole::Transport { cargo };
+            crate::sim::passenger::PassengerRole::transport(cargo);
         let grid = crate::sim::pathfinding::PathGrid::new(64, 64);
         sim.install_fixture_path_grid(Some(&grid));
         let rider_target = |sim: &Simulation| {
@@ -3538,7 +3542,7 @@ mod tests {
         for (id, partner) in [(1, 2), (2, 1)] {
             let entity = sim.substrate.entities.get_mut(id).unwrap();
             entity.radio_contacts.set_slot(0, partner);
-            entity.dock_entered_with = Some(partner);
+            entity.tether.set_for_test(Some(partner));
         }
         let now = sim.session.binary_frame;
         sim.mission_assign_exact(
@@ -3549,9 +3553,11 @@ mod tests {
         .unwrap();
         {
             let entity = sim.substrate.entities.get_mut(1).unwrap();
-            entity.display_type_override = Some(sim.interner.intern("HORV"));
+            entity
+                .display_type_override
+                .set_for_test(Some(sim.interner.intern("HORV")));
             let miner = entity.miner.as_mut().unwrap();
-            miner.unload_active = true;
+            miner.set_unload_active_for_test(true);
             entity.restart_native_stage(0, now as i32, 1);
         }
 
@@ -3567,18 +3573,18 @@ mod tests {
         assert!(applied);
         let miner_entity = sim.substrate.entities.get(1).unwrap();
         let miner = miner_entity.miner.as_ref().unwrap();
-        assert_eq!(miner.reserved_refinery, Some(3));
+        assert_eq!(miner.reserved_refinery(), Some(3));
         assert_eq!(miner_entity.miner_state(), Some(MinerState::ForcedReturn));
         // The order's radio break leaves the old refinery on both ends and
         // the unload latch with it; a latch left up would refuse every later
         // Ready_To_Commence (0x007442AB) and hold the miner in place.
-        assert!(!miner.unload_active);
-        assert_eq!(miner_entity.display_type_override, None);
+        assert!(!miner.unload_active());
+        assert_eq!(miner_entity.display_type_override.image(), None);
         assert!(!miner_entity.radio_contacts.contains(2));
-        assert_eq!(miner_entity.dock_entered_with, None);
+        assert_eq!(miner_entity.tether.partner(), None);
         let refinery = sim.substrate.entities.get(2).unwrap();
         assert!(!refinery.radio_contacts.contains(1));
-        assert_eq!(refinery.dock_entered_with, None);
+        assert_eq!(refinery.tether.partner(), None);
         spawn_miner(&mut sim, 7);
         assert!(crate::sim::miner::miner_dock::test_support::dock_test_hello(&mut sim, 2, 7));
     }
@@ -3606,7 +3612,7 @@ mod tests {
             .miner
             .as_ref()
             .unwrap();
-        assert_eq!(miner.reserved_refinery, None);
+        assert_eq!(miner.reserved_refinery(), None);
         assert_eq!(
             sim.substrate.entities.get(1).unwrap().miner_state(),
             Some(MinerState::ForcedReturn)
@@ -3638,7 +3644,7 @@ mod tests {
             .miner
             .as_ref()
             .unwrap();
-        assert_eq!(miner.reserved_refinery, None);
+        assert_eq!(miner.reserved_refinery(), None);
         assert_eq!(
             sim.substrate.entities.get(1).unwrap().miner_state(),
             Some(MinerState::SearchOre)
@@ -3711,7 +3717,7 @@ mod tests {
     #[test]
     fn enter_bunker_admits_and_starts_install_machine() {
         use crate::sim::docking::bunker_install::BunkerState;
-        use crate::sim::game_entity::BunkerLink;
+        use crate::sim::docking::bunker_link::BunkerLink;
         let rules = bunker_rules();
         let mut sim = Simulation::new();
         spawn_bunker_struct(&mut sim, 2, "Americans", 10, 10);
@@ -3728,7 +3734,7 @@ mod tests {
 
         assert!(applied);
         let unit = sim.substrate.entities.get(1).unwrap();
-        assert_eq!(unit.bunker_link, BunkerLink::Approaching(2));
+        assert_eq!(unit.bunker.link(), BunkerLink::Approaching(2));
         assert_eq!(
             unit.mission.queued(),
             MissionId::from_known(MissionType::Enter)
@@ -3740,14 +3746,14 @@ mod tests {
             .unwrap()
             .bunker_runtime
             .unwrap();
-        assert_eq!(rt.state, BunkerState::ArriveWait);
-        assert_eq!(rt.installing_unit, Some(1));
+        assert_eq!(rt.state(), BunkerState::ArriveWait);
+        assert_eq!(rt.installing_unit(), Some(1));
     }
 
     #[test]
     fn enter_bunker_rejects_unit_without_a_weapon() {
         use crate::sim::docking::bunker_install::BunkerState;
-        use crate::sim::game_entity::BunkerLink;
+        use crate::sim::docking::bunker_link::BunkerLink;
         let rules = bunker_rules();
         let mut sim = Simulation::new();
         spawn_bunker_struct(&mut sim, 2, "Americans", 10, 10);
@@ -3765,7 +3771,7 @@ mod tests {
 
         assert!(!applied);
         assert_eq!(
-            sim.substrate.entities.get(1).unwrap().bunker_link,
+            sim.substrate.entities.get(1).unwrap().bunker.link(),
             BunkerLink::None
         );
         assert_eq!(
@@ -3775,7 +3781,7 @@ mod tests {
                 .unwrap()
                 .bunker_runtime
                 .unwrap()
-                .state,
+                .state(),
             BunkerState::Idle,
             "rejected admission leaves the machine idle"
         );
@@ -3802,7 +3808,7 @@ mod tests {
 
     #[test]
     fn eject_bunker_releases_occupant() {
-        use crate::sim::game_entity::BunkerLink;
+        use crate::sim::docking::bunker_link::BunkerLink;
         let rules = bunker_rules();
         let mut sim = Simulation::new();
         spawn_bunker_struct(&mut sim, 2, "Americans", 10, 10);
@@ -3826,7 +3832,7 @@ mod tests {
         ));
         crate::sim::docking::bunker_link::install_bunker_link(&mut sim, 2, 1, &rules);
         assert_eq!(
-            sim.substrate.entities.get(2).unwrap().bunker_occupant,
+            sim.substrate.entities.get(2).unwrap().bunker.occupant(),
             Some(1)
         );
 
@@ -3837,16 +3843,19 @@ mod tests {
         );
 
         assert!(applied);
-        assert_eq!(sim.substrate.entities.get(2).unwrap().bunker_occupant, None);
         assert_eq!(
-            sim.substrate.entities.get(1).unwrap().bunker_link,
+            sim.substrate.entities.get(2).unwrap().bunker.occupant(),
+            None
+        );
+        assert_eq!(
+            sim.substrate.entities.get(1).unwrap().bunker.link(),
             BunkerLink::None
         );
         // Force starts at the retained pose; the SW exit is a destination.
         let unit = sim.substrate.entities.get(1).unwrap();
-        assert_eq!((unit.position.rx, unit.position.ry), (14, 14));
+        assert_eq!((unit.position.rx(), unit.position.ry()), (14, 14));
         assert_eq!(
-            unit.navigation.nav_com,
+            unit.navigation.nav_com(),
             Some(crate::sim::components::NavTargetRef::cell(9, 11))
         );
         assert_eq!(
@@ -3856,7 +3865,7 @@ mod tests {
                 .and_then(|runtime| runtime.retained())
                 .unwrap()
                 .track()
-                .turn_index,
+                .turn_index(),
             0x47
         );
         assert_eq!(
@@ -3883,7 +3892,7 @@ mod tests {
     #[test]
     fn bunker_full_lifecycle_enter_install_then_eject() {
         use crate::sim::docking::bunker_install::{BunkerState, tick_bunker_install};
-        use crate::sim::game_entity::BunkerLink;
+        use crate::sim::docking::bunker_link::BunkerLink;
         let rules = bunker_rules();
         let Some(retail) = crate::rules::retail_ini_fixture::retail_battle_rules() else {
             return;
@@ -3895,8 +3904,12 @@ mod tests {
         // production ART reader's retail 2x2 foundation and LTNK turn rate.
         // This exercises the same-cell case that must slide away from the
         // building's raw display-registration coordinate before installation.
-        sim.substrate.entities.get_mut(2).unwrap().foundation =
-            retail.rules.object("NATBNK").unwrap().foundation.clone();
+        sim.substrate
+            .entities
+            .get_mut(2)
+            .unwrap()
+            .type_facts
+            .set_foundation_for_test(retail.rules.object("NATBNK").unwrap().foundation.clone());
         // The install's arrival test reads its cell's building list
         // (`0x0047C520`), so the bunker stands on its retail foundation.
         for (rx, ry) in
@@ -3949,7 +3962,7 @@ mod tests {
             Some(&rules),
         ));
         assert_eq!(
-            sim.substrate.entities.get(1).unwrap().bunker_link,
+            sim.substrate.entities.get(1).unwrap().bunker.link(),
             BunkerLink::Approaching(2)
         );
         // Prepared same-cell admission, then the real production locomotor
@@ -3976,7 +3989,7 @@ mod tests {
                 .unwrap()
                 .bunker_runtime
                 .unwrap()
-                .state;
+                .state();
             saw_track_step |= state == BunkerState::TrackStep;
             sim.session.binary_frame += 1;
             if state == BunkerState::Occupied {
@@ -3998,15 +4011,15 @@ mod tests {
             .unwrap()
             .bunker_runtime
             .unwrap();
-        assert_eq!(rt.state, BunkerState::Occupied);
+        assert_eq!(rt.state(), BunkerState::Occupied);
         assert_eq!(
-            sim.substrate.entities.get(2).unwrap().bunker_occupant,
+            sim.substrate.entities.get(2).unwrap().bunker.occupant(),
             Some(1)
         );
         let unit = sim.substrate.entities.get(1).unwrap();
-        assert_eq!(unit.bunker_link, BunkerLink::Installed(2));
+        assert_eq!(unit.bunker.link(), BunkerLink::Installed(2));
         assert!(
-            unit.in_logic_vector,
+            unit.in_logic_vector.is_member(),
             "install preserves LogicVector membership"
         );
         assert!(!unit.lifecycle.in_limbo());
@@ -4039,10 +4052,16 @@ mod tests {
             &Command::EjectBunker { bunker_id: 2 },
             Some(&rules),
         ));
-        assert_eq!(sim.substrate.entities.get(2).unwrap().bunker_occupant, None);
+        assert_eq!(
+            sim.substrate.entities.get(2).unwrap().bunker.occupant(),
+            None
+        );
         let unit = sim.substrate.entities.get(1).unwrap();
-        assert_eq!(unit.bunker_link, BunkerLink::None);
-        assert!(unit.in_logic_vector, "occupant stays active on eject");
+        assert_eq!(unit.bunker.link(), BunkerLink::None);
+        assert!(
+            unit.in_logic_vector.is_member(),
+            "occupant stays active on eject"
+        );
         assert!(!unit.lifecycle.in_limbo());
         assert_eq!(
             crate::sim::movement::ground_pose::object_get_coords(
@@ -4059,7 +4078,7 @@ mod tests {
                 .and_then(|runtime| runtime.retained())
                 .unwrap()
                 .track()
-                .turn_index,
+                .turn_index(),
             0x47
         );
         assert_eq!(
@@ -4071,7 +4090,7 @@ mod tests {
             1,
             "one walls-down event on eject"
         );
-        let exit = match unit.navigation.nav_com {
+        let exit = match unit.navigation.nav_com() {
             Some(crate::sim::components::NavTargetRef::Cell { rx, ry }) => (rx, ry),
             other => panic!("normal bunker release must issue its exit cell: {other:?}"),
         };
@@ -4086,7 +4105,7 @@ mod tests {
             );
             sim.session.binary_frame += 1;
             let unit = sim.substrate.entities.get(1).unwrap();
-            if (unit.position.rx, unit.position.ry) == exit
+            if (unit.position.rx(), unit.position.ry()) == exit
                 && crate::sim::movement::track_head::committed_track_head(unit).is_none()
                 && crate::sim::movement::motion_query::is_moving(&unit) != Some(true)
             {
@@ -4094,10 +4113,10 @@ mod tests {
             }
         }
         let unit = sim.substrate.entities.get(1).unwrap();
-        assert_eq!((unit.position.rx, unit.position.ry), exit);
+        assert_eq!((unit.position.rx(), unit.position.ry()), exit);
         assert!(crate::sim::movement::track_head::committed_track_head(unit).is_none());
         assert!(crate::sim::movement::motion_query::is_moving(&unit) != Some(true));
-        assert_eq!(unit.bunker_link, BunkerLink::None);
+        assert_eq!(unit.bunker.link(), BunkerLink::None);
         assert_eq!(
             sim.substrate
                 .entities
@@ -4105,7 +4124,7 @@ mod tests {
                 .unwrap()
                 .bunker_runtime
                 .unwrap()
-                .state,
+                .state(),
             BunkerState::Idle
         );
     }

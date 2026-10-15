@@ -54,9 +54,13 @@ fn insert(sim: &mut Simulation, id: u64, name: &str, category: EntityCategory, p
         5,
         true,
     );
-    entity.position.sub_x = SimFixed::from_num(point[0] % 256);
-    entity.position.sub_y = SimFixed::from_num(point[1] % 256);
-    entity.position.exact_z_leptons = Some(point[2]);
+    entity
+        .position
+        .set_sub_x(SimFixed::from_num(point[0] % 256));
+    entity
+        .position
+        .set_sub_y(SimFixed::from_num(point[1] % 256));
+    entity.position.set_exact_z_leptons(Some(point[2]));
     entity.lifecycle.set_object_alive_for_test(true);
     entity.lifecycle.set_in_limbo_for_test(false);
     sim.substrate.entities.insert(entity);
@@ -182,7 +186,7 @@ fn fixture(input: &Value) -> (Simulation, RuleSet) {
             .get_mut(id)
             .unwrap()
             .navigation
-            .nav_com = Some(NavTargetRef::cell(rx, ry));
+            .set_nav_com(Some(NavTargetRef::cell(rx, ry)));
     }
     for cell in input["occupied"].as_array().into_iter().flatten() {
         let (x, y) = cell_of(cell);
@@ -256,7 +260,7 @@ impl move_mission::MoveHost for RowHost<'_> {
             .get(OWNER)
             .unwrap()
             .navigation
-            .nav_com
+            .nav_com()
             .is_some()
     }
 
@@ -272,7 +276,7 @@ impl move_mission::MoveHost for RowHost<'_> {
             .get(OWNER)
             .unwrap()
             .navigation
-            .nav_com;
+            .nav_com();
         let cell = self.sim.aircraft_find_attack_cell(OWNER, nav, self.rules);
         self.calls
             .push(json!(["assign_destination", name(cell), 1]));
@@ -286,7 +290,7 @@ impl move_mission::MoveHost for RowHost<'_> {
             .get(OWNER)
             .unwrap()
             .navigation
-            .nav_com;
+            .nav_com();
         let coord = nav_target_coordinate(
             nav.unwrap(),
             Some(OWNER),
@@ -328,7 +332,7 @@ fn mission_move_matches_original_states() {
         let label = input["name"].as_str().unwrap();
         let (mut sim, rules) = fixture(input);
         let owner = sim.substrate.entities.get_mut(OWNER).unwrap();
-        owner.navigation.nav_com = param(input);
+        owner.navigation.set_nav_com(param(input));
         owner
             .mission
             .apply_test_fixture(crate::sim::mission::state::MissionTestFixture {
@@ -427,12 +431,12 @@ fn retail_harrier_sent_onto_a_tank_stops_beside_it_and_crashes_without_an_airfie
         let Some(entity) = runtime.simulation.substrate.entities.get(harrier) else {
             break;
         };
-        let nav = entity.navigation.nav_com;
+        let nav = entity.navigation.nav_com();
         if navs.last().is_none_or(|&(_, last)| last != nav) {
             navs.push((frame, nav));
         }
         if entity.health.current() == 0 {
-            crashed.get_or_insert((frame, (entity.position.rx, entity.position.ry)));
+            crashed.get_or_insert((frame, (entity.position.rx(), entity.position.ry())));
             continue;
         }
         // The order queues Move; Ready_To_Commence starts it.
@@ -442,7 +446,11 @@ fn retail_harrier_sent_onto_a_tank_stops_beside_it_and_crashes_without_an_airfie
         }
         let sub_state = crate::sim::aircraft::handler_state(entity);
         if moves.last().is_none_or(|&(_, last, _)| last != sub_state) {
-            moves.push((frame, sub_state, (entity.position.rx, entity.position.ry)));
+            moves.push((
+                frame,
+                sub_state,
+                (entity.position.rx(), entity.position.ry()),
+            ));
         }
     }
     println!(
@@ -592,7 +600,7 @@ fn mission_move_idle_mode_on_the_ground_and_in_flight() {
                 0,
             ),
         );
-        plane.position.exact_z_leptons = Some(z);
+        plane.position.set_exact_z_leptons(Some(z));
         plane
             .mission
             .set_current_for_test(MissionId::from_known(MissionType::Move), 0);
@@ -621,7 +629,7 @@ fn mission_move_idle_mode_on_the_ground_and_in_flight() {
             "z {z}: the Target"
         );
         assert_eq!(
-            plane.navigation.nav_com,
+            plane.navigation.nav_com(),
             (!landed).then_some(airfield),
             "z {z}"
         );

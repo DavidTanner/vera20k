@@ -19,14 +19,13 @@ use crate::map::entities::EntityCategory;
 #[cfg(test)]
 use crate::map::houses::HouseAllianceMap;
 use crate::map::resolved_terrain::ResolvedTerrainGrid;
-use crate::rules::locomotor_type::{LocomotorKind, MovementZone, SpeedType};
+use crate::rules::locomotor_type::{LocomotorKind, MovementZone};
 use crate::sim::cell_rect::PlayfieldBounds;
 use crate::sim::entity_store::{EntityStore, TouchReader};
 use crate::sim::infantry;
 #[cfg(test)]
 use crate::sim::lifecycle_request::LifecycleRequest;
 use crate::sim::pathfinding::PathGrid;
-use crate::sim::pathfinding::terrain_cost::TerrainCostGrid;
 #[cfg(test)]
 use crate::sim::pathfinding::terrain_speed::TerrainSpeedConfig;
 #[cfg(test)]
@@ -53,17 +52,17 @@ pub(super) fn snapshot_mover(
     let e = entities.get(entity_id)?;
     Some(MoverSnapshot {
         category: e.category(),
-        speed_type: e.locomotor.as_ref().map(|l| l.speed_type),
+        speed_type: e.locomotor.as_ref().map(|l| l.speed_type()),
         movement_zone: e
             .locomotor
             .as_ref()
-            .map(|l| l.movement_zone)
+            .map(|l| l.movement_zone())
             .unwrap_or(MovementZone::Normal),
-        omni_crusher: e.omni_crusher,
-        regular_crusher: e.regular_crusher,
-        on_bridge: e.on_bridge,
+        omni_crusher: e.mover_facts.omni_crusher(),
+        regular_crusher: e.mover_facts.regular_crusher(),
+        on_bridge: e.on_bridge(),
         locomotor: e.locomotor.clone(),
-        allow_zone_hierarchy: playfield_bounds.is_none() || e.in_playfield,
+        allow_zone_hierarchy: playfield_bounds.is_none() || e.in_playfield(),
     })
 }
 
@@ -161,7 +160,7 @@ fn no_queue_path_request(
         return None;
     }
     let loco = entity.locomotor.as_ref()?;
-    match loco.kind {
+    match loco.active_kind() {
         LocomotorKind::Walk if loco.step_head().is_none() => loco.walk_destination(),
         _ => None,
     }
@@ -218,15 +217,14 @@ impl FootPathRequest {
         goal: crate::sim::components::DriveCoord,
         entities: &EntityStore,
         ctx: PathfindingContext<'_>,
-        terrain_costs: &BTreeMap<SpeedType, TerrainCostGrid>,
         foot_entry: &dyn crate::sim::pathfinding::SearchFootEntry,
     ) -> Result<Vec<(u16, u16)>, super::movement_path::MovePathFailure> {
         let snap = &self.visit.snap;
         let actor = entities.get(self.entity_id).expect("live suspended mover");
-        let start = (actor.position.rx, actor.position.ry);
+        let start = (actor.position.rx(), actor.position.ry());
         // AStar 0x00429A90 takes the start height from the Foot's OnBridge
         // byte (+0x8C): the cell level, +4 on a bridge. No path layer.
-        let layer = if actor.on_bridge {
+        let layer = if actor.on_bridge() {
             MovementLayer::Bridge
         } else {
             MovementLayer::Ground
@@ -249,16 +247,14 @@ impl FootPathRequest {
             start,
             layer,
             goal,
-            snap.speed_type.and_then(|speed| terrain_costs.get(&speed)),
             snap.movement_zone,
             Some(snap.movement_zone),
             None,
             //The admitted search prepares markers and applies native42AECA
             //urgency downgrade through the live Foot provider.
-            //One crush authority for every search; see `CrushCapability::of`.
-            super::MoverPathFacts::from_snapshot(snap, self.urgency),
+            self.urgency,
             snap.allow_zone_hierarchy,
-            Some(foot_entry),
+            foot_entry,
         )
         // Foot+5E0 words carry no layer; the Process reads OnBridge.
         .map(|(path, _)| path)
@@ -274,7 +270,7 @@ impl FootPathRequest {
         actor: &mut crate::sim::game_entity::GameEntity,
         path: Vec<(u16, u16)>,
     ) {
-        let current = (actor.position.rx, actor.position.ry);
+        let current = (actor.position.rx(), actor.position.ry());
         super::path_markers::install_path_replay(
             &mut actor.navigation.path_replay,
             current,
@@ -307,7 +303,7 @@ fn native_track_route(
     if entity.category() != EntityCategory::Unit {
         return None;
     }
-    match entity.locomotor.as_ref()?.kind {
+    match entity.locomotor.as_ref()?.active_kind() {
         LocomotorKind::Drive => Some(super::track_process::TrackFamily::Drive),
         LocomotorKind::Ship => Some(super::track_process::TrackFamily::Ship),
         _ => None,
@@ -377,7 +373,7 @@ fn advance_ordinary_mover(
                 family: if entity
                     .locomotor
                     .as_ref()
-                    .is_some_and(|l| l.kind == LocomotorKind::Ship)
+                    .is_some_and(|l| l.active_kind() == LocomotorKind::Ship)
                 {
                     super::track_process::TrackFamily::Ship
                 } else {
@@ -410,7 +406,7 @@ fn advance_ordinary_mover(
         if !entities
             .get(entity_id)
             .and_then(|entity| entity.locomotor.as_ref())
-            .is_some_and(|locomotor| locomotor.kind == LocomotorKind::Walk)
+            .is_some_and(|locomotor| locomotor.active_kind() == LocomotorKind::Walk)
         {
             return;
         }
@@ -425,7 +421,7 @@ fn advance_ordinary_mover(
         let walk_position_before_step = snap
             .locomotor
             .as_ref()
-            .filter(|loco| loco.kind == crate::rules::locomotor_type::LocomotorKind::Walk)
+            .filter(|loco| loco.active_kind() == crate::rules::locomotor_type::LocomotorKind::Walk)
             .and_then(|_| entities.get(entity_id).map(|entity| entity.position));
         let prone_crawls = entities.get(entity_id).and_then(|entity| {
             if !infantry::is_prone_for_damage(entity) {
@@ -452,7 +448,7 @@ fn advance_ordinary_mover(
         if !entity
             .navigation
             .path_runtime
-            .movement_timer
+            .movement_timer()
             .expired(native_frame as i32)
         {
             if let Some(entity) =
@@ -496,23 +492,26 @@ fn advance_ordinary_mover(
         ) {
             let terrain = resolved_terrain.expect("tube admission resolved terrain");
             let category = entity.category();
-            if tube_movement::begin_path_tube_step(
-                &mut entity.foot_occupation_enabled,
+            let mut foot_occupation_enabled = entity.foot_occupation_enabled();
+            let mut cell_marked = entity.lifecycle.cell_marked();
+            let begun = tube_movement::begin_path_tube_step(
+                &mut foot_occupation_enabled,
                 &mut entity.navigation.path_replay,
                 entity_id,
                 category,
                 &mut entity.position,
                 &mut entity.locomotor,
                 &mut entity.low_bridge_tube_state,
-                &mut entity.lifecycle.cell_marked,
+                &mut cell_marked,
                 tube_id,
                 terrain,
                 occupancy,
                 cell_occupation,
                 raw_cell_occupation,
-            )
-            .is_ok()
-            {
+            );
+            entity.set_foot_occupation_enabled(foot_occupation_enabled);
+            entity.lifecycle.set_cell_marked(cell_marked);
+            if begun.is_ok() {
                 return;
             }
         }
@@ -536,7 +535,7 @@ fn advance_ordinary_mover(
     // Steering / rotation: rotate in place, then move. ROT=0 means an
     // instant turn.
     if snap.category != EntityCategory::Infantry {
-        match movement_step::handle_vehicle_rotation(&mut entity.body_facing, None, native_frame) {
+        match movement_step::handle_vehicle_rotation(&entity.body_facing, native_frame) {
             movement_step::RotationResult::StillRotating => return,
             movement_step::RotationResult::ReadyToMove => {}
         }
@@ -577,7 +576,7 @@ fn advance_ordinary_mover(
         && super::ground_pose::position_world_xy(before)
             != super::ground_pose::position_world_xy(&entity.position)
     {
-        entity.navigation.path_runtime.path_blocked = false;
+        entity.navigation.path_runtime.set_path_blocked(false);
     }
 }
 
@@ -809,7 +808,7 @@ fn prepare_movement_visit(
     // destination (+0x1C): either one runs its step, neither the idle tail
     // 75BCE3 (Walk75AEC3..75AF10).
     let walk_route = entity.locomotor.as_ref().is_some_and(|loco| {
-        loco.kind == LocomotorKind::Walk
+        loco.active_kind() == LocomotorKind::Walk
             && (loco.step_head().is_some() || loco.walk_destination().is_some())
     });
     if entity.is_active() && !walk_route {
@@ -819,10 +818,9 @@ fn prepare_movement_visit(
     // (`track_turn`: Drive 0x4B08D1..0x4B0A69 / Ship 0x69FF98..0x6A0131),
     // which admit Process_Movement (0x4B0A79 / 0x6A0142) for a moving class
     // or a live path word.
-    let track_route = entity
-        .locomotor
-        .as_ref()
-        .is_some_and(|loco| super::track_process::TrackFamily::from_kind(loco.kind).is_some());
+    let track_route = entity.locomotor.as_ref().is_some_and(|loco| {
+        super::track_process::TrackFamily::from_kind(loco.active_kind()).is_some()
+    });
     if !walk_route && !track_route {
         return false;
     }
@@ -835,7 +833,6 @@ pub(crate) fn tick_movement_with_grids(
     entities: &mut EntityStore,
     live_order: Option<&[u64]>,
     path_grid: Option<&PathGrid>,
-    terrain_costs: &BTreeMap<SpeedType, TerrainCostGrid>,
     alliances: &HouseAllianceMap,
     occupancy: &mut OccupancyGrid,
     cell_occupation: &mut CellOccupationGrid,
@@ -863,7 +860,6 @@ pub(crate) fn tick_movement_with_grids(
     sim.scenario_rng = rng.clone();
     sim.session.tick = sim_tick;
     sim.session.binary_frame = native_frame;
-    sim.terrain_costs = terrain_costs.clone();
     sim.house_alliances = alliances.clone();
     sim.path_grid = path_grid.cloned().map(std::sync::Arc::new);
     sim.zone_grid = zone_grid.cloned();
@@ -1091,7 +1087,7 @@ mod pass_cache_tests {
         let mut overlays = crate::sim::overlay_grid::OverlayGrid::new(5, 5);
         let mut entities = EntityStore::new();
         let mut unit = GameEntity::test_default(7, "MTNK", "Americans", 2, 2);
-        unit.lifecycle.cell_marked = true;
+        unit.lifecycle.set_cell_marked(true);
         entities.insert(unit);
         let interner = test_interner();
         let mut cache = MovementPassCache::default();
@@ -1110,7 +1106,7 @@ mod pass_cache_tests {
             1,
             "do not double-count live Foot positions"
         );
-        entities.get_mut(7).unwrap().position.rx = 4;
+        entities.get_mut(7).unwrap().position.set_rx(4);
         assert_eq!(
             cache
                 .blocker_plane(
@@ -1175,7 +1171,7 @@ mod pass_cache_tests {
         let mut entities = EntityStore::new();
         let mut occupancy = OccupancyGrid::new();
         let mut unit = GameEntity::test_default(7, "MTNK", "Americans", 2, 2);
-        unit.lifecycle.cell_marked = true;
+        unit.lifecycle.set_cell_marked(true);
         entities.insert(unit);
         occupancy.add(
             2,
@@ -1203,7 +1199,7 @@ mod pass_cache_tests {
         assert_eq!(again, before);
 
         // Death sequence: the object stays on the grid.
-        entities.get_mut(7).unwrap().dying = true;
+        entities.get_mut(7).unwrap().death.set_dying_for_test(true);
         let after = cache
             .blocker_plane(&mut entities, &grid, None, None, &interner, None)
             .clone();
@@ -1300,15 +1296,20 @@ Foundation=2x2
                         entity
                             .set_category_for_test(crate::map::entities::EntityCategory::Structure);
                     }
-                    entity.lifecycle.cell_marked = true;
+                    entity.lifecycle.set_cell_marked(true);
                     entities.insert(entity);
                 }
                 edit => {
                     if let Some(entity) = entities.get_mut(id) {
                         match edit {
-                            3 => (entity.position.rx, entity.position.ry) = cell,
-                            4 => entity.dying = !entity.dying,
-                            _ => entity.lifecycle.cell_marked = !entity.lifecycle.cell_marked,
+                            3 => {
+                                entity.position.set_rx(cell.0);
+                                entity.position.set_ry(cell.1);
+                            }
+                            4 => entity.death.set_dying_for_test(!entity.death.is_dying()),
+                            _ => entity
+                                .lifecycle
+                                .set_cell_marked(!entity.lifecycle.cell_marked()),
                         }
                     }
                 }

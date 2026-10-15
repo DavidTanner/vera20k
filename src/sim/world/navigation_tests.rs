@@ -165,8 +165,8 @@ fn recalc_keeps_marked_structure_over_partial_terrain_occupation_and_bridge_deck
         crate::sim::game_entity::GameEntity::test_default(47, "YARD", "Americans", 6, 6);
     structure.set_category_for_test(EntityCategory::Structure);
     structure.set_type_ref_for_test(sim.interner.intern("YARD"));
-    structure.lifecycle.cell_marked = true;
-    structure.dying = true; // Dying still owns its marked footprint.
+    structure.lifecycle.set_cell_marked(true);
+    structure.death.set_dying_for_test(true); // Dying still owns its marked footprint.
     sim.substrate.entities.insert(structure);
     assert!(sim.rebuild_dynamic_navigation(&rules));
     assert!(!sim.path_grid().unwrap().is_walkable_for_infantry(6, 6));
@@ -185,7 +185,6 @@ fn recalc_keeps_marked_structure_over_partial_terrain_occupation_and_bridge_deck
     cell.bridge_transition = true;
     cell.bridge_facts.raw_flags |= crate::map::bridge_facts::BRIDGE_FLAG_STRUCTURAL;
     crate::sim::world::navigation::NavigationCaches {
-        terrain_costs: &mut sim.terrain_costs,
         zones: &mut sim.zone_grid,
         path: &mut sim.path_grid,
         playfield_bounds: sim.playfield_bounds,
@@ -241,17 +240,17 @@ fn assert_retained_roles(sim: &Simulation, parent_id: u64, upgrade_id: u64, held
             .get(parent_id)
             .unwrap()
             .lifecycle
-            .cell_marked
+            .cell_marked()
     );
     let upgrade = sim.substrate.entities.get(upgrade_id).unwrap();
-    assert!(!upgrade.lifecycle.in_limbo() && !upgrade.lifecycle.cell_marked);
+    assert!(!upgrade.lifecycle.in_limbo() && !upgrade.lifecycle.cell_marked());
     assert!(
         upgrade
-            .structure_upgrade_link
-            .is_some_and(|link| link.parent_stable_id == parent_id)
+            .structure_upgrade_link()
+            .is_some_and(|link| link.parent_stable_id() == parent_id)
     );
     let held = sim.substrate.entities.get(held_id).unwrap();
-    assert!(held.lifecycle.in_limbo() && !held.lifecycle.cell_marked);
+    assert!(held.lifecycle.in_limbo() && !held.lifecycle.cell_marked());
     assert_eq!(
         sim.production
             .factories
@@ -294,16 +293,16 @@ fn held_factory_and_attached_upgrade_stay_off_navigation_through_frame_and_resto
         .substrate
         .entities
         .values()
-        .find(|entity| entity.structure_upgrade_link.is_none())
+        .find(|entity| entity.structure_upgrade_link().is_none())
         .unwrap()
         .stable_id();
     let upgrade = sim
         .substrate
         .entities
         .values()
-        .find(|entity| entity.structure_upgrade_link.is_some())
+        .find(|entity| entity.structure_upgrade_link().is_some())
         .unwrap();
-    assert!(!upgrade.lifecycle.in_limbo() && !upgrade.lifecycle.cell_marked);
+    assert!(!upgrade.lifecycle.in_limbo() && !upgrade.lifecycle.cell_marked());
     let upgrade_id = upgrade.stable_id();
     assert!(enqueue_by_type(
         &mut sim,
@@ -323,8 +322,8 @@ fn held_factory_and_attached_upgrade_stay_off_navigation_through_frame_and_resto
         .entity_id
         .unwrap();
     let held = sim.substrate.entities.get(held_id).unwrap();
-    assert!(held.lifecycle.in_limbo() && !held.lifecycle.cell_marked);
-    assert_eq!((held.position.rx, held.position.ry), (0, 0));
+    assert!(held.lifecycle.in_limbo() && !held.lifecycle.cell_marked());
+    assert_eq!((held.position.rx(), held.position.ry()), (0, 0));
 
     assert!(sim.rebuild_dynamic_navigation(&rules));
     assert_only_marked_foundation(&sim);
@@ -380,7 +379,8 @@ fn held_factory_and_attached_upgrade_stay_off_navigation_through_frame_and_resto
         .entities
         .get_mut(parent_id)
         .unwrap()
-        .dying = true;
+        .death
+        .set_dying_for_test(true);
     assert!(restored.rebuild_dynamic_navigation(&rules));
     assert_only_marked_foundation(&restored);
     restored.uninit_with_rules(parent_id, &rules);
@@ -391,7 +391,7 @@ fn held_factory_and_attached_upgrade_stay_off_navigation_through_frame_and_resto
             .get(parent_id)
             .unwrap()
             .lifecycle
-            .cell_marked
+            .cell_marked()
     );
     assert!(restored.rebuild_dynamic_navigation(&rules));
     assert!(restored.path_grid_snapshot().unwrap().is_walkable(6, 6));
@@ -420,7 +420,7 @@ fn structure_changes_publish_footprint_cells_without_rebuilding_zones() {
         crate::sim::game_entity::GameEntity::test_default(9, "YARD", "Americans", 6, 6);
     structure.set_category_for_test(EntityCategory::Structure);
     structure.set_type_ref_for_test(sim.interner.intern("YARD"));
-    structure.lifecycle.cell_marked = true;
+    structure.lifecycle.set_cell_marked(true);
     sim.substrate.entities.insert(structure);
     assert!(
         sim.finalize_frame_overlays_and_navigation(Some(&rules), Some(&overlays), false, true)
@@ -445,7 +445,7 @@ fn structure_changes_publish_footprint_cells_without_rebuilding_zones() {
         .get_mut(9)
         .unwrap()
         .lifecycle
-        .cell_marked = false;
+        .set_cell_marked(false);
     let zones_before = zone_storage(&sim);
     sim.finalize_frame_overlays_and_navigation(Some(&rules), Some(&overlays), false, true);
     assert_eq!(*sim.path_grid_snapshot().unwrap(), *open);
@@ -470,13 +470,20 @@ fn structure_mark_publishes_presence_and_preserves_other_marked_blockers() {
             EntityCategory::Structure,
         );
         structure.set_type_ref_for_test(sim.interner.intern("YARD"));
-        structure.foundation = rules.object("YARD").unwrap().foundation.clone();
+        structure
+            .type_facts
+            .set_foundation_for_test(rules.object("YARD").unwrap().foundation.clone());
         sim.substrate.entities.insert(structure);
         assert!(sim.mark_entity_put(id, context));
         assert_only_marked_foundation(&sim);
     }
     let placed = sim.path_grid_snapshot().unwrap();
-    sim.substrate.entities.get_mut(10).unwrap().dying = true;
+    sim.substrate
+        .entities
+        .get_mut(10)
+        .unwrap()
+        .death
+        .set_dying_for_test(true);
     assert!(sim.unmark_entity_remove(9, context));
     assert_only_marked_foundation(&sim);
     assert!(sim.unmark_entity_remove(10, context));

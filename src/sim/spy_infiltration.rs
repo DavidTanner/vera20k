@@ -92,8 +92,8 @@ impl Simulation {
         // uses too.
         let radar = RadarEventRequest::new(
             RadarEventType::SpyInfiltration,
-            building.position.rx,
-            building.position.ry,
+            building.position.rx(),
+            building.position.ry(),
         );
         let Some(object) = self.object_type(building.type_ref(), rules) else {
             return;

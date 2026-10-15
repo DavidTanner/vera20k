@@ -50,7 +50,7 @@ fn enemy_sensed_prefilter(entity: &crate::sim::game_entity::GameEntity) -> bool 
         entity
             .aircraft_ammo
             .as_ref()
-            .is_none_or(|ammo| (ammo.current as i8) < 0)
+            .is_none_or(|ammo| (ammo.current() as i8) < 0)
     } else {
         entity.low_bridge_tube_state.is_none()
     }
@@ -97,12 +97,12 @@ fn radar_get_height_leptons(
             crate::util::lepton::ground_height_leptons(cell.level, cell.slope_type, x, y).ok()
         })
         .unwrap_or_else(|| {
-            i32::from(entity.position.z as i8)
+            i32::from(entity.position.z() as i8)
                 .wrapping_mul(crate::util::lepton::GROUND_LEVEL_HEIGHT_LEPTONS)
         });
     let mut height = crate::sim::movement::ground_pose::object_world_z_leptons(entity, None)
         .wrapping_sub(ground);
-    if entity.on_bridge {
+    if entity.on_bridge() {
         height = height.wrapping_sub(crate::util::lepton::BRIDGE_DECK_HEIGHT_LEPTONS);
     }
     height
@@ -115,9 +115,9 @@ fn radar_building_both_corners_shrouded(
     foundation: (u32, u32),
 ) -> bool {
     let origin_shrouded =
-        !fog.is_cell_revealed(local_owner, entity.position.rx, entity.position.ry);
-    let far_x = i32::from(entity.position.rx).wrapping_add((foundation.0 as i32).wrapping_sub(1));
-    let far_y = i32::from(entity.position.ry).wrapping_add((foundation.1 as i32).wrapping_sub(1));
+        !fog.is_cell_revealed(local_owner, entity.position.rx(), entity.position.ry());
+    let far_x = i32::from(entity.position.rx()).wrapping_add((foundation.0 as i32).wrapping_sub(1));
+    let far_y = i32::from(entity.position.ry()).wrapping_add((foundation.1 as i32).wrapping_sub(1));
     let far_shrouded =
         far_x < 0 || far_y < 0 || !fog.is_cell_revealed(local_owner, far_x as u16, far_y as u16);
     origin_shrouded && far_shrouded
@@ -302,7 +302,7 @@ pub(super) fn build_radar_object_update(
         |surface| surface.world_to_surface_pixel(raw_x, raw_y, false),
     );
     let foundation = (entity.category() == EntityCategory::Structure)
-        .then(|| parse_foundation_size(&entity.foundation));
+        .then(|| parse_foundation_size(entity.type_facts.foundation()));
     let owner_is_human_player = local_owner.is_none_or(|local_owner| {
         radar_owner_is_human_player(entity.owner(), local_owner, houses, game_mode_nonzero)
     });
@@ -349,7 +349,7 @@ pub(super) fn build_radar_object_update(
         object.is_some_and(|object| object.invisible || object.invisible_in_game);
     let fresh_in_playfield =
         radar_fresh_mode_one_membership(entity, playfield_bounds, resolved_terrain);
-    let cloak_state = entity.cloak.as_ref().map_or(0, |cloak| cloak.state);
+    let cloak_state = entity.cloak.as_ref().map_or(0, |cloak| cloak.state());
     let veteran_radar_invisible = object.is_some_and(|object| {
         has_weapon_ability(
             entity.veterancy.rank_kind(),
@@ -455,11 +455,11 @@ mod tests {
         let mut entity =
             crate::sim::game_entity::GameEntity::test_default(1, "MTNK", "Soviet", 4, 5);
         assert!(enemy_sensed_prefilter(&entity));
-        entity.low_bridge_tube_state = Some(LowBridgeTubeMovementState {
-            tube_id: TubeId(2),
-            cursor: 0,
-            target: DriveCoord { x: 0, y: 0, z: 0 },
-        });
+        entity.low_bridge_tube_state = Some(LowBridgeTubeMovementState::for_test(
+            TubeId(2),
+            0,
+            DriveCoord { x: 0, y: 0, z: 0 },
+        ));
         assert!(!enemy_sensed_prefilter(&entity));
 
         entity.set_category_for_test(EntityCategory::Aircraft);
@@ -485,7 +485,7 @@ mod tests {
         let mut entity =
             crate::sim::game_entity::GameEntity::test_default(1, "BLDG", "Enemy", 4, 5);
         entity.set_category_for_test(EntityCategory::Structure);
-        entity.foundation = "3x2".to_string();
+        entity.type_facts.set_foundation_for_test("3x2".to_string());
         let raw = crate::sim::movement::ground_pose::position_world_xy(&entity.position);
         let visibility = crate::sim::movement::ground_pose::object_center_xy(&entity);
         assert_eq!(radar_fog_cell_from_leptons(raw[0], raw[1]), Some((4, 5)));
@@ -504,8 +504,12 @@ mod tests {
         .expect("wide generated surface");
         let mut entity =
             crate::sim::game_entity::GameEntity::test_default(1, "MTNK", "Enemy", 120, 30);
-        entity.position.sub_x = crate::util::fixed_math::SimFixed::from_num(0);
-        entity.position.sub_y = crate::util::fixed_math::SimFixed::from_num(0);
+        entity
+            .position
+            .set_sub_x(crate::util::fixed_math::SimFixed::from_num(0));
+        entity
+            .position
+            .set_sub_y(crate::util::fixed_math::SimFixed::from_num(0));
         let mut projection = visibility_projection();
         projection.native_surface = Some(surface);
         let update = build_radar_object_update(
@@ -819,15 +823,15 @@ mod tests {
         let terrain = flat_terrain(32);
         let mut entity =
             crate::sim::game_entity::GameEntity::test_default(1, "DOT", "Enemy", 12, 10);
-        entity.in_playfield = false;
+        entity.set_in_playfield(false);
         assert!(radar_fresh_mode_one_membership(
             &entity,
             Some(bounds),
             Some(&terrain),
         ));
-        entity.in_playfield = true;
-        entity.position.rx = 2;
-        entity.position.ry = 2;
+        entity.set_in_playfield(true);
+        entity.position.set_rx(2);
+        entity.position.set_ry(2);
         assert!(!radar_fresh_mode_one_membership(
             &entity,
             Some(bounds),
@@ -845,7 +849,7 @@ mod tests {
         let local = crate::sim::intern::test_intern("Local");
         let mut entity =
             crate::sim::game_entity::GameEntity::test_default(1, "BLDG", "Enemy", 4, 4);
-        entity.foundation = "3x2".to_string();
+        entity.type_facts.set_foundation_for_test("3x2".to_string());
         let mut fog = FogState::default();
         fog.mark_visible_for_owner(local, 6, 5);
         assert!(!radar_building_both_corners_shrouded(

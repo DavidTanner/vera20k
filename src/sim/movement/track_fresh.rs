@@ -230,7 +230,7 @@ impl Simulation {
         let Some(actor) = self.substrate.entities.get(id) else {
             return false;
         };
-        let object = match actor.navigation.nav_com {
+        let object = match actor.navigation.nav_com() {
             Some(
                 NavTargetRef::Entity { id: object }
                 | NavTargetRef::Object { id: object }
@@ -262,10 +262,8 @@ impl Simulation {
             .expect("same NavCom trim owner")
             .navigation
             .path_replay;
-        let slot = usize::from(queue.cursor) + cells as usize;
-        if let Some(word) = queue.directions.get_mut(slot) {
-            *word = u8::MAX;
-        }
+        let slot = usize::from(queue.cursor()) + cells as usize;
+        queue.set_direction(slot, u8::MAX);
         true
     }
 
@@ -280,7 +278,12 @@ impl Simulation {
             .get(id)
             .ok_or("retired Drive/Ship no-queue owner")?;
         //4B281C..4B2845: the Foot+640 exact-zero wait.
-        if !actor.navigation.path_runtime.movement_timer.expired(frame) {
+        if !actor
+            .navigation
+            .path_runtime
+            .movement_timer()
+            .expired(frame)
+        {
             return Ok(false);
         }
         let destination = track_destination(actor).ok_or("no-queue arm without destination")?;
@@ -356,9 +359,9 @@ impl Simulation {
         let cell = coord_cell(candidate);
         //4B32F0..4B3332: the current Cell's level, +4 on a bridge.
         let cells = crate::map::resolved_terrain::NativeCellQuery::canonical(terrain);
-        let height = ground_pose::query_object_cell_height(&cells, location, actor.on_bridge);
+        let height = ground_pose::query_object_cell_height(&cells, location, actor.on_bridge());
         //4B3376..4B3391: the candidate Cell's bridge bit against OnBridge.
-        let bridge_mismatch = (cells.flags(cells.lookup(cell)) & 0x100 != 0) != actor.on_bridge;
+        let bridge_mismatch = (cells.flags(cells.lookup(cell)) & 0x100 != 0) != actor.on_bridge();
         let door_closed = actor.door_phase() == crate::sim::door::DoorPhase::ClosedStable;
         if bridge_mismatch {
             self.latch_foot_68b(id);
@@ -545,12 +548,12 @@ impl Simulation {
             .ok_or("retired Drive/Ship code-2 owner")?;
         let runtime = &mut actor.navigation.path_runtime;
         //4B3656..4B368D: the latch arms the blockage timer once.
-        if !runtime.path_blocked {
-            runtime.path_blocked = true;
+        if !runtime.path_blocked() {
+            runtime.set_path_blocked(true);
             runtime.start_blocked(frame, rules.general.blockage_path_delay_ticks);
         }
         //4B3690..4B36B6: while the movement timer runs, the rejected tail.
-        if !runtime.movement_timer.expired(frame as i32) {
+        if !runtime.movement_timer().expired(frame as i32) {
             self.track_first_rejected_tail(id);
             return Ok(false);
         }
@@ -873,7 +876,10 @@ impl Simulation {
         actor.navigation.path_runtime.clear_scold_latch();
         clear_track_head(actor);
         let Some(candidate) = candidate else {
-            actor.navigation.path_replay.reference_cell = Some(reference);
+            actor
+                .navigation
+                .path_replay
+                .set_reference_cell(Some(reference));
             return self.track_finalize_stop(id);
         };
         super::path_markers::accept_path_replay(
@@ -1054,7 +1060,7 @@ impl Simulation {
     /// the hashed `RuntimeBridgeTransitionState::pending_mismatch`.
     pub(super) fn latch_foot_68b(&mut self, id: u64) {
         if let Some(actor) = self.substrate.entities.get_mut(id) {
-            actor.runtime_bridge_transition.pending_mismatch = true;
+            actor.runtime_bridge_transition.latch();
         }
     }
 
@@ -1091,10 +1097,10 @@ impl Simulation {
             return;
         };
         if let Some(loco) = actor.locomotor.as_mut()
-            && let Some(family) = TrackFamily::from_kind(loco.kind)
+            && let Some(family) = TrackFamily::from_kind(loco.active_kind())
             && let Some(mut progress) = loco.track_progress(family)
         {
-            progress.turn_index = -1;
+            progress.set_turn_index(-1);
             loco.store_track_progress(family, progress);
         }
     }
@@ -1246,7 +1252,7 @@ impl Simulation {
             let level = i32::from(cells.ground_fields(native).0 as i8);
             let location = ground_pose::position_world_coord(&actor.position);
             let here = cells.lookup_world(location.x, location.y);
-            actor.on_bridge
+            actor.on_bridge()
                 || i32::from(cells.ground_fields(here).0 as i8)
                     == level + crate::util::lepton::BRIDGE_DECK_HEIGHT_LEVELS
         };
@@ -1291,7 +1297,7 @@ impl Simulation {
             return;
         }
         let key = (cell.0 as u16, cell.1 as u16);
-        match self.find_blocking_object(key) {
+        match self.find_blocking_object(key, MovementLayer::Ground) {
             Some(BlockingObject::Entity(blocker)) => {
                 let (Some(actor), Some(target)) = (
                     self.substrate.entities.get(id),
@@ -1344,9 +1350,15 @@ impl Simulation {
 
     /// `CellClass::Find_Blocking_Object 0x47C5A0` with the zero point: the
     /// first Aircraft of the ground list, else `Find_Nearest_Object`
-    /// (0x47C3D0), else the first terrain object. Callers: the track
-    /// admission (`0x004B3BE9`) and `Coordinate_Attack` (`0x006EB56F`).
-    pub(crate) fn find_blocking_object(&self, cell: (u16, u16)) -> Option<BlockingObject> {
+    /// (0x47C3D0), else the first terrain object. Track admission4B3BE9 and
+    /// CoordinateAttack6EB56F use ground; Script1 at6EC9F7 selects the
+    /// bridge list from Cell140 bit100, as Script59 at6ECAC7 also does.
+    /// This is their shared native owner.
+    pub(crate) fn find_blocking_object(
+        &self,
+        cell: (u16, u16),
+        layer: MovementLayer,
+    ) -> Option<BlockingObject> {
         let list = self.substrate.occupancy.get(cell.0, cell.1);
         if let Some(aircraft) = list
             .into_iter()
@@ -1360,7 +1372,7 @@ impl Simulation {
         {
             return Some(BlockingObject::Entity(aircraft.entity_id));
         }
-        let nearest = self.nearest_cell_object(cell, MovementLayer::Ground, None);
+        let nearest = self.nearest_cell_object(cell, layer, None);
         if let Some(object) = nearest {
             return Some(BlockingObject::Entity(object));
         }

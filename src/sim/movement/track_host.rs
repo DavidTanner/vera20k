@@ -154,11 +154,15 @@ impl Simulation {
         let Some(entity) = self.substrate.entities.get_mut(id) else {
             return false;
         };
-        let Some(family) = entity.locomotor.as_ref().and_then(|loco| match loco.kind {
-            LocomotorKind::Drive => Some(TrackFamily::Drive),
-            LocomotorKind::Ship => Some(TrackFamily::Ship),
-            _ => None,
-        }) else {
+        let Some(family) = entity
+            .locomotor
+            .as_ref()
+            .and_then(|loco| match loco.active_kind() {
+                LocomotorKind::Drive => Some(TrackFamily::Drive),
+                LocomotorKind::Ship => Some(TrackFamily::Ship),
+                _ => None,
+            })
+        else {
             return false;
         };
         let loco = entity.locomotor.as_mut().unwrap();
@@ -357,7 +361,7 @@ impl Simulation {
                 // before terminal coordinates/Mark, then retire the selector.
                 self.set_track_occupation_enabled(id, true);
                 if let Some(entity) = self.substrate.entities.get_mut(id) {
-                    entity.navigation.path_runtime.path_blocked = false;
+                    entity.navigation.path_runtime.set_path_blocked(false);
                 }
                 self.track_place(
                     id,
@@ -411,7 +415,7 @@ impl Simulation {
                     let entity = self.substrate.entities.get_mut(id).unwrap();
                     super::navcom::foot_stop_moving(entity);
                     entity.navigation.path_replay.clear_live_head();
-                    entity.navigation.pending_destination_setter = false;
+                    entity.navigation.set_pending_destination_setter(false);
                     if entity.mission.current().known() == Some(MissionType::Move) {
                         let returns = self.unit_enter_idle_mode(id, rules, false, effects);
                         observe(self, id, TrackWorldEvent::Arrival);
@@ -440,16 +444,16 @@ impl Simulation {
                 self.track_raw_mark(id, false);
                 self.set_track_occupation_enabled(id, false);
                 if let Some(entity) = self.substrate.entities.get_mut(id) {
-                    entity.navigation.path_runtime.path_blocked = false;
+                    entity.navigation.path_runtime.set_path_blocked(false);
                 }
             }
             let Some((live, live_head, actual)) = self.track_state(id, family) else {
                 return Ok(TrackPass::paid(moved));
             };
-            let previous = if live.cursor == 0 {
+            let previous = if live.cursor() == 0 {
                 cell(actual)
             } else {
-                call.previous_sample(live.cursor)
+                call.previous_sample(live.cursor())
                     .and_then(|point| point.transform(family, &live, live_head))
                     .map(|(xy, _)| {
                         cell(DriveCoord {
@@ -466,7 +470,7 @@ impl Simulation {
                 return Ok(TrackPass::paid(moved));
             };
             let paid_facing = call
-                .live_facing_sample(live.cursor)
+                .live_facing_sample(live.cursor())
                 .and_then(|point| point.transform(family, &live, live_head))
                 .map(|(_, facing)| facing);
             self.track_place(
@@ -497,16 +501,17 @@ impl Simulation {
                 return Ok(TrackPass::paid(moved));
             }
             if let Some(entity) = self.substrate.entities.get_mut(id) {
-                let marked = entity.lifecycle.cell_marked;
-                entity.lifecycle.cell_marked = false;
+                let marked = entity.lifecycle.cell_marked();
+                entity.lifecycle.set_cell_marked(false);
+                let on_bridge = entity.on_bridge();
                 set_height(
                     &mut entity.position,
-                    entity.on_bridge,
+                    on_bridge,
                     0,
                     self.resolved_terrain.as_ref(),
                     self.path_grid.as_deref(),
                 );
-                entity.lifecycle.cell_marked = marked;
+                entity.lifecycle.set_cell_marked(marked);
             }
             if let Some(facing) = paid_facing
                 && let Some(entity) = self.substrate.entities.get_mut(id)
@@ -586,7 +591,7 @@ impl Simulation {
             let chosen = step.choose(
                 matches(step.interpolated, step.current),
                 matches(step.interpolated, step.full),
-                live.residual,
+                live.residual(),
             );
             self.track_place(
                 id,
@@ -606,12 +611,12 @@ impl Simulation {
         self.substrate
             .entities
             .get(id)
-            .is_some_and(|entity| entity.foot_occupation_enabled)
+            .is_some_and(|entity| entity.foot_occupation_enabled())
     }
 
     fn set_track_occupation_enabled(&mut self, id: u64, value: bool) {
         if let Some(entity) = self.substrate.entities.get_mut(id) {
-            entity.foot_occupation_enabled = value;
+            entity.set_foot_occupation_enabled(value);
         }
     }
 
@@ -682,7 +687,7 @@ impl Simulation {
         let Some(entity) = self.substrate.entities.get(id) else {
             return;
         };
-        let old = (entity.position.rx, entity.position.ry);
+        let old = (entity.position.rx(), entity.position.ry());
         let selected_cell = cell(coord);
         let crossing = old != selected_cell;
         if crossing {
@@ -691,8 +696,8 @@ impl Simulation {
         }
         let saved_marked = if !crossing {
             self.substrate.entities.get_mut(id).map(|entity| {
-                let marked = entity.lifecycle.cell_marked;
-                entity.lifecycle.cell_marked = false;
+                let marked = entity.lifecycle.cell_marked();
+                entity.lifecycle.set_cell_marked(false);
                 marked
             })
         } else {
@@ -712,31 +717,36 @@ impl Simulation {
                 // Crossing uses actual current cell; this predicate instead
                 // uses the previous transformed cached point (or current at
                 // cursor0). The resolver also stores the entered cell's level.
+                let mut on_bridge = entity.on_bridge();
                 let update = super::movement_bridge::resolve_cell_transition_bridge_state(
                     &mut entity.position,
                     grid,
                     previous_track_cell,
                     selected_cell,
-                    entity.on_bridge,
+                    on_bridge,
                 );
                 super::movement_bridge::apply_bridge_layer_state(
                     &mut entity.locomotor,
-                    &mut entity.on_bridge,
+                    &mut on_bridge,
                     update,
                 );
+                entity.set_on_bridge(on_bridge);
             } else if let Some(entered) =
                 grid.and_then(|grid| grid.cell(selected_cell.0, selected_cell.1))
             {
                 // The terminal point skips the bridge predicate but still
                 // enters a new cell.
-                entity.position.z =
-                    super::movement_bridge::stored_level(entered.ground_level, entity.on_bridge);
+                entity.position.set_z(super::movement_bridge::stored_level(
+                    entered.ground_level,
+                    entity.on_bridge(),
+                ));
             }
         }
         if terminal && let Some(entity) = self.substrate.entities.get_mut(id) {
+            let on_bridge = entity.on_bridge();
             set_height(
                 &mut entity.position,
-                entity.on_bridge,
+                on_bridge,
                 0,
                 self.resolved_terrain.as_ref(),
                 self.path_grid.as_deref(),
@@ -745,7 +755,7 @@ impl Simulation {
         if let Some(marked) = saved_marked
             && let Some(entity) = self.substrate.entities.get_mut(id)
         {
-            entity.lifecycle.cell_marked = marked;
+            entity.lifecycle.set_cell_marked(marked);
         }
         if crossing {
             self.foot_mark_put_observed(
@@ -778,9 +788,9 @@ impl Simulation {
         if supplied == (DriveCoord { x: 0, y: 0, z: 0 }) {
             return;
         }
-        let handoff = (!state.reversed && state.turn_index != -1)
+        let handoff = (!state.reversed() && state.turn_index() != -1)
             .then(|| {
-                let index = usize::try_from(state.turn_index).ok()?;
+                let index = usize::try_from(state.turn_index()).ok()?;
                 if family == TrackFamily::Ship && index >= 64 {
                     return None;
                 }
@@ -790,7 +800,7 @@ impl Simulation {
                 }
                 let raw = super::drive_track::raw_track_meta(turn.normal_track)?;
                 if raw.occupation_handoff_point_index < 0
-                    || state.cursor >= i32::from(raw.occupation_handoff_point_index)
+                    || state.cursor() >= i32::from(raw.occupation_handoff_point_index)
                 {
                     return None;
                 }
@@ -836,27 +846,6 @@ impl Simulation {
         }
     }
 
-    /// FootLimbo4DB260 calls active ILocomotion+9C(mode0) before TechnoLimbo.
-    /// Drive4B48D0 / Ship6A3F00 forward the live head to Apply0; instance
-    /// retirement must not erase that descriptor/head before this receiver.
-    pub(crate) fn release_track_occupation_before_foot_limbo(&mut self, id: u64) {
-        let family = self.substrate.entities.get(id).and_then(|entity| {
-            // Foot4DB266..26E skips Apply0 when already in limbo. A second
-            // conceal must not destructively clear a newer owner's raw claim.
-            if entity.lifecycle.in_limbo() {
-                return None;
-            }
-            match entity.locomotor.as_ref()?.kind {
-                crate::rules::locomotor_type::LocomotorKind::Drive => Some(TrackFamily::Drive),
-                crate::rules::locomotor_type::LocomotorKind::Ship => Some(TrackFamily::Ship),
-                _ => None,
-            }
-        });
-        if let Some(family) = family {
-            self.track_apply_occupation(id, family, false);
-        }
-    }
-
     fn track_try_chain(
         &mut self,
         id: u64,
@@ -899,7 +888,7 @@ impl Simulation {
             let height = super::ground_pose::query_object_cell_height(
                 &cells,
                 position_world_coord(&entity.position),
-                entity.on_bridge,
+                entity.on_bridge(),
             );
             (height, cells.lookup(target))
         };
@@ -1026,7 +1015,7 @@ impl Simulation {
         let Some(entity) = self.substrate.entities.get(id) else {
             return Ok(false);
         };
-        let Some(target) = entity.navigation.nav_com else {
+        let Some(target) = entity.navigation.nav_com() else {
             return Ok(false);
         };
         let coord = super::navcom::nav_target_coordinate(
@@ -1093,7 +1082,7 @@ impl Simulation {
         // gaps; no whole mission tick substitutes for those calls.
         let queued_cell = entity
             .navigation
-            .nav_queue
+            .nav_queue()
             .first()
             .copied()
             .and_then(|next| {
@@ -1114,9 +1103,9 @@ impl Simulation {
                 log::debug!("Foot {id} NavQueue destination: {cause:?}");
             }
             if let Some(entity) = self.substrate.entities.get_mut(id)
-                && !entity.navigation.nav_queue.is_empty()
+                && !entity.navigation.nav_queue().is_empty()
             {
-                entity.navigation.nav_queue.remove(0);
+                entity.navigation.pop_nav_queue_front();
             }
         }
         // A consumed NavQueue or ended piggyback returns true before
@@ -1208,13 +1197,13 @@ impl Simulation {
             return saved_base_return;
         }
         // 0x007389B1..0x007389BF: a Magnetron lets go of what it holds.
-        if entity.locomotor_target.is_some() {
+        if entity.lift.target().is_some() {
             self.release_locomotor(id, true, rules, None, effects);
         }
         let Some(entity) = self.substrate.entities.get_mut(id) else {
             return saved_base_return;
         };
-        let has_destination = entity.navigation.nav_com.is_some();
+        let has_destination = entity.navigation.nav_com().is_some();
         let current = entity.mission.current().known();
         let effective = entity.mission.effective().known();
         let category = entity.category();
@@ -1235,7 +1224,7 @@ impl Simulation {
         if !has_destination
             && !miner
             && !armed
-            && (entity.mcv_deploy_pending
+            && (entity.mcv_deploy_pending.is_pending()
                 || current == Some(MissionType::AreaGuard)
                 || (current == Some(MissionType::Unload) && deploys_into))
         {
@@ -1312,7 +1301,7 @@ impl Simulation {
         let Some(entity) = self.substrate.entities.get(id) else {
             return false;
         };
-        if entity.navigation.nav_com.is_some() || entity.attack_target.target().is_some() {
+        if entity.navigation.nav_com().is_some() || entity.attack_target.target().is_some() {
             return false;
         }
         self.unit_enter_idle_mode(id, rules, false, effects)
@@ -1385,7 +1374,8 @@ fn harvester_idle_selection(
     } else {
         crate::rules::terrain_rules::LandType::Tiberium
     };
-    let land_matches = cell_land_type_is(sim, entity.position.rx, entity.position.ry, wanted_land);
+    let land_matches =
+        cell_land_type_is(sim, entity.position.rx(), entity.position.ry(), wanted_land);
     Some(if human && !land_matches {
         MissionType::Guard
     } else {

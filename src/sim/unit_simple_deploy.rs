@@ -38,8 +38,8 @@ impl Simulation {
             && entity.low_bridge_tube_state.is_none()
             && !self.resolved_terrain.as_ref().is_some_and(|terrain| {
                 terrain.is_tube_deploy_neighborhood((
-                    entity.position.rx as i16,
-                    entity.position.ry as i16,
+                    entity.position.rx() as i16,
+                    entity.position.ry() as i16,
                 ))
             })
     }
@@ -250,11 +250,11 @@ impl Simulation {
             .and_then(|state| state.house())
             .unwrap_or(entity.owner());
         let (rx, ry, sx, sy, z) = (
-            position.rx,
-            position.ry,
-            position.sub_x,
-            position.sub_y,
-            position.z,
+            position.rx(),
+            position.ry(),
+            position.sub_x(),
+            position.sub_y(),
+            position.z(),
         );
         let type_name = self.interner.intern(name);
         let descriptor = AnimClassSpawnDescriptor {

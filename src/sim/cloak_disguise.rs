@@ -8,11 +8,21 @@ use crate::sim::timer::CdTimer;
 /// rate (`+0x238`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct CloakStepTimer {
-    pub timer: CdTimer,
-    pub speed: i32,
+    timer: CdTimer,
+    speed: i32,
 }
 
 impl CloakStepTimer {
+    /// The step timer.
+    pub fn timer(&self) -> CdTimer {
+        self.timer
+    }
+
+    /// The step rate (`+0x238`).
+    pub fn speed(&self) -> i32 {
+        self.speed
+    }
+
     /// Started at `now` with `speed` as its rate and its first delay.
     const fn started(now: i32, speed: i32) -> Self {
         Self {
@@ -31,12 +41,12 @@ impl CloakStepTimer {
 /// through DLPH/SUB/SQD/BSUB.
 pub struct CloakRuntime {
     /// Native state id: 0 uncloaked, 1 cloaking, 2 fully cloaked, 3 uncloaking.
-    pub state: i32,
+    state: i32,
     /// Native `CloakProgress +0x224`.
-    pub depth: u32,
+    depth: u32,
     /// Native signed progress delta, +1 cloaking and -1 uncloaking.
-    pub step_delta: i32,
-    pub step_timer: CloakStepTimer,
+    step_delta: i32,
+    step_timer: CloakStepTimer,
     /// **ReCloak delay, native `TechnoClass+0x240/+0x248`.** The offsets on
     /// this pair and on the rearm timer (`+0x2EC`, now
     /// [`GameEntity::rearm_timer`](crate::sim::game_entity::GameEntity::rearm_timer))
@@ -45,7 +55,7 @@ pub struct CloakRuntime {
     /// `ftol([Rules+0x1410] * 900.0)` — `[General] CloakDelay` in minutes ×
     /// 900 frames — into `+0x248`. `CanAutoCloak @ 0x006FBDC0` reads it as its
     /// LAST timer gate (`param_1[0x90]`/`[0x92]`).
-    pub recloak_delay: CdTimer,
+    recloak_delay: CdTimer,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -245,6 +255,44 @@ pub struct CloakTickResult {
 }
 
 impl CloakRuntime {
+    /// The native state id: 0 uncloaked, 1 cloaking, 2 fully cloaked, 3
+    /// uncloaking.
+    pub fn state(&self) -> i32 {
+        self.state
+    }
+
+    /// `CloakProgress +0x224`.
+    pub fn depth(&self) -> u32 {
+        self.depth
+    }
+
+    /// The signed progress delta.
+    pub fn step_delta(&self) -> i32 {
+        self.step_delta
+    }
+
+    /// The progress step timer and rate.
+    pub fn step_timer(&self) -> CloakStepTimer {
+        self.step_timer
+    }
+
+    /// The ReCloak delay (`+0x240/+0x248`).
+    pub fn recloak_delay(&self) -> CdTimer {
+        self.recloak_delay
+    }
+
+    /// Install a fixture's state.
+    #[cfg(test)]
+    pub(crate) fn set_state_for_test(&mut self, state: i32) {
+        self.state = state;
+    }
+
+    /// Install a fixture's progress.
+    #[cfg(test)]
+    pub(crate) fn set_depth_for_test(&mut self, depth: u32) {
+        self.depth = depth;
+    }
+
     pub fn new(current_frame: i32) -> Self {
         Self {
             state: 0,
@@ -259,6 +307,25 @@ impl CloakRuntime {
     /// ability is present and stored Techno+0x3D5 is clear.
     pub fn establish_unlimbo_fully_cloaked(&mut self) {
         self.state = 2;
+    }
+
+    /// The constructor's cloak state for an object with the Cloak ability
+    /// (the constructor copy at `0x007355B6`/`0x00517D88`), fully cloaked
+    /// when Unlimbo establishes state 2 ([`Self::establish_unlimbo_fully_cloaked`]).
+    pub(crate) fn install(slot: &mut Option<Self>, current_frame: i32, fully_cloaked: bool) {
+        let mut cloak = Self::new(current_frame);
+        if fully_cloaked {
+            cloak.establish_unlimbo_fully_cloaked();
+        }
+        *slot = Some(cloak);
+    }
+
+    /// The cloak AI's install for an object that has the Cloak ability but no
+    /// runtime yet (one that gained `Cloak` by rank after construction).
+    pub(crate) fn install_if_absent(slot: &mut Option<Self>, current_frame: i32) {
+        if slot.is_none() {
+            *slot = Some(Self::new(current_frame));
+        }
     }
 
     fn advance_due_step(&mut self, now: i32) {
@@ -475,7 +542,7 @@ pub(crate) fn object_disguised_to(
         disguise.disguised,
         allied(object.owner(), observer),
         fog.is_some_and(|fog| {
-            fog.detects_disguise_for_house(observer, object.position.rx, object.position.ry)
+            fog.detects_disguise_for_house(observer, object.position.rx(), object.position.ry())
         }),
         disguise
             .disguised_as_house

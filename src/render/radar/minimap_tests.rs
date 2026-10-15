@@ -217,14 +217,14 @@ fn test_minimap_entity_visible_for_allied_owner() {
 
     let mut fog = FogState::new(64, 64);
     fog.alliances = alliances;
-    let pos = Position {
-        rx: 10,
-        ry: 12,
-        z: 0,
-        exact_z_leptons: None,
-        sub_x: crate::util::lepton::CELL_CENTER_LEPTON,
-        sub_y: crate::util::lepton::CELL_CENTER_LEPTON,
-    };
+    let pos = Position::new(
+        10,
+        12,
+        0,
+        None,
+        crate::util::lepton::CELL_CENTER_LEPTON,
+        crate::util::lepton::CELL_CENTER_LEPTON,
+    );
     assert!(minimap_entity_visible(
         test_intern("Americans"),
         &fog,
@@ -601,11 +601,11 @@ fn minimap_techno_membership_is_height_aware_at_raised_slope_edge() {
 
     let mut entity =
         crate::sim::game_entity::GameEntity::test_default(1, "MTNK", "Americans", rx, ry);
-    entity.in_playfield = false;
+    entity.set_in_playfield(false);
     assert!(!minimap_entity_in_playfield(true, &entity));
-    entity.in_playfield = true;
+    entity.set_in_playfield(true);
     assert!(minimap_entity_in_playfield(true, &entity));
-    entity.in_playfield = false;
+    entity.set_in_playfield(false);
     assert!(minimap_entity_in_playfield(false, &entity));
 }
 
@@ -698,7 +698,7 @@ fn radar_gate_fixture(
     BTreeMap<crate::sim::intern::InternedId, crate::sim::house_state::HouseState>,
 ) {
     let mut entity = crate::sim::game_entity::GameEntity::test_default(1, "DOT", owner, 0, 0);
-    entity.in_playfield = true;
+    entity.set_in_playfield(true);
     entity.lifecycle.set_in_limbo_for_test(false);
     let mut entities = crate::sim::entity_store::EntityStore::new();
     entities.insert(entity);

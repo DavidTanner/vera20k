@@ -98,9 +98,13 @@ fn fixture(row: &Value, rules: &RuleSet) -> (Simulation, Vec<u64>, [u64; 2], Opt
             assert_eq!(before["scan"], 0);
             assert_eq!(before["nav_queue_count"], 0);
             let actor = sim.substrate.entities.get_mut(id).unwrap();
-            actor.position.sub_x = SimFixed::from_num(integer(&xyz[0]) & 255);
-            actor.position.sub_y = SimFixed::from_num(integer(&xyz[1]) & 255);
-            actor.position.exact_z_leptons = Some(integer(&xyz[2]));
+            actor
+                .position
+                .set_sub_x(SimFixed::from_num(integer(&xyz[0]) & 255));
+            actor
+                .position
+                .set_sub_y(SimFixed::from_num(integer(&xyz[1]) & 255));
+            actor.position.set_exact_z_leptons(Some(integer(&xyz[2])));
             actor.health.set_for_test(integer(&before["health"]));
             actor
                 .lifecycle
@@ -115,7 +119,9 @@ fn fixture(row: &Value, rules: &RuleSet) -> (Simulation, Vec<u64>, [u64; 2], Opt
                 integer(&before["dispatch_timer"][0]),
                 integer(&before["dispatch_timer"][2]),
             );
-            actor.rearm_timer = timer(&before["rearm_timer"]);
+            actor
+                .rearm_timer
+                .set_for_test(timer(&before["rearm_timer"]));
             actor
                 .attack_target
                 .set_for_test(target(&before["target"], targets).map(|value| match value {
@@ -123,20 +129,27 @@ fn fixture(row: &Value, rules: &RuleSet) -> (Simulation, Vec<u64>, [u64; 2], Opt
                     _ => unreachable!(),
                 }));
             actor.set_archive_target(target(&before["archive"], targets));
-            actor.navigation.nav_com = target(&before["destination"], targets).map(|value| {
-                let TargetKind::Entity(id) = value else {
-                    unreachable!()
-                };
-                NavTargetRef::object(id)
-            });
-            actor.navigation.path_runtime.movement_timer = timer(&before["movement_timer"]);
-            actor.navigation.path_replay.directions = before["path"]
-                .as_array()
-                .unwrap()
-                .iter()
-                .take_while(|value| integer(value) != -1)
-                .map(|value| u8::try_from(integer(value)).unwrap())
-                .collect();
+            actor
+                .navigation
+                .set_nav_com(target(&before["destination"], targets).map(|value| {
+                    let TargetKind::Entity(id) = value else {
+                        unreachable!()
+                    };
+                    NavTargetRef::object(id)
+                }));
+            actor
+                .navigation
+                .path_runtime
+                .set_movement_timer_for_test(timer(&before["movement_timer"]));
+            actor.navigation.path_replay.set_directions_for_test(
+                before["path"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .take_while(|value| integer(value) != -1)
+                    .map(|value| u8::try_from(integer(value)).unwrap())
+                    .collect(),
+            );
             actor
                 .mission_leaf
                 .set_foot_firing_sequence(integer(&before["firing"]) as u8);
@@ -219,7 +232,7 @@ fn assert_boundary(
             after["target"],
             "{name}: target"
         );
-        let nav = actor.navigation.nav_com.map(|nav| match nav {
+        let nav = actor.navigation.nav_com().map(|nav| match nav {
             NavTargetRef::Entity { id }
             | NavTargetRef::Object { id }
             | NavTargetRef::Building { id } => TargetKind::Entity(id),
@@ -252,7 +265,7 @@ fn assert_boundary(
             "{name}: burst"
         );
         assert_eq!(
-            actor.rearm_timer,
+            actor.rearm_timer.timer(),
             timer(&after["rearm_timer"]),
             "{name}: rearm"
         );
@@ -268,12 +281,12 @@ fn assert_boundary(
             "{name}: dispatch"
         );
         assert_eq!(
-            actor.navigation.path_runtime.movement_timer,
+            actor.navigation.path_runtime.movement_timer(),
             timer(&after["movement_timer"]),
             "{name}: movement"
         );
         assert_eq!(
-            actor.navigation.nav_queue.len(),
+            actor.navigation.nav_queue().len(),
             after["nav_queue_count"].as_u64().unwrap() as usize,
             "{name}: NavQueue"
         );

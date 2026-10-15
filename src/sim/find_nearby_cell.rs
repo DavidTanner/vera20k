@@ -719,7 +719,10 @@ impl crate::sim::world::Simulation {
             object.speed_type
         };
         let seed = match anchor {
-            None => (i32::from(entity.position.rx), i32::from(entity.position.ry)),
+            None => (
+                i32::from(entity.position.rx()),
+                i32::from(entity.position.ry()),
+            ),
             Some(anchor) => {
                 let [x, y] = crate::sim::movement::ground_pose::object_center_xy(
                     self.substrate.entities.get(anchor)?,
@@ -737,7 +740,7 @@ impl crate::sim::world::Simulation {
                     terrain,
                     (seed.0 as u16, seed.1 as u16),
                     object.movement_zone,
-                    entity.on_bridge,
+                    entity.on_bridge(),
                 )
             });
         let cell = self.nearby_location_cell(
@@ -746,7 +749,7 @@ impl crate::sim::world::Simulation {
                 speed_type,
                 required_zone_id: zone,
                 movement_zone: object.movement_zone,
-                bridge_aware_zone: entity.on_bridge,
+                bridge_aware_zone: entity.on_bridge(),
             },
         )?;
         Some((cell.0 as i16, cell.1 as i16))
@@ -1587,8 +1590,8 @@ mod tests {
     #[test]
     fn find_nearby_no_candidate_returns_none() {
         // Every cell rejected -> no candidate -> None. WALL zone_type with a Normal
-        // movement-zone rejects in speed_type_allows_cell (only the destroyer family
-        // crosses walls), so every candidate fails passability.
+        // movement-zone rejects in `cell_rect`'s land test (only the destroyer
+        // family crosses walls), so every candidate fails passability.
         let mut terrain = flat_terrain(3, 3);
         for c in terrain.cells.iter_mut() {
             c.zone_type = zone_class::WALL;

@@ -14,6 +14,7 @@ pub mod miner_dock;
 pub(crate) mod miner_system;
 pub(crate) mod ore_scan;
 mod refinery_dock;
+pub(crate) use refinery_dock::UnloadImage;
 
 #[cfg(test)]
 #[path = "miner_tests.rs"]
@@ -203,34 +204,33 @@ impl MinerConfig {
     }
 }
 
-/// ECS component: miner state machine and cargo hold.
-///
-/// Attached to harvester entities alongside Position, Owner, TypeRef, etc.
-/// The miner_system tick reads and mutates this each frame.
+/// A harvester's hold and latches. `sim::miner` writes them; the return
+/// order pins a refinery ([`Self::reserve_refinery`]) and a pointer expiry
+/// drops it ([`Self::forget_refinery`]). Everyone else reads.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Miner {
-    pub kind: MinerKind,
+    kind: MinerKind,
     // NOTE: the FSM cursor (`state`) retired from this struct at the
     // substate-authority flip — `MissionCom::handler_state` is the cursor of
     // record. Read it via `GameEntity::miner_state()`.
     /// The refinery a player return order (`Command::MinerReturn`) pins
     /// Mission_Harvest state 2 to. VERA-internal: the native order is an Enter
     /// mission on the refinery.
-    pub reserved_refinery: Option<u64>,
+    reserved_refinery: Option<u64>,
     /// Discrete cargo bales currently carried.
-    pub cargo: Vec<CargoBale>,
+    cargo: Vec<CargoBale>,
     /// Maximum number of bales this miner can carry.
-    pub capacity_bales: u16,
+    capacity_bales: u16,
     /// Unit+0x6D1 unload-active latch.
     #[serde(default)]
-    pub unload_active: bool,
+    unload_active: bool,
     /// Unit+0x6D2, set while Mission_Harvest works an ore cell: state 0's
     /// scan hit and state 1's hop write 1, state 0's entry and a failed
     /// Harvest_Ore_Tick write 0 (`0x0073E75B`, `0x0073E87D`, `0x0073E99A`,
     /// `0x0073EB19`). `UnitClass::Draw` (`0x0073CEC0`) draws OREGATH
     /// from it while the locomotor is not moving.
     #[serde(default)]
-    pub harvesting: bool,
+    harvesting: bool,
 }
 
 impl Miner {
@@ -267,6 +267,64 @@ impl Miner {
             unload_active: false,
             harvesting: false,
         }
+    }
+
+    /// The chassis.
+    pub fn kind(&self) -> MinerKind {
+        self.kind
+    }
+
+    /// The refinery a return order pinned.
+    pub fn reserved_refinery(&self) -> Option<u64> {
+        self.reserved_refinery
+    }
+
+    /// The bales in the hold, oldest first.
+    pub fn cargo(&self) -> &[CargoBale] {
+        &self.cargo
+    }
+
+    /// The hold's capacity in bales.
+    pub fn capacity_bales(&self) -> u16 {
+        self.capacity_bales
+    }
+
+    /// Unit+0x6D1, the unload latch.
+    pub fn unload_active(&self) -> bool {
+        self.unload_active
+    }
+
+    /// Unit+0x6D2, the harvest latch.
+    pub fn harvesting(&self) -> bool {
+        self.harvesting
+    }
+
+    /// `Command::MinerReturn`'s refinery.
+    pub(crate) fn reserve_refinery(&mut self, refinery: u64) {
+        self.reserved_refinery = Some(refinery);
+    }
+
+    /// The pinned refinery expired (`TechnoClass::PointerExpired`).
+    pub(crate) fn forget_refinery(&mut self) {
+        self.reserved_refinery = None;
+    }
+
+    /// Install a fixture's hold.
+    #[cfg(test)]
+    pub(crate) fn set_cargo_for_test(&mut self, cargo: Vec<CargoBale>) {
+        self.cargo = cargo;
+    }
+
+    /// Install a fixture's unload latch.
+    #[cfg(test)]
+    pub(crate) fn set_unload_active_for_test(&mut self, active: bool) {
+        self.unload_active = active;
+    }
+
+    /// Install a fixture's harvest latch.
+    #[cfg(test)]
+    pub(crate) fn set_harvesting_for_test(&mut self, harvesting: bool) {
+        self.harvesting = harvesting;
     }
 
     /// True when cargo is at capacity.

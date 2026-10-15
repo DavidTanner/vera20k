@@ -2,11 +2,42 @@
 //!
 //! Owns an insertion-ordered list of stable_ids. Tail-append on reveal,
 //! order-preserving compacting remove on conceal, no sort. Membership itself is
-//! tracked by a flag on each entity (see `GameEntity::in_logic_vector`); this type
+//! a flag on each object ([`LogicMembership`] on a Techno); [`LogicVector`]
 //! owns only the order. Serializes transparently as its inner `Vec<u64>` so the
 //! saved order is restored verbatim.
 //!
 //! Dependency rules: part of sim/ — depends only on std + serde.
+
+/// `ObjectClass+0x98`, IsInLogic: the object is in LogicClass's active vector.
+/// The ObjectClass constructor clears it (`0x005F398D`);
+/// `LogicClass::RegisterObject @ 0x0055BAA0` sets it after a successful
+/// insert and `LogicClass::UnregisterObject @ 0x0055BAE0` clears it. The
+/// world's register and unregister steps, the construction boundary and the
+/// load rebuild write it ([`Self::mark`]). Not saved: a load rebuilds it from
+/// the saved vector order (`Simulation::rebuild_logic_membership`); exact
+/// native save/load reconstruction remains unverified.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(crate) struct LogicMembership {
+    member: bool,
+}
+
+impl LogicMembership {
+    /// The object is in the active vector.
+    pub(crate) const fn is_member(self) -> bool {
+        self.member
+    }
+
+    /// RegisterObject's set or UnregisterObject's clear.
+    pub(in crate::sim::world) fn mark(&mut self, member: bool) {
+        self.member = member;
+    }
+
+    /// Install a fixture's membership.
+    #[cfg(test)]
+    pub(crate) fn set_for_test(&mut self, member: bool) {
+        self.member = member;
+    }
+}
 
 /// Insertion-ordered, membership-gated active-object order.
 #[derive(Debug, Default, Clone)]

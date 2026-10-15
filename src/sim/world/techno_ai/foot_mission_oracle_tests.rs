@@ -29,8 +29,9 @@ use crate::sim::combat::greatest_threat::{
 use crate::sim::combat::threat_range::ScanMission;
 use crate::sim::combat::{Health, TargetKind};
 use crate::sim::components::{DriveCoord, NavTargetRef};
-use crate::sim::game_entity::{GameEntity, InfantryRuntime};
+use crate::sim::game_entity::GameEntity;
 use crate::sim::house_state::HouseState;
+use crate::sim::infantry::InfantryRuntime;
 use crate::sim::mission::state::MissionTestFixture;
 use crate::sim::mission::{MissionDispatchTimer, MissionId, MissionTimer};
 use crate::sim::movement::locomotor::{LocomotorState, MovementLayer};
@@ -624,9 +625,13 @@ impl SuppliedFootFixture {
                 object.sight as u16,
                 !infantry,
             );
-            entity.position.sub_x = SimFixed::from_num(placed[0] % 256);
-            entity.position.sub_y = SimFixed::from_num(placed[1] % 256);
-            entity.position.exact_z_leptons = Some(placed[2]);
+            entity
+                .position
+                .set_sub_x(SimFixed::from_num(placed[0] % 256));
+            entity
+                .position
+                .set_sub_y(SimFixed::from_num(placed[1] % 256));
+            entity.position.set_exact_z_leptons(Some(placed[2]));
             entity
                 .lifecycle
                 .set_in_limbo_for_test(if pointer == &setup["candidate"] {
@@ -671,8 +676,8 @@ impl SuppliedFootFixture {
                     .lifecycle
                     .set_object_alive_for_test(control["alive"] != 0);
             }
-            entity.lifecycle.cell_marked = true;
-            entity.in_playfield = true;
+            entity.lifecycle.set_cell_marked(true);
+            entity.set_in_playfield(true);
             entity.locomotor = Some(LocomotorState::from_object_type(object, 0));
             if infantry {
                 entity.infantry = Some(InfantryRuntime::new());
@@ -697,36 +702,44 @@ impl SuppliedFootFixture {
                 entity.attack_target.set_for_test(target(&before["target"]));
                 // The oracle writes raw NavCom without Move_To. A supplied
                 // nonnull NavCom therefore does not arm Walk's moving byte.
-                entity.navigation.nav_com = target(&before["nav"]).map(NavTargetRef::from);
+                entity
+                    .navigation
+                    .set_nav_com(target(&before["nav"]).map(NavTargetRef::from));
                 if input["navigation_control"].is_object() {
-                    entity.navigation.nav_com_aux = target(&before["aux"]).map(NavTargetRef::from);
-                    entity.navigation.nav_queue = before["nav_queue"]["entries"]
-                        .as_array()
-                        .unwrap()
-                        .iter()
-                        .map(|pointer| NavTargetRef::from(target(pointer).unwrap()))
-                        .collect();
-                    entity.navigation.path_replay.directions = before["path"]
-                        .as_array()
-                        .unwrap()
-                        .iter()
-                        .map(|direction| signed(direction) as u8)
-                        .collect();
-                    entity.navigation.path_replay.reference_cell = Some((
+                    entity
+                        .navigation
+                        .set_nav_com_aux(target(&before["aux"]).map(NavTargetRef::from));
+                    entity.navigation.set_nav_queue_for_test(
+                        before["nav_queue"]["entries"]
+                            .as_array()
+                            .unwrap()
+                            .iter()
+                            .map(|pointer| NavTargetRef::from(target(pointer).unwrap()))
+                            .collect(),
+                    );
+                    entity.navigation.path_replay.set_directions_for_test(
+                        before["path"]
+                            .as_array()
+                            .unwrap()
+                            .iter()
+                            .map(|direction| signed(direction) as u8)
+                            .collect(),
+                    );
+                    entity.navigation.path_replay.set_reference_cell(Some((
                         signed(&before["reference_cell"][0]) as i16,
                         signed(&before["reference_cell"][1]) as i16,
-                    ));
+                    )));
                     let path = &mut entity.navigation.path_runtime;
-                    path.movement_timer = crate::sim::timer::CdTimer::from_raw(
+                    path.set_movement_timer_for_test(crate::sim::timer::CdTimer::from_raw(
                         signed(&before["movement_timer_words"][0]),
                         signed(&before["movement_timer_words"][2]),
-                    );
-                    path.blocked_timer = crate::sim::timer::CdTimer::from_raw(
+                    ));
+                    path.set_blocked_timer_for_test(crate::sim::timer::CdTimer::from_raw(
                         signed(&before["blocked_timer_words"][0]),
                         signed(&before["blocked_timer_words"][2]),
-                    );
-                    path.path_blocked = before["blocked"] != 0;
-                    path.retries_left = signed(&before["retry"]) as u32;
+                    ));
+                    path.set_path_blocked(before["blocked"] != 0);
+                    path.set_retries_left(signed(&before["retry"]) as u32);
                 }
                 let head = xyz(&before["loco_head"]);
                 if head != [0, 0, 0] {
@@ -750,10 +763,12 @@ impl SuppliedFootFixture {
                         );
                     }
                 }
-                entity.passive_scan_timer = MissionTimer::armed(
-                    signed(&before["targeting_timer"][0]) as u32,
-                    signed(&before["targeting_timer"][2]) as u32,
-                );
+                entity
+                    .passive_scan
+                    .set_passive_scan_timer_for_test(MissionTimer::armed(
+                        signed(&before["targeting_timer"][0]) as u32,
+                        signed(&before["targeting_timer"][2]) as u32,
+                    ));
                 if before["scan"] != 0 {
                     entity.mark_stopped_cannot_fire();
                 }
@@ -782,11 +797,19 @@ impl SuppliedFootFixture {
                     if let Some(words) = before["primary_facing_words"].as_array() {
                         entity.body_facing.snap(signed(&words[0]) as u16, 1);
                     }
-                    entity.infantry.as_mut().unwrap().is_prone = before["prone_6db"] == 1;
-                    entity.infantry.as_mut().unwrap().idle_action_timer = MissionTimer::armed(
-                        signed(&before["idle_timer"][0]) as u32,
-                        signed(&before["idle_timer"][2]) as u32,
-                    );
+                    entity
+                        .infantry
+                        .as_mut()
+                        .unwrap()
+                        .set_is_prone_for_test(before["prone_6db"] == 1);
+                    entity
+                        .infantry
+                        .as_mut()
+                        .unwrap()
+                        .set_idle_action_timer_for_test(MissionTimer::armed(
+                            signed(&before["idle_timer"][0]) as u32,
+                            signed(&before["idle_timer"][2]) as u32,
+                        ));
                 }
             }
             sim.substrate.entities.insert(entity);
@@ -811,11 +834,13 @@ impl SuppliedFootFixture {
                     signed(&before["dispatch"][1]),
                 ),
             });
-            archive.passive_scan_timer = MissionTimer::armed(
-                signed(&before["targeting_timer"][0]) as u32,
-                signed(&before["targeting_timer"][2]) as u32,
-            );
-            archive.on_bridge = before["on_bridge"] != 0;
+            archive
+                .passive_scan
+                .set_passive_scan_timer_for_test(MissionTimer::armed(
+                    signed(&before["targeting_timer"][0]) as u32,
+                    signed(&before["targeting_timer"][2]) as u32,
+                ));
+            archive.set_on_bridge(before["on_bridge"] != 0);
             assert_eq!(before["nav"], "0x0");
             assert_eq!(before["target"], "0x0");
             assert_eq!(before["archive"], "0x0");
@@ -858,13 +883,13 @@ impl SuppliedFootFixture {
         // particular a NullCoord archive keeps its original Display slot.
         for (id, pose) in supplied_poses {
             let entity = sim.substrate.entities.get_mut(id).unwrap();
-            entity.position.rx = (pose[0] / 256) as u16;
-            entity.position.ry = (pose[1] / 256) as u16;
-            entity.position.sub_x = SimFixed::from_num(pose[0] % 256);
-            entity.position.sub_y = SimFixed::from_num(pose[1] % 256);
-            entity.position.exact_z_leptons = Some(pose[2]);
+            entity.position.set_rx((pose[0] / 256) as u16);
+            entity.position.set_ry((pose[1] / 256) as u16);
+            entity.position.set_sub_x(SimFixed::from_num(pose[0] % 256));
+            entity.position.set_sub_y(SimFixed::from_num(pose[1] % 256));
+            entity.position.set_exact_z_leptons(Some(pose[2]));
             if id == actor {
-                entity.on_bridge = row["before"]["on_bridge"] != 0;
+                entity.set_on_bridge(row["before"]["on_bridge"] != 0);
             }
         }
         let fixture = Self {
@@ -1055,7 +1080,7 @@ fn original_concrete_greatest_threat_matches_winner_latch_and_three_rng_streams(
             fixture.id(&row["after"]["target"]).map(TargetKind::Entity),
             "{name}: TarCom is not assigned by Greatest_Threat"
         );
-        assert_eq!(actor.navigation.nav_com, None, "{name}: NavCom");
+        assert_eq!(actor.navigation.nav_com(), None, "{name}: NavCom");
         let position = crate::sim::movement::ground_pose::position_world_coord(&actor.position);
         assert_eq!(
             [position.x, position.y, position.z],
@@ -1063,7 +1088,7 @@ fn original_concrete_greatest_threat_matches_winner_latch_and_three_rng_streams(
             "{name}: physical XYZ"
         );
         assert_eq!(
-            actor.on_bridge,
+            actor.on_bridge(),
             row["after"]["on_bridge"] != 0,
             "{name}: Object layer"
         );
@@ -1078,9 +1103,9 @@ fn original_concrete_greatest_threat_matches_winner_latch_and_three_rng_streams(
                 signed(&row["after"]["doing"]),
                 "{name}: Doing"
             );
-            let timer = actor.infantry.unwrap().idle_action_timer;
+            let timer = actor.infantry.unwrap().idle_action_timer();
             assert_eq!(
-                [timer.start_frame as i32, timer.duration as i32],
+                [timer.start_frame() as i32, timer.duration() as i32],
                 [
                     signed(&row["after"]["idle_timer"][0]),
                     signed(&row["after"]["idle_timer"][2])
@@ -1090,8 +1115,8 @@ fn original_concrete_greatest_threat_matches_winner_latch_and_three_rng_streams(
         }
         assert_eq!(
             [
-                actor.passive_scan_timer.start_frame as i32,
-                actor.passive_scan_timer.duration as i32
+                actor.passive_scan.timer().start_frame() as i32,
+                actor.passive_scan.timer().duration() as i32
             ],
             [
                 signed(&row["after"]["targeting_timer"][0]),
@@ -1418,7 +1443,7 @@ pub(in crate::sim::world::techno_ai) fn assert_foot_projection(
         "{name}: TarCom"
     );
     assert_eq!(
-        actor.navigation.nav_com,
+        actor.navigation.nav_com(),
         fixture.nav(&expected["nav"]),
         "{name}: NavCom"
     );
@@ -1440,8 +1465,8 @@ pub(in crate::sim::world::techno_ai) fn assert_foot_projection(
     );
     assert_eq!(
         [
-            actor.passive_scan_timer.start_frame as i32,
-            actor.passive_scan_timer.duration as i32
+            actor.passive_scan.timer().start_frame() as i32,
+            actor.passive_scan.timer().duration() as i32
         ],
         [
             signed(&expected["targeting_timer"][0]),
@@ -1456,7 +1481,7 @@ pub(in crate::sim::world::techno_ai) fn assert_foot_projection(
         "{name}: physical XYZ"
     );
     assert_eq!(
-        actor.on_bridge,
+        actor.on_bridge(),
         expected["on_bridge"] != 0,
         "{name}: OnBridge"
     );
@@ -1467,9 +1492,9 @@ pub(in crate::sim::world::techno_ai) fn assert_foot_projection(
     );
     if let Some(leaf) = actor.mission_leaf.as_infantry() {
         assert_eq!(leaf.doing(), signed(&expected["doing"]), "{name}: Doing");
-        let timer = actor.infantry.as_ref().unwrap().idle_action_timer;
+        let timer = actor.infantry.as_ref().unwrap().idle_action_timer();
         assert_eq!(
-            [timer.start_frame as i32, timer.duration as i32],
+            [timer.start_frame() as i32, timer.duration() as i32],
             [
                 signed(&expected["idle_timer"][0]),
                 signed(&expected["idle_timer"][2])
@@ -1506,16 +1531,17 @@ fn assert_destination_projection(fixture: &SuppliedFootFixture, row: &Value) {
     let expected = &row["after"];
     let actor = fixture.sim.substrate.entities.get(fixture.actor).unwrap();
     assert_eq!(
-        actor.navigation.nav_com_aux,
+        actor.navigation.nav_com_aux(),
         fixture.nav(&expected["aux"]),
         "{name}: Foot NavComAux"
     );
     assert_eq!(
-        actor.navigation.path_replay.cursor, 0,
+        actor.navigation.path_replay.cursor(),
+        0,
         "{name}: unchanged supplied path cursor"
     );
     assert_eq!(
-        actor.navigation.path_replay.directions,
+        actor.navigation.path_replay.directions(),
         expected["path"]
             .as_array()
             .unwrap()
@@ -1525,7 +1551,7 @@ fn assert_destination_projection(fixture: &SuppliedFootFixture, row: &Value) {
         "{name}: live path head and preserved backing suffix"
     );
     assert_eq!(
-        actor.navigation.path_replay.reference_cell,
+        actor.navigation.path_replay.reference_cell(),
         Some((
             signed(&expected["reference_cell"][0]) as i16,
             signed(&expected["reference_cell"][1]) as i16,
@@ -1534,7 +1560,7 @@ fn assert_destination_projection(fixture: &SuppliedFootFixture, row: &Value) {
     );
     let queue_count = expected["nav_queue"]["count"].as_u64().unwrap() as usize;
     assert_eq!(
-        actor.navigation.nav_queue,
+        actor.navigation.nav_queue(),
         expected["nav_queue"]["entries"]
             .as_array()
             .unwrap()
@@ -1547,8 +1573,8 @@ fn assert_destination_projection(fixture: &SuppliedFootFixture, row: &Value) {
     // Compare live vector entries, not C++ allocator/vtable/backing residues.
     let path = &actor.navigation.path_runtime;
     for (actual, key) in [
-        (path.movement_timer, "movement_timer_words"),
-        (path.blocked_timer, "blocked_timer_words"),
+        (path.movement_timer(), "movement_timer_words"),
+        (path.blocked_timer(), "blocked_timer_words"),
     ] {
         assert_eq!(
             [actual.start_frame(), actual.duration()],
@@ -1557,12 +1583,12 @@ fn assert_destination_projection(fixture: &SuppliedFootFixture, row: &Value) {
         );
     }
     assert_eq!(
-        path.path_blocked,
+        path.path_blocked(),
         expected["blocked"] != 0,
         "{name}: blocked"
     );
     assert_eq!(
-        path.retries_left,
+        path.retries_left(),
         signed(&expected["retry"]) as u32,
         "{name}: retries"
     );
@@ -1664,7 +1690,7 @@ fn run_recorded_handler(
                 .get(fixture.actor)
                 .unwrap()
                 .navigation
-                .nav_com,
+                .nav_com(),
             crate::sim::movement::motion_query::is_moving(
                 fixture.sim.substrate.entities.get(fixture.actor).unwrap()
             )
@@ -2058,7 +2084,7 @@ fn original_ground_fireup_stage_uses_absolute_native_frames() {
             .entities
             .get_mut(fixture.actor)
             .unwrap()
-            .on_bridge = case["input"]["source_on_bridge"] != 0;
+            .set_on_bridge(case["input"]["source_on_bridge"] != 0);
         let rng = (
             fixture.sim.scenario_rng.logical_state(),
             fixture.sim.main_rng.logical_state(),

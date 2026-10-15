@@ -27,7 +27,7 @@ pub(super) fn admit_track_entry(entity: &mut GameEntity, has_turret: bool) -> bo
     let Some(loco) = entity.locomotor.as_mut() else {
         return false;
     };
-    let Some(family) = TrackFamily::from_kind(loco.kind) else {
+    let Some(family) = TrackFamily::from_kind(loco.active_kind()) else {
         return false;
     };
     let Some(mut track) = loco.track_progress(family) else {
@@ -35,9 +35,9 @@ pub(super) fn admit_track_entry(entity: &mut GameEntity, has_turret: bool) -> bo
     };
     let valid = loco.track_valid(family).unwrap();
     let latched = loco.track_turn_latched(family).unwrap();
-    let admitted = ((valid && track.turn_index != -1) || queue_eight) && (!latched || has_turret);
+    let admitted = ((valid && track.turn_index() != -1) || queue_eight) && (!latched || has_turret);
     if !admitted {
-        track.residual = 0;
+        track.set_residual(0);
         loco.store_track_progress(family, track);
     }
     admitted
@@ -58,7 +58,7 @@ impl Simulation {
         let Some(entity) = self.substrate.entities.get_mut(id) else {
             return false;
         };
-        if entity.dying || !entity.lifecycle.object_alive() {
+        if entity.death.is_dying() || !entity.lifecycle.object_alive() {
             return false;
         }
         if entity.low_bridge_tube_state.is_some()
@@ -69,22 +69,22 @@ impl Simulation {
         if !entity
             .locomotor
             .as_ref()
-            .is_some_and(|l| matches!(l.kind, LocomotorKind::Drive | LocomotorKind::Ship))
+            .is_some_and(|l| matches!(l.active_kind(), LocomotorKind::Drive | LocomotorKind::Ship))
         {
             return true;
         }
         // Drive4B066C..4B06D2 / Ship69FD13..69FD79: a Cell NavCom naming the
         // current cell stops (or takes the next waypoint) and Process returns
         // before the turn observation, Process_Movement and Process_Track.
-        if matches!(entity.navigation.nav_com, Some(NavTargetRef::Cell { rx, ry })
-            if (rx, ry) == (entity.position.rx, entity.position.ry))
+        if matches!(entity.navigation.nav_com(), Some(NavTargetRef::Cell { rx, ry })
+            if (rx, ry) == (entity.position.rx(), entity.position.ry()))
         {
             self.track_navcom_stop(id, rules, effects);
             return false;
         }
         let current = super::ground_pose::position_world_coord(&entity.position);
         let loco = entity.locomotor.as_mut().unwrap();
-        let family = TrackFamily::from_kind(loco.kind).unwrap();
+        let family = TrackFamily::from_kind(loco.active_kind()).unwrap();
         loco.ensure_installed_track_state();
         let mut latched = loco.track_turn_latched(family).unwrap();
         let valid = loco.track_valid(family).unwrap();
@@ -161,7 +161,7 @@ impl Simulation {
             // producer. 4B0971..4B09A6: a NavCom re-enters the locomotor's
             // own Move_To (+0x44) with its live coordinate; either way the
             // tail follows and Process_Movement waits for the next visit.
-            if let Some(target) = entity.navigation.nav_com
+            if let Some(target) = entity.navigation.nav_com()
                 && let Ok(coord) = super::navcom::nav_target_coordinate(
                     target,
                     Some(id),
@@ -180,11 +180,13 @@ impl Simulation {
         // 4B09AB..4B0A68: an in-playfield (+3D5), non-Enter mover whose
         // destination fails the zone precheck clears its head, then stops or
         // takes the next waypoint; either way the tail follows.
-        if entity.in_playfield && mission != Some(MissionType::Enter) && moving {
+        if entity.in_playfield() && mission != Some(MissionType::Enter) && moving {
             let destination = entity
                 .locomotor
                 .as_ref()
-                .and_then(|loco| loco.track_destination(TrackFamily::from_kind(loco.kind)?))
+                .and_then(|loco| {
+                    loco.track_destination(TrackFamily::from_kind(loco.active_kind())?)
+                })
                 .unwrap_or(crate::sim::components::DriveCoord { x: 0, y: 0, z: 0 });
             let Some(rules) = rules else {
                 return true;

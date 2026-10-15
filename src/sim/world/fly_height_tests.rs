@@ -68,14 +68,14 @@ fn fixture(row: &serde_json::Value) -> (Simulation, RuleSet) {
         sim.try_reveal_entity(
             1,
             RevealRequest {
-                position: RevealPosition {
-                    exact_z_leptons: None,
-                    rx: 10,
-                    ry: 10,
-                    z: integer("level", 0) as u8,
-                    sub_x: SimFixed::from_num(128),
-                    sub_y: SimFixed::from_num(128)
-                },
+                position: RevealPosition::new(
+                    10,
+                    10,
+                    integer("level", 0) as u8,
+                    None,
+                    SimFixed::from_num(128),
+                    SimFixed::from_num(128)
+                ),
                 placement: PlacementEvidence::MarkSucceeded,
                 logic_eligible: true,
             }
@@ -86,18 +86,15 @@ fn fixture(row: &serde_json::Value) -> (Simulation, RuleSet) {
     if flag("loaded") {
         assert_eq!(sim.allocate_stable_id(), 2);
         insert_entity(&mut sim, 2, EntityCategory::Infantry);
-        sim.substrate.entities.get_mut(2).unwrap().passenger_role = PassengerRole::Inside {
-            transport_id: 1,
-            open_topped: false,
-        };
+        sim.substrate.entities.get_mut(2).unwrap().passenger_role =
+            PassengerRole::inside_for_test(1, false);
         let mut cargo = PassengerCargo::new(1, 0);
         cargo.board_forced(2, 1);
-        sim.substrate.entities.get_mut(1).unwrap().passenger_role =
-            PassengerRole::Transport { cargo };
+        sim.substrate.entities.get_mut(1).unwrap().passenger_role = PassengerRole::transport(cargo);
     }
     let entity = sim.substrate.entities.get_mut(1).unwrap();
-    entity.position.exact_z_leptons = Some(integer("z", 0));
-    entity.on_bridge = flag("on_bridge");
+    entity.position.set_exact_z_leptons(Some(integer("z", 0)));
+    entity.set_on_bridge(flag("on_bridge"));
     entity.health.set_for_test(integer("health", 100));
     let loco = entity.locomotor.as_mut().unwrap();
     if flag("landing") {
@@ -137,13 +134,13 @@ fn healthy_native_height_vectors_reach_production_coordinates() {
         let expected_z = row["z"].as_i64().unwrap() as i32;
         let expected_height = row["height"].as_i64().unwrap() as i32;
         assert_eq!(
-            entity.position.exact_z_leptons,
+            entity.position.exact_z_leptons(),
             Some(expected_z),
             "{}",
             row["input"]
         );
         assert_eq!(
-            entity.on_bridge,
+            entity.on_bridge(),
             row["on_bridge"].as_bool().unwrap(),
             "{}",
             row["input"]
@@ -231,7 +228,7 @@ fn fly_integer_target_flags_and_cargo_survive_save_and_continuation() {
                         .get(1)
                         .unwrap()
                         .position
-                        .exact_z_leptons,
+                        .exact_z_leptons(),
                     Some(row["z"].as_i64().unwrap() as i32)
                 );
             }
@@ -528,8 +525,8 @@ fn destination_fixture(row: &serde_json::Value) -> (Simulation, RuleSet) {
     target_cell.level = input["level"].as_u64().unwrap_or(0) as u8;
     target_cell.slope_type = input["slope"].as_u64().unwrap_or(0) as u8;
     let entity = sim.substrate.entities.get_mut(1).unwrap();
-    entity.position.rx = 40;
-    entity.position.ry = 64;
+    entity.position.set_rx(40);
+    entity.position.set_ry(64);
     entity.aircraft_ammo = Some(AircraftAmmo::new(input["ammo"].as_i64().unwrap_or(2) as i32));
     entity.attack_target.set_for_test(
         input["target"]
@@ -541,7 +538,7 @@ fn destination_fixture(row: &serde_json::Value) -> (Simulation, RuleSet) {
         .mission_leaf
         .set_aircraft_action_latch(input["ready"].as_bool().unwrap_or(false));
     let loco = entity.locomotor.as_mut().unwrap();
-    loco.powered = input["powered"].as_bool().unwrap_or(true);
+    loco.set_powered_for_test(input["powered"].as_bool().unwrap_or(true));
     *loco.fly_runtime_mut().unwrap() = serde_json::from_value(serde_json::json!({
         "target_height": 37,
         "taking_off": input["taking_off"].as_bool().unwrap_or(false),
@@ -661,10 +658,10 @@ fn fly_retained_destination_drives_subcell_arrival_after_save_and_restore() {
     assert!(issue_coordinate(&mut sim, &rules, [16519, 16523, 333]));
     sim.remove_entity_occupancy(1);
     let entity = sim.substrate.entities.get_mut(1).unwrap();
-    entity.position.rx = 64;
-    entity.position.ry = 64;
-    entity.position.sub_x = SimFixed::from_num(135);
-    entity.position.sub_y = SimFixed::from_num(139);
+    entity.position.set_rx(64);
+    entity.position.set_ry(64);
+    entity.position.set_sub_x(SimFixed::from_num(135));
+    entity.position.set_sub_y(SimFixed::from_num(139));
     sim.add_entity_occupancy(1);
     sim.scenario_rng = crate::sim::rng::SimRng::new(0);
     let bytes = GameSnapshot::save(&sim, 0, 0, "Fly retained destination", 0);
@@ -780,7 +777,9 @@ fn takeoff_fixture(row: &serde_json::Value) -> (Simulation, RuleSet) {
         "cruise_mode": input["mode"].as_bool().unwrap_or(false),
         "moving": input["moving"].as_bool().unwrap_or(false),
     })).unwrap();
-    loco.fly_runtime_mut().unwrap().target_speed = SimFixed::lit("0.25");
+    loco.fly_runtime_mut()
+        .unwrap()
+        .set_target_speed(SimFixed::lit("0.25"));
     sim.session.binary_frame = 100;
     (sim, rules)
 }
@@ -795,7 +794,7 @@ fn assert_native_takeoff_result(sim: &Simulation, row: &serde_json::Value) {
         "{row}"
     );
     assert_eq!(
-        loco.fly_runtime().unwrap().target_speed,
+        loco.fly_runtime().unwrap().target_speed(),
         SimFixed::from_num(row["speed"].as_f64().unwrap()),
         "{row}"
     );
@@ -806,7 +805,7 @@ fn assert_native_takeoff_result(sim: &Simulation, row: &serde_json::Value) {
         "{row}"
     );
     assert_eq!(
-        entity.on_bridge,
+        entity.on_bridge(),
         row["on_bridge"].as_bool().unwrap(),
         "{row}"
     );
@@ -865,10 +864,10 @@ fn fly_takeoff_phase_matches_native_display_reordering_and_gates() {
         insert_entity(&mut sim, peer, EntityCategory::Aircraft);
         let owner = sim.substrate.entities.get(1).unwrap();
         let (position, on_bridge, loco) =
-            (owner.position, owner.on_bridge, owner.locomotor.clone());
+            (owner.position, owner.on_bridge(), owner.locomotor.clone());
         let other = sim.substrate.entities.get_mut(peer).unwrap();
         other.position = position;
-        other.on_bridge = on_bridge;
+        other.set_on_bridge(on_bridge);
         other.locomotor = loco;
         sim.submit_entity_display(1, Some(&rules), None);
         sim.submit_entity_display(peer, Some(&rules), None);
@@ -886,7 +885,12 @@ fn fly_takeoff_phase_matches_native_display_reordering_and_gates() {
         );
         assert_native_takeoff_result(&sim, &row);
         assert_eq!(
-            sim.substrate.entities.get(1).unwrap().lifecycle.cell_marked,
+            sim.substrate
+                .entities
+                .get(1)
+                .unwrap()
+                .lifecycle
+                .cell_marked(),
             row["marked"].as_bool().unwrap(),
             "{row}"
         );
@@ -930,10 +934,10 @@ fn fly_nonlandable_phase_matches_native_without_display_resubmission() {
         insert_entity(&mut sim, peer, EntityCategory::Aircraft);
         let owner = sim.substrate.entities.get(1).unwrap();
         let (position, on_bridge, loco) =
-            (owner.position, owner.on_bridge, owner.locomotor.clone());
+            (owner.position, owner.on_bridge(), owner.locomotor.clone());
         let other = sim.substrate.entities.get_mut(peer).unwrap();
         other.position = position;
-        other.on_bridge = on_bridge;
+        other.set_on_bridge(on_bridge);
         other.locomotor = loco;
         sim.submit_entity_display(1, Some(&rules), None);
         sim.submit_entity_display(peer, Some(&rules), None);
@@ -954,7 +958,7 @@ fn fly_nonlandable_phase_matches_native_without_display_resubmission() {
             "{row}"
         );
         assert_eq!(
-            entity.lifecycle.cell_marked,
+            entity.lifecycle.cell_marked(),
             row["marked"].as_bool().unwrap(),
             "{row}"
         );
@@ -1001,7 +1005,7 @@ fn fly_nonlandable_production_tick_replaces_landing_target_and_restores() {
     );
     let entity = sim.substrate.entities.get(1).unwrap();
     assert_eq!(
-        entity.position.exact_z_leptons,
+        entity.position.exact_z_leptons(),
         Some(855),
         "movement precedes phase override"
     );
@@ -1031,7 +1035,7 @@ fn fly_nonlandable_production_tick_replaces_landing_target_and_restores() {
                     .get(1)
                     .unwrap()
                     .position
-                    .exact_z_leptons,
+                    .exact_z_leptons(),
                 Some(855 + (frame as i32 - 100) * 20)
             );
         }
@@ -1049,7 +1053,11 @@ fn fly_phase_outer_health_power_and_life_gates_precede_nonlandable_override() {
         let entity = sim.substrate.entities.get_mut(1).unwrap();
         match gate {
             "health" => entity.health.set_for_test(0),
-            "power" => entity.locomotor.as_mut().unwrap().powered = false,
+            "power" => entity
+                .locomotor
+                .as_mut()
+                .unwrap()
+                .set_powered_for_test(false),
             "life" => entity.lifecycle.set_object_alive_for_test(false),
             _ => unreachable!(),
         }
@@ -1330,10 +1338,14 @@ fn fly_paid_step_matches_native_math_and_production_type_speed() {
         }}));
         sim.remove_entity_occupancy(1);
         let entity = sim.substrate.entities.get_mut(1).unwrap();
-        entity.position.rx = (current[0] / 256) as u16;
-        entity.position.ry = (current[1] / 256) as u16;
-        entity.position.sub_x = SimFixed::from_num(current[0] % 256);
-        entity.position.sub_y = SimFixed::from_num(current[1] % 256);
+        entity.position.set_rx((current[0] / 256) as u16);
+        entity.position.set_ry((current[1] / 256) as u16);
+        entity
+            .position
+            .set_sub_x(SimFixed::from_num(current[0] % 256));
+        entity
+            .position
+            .set_sub_y(SimFixed::from_num(current[1] % 256));
         entity.body_facing = primary;
         entity.veterancy.set_rank_for_test(2); // Fly's getter bypasses Foot's FASTER path
         sim.add_entity_occupancy(1);
@@ -1349,7 +1361,7 @@ fn fly_paid_step_matches_native_math_and_production_type_speed() {
             .unwrap()
             .fly_runtime_mut()
             .unwrap()
-            .current_speed = fraction;
+            .set_current_speed(fraction);
         sim.session.binary_frame = frame;
         let mut restored = if input["name"] == "turn_5_100" {
             sim.scenario_rng = crate::sim::rng::SimRng::new(0);

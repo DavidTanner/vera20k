@@ -72,7 +72,7 @@ impl EnterHost for WorldEnter<'_> {
     }
 
     fn nav_com(&mut self) -> EnterNav {
-        match self.entity().navigation.nav_com {
+        match self.entity().navigation.nav_com() {
             None => EnterNav::None,
             Some(NavTargetRef::Cell { .. }) => EnterNav::Other,
             Some(
@@ -196,7 +196,7 @@ impl EnterHost for WorldEnter<'_> {
     }
 
     fn step_toward_nav_com(&mut self) {
-        let Some(nav) = self.entity().navigation.nav_com else {
+        let Some(nav) = self.entity().navigation.nav_com() else {
             return;
         };
         let building = match self.nav_com() {

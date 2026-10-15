@@ -152,7 +152,7 @@ pub(crate) fn target_present(
         Some(TargetKind::Cell(..)) => true,
         Some(TargetKind::Entity(id)) => entities
             .get(id)
-            .is_some_and(|target| !target.dying && target.health.current() > 0),
+            .is_some_and(|target| !target.death.is_dying() && target.health.current() > 0),
     }
 }
 
@@ -199,7 +199,7 @@ pub(crate) fn object_distance_to(
         && let Some(building) = entities.get(id)
         && building.category() == EntityCategory::Structure
     {
-        let (width, height) = foundation_dimensions(&building.foundation);
+        let (width, height) = foundation_dimensions(building.type_facts.foundation());
         // Height query45ECA0 receives false: Bib never adds to this discount.
         return Some(
             distance

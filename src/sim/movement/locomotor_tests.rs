@@ -193,7 +193,7 @@ fn test_fly_locomotor_air_layer() {
     assert!(state.is_air_mover());
     assert_eq!(state.fly_target_height(), 0);
     assert_eq!(
-        state.fly_runtime().unwrap().target_speed,
+        state.fly_runtime().unwrap().target_speed(),
         SIM_ZERO,
         "constructor4CC9E5 target speed"
     );
@@ -217,7 +217,7 @@ fn fly_target_uses_type_flight_level_without_changing_other_locomotors() {
     obj.locomotor = LocomotorKind::Jumpjet;
     let state = LocomotorState::from_object_type(&obj, 0);
     assert_eq!(
-        state.jumpjet_runtime().unwrap().params().height,
+        state.jumpjet_runtime().unwrap().params().height(),
         obj.jumpjet_params.height
     );
     assert!(state.fly_runtime().is_none());
@@ -231,7 +231,7 @@ fn test_jumpjet_air_layer() {
     assert_eq!(state.layer, MovementLayer::Air);
     assert!(!state.is_ground_mover());
     assert!(state.is_air_mover());
-    assert_eq!(state.jumpjet_runtime().unwrap().params().height, 500);
+    assert_eq!(state.jumpjet_runtime().unwrap().params().height(), 500);
 }
 
 #[test]
@@ -251,9 +251,9 @@ fn test_jumpjet_with_custom_params() {
     };
     let state = LocomotorState::from_object_type(&obj, 0);
     let params = state.jumpjet_runtime().unwrap().params();
-    assert_eq!(params.height, 750);
-    assert_eq!(params.speed, 20);
-    assert_eq!(params.climb_bits, 8.0f32.to_bits());
+    assert_eq!(params.height(), 750);
+    assert_eq!(params.speed(), 20);
+    assert_eq!(params.climb_bits(), 8.0f32.to_bits());
 }
 
 #[test]
@@ -367,17 +367,18 @@ fn retail_kirov_and_disc_reach_their_authored_hover_altitude() {
         assert_eq!(state.kind, LocomotorKind::Jumpjet, "[{id}]");
         let params = state.jumpjet_runtime().unwrap().params();
         assert_eq!(
-            params.height, 750,
+            params.height(),
+            750,
             "[{id}] hovers at its authored JumpjetHeight"
         );
-        assert_eq!(params.speed, speed, "[{id}]");
-        assert_eq!(params.climb_bits, climb.to_bits(), "[{id}]");
-        assert_eq!(params.crash_bits, crash.to_bits(), "[{id}]");
+        assert_eq!(params.speed(), speed, "[{id}]");
+        assert_eq!(params.climb_bits(), climb.to_bits(), "[{id}]");
+        assert_eq!(params.crash_bits(), crash.to_bits(), "[{id}]");
         // The constructor's acceleration and turn rate, because stock spells
         // the keys `JumpJetAccel=`/`JumpJetTurnRate=` and gamemd looks up
         // `JumpjetAccel`/`JumpjetTurnRate`.
-        assert_eq!(params.accel_bits, 2.0f32.to_bits(), "[{id}]");
-        assert_eq!(params.turn_rate, 4, "[{id}]");
+        assert_eq!(params.accel_bits(), 2.0f32.to_bits(), "[{id}]");
+        assert_eq!(params.turn_rate(), 4, "[{id}]");
     }
 }
 

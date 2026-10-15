@@ -151,49 +151,53 @@ fn fixture(row: &Value, state: &Value, rules: &RuleSet) -> SuppliedFootFixture {
         });
         actor.set_archive_target(archive);
         actor.attack_target.set_for_test(target);
-        actor.suspended_attack_target = suspended_target;
-        actor.navigation.suspended_nav_com = suspended_nav;
-        actor.navigation.nav_com = nav;
-        actor.navigation.nav_com_aux = aux;
+        actor.suspended_attack_target.set_for_test(suspended_target);
+        actor.navigation.set_suspended_nav_com(suspended_nav);
+        actor.navigation.set_nav_com(nav);
+        actor.navigation.set_nav_com_aux(aux);
         assert_eq!(before["navigation"]["queue_count"], 0);
-        actor.navigation.nav_queue.clear();
-        actor.navigation.path_replay.directions = before["navigation"]["path"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .map(|value| signed(value) as u8)
-            .collect();
-        actor.navigation.path_replay.reference_cell = Some((
+        actor.navigation.clear_nav_queue();
+        actor.navigation.path_replay.set_directions_for_test(
+            before["navigation"]["path"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|value| signed(value) as u8)
+                .collect(),
+        );
+        actor.navigation.path_replay.set_reference_cell(Some((
             signed(&before["navigation"]["reference_cell"][0]) as i16,
             signed(&before["navigation"]["reference_cell"][1]) as i16,
-        ));
+        )));
         let path = &mut actor.navigation.path_runtime;
-        path.movement_timer = crate::sim::timer::CdTimer::from_raw(
+        path.set_movement_timer_for_test(crate::sim::timer::CdTimer::from_raw(
             signed(&before["navigation"]["movement_timer"][0]),
             signed(&before["navigation"]["movement_timer"][2]),
-        );
-        path.blocked_timer = crate::sim::timer::CdTimer::from_raw(
+        ));
+        path.set_blocked_timer_for_test(crate::sim::timer::CdTimer::from_raw(
             signed(&before["navigation"]["blocked_timer"][0]),
             signed(&before["navigation"]["blocked_timer"][2]),
-        );
-        path.path_blocked = before["navigation"]["blocked"] != 0;
-        path.retries_left = signed(&before["navigation"]["retry"]) as u32;
+        ));
+        path.set_path_blocked(before["navigation"]["blocked"] != 0);
+        path.set_retries_left(signed(&before["navigation"]["retry"]) as u32);
         assert_eq!(before["loco_head"], json!([0, 0, 0]));
         assert_eq!(before["navigation"]["destination"], json!([0, 0, 0]));
-        actor.passive_scan_timer = MissionTimer::armed(
-            signed(&before["targeting_timer"][0]) as u32,
-            signed(&before["targeting_timer"][2]) as u32,
-        );
+        actor
+            .passive_scan
+            .set_passive_scan_timer_for_test(MissionTimer::armed(
+                signed(&before["targeting_timer"][0]) as u32,
+                signed(&before["targeting_timer"][2]) as u32,
+            ));
         assert_eq!(before["scan"], 0);
-        actor.on_bridge = before["on_bridge"] != 0;
+        actor.set_on_bridge(before["on_bridge"] != 0);
         actor
             .mission_leaf
             .set_foot_firing_sequence(signed(&before["firing"]) as u8);
         if let Some(infantry) = actor.infantry.as_mut() {
-            infantry.idle_action_timer = MissionTimer::armed(
+            infantry.set_idle_action_timer_for_test(MissionTimer::armed(
                 signed(&before["idle_timer"][0]) as u32,
                 signed(&before["idle_timer"][2]) as u32,
-            );
+            ));
             actor
                 .mission_leaf
                 .set_infantry_doing_verified(signed(&before["doing"]))
@@ -219,27 +223,27 @@ fn assert_state(f: &mut SuppliedFootFixture, row: &Value, state: &Value) {
             "{name}: retained suspended selector"
         );
         assert_eq!(
-            actor.suspended_attack_target,
+            actor.suspended_attack_target.target(),
             f.target(&pointer(&expected["suspended_target"])),
             "{name}: suspended Target"
         );
         assert_eq!(
-            actor.navigation.suspended_nav_com,
+            actor.navigation.suspended_nav_com(),
             f.nav(&pointer(&expected["suspended_nav"])),
             "{name}: suspended NavCom"
         );
         assert_eq!(
-            actor.navigation.nav_com_aux,
+            actor.navigation.nav_com_aux(),
             f.nav(&pointer(&expected["navigation"]["aux"])),
             "{name}: NavComAux"
         );
         assert_eq!(
-            actor.navigation.nav_queue.len(),
+            actor.navigation.nav_queue().len(),
             expected["navigation"]["queue_count"].as_u64().unwrap() as usize,
             "{name}: navigation vector"
         );
         assert_eq!(
-            actor.navigation.path_replay.directions,
+            actor.navigation.path_replay.directions(),
             expected["navigation"]["path"]
                 .as_array()
                 .unwrap()
@@ -249,7 +253,7 @@ fn assert_state(f: &mut SuppliedFootFixture, row: &Value, state: &Value) {
             "{name}: retained path suffix"
         );
         assert_eq!(
-            actor.navigation.path_replay.reference_cell,
+            actor.navigation.path_replay.reference_cell(),
             Some((
                 signed(&expected["navigation"]["reference_cell"][0]) as i16,
                 signed(&expected["navigation"]["reference_cell"][1]) as i16
@@ -258,8 +262,8 @@ fn assert_state(f: &mut SuppliedFootFixture, row: &Value, state: &Value) {
         );
         let path = &actor.navigation.path_runtime;
         for (timer, field) in [
-            (path.movement_timer, "movement_timer"),
-            (path.blocked_timer, "blocked_timer"),
+            (path.movement_timer(), "movement_timer"),
+            (path.blocked_timer(), "blocked_timer"),
         ] {
             assert_eq!(
                 [timer.start_frame(), timer.duration()],
@@ -271,12 +275,12 @@ fn assert_state(f: &mut SuppliedFootFixture, row: &Value, state: &Value) {
             );
         }
         assert_eq!(
-            path.retries_left,
+            path.retries_left(),
             signed(&expected["navigation"]["retry"]) as u32,
             "{name}: retry"
         );
         assert_eq!(
-            path.path_blocked,
+            path.path_blocked(),
             expected["navigation"]["blocked"] != 0,
             "{name}: blocked"
         );
@@ -483,12 +487,12 @@ fn area_guard_snapshot_retains_pending_order_post_and_retask_references() {
     let original = f.sim.substrate.entities.get(1).unwrap();
     assert_eq!(actor.mission, original.mission);
     assert_eq!(
-        actor.suspended_attack_target,
-        original.suspended_attack_target
+        actor.suspended_attack_target.target(),
+        original.suspended_attack_target.target()
     );
     assert_eq!(
-        actor.navigation.suspended_nav_com,
-        original.navigation.suspended_nav_com
+        actor.navigation.suspended_nav_com(),
+        original.navigation.suspended_nav_com()
     );
     assert_eq!(actor.archive_target(), original.archive_target());
 
@@ -506,9 +510,9 @@ fn area_guard_snapshot_retains_pending_order_post_and_retask_references() {
     let original = f.sim.substrate.entities.get(1).unwrap();
     assert_eq!(actor.mission, original.mission);
     assert_eq!(actor.archive_target(), original.archive_target());
-    assert_eq!(actor.navigation.nav_com, original.navigation.nav_com);
+    assert_eq!(actor.navigation.nav_com(), original.navigation.nav_com());
     assert!(actor.archive_target().is_some());
-    assert!(actor.suspended_attack_target.is_none());
-    assert!(actor.navigation.suspended_nav_com.is_none());
+    assert!(actor.suspended_attack_target.target().is_none());
+    assert!(actor.navigation.suspended_nav_com().is_none());
     assert!(restored.pending_command_snapshot().is_empty());
 }

@@ -58,7 +58,7 @@ pub(crate) fn mission_capture(
             .is_some_and(|object| object.category() == EntityCategory::Structure)
     });
     if let Some(building) = building_target
-        && entity.navigation.nav_com.is_none()
+        && entity.navigation.nav_com().is_none()
         && entity.category() == EntityCategory::Infantry
         && sim
             .object_type(entity.type_ref(), rules)
@@ -88,15 +88,15 @@ pub(crate) fn mission_capture(
         .substrate
         .entities
         .get(id)
-        .is_some_and(|entity| entity.navigation.nav_com.is_none())
+        .is_some_and(|entity| entity.navigation.nav_com().is_none())
     {
         crate::sim::world::enter_idle_mode(sim, id, rules, registry, effects);
         let on_building = sim.substrate.entities.get(id).is_some_and(|entity| {
             sim.substrate
                 .occupancy
                 .first_building_on_layer(
-                    entity.position.rx,
-                    entity.position.ry,
+                    entity.position.rx(),
+                    entity.position.ry(),
                     MovementLayer::Ground,
                 )
                 .is_some()

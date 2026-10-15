@@ -24,6 +24,36 @@ use crate::util::native_x87::{
 };
 use glam::IVec3;
 
+/// The object's damage-Smoke `ParticleSystemClass` (`TechnoClass+0x310`).
+/// The surviving ReceiveDamage postlude creates the system synchronously and
+/// records it here (`Simulation::maintain_damage_smoke_after_receive`); it
+/// UnInits the system when health recovers above `ConditionYellow`, and
+/// `TechnoClass::PointerExpired` drops the handle when the system expires
+/// ([`Self::forget`]).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(transparent)]
+pub(crate) struct DamageSmoke {
+    system: Option<u64>,
+}
+
+impl DamageSmoke {
+    /// The live system's stable id.
+    pub(crate) const fn system(self) -> Option<u64> {
+        self.system
+    }
+
+    /// PointerExpired's drop of the expiring system.
+    pub(crate) fn forget(&mut self) {
+        self.system = None;
+    }
+
+    /// Install a fixture's system.
+    #[cfg(test)]
+    pub(crate) fn set_for_test(&mut self, system: Option<u64>) {
+        self.system = system;
+    }
+}
+
 impl Simulation {
     /// Mark the attached Techno+310 smoke system for retirement while retaining
     /// its owner pointer. Native ParticleSystem virtual F8 (6301E0) only sets
@@ -33,7 +63,7 @@ impl Simulation {
             .substrate
             .entities
             .get(stable_id)
-            .and_then(|entity| entity.damage_smoke_system_id);
+            .and_then(|entity| entity.damage_smoke_system_id.system());
         if let Some(system_id) = system_id
             && let Some(system) = self.particle_systems_mut().get_mut(system_id)
         {
@@ -241,7 +271,7 @@ impl Simulation {
             .health
             .compare_ratio(object.strength, rules.general.condition_yellow)
             == crate::util::native_x87::MaskedX87Ordering::Greater;
-        let current_system = entity.damage_smoke_system_id;
+        let current_system = entity.damage_smoke_system_id.system();
 
         if above_yellow {
             self.retire_attached_damage_smoke(stable_id);
@@ -314,7 +344,7 @@ impl Simulation {
             return;
         };
         if let Some(entity) = self.substrate.entities.get_mut(stable_id) {
-            entity.damage_smoke_system_id = Some(system_id);
+            entity.damage_smoke_system_id.system = Some(system_id);
         }
     }
 }
@@ -521,11 +551,11 @@ mod tests {
             entity.set_type_ref_for_test(sim.interner.intern("TEST"));
             entity.set_owner_for_test(sim.interner.intern("A"));
             entity.health.set_for_test(40);
-            entity.position.sub_x = SimFixed::from_num(x & 255);
-            entity.position.sub_y = SimFixed::from_num(y & 255);
-            entity.position.exact_z_leptons = Some(z);
-            entity.on_bridge = input["on_bridge"].as_bool().unwrap();
-            let mut cell = test_flat_cell(entity.position.rx, entity.position.ry);
+            entity.position.set_sub_x(SimFixed::from_num(x & 255));
+            entity.position.set_sub_y(SimFixed::from_num(y & 255));
+            entity.position.set_exact_z_leptons(Some(z));
+            entity.set_on_bridge(input["on_bridge"].as_bool().unwrap());
+            let mut cell = test_flat_cell(entity.position.rx(), entity.position.ry());
             cell.level = input["level"].as_u64().unwrap() as u8;
             cell.slope_type = input["slope"].as_u64().unwrap() as u8;
             sim.resolved_terrain = Some(ResolvedTerrainGrid::from_cells(8, 8, vec![cell]));
@@ -540,7 +570,12 @@ mod tests {
                 crate::sim::combat::damage::DamageState::Yellow,
                 &rules,
             );
-            let smoke = sim.entities().get(id).unwrap().damage_smoke_system_id;
+            let smoke = sim
+                .entities()
+                .get(id)
+                .unwrap()
+                .damage_smoke_system_id
+                .system();
             assert_eq!(
                 smoke.is_some(),
                 row["output"]["spawn_admitted"] == true,
@@ -603,7 +638,8 @@ mod tests {
                 .entities
                 .get_mut(id)
                 .unwrap()
-                .damage_smoke_system_id = Some(system_id);
+                .damage_smoke_system_id
+                .set_for_test(Some(system_id));
             let before_rng = sim.scenario_rng.logical_state();
             sim.maintain_damage_smoke_after_receive(
                 id,
@@ -620,7 +656,8 @@ mod tests {
                     .entities
                     .get(id)
                     .unwrap()
-                    .damage_smoke_system_id,
+                    .damage_smoke_system_id
+                    .system(),
                 Some(system_id)
             );
             assert_eq!(sim.particle_systems().len(), 1);

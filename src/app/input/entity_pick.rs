@@ -145,8 +145,8 @@ pub(crate) fn hover_target_at_point(
             if !click_hits_foundation(
                 world_x,
                 world_y,
-                entity.position.rx,
-                entity.position.ry,
+                entity.position.rx(),
+                entity.position.ry(),
                 foundation,
                 height_map,
                 bridge_cells,
@@ -166,14 +166,15 @@ pub(crate) fn hover_target_at_point(
         let dist_sq = dx * dx + dy * dy;
         let is_friendly = sim.fog.is_friendly(local_owner, owner_str);
         let is_visible = ignore_visibility
-            || (sim
-                .fog
-                .is_cell_revealed(local_owner_id, entity.position.rx, entity.position.ry)
-                && !sim.fog.is_cell_gap_covered(
-                    local_owner_id,
-                    entity.position.rx,
-                    entity.position.ry,
-                ));
+            || (sim.fog.is_cell_revealed(
+                local_owner_id,
+                entity.position.rx(),
+                entity.position.ry(),
+            ) && !sim.fog.is_cell_gap_covered(
+                local_owner_id,
+                entity.position.rx(),
+                entity.position.ry(),
+            ));
         let kind = if is_friendly {
             if is_structure {
                 HoverTargetKind::FriendlyStructure
@@ -466,7 +467,7 @@ pub(crate) fn pick_admits_object(
             .cloak
             .as_ref()
             .is_some_and(|cloak| cloak.is_fully_cloaked())
-        || fog.has_sensor_for_house(player, entity.position.rx, entity.position.ry)
+        || fog.has_sensor_for_house(player, entity.position.rx(), entity.position.ry())
 }
 
 /// Would the local player see this object drawn right now?
@@ -493,8 +494,8 @@ fn is_drawn_for_local_owner(
     }
     let owner_id = local_owner_id.unwrap_or_default();
     let pos = &entity.position;
-    fog.is_cell_revealed(owner_id, pos.rx, pos.ry)
-        && !fog.is_cell_gap_covered(owner_id, pos.rx, pos.ry)
+    fog.is_cell_revealed(owner_id, pos.rx(), pos.ry())
+        && !fog.is_cell_gap_covered(owner_id, pos.rx(), pos.ry())
 }
 
 /// Resolve a band-box release into the selection snapshot to commit.
@@ -782,7 +783,7 @@ fn type_select_candidates(
             }
             let dynamic = selection_dynamic_prefix(entity, entities, rules, interner)
                 && type_is_selectable(type_id, rules)
-                && (!require_playfield_membership || entity.in_playfield);
+                && (!require_playfield_membership || entity.in_playfield());
             let undeploying_building_fallback = entity.category() == EntityCategory::Structure
                 && rules
                     .and_then(|r| r.object(type_id))
@@ -1105,19 +1106,19 @@ pub(crate) fn selection_dynamic_prefix(
     if entity.category() == EntityCategory::Structure {
         return false;
     }
-    if entity.slave.owner().is_some() || entity.deactivated {
+    if entity.slave.owner().is_some() || entity.deactivated.is_offline() {
         return false;
     }
-    if entity.bunker_link.installed_in().is_some() {
+    if entity.bunker.link().installed_in().is_some() {
         return false;
     }
-    if entity.dock_entered_with.is_some()
+    if entity.tether.partner().is_some()
         && building_covers_cell(
             entities,
             rules,
             interner,
-            entity.position.rx,
-            entity.position.ry,
+            entity.position.rx(),
+            entity.position.ry(),
         )
     {
         return false;
@@ -1135,9 +1136,9 @@ pub(crate) fn is_local_player_selectable_object(
 ) -> bool {
     entity.health.current() > 0
         && !entity.lifecycle.in_limbo()
-        && entity.in_playfield
+        && entity.in_playfield()
         && entity.category() != EntityCategory::Structure
-        && entity.discovery.discovered_by_current_house
+        && entity.discovery.discovered_by_current_house()
         && type_is_selectable(sim.interner.resolve(entity.type_ref()), rules)
         && sim.house_is_human_player(entity.owner())
 }
@@ -1177,8 +1178,8 @@ fn building_covers_cell(
             .map(|o| o.foundation.as_str())
             .unwrap_or("1x1");
         let (fw, fh) = crate::rules::foundation::foundation_dimensions(foundation);
-        let brx = candidate.position.rx;
-        let bry = candidate.position.ry;
+        let brx = candidate.position.rx();
+        let bry = candidate.position.ry();
         rx >= brx && rx < brx.saturating_add(fw) && ry >= bry && ry < bry.saturating_add(fh)
     })
 }
@@ -1286,8 +1287,8 @@ pub(crate) fn pick_entity_at_point(
         click_hits_foundation(
             world_x,
             world_y,
-            entity.position.rx,
-            entity.position.ry,
+            entity.position.rx(),
+            entity.position.ry(),
             foundation,
             height_map,
             bridge_cells,
@@ -1316,7 +1317,7 @@ fn static_selection_gate(
         // This helper is not the complete virtual+64; see its owner above.
         // The app supplies the live MapClass authority gate;
         // headless selection fixtures leave it disabled.
-        && (!require_playfield_membership || entity.in_playfield)
+        && (!require_playfield_membership || entity.in_playfield())
         && type_is_selectable(entity_type, rules)
 }
 
@@ -1446,7 +1447,7 @@ mod tests {
         );
         entity.lifecycle.set_object_alive_for_test(true);
         entity.lifecycle.set_in_limbo_for_test(false);
-        entity.selected = selected;
+        entity.selection.set_selected_for_test(selected);
         entity
     }
 
@@ -1464,7 +1465,7 @@ mod tests {
         let enemy = sim.interner.intern("Russians");
         let sub = sim.interner.intern("SUB");
         let mut cloak = crate::sim::cloak_disguise::CloakRuntime::new(0);
-        cloak.state = 2;
+        cloak.set_state_for_test(2);
         for (id, owner, rx) in [(1, enemy, 10), (2, player, 20)] {
             let mut entity = item83_entity(id, rx, 10, owner, sub, EntityCategory::Unit, false);
             entity.cloak = Some(cloak);
@@ -1957,7 +1958,7 @@ mod tests {
     #[test]
     fn native_bunker_install_head_allows_tank_click_and_force_attack() {
         use crate::sim::command::Command;
-        use crate::sim::game_entity::BunkerLink;
+        use crate::sim::docking::bunker_link::BunkerLink;
         use crate::sim::world::Simulation;
         use crate::util::fixed_math::SimFixed;
 
@@ -1989,10 +1990,10 @@ mod tests {
                 category,
                 false,
             );
-            entity.position.sub_x = SimFixed::from_num(xyz[0] % 256);
-            entity.position.sub_y = SimFixed::from_num(xyz[1] % 256);
-            entity.position.exact_z_leptons = Some(xyz[2]);
-            entity.in_playfield = true;
+            entity.position.set_sub_x(SimFixed::from_num(xyz[0] % 256));
+            entity.position.set_sub_y(SimFixed::from_num(xyz[1] % 256));
+            entity.position.set_exact_z_leptons(Some(xyz[2]));
+            entity.set_in_playfield(true);
             sim.entities_mut().insert(entity);
         };
         at(
@@ -2013,8 +2014,16 @@ mod tests {
             EntityCategory::Unit,
             &serde_json::json!([4352, 2816, 312]),
         );
-        sim.entities_mut().get_mut(1).unwrap().bunker_link = BunkerLink::Installed(2);
-        sim.entities_mut().get_mut(2).unwrap().bunker_occupant = Some(1);
+        sim.entities_mut()
+            .get_mut(1)
+            .unwrap()
+            .bunker
+            .set_bunker_link_for_test(BunkerLink::Installed(2));
+        sim.entities_mut()
+            .get_mut(2)
+            .unwrap()
+            .bunker
+            .set_bunker_occupant_for_test(Some(1));
         let heights = std::collections::BTreeMap::new();
         let pick = |sim: &Simulation, point: (f32, f32)| {
             pick_entity_at_point(
@@ -2077,12 +2086,12 @@ mod tests {
             Some(&retail.rules)
         ));
         let tank = sim.entities().get(1).unwrap();
-        assert_eq!(tank.bunker_link.installed_in(), Some(2));
+        assert_eq!(tank.bunker.link().installed_in(), Some(2));
         assert_eq!(
             tank.attack_target.target(),
             Some(crate::sim::combat::TargetKind::Entity(3))
         );
-        assert_eq!(sim.entities().get(2).unwrap().bunker_occupant, Some(1));
+        assert_eq!(sim.entities().get(2).unwrap().bunker.occupant(), Some(1));
     }
 
     #[test]
@@ -2468,11 +2477,11 @@ mod tests {
         let mut entity = GameEntity::test_default(1, "MTNK", "Americans", 5, 5);
         entity.lifecycle.set_object_alive_for_test(true);
         entity.lifecycle.set_in_limbo_for_test(false);
-        entity.in_playfield = false;
+        entity.set_in_playfield(false);
         assert!(!static_selection_gate(&entity, "MTNK", None, true));
-        entity.in_playfield = true;
+        entity.set_in_playfield(true);
         assert!(static_selection_gate(&entity, "MTNK", None, true));
-        entity.in_playfield = false;
+        entity.set_in_playfield(false);
         assert!(
             static_selection_gate(&entity, "MTNK", None, false),
             "headless fixtures without MapClass authority preserve prior admission"
@@ -2487,7 +2496,7 @@ mod tests {
         let mut entity = GameEntity::test_default(1, "ORCA", "Americans", 5, 5);
         entity.lifecycle.set_object_alive_for_test(true);
         entity.lifecycle.set_in_limbo_for_test(false);
-        entity.in_playfield = true;
+        entity.set_in_playfield(true);
         assert!(static_selection_gate(&entity, "ORCA", None, true));
         entity.health.set_for_test(0);
         entity.crash.set_crashing_for_test(true);

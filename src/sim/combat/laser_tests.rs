@@ -8,12 +8,13 @@ use crate::map::entities::EntityCategory;
 use crate::rules::art_data::ArtRegistry;
 use crate::rules::ini_parser::IniFile;
 use crate::rules::ruleset::RuleSet;
-use crate::sim::game_entity::{DelayedFire, GameEntity, PendingBuildingFire};
+use crate::sim::game_entity::GameEntity;
 use crate::sim::house_state::HouseState;
 use crate::sim::mission::state::MissionTestFixture;
 use crate::sim::mission::{MissionDispatchTimer, MissionId, MissionType};
 use crate::sim::projectile::ProjectileCoord;
 use crate::sim::timer::CdTimer;
+use crate::sim::world::{DelayedFire, PendingBuildingFire};
 use crate::sim::world::{LifecycleOutput, Simulation, TickLane};
 use crate::util::fixed_math::SimFixed;
 use serde_json::{Value, json};
@@ -68,7 +69,7 @@ fn fixture_rules(input: &Value) -> RuleSet {
     } else {
         ("LaserProbe", String::new())
     };
-    let rules_ini = IniFile::from_str(&format!(
+    let rules_ini = crate::sim::arena_fixture::clear_ground_ini(&format!(
         "[General]\nPrismType=ATESLA\nPrismSupportDuration={support_duration}\nPrismSupportDelay=45\n\
          [VehicleTypes]\n0=UNIT\n1=TARGET\n\
          [BuildingTypes]\n0=ATESLA\n1=OTHER\n2=GAPOWR\n\
@@ -100,10 +101,12 @@ fn place(sim: &mut Simulation, id: u64, kind: &str, category: EntityCategory, at
     entity.set_type_ref_for_test(sim.intern(kind));
     entity.set_owner_for_test(sim.intern("Americans"));
     entity.set_category_for_test(category);
-    entity.position.sub_x = SimFixed::from_num(at[0] % 256);
-    entity.position.sub_y = SimFixed::from_num(at[1] % 256);
-    entity.position.exact_z_leptons = Some(at[2]);
-    entity.foundation = if kind == "GAPOWR" { "2x2" } else { "1x1" }.into();
+    entity.position.set_sub_x(SimFixed::from_num(at[0] % 256));
+    entity.position.set_sub_y(SimFixed::from_num(at[1] % 256));
+    entity.position.set_exact_z_leptons(Some(at[2]));
+    entity
+        .type_facts
+        .set_foundation_for_test(if kind == "GAPOWR" { "2x2" } else { "1x1" }.into());
     sim.substrate.entities.insert(entity);
 }
 
@@ -206,7 +209,8 @@ fn admitted_laser_births_match_original_building_and_unit_callers() {
             .entities
             .get_mut(1)
             .unwrap()
-            .prism_support_count = count;
+            .prism_support_count
+            .set_for_test(count);
         if input["kind"] == "support" {
             let to = if name == "production_support" {
                 // Receiver FLH is independently established by the actual
@@ -276,11 +280,13 @@ fn production_frame_orders_laser_update_before_delayed_support_birth() {
     sim.session.binary_frame = 200;
     let to = ProjectileCoord::new(3600, 2700, 0);
     let source = sim.substrate.entities.get_mut(tower).unwrap();
-    source.pending_building_fire = Some(PendingBuildingFire {
-        remaining_ticks: 1,
-        fire: DelayedFire::SupportBeam { to },
-    });
-    source.prism_support_count = 2;
+    source
+        .pending_building_fire
+        .set_for_test(Some(PendingBuildingFire::new(
+            1,
+            DelayedFire::SupportBeam { to },
+        )));
+    source.prism_support_count.set_for_test(2);
     source.mission_leaf.set_building_ready_latch(1);
     source.mission.apply_test_fixture(MissionTestFixture {
         current: MissionId::from_known(MissionType::Guard),
@@ -294,7 +300,15 @@ fn production_frame_orders_laser_update_before_delayed_support_birth() {
     });
     sim.lifecycle_outputs.clear();
     let frame = sim
-        .advance_app_frame(&[], Some(&rules), None, 67, TickLane::Ordinary, None, crate::sim::world::FrameEffects::default())
+        .advance_app_frame(
+            &[],
+            Some(&rules),
+            None,
+            67,
+            TickLane::Ordinary,
+            None,
+            crate::sim::world::FrameEffects::default(),
+        )
         .unwrap();
     let relevant = frame
         .lifecycle_outputs
@@ -320,10 +334,10 @@ fn production_frame_orders_laser_update_before_delayed_support_birth() {
         .unwrap();
     assert_birth(*birth, &expected["laser"], "production support visit");
     let source = sim.substrate.entities.get(tower).unwrap();
-    assert!(source.pending_building_fire.is_none());
-    assert_eq!(source.prism_support_count, 0);
+    assert!(source.pending_building_fire.pending().is_none());
+    assert_eq!(source.prism_support_count.count(), 0);
     assert_eq!(
-        source.rearm_timer,
+        source.rearm_timer.timer(),
         CdTimer::from_raw(
             expected["actor_after"]["rearm"][0].as_i64().unwrap() as i32,
             expected["actor_after"]["rearm"][1].as_i64().unwrap() as i32,
@@ -374,12 +388,14 @@ fn retail_delayed_main_uses_preclear_count_and_failed_admission_emits_no_laser()
         source
             .attack_target
             .set_for_test(Some(TargetKind::Entity(target)));
-        source.pending_building_fire = Some(PendingBuildingFire {
-            remaining_ticks: 1,
-            fire: DelayedFire::Weapon(WeaponSlot::Primary),
-        });
-        source.prism_support_count = 1;
-        source.rearm_timer = CdTimer::started(100, 0);
+        source
+            .pending_building_fire
+            .set_for_test(Some(PendingBuildingFire::new(
+                1,
+                DelayedFire::Weapon(WeaponSlot::Primary),
+            )));
+        source.prism_support_count.set_for_test(1);
+        source.rearm_timer.set_for_test(CdTimer::started(100, 0));
         source.mission_leaf.set_building_ready_latch(1);
         source.mission.apply_test_fixture(MissionTestFixture {
             current: MissionId::from_known(MissionType::Attack),
@@ -393,7 +409,15 @@ fn retail_delayed_main_uses_preclear_count_and_failed_admission_emits_no_laser()
         });
         sim.lifecycle_outputs.clear();
         let frame = sim
-            .advance_app_frame(&[], Some(rules), None, 67, TickLane::Ordinary, None, crate::sim::world::FrameEffects::default())
+            .advance_app_frame(
+                &[],
+                Some(rules),
+                None,
+                67,
+                TickLane::Ordinary,
+                None,
+                crate::sim::world::FrameEffects::default(),
+            )
             .unwrap();
         let update = frame
             .lifecycle_outputs
@@ -418,7 +442,8 @@ fn retail_delayed_main_uses_preclear_count_and_failed_admission_emits_no_laser()
                     .entities
                     .get(tower)
                     .unwrap()
-                    .prism_support_count,
+                    .prism_support_count
+                    .count(),
                 0
             );
         } else {
@@ -428,7 +453,8 @@ fn retail_delayed_main_uses_preclear_count_and_failed_admission_emits_no_laser()
                     .entities
                     .get(tower)
                     .unwrap()
-                    .prism_support_count,
+                    .prism_support_count
+                    .count(),
                 1
             );
         }

@@ -19,11 +19,11 @@ pub struct SensorDeposit {
     /// a record of the add, not the removal's authority: every native remove
     /// re-reads the live owner (`0x00455980`, `0x004556D0`, `0x004DE940`), so
     /// `remove_cached_sensor_deposit` must not consult this field.
-    pub owner: InternedId,
-    pub center: (u16, u16),
-    pub add_radius: u16,
-    pub remove_radius: i16,
-    pub building_array: bool,
+    owner: InternedId,
+    center: (u16, u16),
+    add_radius: u16,
+    remove_radius: i16,
+    building_array: bool,
     /// `DetectDisguiseRange=` (`TechnoTypeClass+0x5F4`) circle stamped by
     /// `BuildingClass::AddDetectDisguiseAt @ 0x00455A80` alongside the sensor
     /// array. Unlike the sensor array, its paired
@@ -31,11 +31,48 @@ pub struct SensorDeposit {
     /// (`0x00455991` loads `+0x5F4`), so add and remove are symmetric and one
     /// radius suffices.
     #[serde(default)]
-    pub detect_disguise_radius: u16,
+    detect_disguise_radius: u16,
 }
 
 impl SensorDeposit {
-    fn unit(owner: InternedId, center: (u16, u16), radius: u16) -> Self {
+    /// The house the circle was stamped for.
+    pub(crate) fn owner(&self) -> InternedId {
+        self.owner
+    }
+
+    /// The stamped cell.
+    pub(crate) fn center(&self) -> (u16, u16) {
+        self.center
+    }
+
+    /// The add radius.
+    pub(crate) fn add_radius(&self) -> u16 {
+        self.add_radius
+    }
+
+    /// The remove radius.
+    pub(crate) fn remove_radius(&self) -> i16 {
+        self.remove_radius
+    }
+
+    /// A building's sensor array, not a unit's.
+    pub(crate) fn building_array(&self) -> bool {
+        self.building_array
+    }
+
+    /// The `DetectDisguiseRange=` circle's radius.
+    pub(crate) fn detect_disguise_radius(&self) -> u16 {
+        self.detect_disguise_radius
+    }
+
+    /// Install a fixture's stamped cell.
+    #[cfg(test)]
+    pub(crate) fn set_center_for_test(&mut self, center: (u16, u16)) {
+        self.center = center;
+    }
+
+    /// A unit sensor array's deposit: one radius for the add and the remove.
+    pub(crate) fn unit(owner: InternedId, center: (u16, u16), radius: u16) -> Self {
         Self {
             owner,
             center,
@@ -256,7 +293,7 @@ impl Simulation {
                 let object = rules.object(self.interner.resolve(entity.type_ref()))?;
                 Some((
                     entity.owner(),
-                    (entity.position.rx, entity.position.ry),
+                    (entity.position.rx(), entity.position.ry()),
                     unit_sensor_radius(entity.category(), object)?,
                     entity.lifecycle.in_limbo(),
                 ))
@@ -316,7 +353,7 @@ impl Simulation {
                 }
                 Some((
                     entity.owner(),
-                    (entity.position.rx, entity.position.ry),
+                    (entity.position.rx(), entity.position.ry()),
                     sight,
                     object.cloak_radius_in_cells,
                     detect_radius,
@@ -516,7 +553,12 @@ mod tests {
             "the overlapping second deposit remains positive"
         );
 
-        sim.substrate.entities.get_mut(second).unwrap().position.rx = 50;
+        sim.substrate
+            .entities
+            .get_mut(second)
+            .unwrap()
+            .position
+            .set_rx(50);
         sim.refresh_unit_sensor_at_per_cell(second, &rules);
         assert!(!sim.fog.has_sensor_for_house(americans, 33, 30));
         assert!(sim.fog.has_sensor_for_house(americans, 57, 30));
@@ -536,8 +578,8 @@ mod tests {
         {
             let entity = sim.substrate.entities.get_mut(second).unwrap();
             entity.set_owner_for_test(neutral);
-            entity.position.rx = 5;
-            entity.position.ry = 5;
+            entity.position.set_rx(5);
+            entity.position.set_ry(5);
         }
         sim.techno_limbo_with_rules(second, &rules, None);
         assert!(
@@ -767,7 +809,7 @@ mod tests {
                 .cloak
                 .as_mut()
                 .unwrap();
-            cloak.state = 0;
+            cloak.set_state_for_test(0);
         }
 
         let added = sim.apply_sensor_add(detector, (40, 30), 1, Some(&rules));
@@ -784,7 +826,7 @@ mod tests {
                 .cloak
                 .as_ref()
                 .unwrap()
-                .state,
+                .state(),
             0,
             "no CloakGenerator field means the vt+0x420 cloak arm never fires"
         );
@@ -802,7 +844,7 @@ mod tests {
                 .cloak
                 .as_mut()
                 .unwrap();
-            cloak.state = 0;
+            cloak.set_state_for_test(0);
         }
         let removed = sim.apply_unit_sensor_remove(detector, (40, 30), 1, Some(&rules));
         assert_eq!(removed, vec![newer, older]);
@@ -888,16 +930,16 @@ mod tests {
                 .cloak
                 .as_ref()
                 .unwrap()
-                .state,
+                .state(),
             0
         );
         // ReadScenario/FullInit keep A8E7AC nonzero through authored
         // readers, so Object5F4F1B skips the ordinary class gate. The
         // successful Techno6F6CFE tail still establishes mode-one membership.
         let authored_outside = sim.substrate.entities.get(2).unwrap();
-        assert!(!authored_outside.in_playfield);
+        assert!(!authored_outside.in_playfield());
         assert!(!authored_outside.lifecycle.in_limbo());
-        assert!(authored_outside.lifecycle.cell_marked);
+        assert!(authored_outside.lifecycle.cell_marked());
 
         let inside = sim
             .spawn_object_at_height("SUB", "Soviet", inside.0, inside.1, 0, 0, &rules)
@@ -912,7 +954,7 @@ mod tests {
                 .cloak
                 .as_ref()
                 .unwrap()
-                .state,
+                .state(),
             0
         );
         assert!(

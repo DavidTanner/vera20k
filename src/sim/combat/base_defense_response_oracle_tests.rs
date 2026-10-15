@@ -141,7 +141,9 @@ fn native_base_response_dispatch_matches_14_represented_original_tails() {
                 0,
                 category != EntityCategory::Infantry,
             );
-            actor.passively_acquired_target = true;
+            actor
+                .passive_scan
+                .set_passively_acquired_target_for_test(true);
             if category == EntityCategory::Infantry {
                 actor.mission_leaf.set_infantry_doing_verified(-1).unwrap();
             }
@@ -221,7 +223,7 @@ fn native_base_response_dispatch_matches_14_represented_original_tails() {
                 "{name}:{label}"
             );
             assert_eq!(
-                actor.passively_acquired_target,
+                actor.passive_scan.acquired(),
                 state["passive"] != 0,
                 "{name}:{label}"
             );
@@ -554,14 +556,14 @@ fn native_base_response_live_threat_matches_representable_original_rows() {
             EntityCategory::Unit
         });
         if input["linked_threat"].is_number() {
-            owner.bunker_occupant = Some(2);
+            owner.bunker.set_bunker_occupant_for_test(Some(2));
         }
         if count > 0 {
             let mut cargo = PassengerCargo::new(count as u32, 1);
             for id in 0..count as u64 {
                 assert!(cargo.board(id + 10, 1));
             }
-            owner.passenger_role = PassengerRole::Transport { cargo };
+            owner.passenger_role = PassengerRole::transport(cargo);
         }
         let mut entities = EntityStore::new();
         entities.insert(GameEntity::test_default(2, "LINK", "House", 5, 5));

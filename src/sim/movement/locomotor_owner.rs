@@ -65,11 +65,11 @@ pub(crate) fn piggyback_end_admitted(entity: &GameEntity) -> bool {
 /// `+0x6AE`, `0x0054DB24..0x0054DB36`).
 fn jumpjet_end_admitted(entity: &GameEntity) -> bool {
     entity.locomotor.as_ref().is_some_and(|locomotor| {
-        locomotor.piggyback.is_some()
+        locomotor.piggyback().is_some()
             && locomotor
                 .jumpjet_runtime()
                 .is_some_and(|runtime| !runtime.moving())
-    }) && (!entity.foot_locomotor_swap_active || entity.lift_may_end)
+    }) && (!entity.lift.swap_active() || entity.lift.may_end())
 }
 
 /// `TeleportLocomotionClass::Is_Ok_To_End @ 0x00719F30`: not moving (its
@@ -79,11 +79,11 @@ fn jumpjet_end_admitted(entity: &GameEntity) -> bool {
 /// state and goes at state 7, so its absence is both tests.
 fn teleport_end_admitted(entity: &GameEntity) -> bool {
     entity.locomotor.as_ref().is_some_and(|locomotor| {
-        locomotor.piggyback.is_some()
+        locomotor.piggyback().is_some()
             && locomotor
                 .teleport_runtime()
                 .is_some_and(|runtime| !runtime.is_moving() && runtime.chrono().is_none())
-    }) && !entity.foot_locomotor_swap_active
+    }) && !entity.lift.swap_active()
 }
 
 /// `DriveLocomotionClass::Is_Ok_To_End @ 0x004AF970` tests IsMoving, the
@@ -98,10 +98,10 @@ fn teleport_end_admitted(entity: &GameEntity) -> bool {
 fn drive_end_admitted(entity: &GameEntity) -> bool {
     entity.locomotor.as_ref().is_some_and(|locomotor| {
         locomotor.active_kind() == LocomotorKind::Drive
-            && locomotor.piggyback.is_some()
+            && locomotor.piggyback().is_some()
             && locomotor.drive_end_permitted()
     }) && super::motion_query::is_moving(entity) != Some(true)
-        && !entity.foot_locomotor_swap_active
+        && !entity.lift.swap_active()
 }
 
 /// What one END did.
@@ -132,16 +132,9 @@ fn end_piggyback(entity: &mut GameEntity) -> PiggybackEnd {
             lift_ended: false,
         };
     };
-    let mut lift_ended = false;
-    if kind == LocomotorKind::Jumpjet && (entity.foot_locomotor_swap_active || entity.lift_may_end)
-    {
-        entity.foot_locomotor_swap_active = false;
-        entity.lift_may_end = false;
-        lift_ended = true;
-    }
+    let lift_ended = kind == LocomotorKind::Jumpjet && entity.lift.end();
     if matches!(kind, LocomotorKind::Jumpjet | LocomotorKind::Teleport) {
-        entity.manipulated_by = None;
-        entity.warped_by_house = None;
+        entity.drop_credit.forget();
     }
     let restored = entity
         .locomotor
@@ -149,7 +142,7 @@ fn end_piggyback(entity: &mut GameEntity) -> PiggybackEnd {
         .is_some_and(|locomotor| locomotor.end_piggyback());
     if restored {
         // END transfers the controller without moving Object+9C.
-        entity.position.exact_z_leptons = Some(physical.z);
+        entity.position.set_exact_z_leptons(Some(physical.z));
     }
     PiggybackEnd {
         restored,
@@ -210,30 +203,51 @@ impl crate::sim::world::Simulation {
         ended.restored
     }
 
-    /// The active locomotor's `Mark_All_Occupation_Bits(0)` (ILocomotion
+    /// The active locomotor's `Mark_All_Occupation_Bits(mode)` (ILocomotion
     /// `+0x9C`): Drive `0x004B48D0` / Ship `0x006A3F00` release their track
-    /// occupation, Walk `0x0075CA30`, Teleport `0x0071A090` and Jumpjet
+    /// occupation, Hover `0x005171C0`, Walk `0x0075CA30`, Teleport `0x0071A090` and Jumpjet
     /// `0x0054D930` clear the owner's raw occupation at their head; Fly and
     /// Rocket take the empty base (`0x004B6620`). Foot Limbo calls it on the
     /// first Limbo (`0x004DB324`), the Chrono Warp on a Unit it arms
-    /// (`0x006CCA65`); each body is skipped for an object already in Limbo.
+    /// (`0x006CCA65`), and Unit Deploy739692/739A94. The represented
+    /// live callers skip an object already in Limbo. Drive/Ship share their
+    /// existing Apply_Track_Occupation_Mode owner for both modes.
     ///
-    /// Hover5171C0 clears the coordinate from its head getter514D10, which
-    /// substitutes Location for a null head; no power/limbo gate lives in it.
-    pub(crate) fn locomotor_mark_all_occupation_bits_up(&mut self, id: u64) {
-        self.release_track_occupation_before_foot_limbo(id);
-        self.release_walk_occupation_before_foot_limbo(id);
-        self.release_teleport_occupation_before_foot_limbo(id);
-        self.release_jumpjet_occupation_before_foot_limbo(id);
-        let head = self.substrate.entities.get(id).and_then(|entity| {
-            entity.locomotor.as_ref()?.hover_runtime()?;
-            Some(super::foot_coordinate::head_or_current(
-                super::foot_coordinate::stored_head(entity),
-                super::foot_coordinate::current_coordinate(entity),
-            ))
-        });
-        if let Some(head) = head {
-            self.object_raw_receiver_at(id, head, false);
+    /// Hover's mode1 is an empty return. Mode1 for Walk/Teleport/Jumpjet
+    /// remains unported: selected retail MCV and
+    /// Slave Miner Deploy use Drive; modded other-class Deploy failure can
+    /// miss that class's head claim before its ordinary Foot Mark(DOWN).
+    /// Hover5171C0 delegates to the shared Head_To getter514D10, which
+    /// substitutes Location for a null head and has no power/limbo gate.
+    pub(crate) fn locomotor_mark_all_occupation_bits(&mut self, id: u64, put: bool) {
+        let kind = self
+            .substrate
+            .entities
+            .get(id)
+            .and_then(|entity| entity.locomotor.as_ref().map(|loco| loco.active_kind()));
+        match kind {
+            Some(crate::rules::locomotor_type::LocomotorKind::Drive) => {
+                self.track_apply_occupation(id, super::track_process::TrackFamily::Drive, put);
+            }
+            Some(crate::rules::locomotor_type::LocomotorKind::Ship) => {
+                self.track_apply_occupation(id, super::track_process::TrackFamily::Ship, put);
+            }
+            Some(crate::rules::locomotor_type::LocomotorKind::Hover) => {
+                self.hover_mark_all_occupation_bits(id, put);
+            }
+            Some(
+                crate::rules::locomotor_type::LocomotorKind::Fly
+                | crate::rules::locomotor_type::LocomotorKind::Rocket,
+            ) => {}
+            _ if !put => {
+                self.release_walk_occupation_before_foot_limbo(id);
+                self.release_teleport_occupation_before_foot_limbo(id);
+                self.release_jumpjet_occupation_before_foot_limbo(id);
+            }
+            Some(kind) => {
+                log::debug!("unported {kind:?} Mark_All_Occupation_Bits(1) for {id}");
+            }
+            None => {}
         }
     }
 }

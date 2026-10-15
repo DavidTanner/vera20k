@@ -117,14 +117,14 @@ fn fixture(input: &serde_json::Value) -> (Simulation, RuleSet) {
         sim.try_reveal_entity(
             1,
             RevealRequest {
-                position: RevealPosition {
-                    exact_z_leptons: None,
-                    rx: 52,
-                    ry: 52,
-                    z: level,
-                    sub_x: SimFixed::from_num(128),
-                    sub_y: SimFixed::from_num(128)
-                },
+                position: RevealPosition::new(
+                    52,
+                    52,
+                    level,
+                    None,
+                    SimFixed::from_num(128),
+                    SimFixed::from_num(128)
+                ),
                 placement: PlacementEvidence::MarkSucceeded,
                 logic_eligible: true,
             }
@@ -138,7 +138,7 @@ fn fixture(input: &serde_json::Value) -> (Simulation, RuleSet) {
     assert_eq!((xyz[0], xyz[1]), (START, START));
     let frame = sim.session.binary_frame;
     let entity = sim.substrate.entities.get_mut(1).unwrap();
-    entity.position.exact_z_leptons = Some(xyz[2]);
+    entity.position.set_exact_z_leptons(Some(xyz[2]));
     entity.health.set_for_test(int(input, "health", 0) as i32);
     entity
         .crash
@@ -153,8 +153,9 @@ fn fixture(input: &serde_json::Value) -> (Simulation, RuleSet) {
     entity.body_facing = facing;
     let loco = entity.locomotor.as_mut().unwrap();
     loco.set_fly_target_height(int(input, "target_height", 1500) as i32);
-    loco.fly_runtime_mut().unwrap().current_speed =
-        SimFixed::from_bits(int(input, "speed_bits", 65536) as i32);
+    loco.fly_runtime_mut()
+        .unwrap()
+        .set_current_speed(SimFixed::from_bits(int(input, "speed_bits", 65536) as i32));
     if int(input, "moving", 1) != 0 {
         let destination = input["destination"].as_array().map_or(
             DriveCoord {
@@ -225,8 +226,8 @@ fn crash_matches_native_rows() {
         } else {
             let rocking = entity.rocking.as_ref().unwrap();
             for (actual, expected) in [
-                (rocking.vel_sideways, &row["sideways_bits"]),
-                (rocking.vel_forwards, &row["forwards_bits"]),
+                (rocking.vel_sideways(), &row["sideways_bits"]),
+                (rocking.vel_forwards(), &row["forwards_bits"]),
             ] {
                 assert!(
                     (actual.to_num::<f64>() - f32_hex(expected)).abs() <= 1.0 / 65536.0,
@@ -372,14 +373,14 @@ fn crash_fall_matches_native_frames_to_the_impact() {
                     sim.try_reveal_entity(
                         victim,
                         RevealRequest {
-                            position: RevealPosition {
-                                exact_z_leptons: None,
-                                rx: (expected[0] / 256) as u16,
-                                ry: (expected[1] / 256) as u16,
-                                z: int(input, "level", 0) as u8,
-                                sub_x: SimFixed::from_num(expected[0] % 256),
-                                sub_y: SimFixed::from_num(expected[1] % 256),
-                            },
+                            position: RevealPosition::new(
+                                (expected[0] / 256) as u16,
+                                (expected[1] / 256) as u16,
+                                int(input, "level", 0) as u8,
+                                None,
+                                SimFixed::from_num(expected[0] % 256),
+                                SimFixed::from_num(expected[1] % 256)
+                            ),
                             placement: PlacementEvidence::MarkSucceeded,
                             logic_eligible: true,
                         }
@@ -438,7 +439,7 @@ fn crash_fall_matches_native_frames_to_the_impact() {
                 let entity = sim.substrate.entities.get(1).unwrap();
                 let xy = crate::sim::movement::ground_pose::position_world_xy(&entity.position);
                 assert_eq!(
-                    [xy[0], xy[1], entity.position.exact_z_leptons.unwrap()],
+                    [xy[0], xy[1], entity.position.exact_z_leptons().unwrap()],
                     [expected[0], expected[1], expected[2]],
                     "{name} frame {n}"
                 );
@@ -484,14 +485,14 @@ fn a_crash_fall_lists_the_wreck_in_its_impact_cell() {
         sim.try_reveal_entity(
             bystander,
             RevealRequest {
-                position: RevealPosition {
-                    exact_z_leptons: None,
-                    rx: cell.0,
-                    ry: cell.1,
-                    z: 0,
-                    sub_x: SimFixed::from_num(128),
-                    sub_y: SimFixed::from_num(128),
-                },
+                position: RevealPosition::new(
+                    cell.0,
+                    cell.1,
+                    0,
+                    None,
+                    SimFixed::from_num(128),
+                    SimFixed::from_num(128)
+                ),
                 placement: PlacementEvidence::MarkSucceeded,
                 logic_eligible: true,
             }
@@ -510,8 +511,8 @@ fn a_crash_fall_lists_the_wreck_in_its_impact_cell() {
         assert_eq!(stats.impact, n + 1 == frames.len(), "frame {n}");
     }
     let wreck = sim.substrate.entities.get(1).unwrap();
-    assert!(wreck.lifecycle.cell_marked);
-    assert_eq!((wreck.position.rx, wreck.position.ry), cell);
+    assert!(wreck.lifecycle.cell_marked());
+    assert_eq!((wreck.position.rx(), wreck.position.ry()), cell);
     assert!(sim.substrate.occupancy.contains_entity(cell.0, cell.1, 1));
     assert_eq!(sim.next_cell_object(Entity(1)), Some(Entity(bystander)));
 }
@@ -572,14 +573,14 @@ fn a_shot_down_aircraft_falls_and_detonates_through_advance_tick() {
         sim.try_reveal_entity(
             shooter,
             RevealRequest {
-                position: RevealPosition {
-                    exact_z_leptons: None,
-                    rx: 40,
-                    ry: 40,
-                    z: 0,
-                    sub_x: SimFixed::from_num(128),
-                    sub_y: SimFixed::from_num(128),
-                },
+                position: RevealPosition::new(
+                    40,
+                    40,
+                    0,
+                    None,
+                    SimFixed::from_num(128),
+                    SimFixed::from_num(128)
+                ),
                 placement: PlacementEvidence::MarkSucceeded,
                 logic_eligible: true,
             }
@@ -600,14 +601,16 @@ fn a_shot_down_aircraft_falls_and_detonates_through_advance_tick() {
         .entities
         .get(1)
         .expect("a crashing aircraft stays represented");
-    assert!(entity.crash.is_crashing() && entity.lifecycle.object_alive() && !entity.dying);
+    assert!(
+        entity.crash.is_crashing() && entity.lifecycle.object_alive() && !entity.death.is_dying()
+    );
     assert_eq!(entity.health.current(), 0);
-    assert_eq!(entity.killed_by, Some(soviets));
+    assert_eq!(entity.kill_record.killer(), Some(soviets));
     assert!(
         entity
             .rocking
             .as_ref()
-            .is_some_and(|r| r.vel_sideways != SimFixed::ZERO)
+            .is_some_and(|r| r.vel_sideways() != SimFixed::ZERO)
     );
 
     let grid = crate::sim::pathfinding::PathGrid::test_all_passable(70, 70);
@@ -838,14 +841,14 @@ fn jumpjet_fixture(balloon: bool) -> (Simulation, RuleSet, u64, u64) {
             sim.try_reveal_entity(
                 id,
                 RevealRequest {
-                    position: RevealPosition {
-                        exact_z_leptons: None,
+                    position: RevealPosition::new(
                         rx,
                         ry,
-                        z: 0,
-                        sub_x: SimFixed::from_num(128),
-                        sub_y: SimFixed::from_num(128),
-                    },
+                        0,
+                        None,
+                        SimFixed::from_num(128),
+                        SimFixed::from_num(128)
+                    ),
                     placement: PlacementEvidence::MarkSucceeded,
                     logic_eligible: true,
                 }
@@ -864,13 +867,13 @@ fn jumpjet_fixture(balloon: bool) -> (Simulation, RuleSet, u64, u64) {
     {
         let entity = sim.substrate.entities.get_mut(1).unwrap();
         entity.health.set_for_test(300);
-        entity.position.exact_z_leptons = Some(500);
+        entity.position.set_exact_z_leptons(Some(500));
         entity.body_facing = FacingClass::new(0x4000, 5);
         let loco = entity.locomotor.as_mut().unwrap();
         let runtime = loco.jumpjet_runtime_mut().unwrap();
         let mut flight = runtime.flight();
-        flight.facing.snap(0x4000, 1000);
-        flight.target_height = 500;
+        flight.facing_mut().snap(0x4000, 1000);
+        flight.set_target_height(500);
         *runtime = runtime
             .clone()
             .with_phase_for_test(crate::sim::movement::jumpjet_movement::jumpjet_flight::STATE_HOLD)
@@ -881,9 +884,7 @@ fn jumpjet_fixture(balloon: bool) -> (Simulation, RuleSet, u64, u64) {
                 z: 0,
             })
             .with_flight_for_test(flight);
-        entity.passenger_role = PassengerRole::Transport {
-            cargo: PassengerCargo::new(2, 0),
-        };
+        entity.passenger_role = PassengerRole::transport(PassengerCargo::new(2, 0));
     }
     sim.add_entity_occupancy(1);
     // This held-aircraft midpoint follows native takeoff's tracker Add;
@@ -892,16 +893,22 @@ fn jumpjet_fixture(balloon: bool) -> (Simulation, RuleSet, u64, u64) {
     assert!(sim.set_cell_air_slot((52, 52), Some(1)));
     for _ in 0..2 {
         let rider = sim
-            .construct_object_limbo_at_height("RIDER", "Americans", 52, 52, 0, 0, &rules)
+            .construct_object_limbo_at_height(
+                "RIDER",
+                "Americans",
+                52,
+                52,
+                0,
+                0,
+                &rules,
+                crate::sim::world::FrameEffects::default(),
+            )
             .expect("rider");
         sim.substrate
             .entities
             .get_mut(rider)
             .unwrap()
-            .passenger_role = PassengerRole::Inside {
-            transport_id: 1,
-            open_topped: false,
-        };
+            .passenger_role = PassengerRole::inside_for_test(1, false);
         sim.substrate
             .entities
             .get_mut(1)
@@ -990,7 +997,7 @@ fn fall_to_the_impact(sim: &mut Simulation, rules: &RuleSet) -> JumpjetFall {
             Some(entity) if entity.lifecycle.object_alive() => {
                 assert!(entity.crash.is_crashing() && entity.health.current() == 0);
                 fall.heights
-                    .push(entity.position.exact_z_leptons.expect("exact Z"));
+                    .push(entity.position.exact_z_leptons().expect("exact Z"));
             }
             _ => {
                 fall.impact_frame = frame;
@@ -1042,8 +1049,8 @@ fn a_shot_down_jumpjet_crashes_through_the_production_receiver() {
         .passenger_role
         .cargo()
         .unwrap()
-        .passengers
-        .clone();
+        .passengers()
+        .to_vec();
     shoot_down(&mut sim, &rules, shooter);
 
     let entity = sim
@@ -1051,17 +1058,24 @@ fn a_shot_down_jumpjet_crashes_through_the_production_receiver() {
         .entities
         .get(1)
         .expect("a crashing unit stays");
-    assert!(entity.crash.is_crashing() && entity.lifecycle.object_alive() && !entity.dying);
+    assert!(
+        entity.crash.is_crashing() && entity.lifecycle.object_alive() && !entity.death.is_dying()
+    );
     assert_eq!(entity.health.current(), 0);
     assert!(
         entity
             .rocking
             .as_ref()
-            .is_some_and(|r| r.vel_sideways != SimFixed::ZERO),
+            .is_some_and(|r| r.vel_sideways() != SimFixed::ZERO),
         "Crash drew the spin"
     );
     assert!(
-        entity.passenger_role.cargo().unwrap().passengers.is_empty(),
+        entity
+            .passenger_role
+            .cargo()
+            .unwrap()
+            .passengers()
+            .is_empty(),
         "KillPassengers emptied the cargo"
     );
     for rider in riders {
@@ -1202,7 +1216,7 @@ fn a_jumpjet_shot_down_after_its_null_destination_reaches_the_ground() {
         .substrate
         .entities
         .get(1)
-        .is_some_and(|entity| (entity.position.rx, entity.position.ry) == (52, 52))
+        .is_some_and(|entity| (entity.position.rx(), entity.position.ry()) == (52, 52))
     {
         assert!(frame < 1200, "the cruise never left the hover cell");
         sim.session.binary_frame = frame;
@@ -1228,7 +1242,7 @@ fn a_jumpjet_shot_down_after_its_null_destination_reaches_the_ground() {
         crate::sim::movement::jumpjet_movement::jumpjet_flight::STATE_TRANSLATE
     );
     let entity = sim.substrate.entities.get_mut(1).unwrap();
-    let here = (entity.position.rx, entity.position.ry);
+    let here = (entity.position.rx(), entity.position.ry());
     sim.assign_null_destination(
         1,
         Some(&rules),
@@ -1268,11 +1282,11 @@ fn a_jumpjet_shot_down_touching_down_still_crashes() {
     let (mut sim, rules, _, shooter) = jumpjet_fixture(false);
     {
         let entity = sim.substrate.entities.get_mut(1).unwrap();
-        entity.position.exact_z_leptons = Some(10);
+        entity.position.set_exact_z_leptons(Some(10));
         let loco = entity.locomotor.as_mut().unwrap();
         let runtime = loco.jumpjet_runtime_mut().unwrap();
         let mut flight = runtime.flight();
-        flight.target_height = 0;
+        flight.set_target_height(0);
         *runtime = runtime
             .clone()
             .with_phase_for_test(
@@ -1294,7 +1308,7 @@ fn a_jumpjet_shot_down_touching_down_still_crashes() {
         runtime.phase(),
         crate::sim::movement::jumpjet_movement::jumpjet_flight::STATE_ASCEND
     );
-    assert_eq!(runtime.flight().target_height, 500);
+    assert_eq!(runtime.flight().target_height(), 500);
     assert!(runtime.moving() && !runtime.landing_latched());
 
     let fall = fall_to_the_impact(&mut sim, &rules);
@@ -1346,14 +1360,14 @@ fn a_jumpjet_wreck_scans_only_on_its_committed_guard() {
             sim.try_reveal_entity(
                 enemy,
                 RevealRequest {
-                    position: RevealPosition {
-                        exact_z_leptons: None,
-                        rx: 54,
-                        ry: 52,
-                        z: 0,
-                        sub_x: SimFixed::from_num(128),
-                        sub_y: SimFixed::from_num(128),
-                    },
+                    position: RevealPosition::new(
+                        54,
+                        52,
+                        0,
+                        None,
+                        SimFixed::from_num(128),
+                        SimFixed::from_num(128)
+                    ),
                     placement: PlacementEvidence::MarkSucceeded,
                     logic_eligible: true,
                 }
@@ -1378,7 +1392,7 @@ fn a_jumpjet_wreck_scans_only_on_its_committed_guard() {
                 MissionId::from_known(mission),
                 "no handler changes a wreck's mission"
             );
-            acquired |= wreck.attack_target.target().is_some() && wreck.passively_acquired_target;
+            acquired |= wreck.attack_target.target().is_some() && wreck.passive_scan.acquired();
         }
         assert_eq!(acquired, scans, "{mission:?}");
     }
@@ -1391,7 +1405,7 @@ fn a_landed_jumpjet_dies_where_it_stands() {
     let (mut sim, rules, _, shooter) = jumpjet_fixture(false);
     {
         let entity = sim.substrate.entities.get_mut(1).unwrap();
-        entity.position.exact_z_leptons = Some(0);
+        entity.position.set_exact_z_leptons(Some(0));
         let loco = entity.locomotor.as_mut().unwrap();
         let runtime = loco.jumpjet_runtime_mut().unwrap();
         *runtime = runtime.clone().with_phase_for_test(
@@ -1602,17 +1616,17 @@ fn retail_dustbowl_flak_shoots_a_harrier_down() {
                 crash_frame = Some(frame);
                 assert!(height > 0, "shot down in the air");
                 assert_eq!(entity.health.current(), 0);
-                assert_eq!(entity.killed_by, Some(russians));
+                assert_eq!(entity.kill_record.killer(), Some(russians));
             }
             let rocking = entity.rocking.as_ref().expect("a crash spins");
-            spun |= rocking.angle_sideways != SimFixed::ZERO;
+            spun |= rocking.angle_sideways() != SimFixed::ZERO;
             heights.push(height);
             let xy = crate::sim::movement::ground_pose::position_world_xy(&entity.position);
             track.push((xy[0], xy[1]));
             println!(
                 "frame {frame}: height {height}, roll {:.4}, pitch {:.4}",
-                rocking.angle_sideways.to_num::<f64>(),
-                rocking.angle_forwards.to_num::<f64>()
+                rocking.angle_sideways().to_num::<f64>(),
+                rocking.angle_forwards().to_num::<f64>()
             );
             for (id, anim) in sim.substrate.anims.iter() {
                 if anim.type_id == smoke_type {
@@ -1760,16 +1774,22 @@ fn retail_dustbowl_flak_shoots_down_a_nighthawk_and_a_kirov() {
     let riders: Vec<u64> = (0..2)
         .map(|_| {
             let rider = sim
-                .construct_object_limbo_at_height("E1", "Americans", 0, 0, 0, 0, &resources.rules)
+                .construct_object_limbo_at_height(
+                    "E1",
+                    "Americans",
+                    0,
+                    0,
+                    0,
+                    0,
+                    &resources.rules,
+                    crate::sim::world::FrameEffects::default(),
+                )
                 .expect("a GI");
             sim.substrate
                 .entities
                 .get_mut(rider)
                 .unwrap()
-                .passenger_role = PassengerRole::Inside {
-                transport_id: nighthawk,
-                open_topped: false,
-            };
+                .passenger_role = PassengerRole::inside_for_test(nighthawk, false);
             sim.substrate
                 .entities
                 .get_mut(nighthawk)
@@ -1908,14 +1928,14 @@ fn retail_dustbowl_flak_shoots_down_a_nighthawk_and_a_kirov() {
                 wreck.crash_frame = Some(frame);
                 assert!(height > 0, "{id} shot down in the air");
                 assert_eq!(entity.health.current(), 0);
-                assert_eq!(entity.killed_by, Some(russians));
+                assert_eq!(entity.kill_record.killer(), Some(russians));
                 if id == nighthawk {
                     riders_killed_by_crash = Some(sim.houses[&russians].stats.units_killed());
                     assert!(
                         entity
                             .passenger_role
                             .cargo()
-                            .is_some_and(|cargo| cargo.passengers.is_empty()),
+                            .is_some_and(|cargo| cargo.passengers().is_empty()),
                         "the riders died with the Nighthawk"
                     );
                 }

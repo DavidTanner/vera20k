@@ -37,7 +37,7 @@ pub(crate) fn set_walk_destination_coord(
     let Some(loco) = entity
         .locomotor
         .as_mut()
-        .filter(|l| l.kind == LocomotorKind::Walk)
+        .filter(|l| l.active_kind() == LocomotorKind::Walk)
     else {
         return;
     };
@@ -61,14 +61,14 @@ fn is_drive_locomotor(entity: &GameEntity) -> bool {
     entity
         .locomotor
         .as_ref()
-        .is_some_and(|loco| matches!(loco.kind, LocomotorKind::Drive))
+        .is_some_and(|loco| matches!(loco.active_kind(), LocomotorKind::Drive))
 }
 
 fn is_ship_locomotor(entity: &GameEntity) -> bool {
     entity
         .locomotor
         .as_ref()
-        .is_some_and(|loco| matches!(loco.kind, LocomotorKind::Ship))
+        .is_some_and(|loco| matches!(loco.active_kind(), LocomotorKind::Ship))
 }
 
 pub(crate) fn target_cell_coord(
@@ -339,23 +339,23 @@ pub(crate) fn set_destination_internal_coord(
 /// the locomotor dispatch. The Foot+0x6AC skip (4D9607) stops here, and a
 /// Teleport owner's Move_To is dispatched by the Unit setter.
 pub(super) fn publish_nav_com(entity: &mut GameEntity, target: NavTargetRef) {
-    entity.navigation.nav_com_aux = None;
-    entity.navigation.nav_com = Some(target);
-    entity.navigation.pending_destination_setter = false;
+    entity.navigation.set_nav_com_aux(None);
+    entity.navigation.set_nav_com(Some(target));
+    entity.navigation.set_pending_destination_setter(false);
 }
 
 /// Foot4D94C7/4D9510 NULL reference publication, before locomotor Stop.
 pub(super) fn publish_null_nav_com(entity: &mut GameEntity) {
-    entity.navigation.nav_com_aux = None;
-    entity.navigation.nav_com = None;
-    entity.navigation.pending_destination_setter = false;
+    entity.navigation.set_nav_com_aux(None);
+    entity.navigation.set_nav_com(None);
+    entity.navigation.set_pending_destination_setter(false);
 }
 
 /// FootClass::Stop_Moving-equivalent owner clear (`0x004DF0D0`): zeroes only
 /// the owner destination pair (NavCom and its auxiliary slot), nothing else.
 pub(crate) fn foot_stop_moving(entity: &mut GameEntity) {
-    entity.navigation.nav_com_aux = None;
-    entity.navigation.nav_com = None;
+    entity.navigation.set_nav_com_aux(None);
+    entity.navigation.set_nav_com(None);
 }
 
 fn drive_set_destination(
@@ -397,8 +397,8 @@ pub(super) fn track_move_to(
 }
 
 /// ILocomotion +0x48 Stop_Moving of the active Drive, Ship or Hover
-/// instance, the only call of Foot's failed-path receiver 0x4D55C0 (Unit
-/// +0x500). It clears the locomotor destination; NavCom and the committed
+/// instance, as FootStopDriver4D55C0/Unit+500 dispatches from FindPath,
+/// FireAt and first-Limbo. It clears the locomotor destination; NavCom and the committed
 /// head are untouched.
 pub(crate) fn track_stop_moving(entity: &mut GameEntity) -> bool {
     if is_drive_locomotor(entity) {
@@ -504,16 +504,16 @@ impl crate::sim::world::Simulation {
             return false;
         };
         let refused = nonnull
-            && (entity.foot_locomotor_swap_active
+            && (entity.lift.swap_active()
                 || entity.passenger_role.in_open_transport()
-                || entity.bunker_link.installed_in().is_some());
-        let holds = entity.locomotor_target.is_some();
+                || entity.bunker.link().installed_in().is_some());
+        let holds = entity.lift.target().is_some();
         self.substrate
             .entities
             .get_mut(id)
             .unwrap()
             .navigation
-            .nav_com_aux = None;
+            .set_nav_com_aux(None);
         if refused {
             return false;
         }
@@ -563,7 +563,7 @@ impl crate::sim::world::Simulation {
             self.locomotor_stop_moving(id, rules, registry, frame_effects)
                 .unwrap_or_else(|cause| panic!("Foot null destination {id}: {cause}"));
             if let Some(entity) = self.substrate.entities.get_mut(id) {
-                entity.navigation.nav_com = None;
+                entity.navigation.set_nav_com(None);
             }
         }
         let timing = super::DestinationTiming::from_rules(self.session.binary_frame, rules);
@@ -655,8 +655,11 @@ mod tests {
         );
         loco.store_track_target_fraction(TrackFamily::Ship, SIM_ONE);
         entity.foot_speed.set_speed_fraction(SIM_HALF);
-        entity.navigation.path_replay.directions = vec![2, 2];
-        entity.navigation.path_replay.cursor = 0;
+        entity
+            .navigation
+            .path_replay
+            .set_directions_for_test(vec![2, 2]);
+        entity.navigation.path_replay.set_cursor(0);
 
         track_stop_moving(&mut entity);
         let loco = entity.locomotor.as_ref().unwrap();
@@ -665,7 +668,7 @@ mod tests {
             loco.track_target_fraction(TrackFamily::Ship),
             Some(TRACK_STOP_TARGET_FRACTION)
         );
-        assert_eq!(entity.navigation.path_replay.cursor, 0);
+        assert_eq!(entity.navigation.path_replay.cursor(), 0);
         assert_eq!(entity.foot_speed.applied_fraction(), SIM_ZERO);
     }
 
@@ -673,11 +676,14 @@ mod tests {
     fn gsi_13_06_ship_stop_preserves_committed_head_and_owner_speed() {
         let mut entity = GameEntity::test_default(1, "DLPH", "Americans", 3, 3);
         entity.locomotor = Some(LocomotorState::for_test_kind(LocomotorKind::Ship));
-        entity.navigation.nav_com = Some(NavTargetRef::cell(5, 3));
-        entity.navigation.path_replay = crate::sim::components::FootPathQueue {
-            directions: vec![64, 64],
-            cursor: 1,
-            ..Default::default()
+        entity
+            .navigation
+            .set_nav_com(Some(NavTargetRef::cell(5, 3)));
+        entity.navigation.path_replay = {
+            let mut value = crate::sim::components::FootPathQueue::default();
+            value.set_directions_for_test(vec![64, 64]);
+            value.set_cursor(1);
+            value
         };
         entity.foot_speed.set_speed_fraction(SIM_HALF);
         entity
@@ -777,7 +783,10 @@ mod tests {
         let first =
             nav_target_coordinate(NavTargetRef::Entity { id: 2 }, None, &entities, None, None)
                 .unwrap();
-        entities.get_mut(2).unwrap().position.rx += 1;
+        {
+            let position = &mut entities.get_mut(2).unwrap().position;
+            position.set_rx(position.rx() + 1);
+        }
         let second =
             nav_target_coordinate(NavTargetRef::Entity { id: 2 }, None, &entities, None, None)
                 .unwrap();

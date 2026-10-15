@@ -53,15 +53,15 @@ pub(crate) fn spawn_building_free_unit(
 ) -> bool {
     let Some((owner_id, type_ref, rx, ry, width, height)) =
         sim.substrate.entities.get(stable_id).and_then(|entity| {
-            if entity.category() != EntityCategory::Structure || entity.dying {
+            if entity.category() != EntityCategory::Structure || entity.death.is_dying() {
                 return None;
             }
-            let (width, height) = foundation_dimensions(&entity.foundation);
+            let (width, height) = foundation_dimensions(entity.type_facts.foundation());
             Some((
                 entity.owner(),
                 entity.type_ref(),
-                entity.position.rx,
-                entity.position.ry,
+                entity.position.rx(),
+                entity.position.ry(),
                 width,
                 height,
             ))
@@ -114,7 +114,7 @@ fn try_spawn_building_free_unit(
     // object is not on the map until one does.
     let (initial_rx, initial_ry) = primary.unwrap_or(search_seed);
     let initial_z = sim.terrain_cell_level(initial_rx, initial_ry).unwrap_or(0);
-    let Some(free_unit_id) = sim.spawn_object_limbo_at_height(
+    let Some(free_unit_id) = sim.construct_object_limbo_at_height(
         &free_unit_type,
         owner,
         initial_rx,
@@ -122,6 +122,7 @@ fn try_spawn_building_free_unit(
         FREE_UNIT_FACING_PRIMARY,
         initial_z,
         rules,
+        effects,
     ) else {
         let refund = refund_free_unit(sim, rules, owner, &free_unit_type);
         log::warn!(

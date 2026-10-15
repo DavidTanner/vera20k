@@ -24,14 +24,14 @@ fn sample(s: &Scene, id: u64) -> Sample {
     let miner = s.sim.substrate.entities.get(id).unwrap();
     let state = miner.miner.as_ref().unwrap();
     Sample {
-        cell: (miner.position.rx, miner.position.ry),
+        cell: (miner.position.rx(), miner.position.ry()),
         mission: miner.mission.current(),
         contact: miner.radio_contacts.slot(0),
-        tethered: miner.dock_entered_with.is_some(),
-        unloading: state.unload_active,
+        tethered: miner.tether.partner().is_some(),
+        unloading: state.unload_active(),
         facing: miner.body_facing_current(s.sim.session.binary_frame),
         ore: state
-            .cargo
+            .cargo()
             .iter()
             .filter(|b| b.resource_type == ResourceType::Ore)
             .count(),
@@ -77,13 +77,13 @@ fn spawn_returning_miner(s: &mut Scene, cell: (u16, u16)) -> u64 {
     entity
         .mission
         .set_handler_state(MinerState::ReturnToRefinery.cursor());
-    entity.miner.as_mut().unwrap().cargo = vec![
+    entity.miner.as_mut().unwrap().set_cargo_for_test(vec![
         CargoBale {
             resource_type: ResourceType::Ore,
             value: 25,
         };
         40
-    ];
+    ]);
     id
 }
 
@@ -191,7 +191,7 @@ fn assert_whole_visit(s: &mut Scene) {
     assert_ne!(end.mission, MissionId::from_known(MissionType::Unload));
     let refinery = s.sim.substrate.entities.get(s.refinery).unwrap();
     assert!(refinery.radio_contacts.is_empty(), "the slot is free again");
-    assert_eq!(refinery.dock_entered_with, None);
+    assert_eq!(refinery.tether.partner(), None);
 }
 
 #[test]
@@ -314,7 +314,7 @@ fn a_refinery_order_mid_unload_redocks_and_pays() {
     assert_eq!(paid, 1000, "the whole load is paid after the re-dock");
     let refinery = s.sim.substrate.entities.get(s.refinery).unwrap();
     assert!(refinery.radio_contacts.is_empty());
-    assert_eq!(refinery.dock_entered_with, None);
+    assert_eq!(refinery.tether.partner(), None);
 }
 
 /// Selling the refinery under an unloading miner: the sale's stage-0 visit,
@@ -373,7 +373,8 @@ fn selling_the_refinery_mid_unload_hands_the_miner_to_harvest() {
             .entities
             .get(s.miner)
             .unwrap()
-            .display_type_override,
+            .display_type_override
+            .image(),
         None
     );
     frame(&mut s);
@@ -461,7 +462,7 @@ fn a_refinery_destroyed_mid_unload_hands_the_miner_to_harvest() {
         "NowDead clears pending500 even though it names another building",
     );
     let building = s.sim.substrate.entities.get(refinery).unwrap();
-    assert!(!building.lifecycle.object_alive() && !building.lifecycle.cell_marked);
+    assert!(!building.lifecycle.object_alive() && !building.lifecycle.cell_marked());
     let trace = &s.sim.lifecycle_test_events_for_test()[trace_start..];
     let expiry = trace
         .iter()

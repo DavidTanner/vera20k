@@ -418,7 +418,7 @@ fn repair_ordinary_bridge(
         .values()
         .find_map(|e| {
             (runtime.simulation.resolve(e.type_ref()) == "CABHUT"
-                && (e.position.rx, e.position.ry) == hut_coord)
+                && (e.position.rx(), e.position.ry()) == hut_coord)
                 .then_some(e.stable_id())
         })
         .unwrap();

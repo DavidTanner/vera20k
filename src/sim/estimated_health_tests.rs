@@ -105,15 +105,15 @@ fn active_tube_bypasses_recovery_until_ordinary_ai_resumes() {
         entity.set_category_for_test(category);
         entity.lifecycle.set_in_limbo_for_test(false);
         entity.estimated_health = EstimatedHealth::from_raw(-100);
-        entity.low_bridge_tube_state = Some(LowBridgeTubeMovementState {
-            tube_id: TubeId(0),
-            cursor: 1,
-            target: DriveCoord {
+        entity.low_bridge_tube_state = Some(LowBridgeTubeMovementState::for_test(
+            TubeId(0),
+            1,
+            DriveCoord {
                 x: 384,
                 y: 128,
                 z: 17,
             },
-        });
+        ));
         sim.substrate.entities.insert(entity);
         sim.set_logic_order_for_test(vec![1]);
         sim.session.binary_frame = 4;

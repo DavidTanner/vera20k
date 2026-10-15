@@ -59,11 +59,120 @@
 use crate::rules::overlay_types::OverlayTypeRegistry;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::combat::TargetKind;
-use crate::sim::components::{NavTargetRef, PendingC4Detonation};
+use crate::sim::components::NavTargetRef;
 use crate::sim::mission::MissionType;
 use crate::sim::movement::locomotor::MovementLayer;
 use crate::sim::timer::CdTimer;
 use crate::sim::world::{FrameAdvanceError, FrameEffects, Simulation};
+
+/// Shared per-building C4 / PostMortem detonation timer.
+///
+/// Native BuildingClass uses one latch and timer triple for both an infantry
+/// C4 plant and a qualifying `CausesDelayKill` fatal hit. Once elapsed, the
+/// building's own Update fires a forced C4Warhead receiver packet with damage
+/// equal to its current HP.
+///
+/// IronCurtain/ForceShield entry cancels this state. Normal targets keep an
+/// expired latch if the forced receiver unexpectedly leaves them alive;
+/// BridgeRepairHut owns the separate consume-and-clear branch.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+pub(crate) struct PendingC4Detonation {
+    /// Native Building timer (`+0x528` start, `+0x530` duration), signed and
+    /// unclamped; its remaining time drives the shorten test, the Building
+    /// Update expiry and the checksum.
+    timer: CdTimer,
+    /// Retained source-object identity (`+0x540`). Fresh PostMortem arms leave
+    /// this null; shortening an infantry C4 timer preserves its source.
+    source_entity_id: Option<u64>,
+}
+
+impl PendingC4Detonation {
+    /// A latch with `timer` and C4AppliedBy `source_entity_id`.
+    pub(crate) fn new(timer: CdTimer, source_entity_id: Option<u64>) -> Self {
+        Self {
+            timer,
+            source_entity_id,
+        }
+    }
+
+    /// The fuse (`+0x528` start, `+0x530` duration).
+    pub(crate) fn timer(&self) -> CdTimer {
+        self.timer
+    }
+
+    /// C4AppliedBy (`+0x540`).
+    pub(crate) fn source_entity_id(&self) -> Option<u64> {
+        self.source_entity_id
+    }
+}
+
+/// The building's C4/PostMortem latch: `None` until a C4 plant
+/// ([`Self::plant`]) or a qualifying `CausesDelayKill` fatal hit
+/// ([`Self::arm_post_mortem`]) arms it. IronCurtain/ForceShield entry and the
+/// BridgeRepairHut's consume-and-clear branch drop it ([`Self::cancel`]); a
+/// pointer expiry or a load that cannot resolve its source drops only the
+/// source ([`Self::forget_source`]).
+#[derive(
+    Debug, Clone, Copy, Default, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize,
+)]
+#[serde(transparent)]
+pub(crate) struct C4Detonation {
+    pending: Option<PendingC4Detonation>,
+}
+
+impl C4Detonation {
+    /// The armed latch.
+    pub(crate) fn pending(self) -> Option<PendingC4Detonation> {
+        self.pending
+    }
+
+    /// The C4 arm's write (`0x0051A5A7..0x0051A608`): the fuse starts at
+    /// `frame` with the planter as C4AppliedBy.
+    pub(crate) fn plant(&mut self, frame: i32, fuse: i32, planter: u64) {
+        self.pending = Some(PendingC4Detonation::new(
+            CdTimer::started(frame, fuse),
+            Some(planter),
+        ));
+    }
+
+    /// PostMortem's arm in `TechnoClass::ReceiveDamage`
+    /// (`0x00701F0E..0x00701F5D`): a fresh latch, or a shorter fuse. It never
+    /// writes C4AppliedBy, so a shortened plant keeps its planter.
+    pub(crate) fn arm_post_mortem(&mut self, current_frame: i32, duration_frames: i32) {
+        let replace = self
+            .pending
+            .is_none_or(|pending| duration_frames < pending.timer.remaining(current_frame));
+        if replace {
+            let retained_source = self.pending.and_then(|pending| pending.source_entity_id);
+            self.pending = Some(PendingC4Detonation::new(
+                CdTimer::started(current_frame, duration_frames),
+                retained_source,
+            ));
+        }
+    }
+
+    /// `BuildingClass::IronCurtain @ 0x00457C90` (IronCurtain and ForceShield
+    /// entry) and the BridgeRepairHut's expiry branch
+    /// (`0x00440213..0x00440331`) drop the latch and C4AppliedBy.
+    pub(crate) fn cancel(&mut self) {
+        self.pending = None;
+    }
+
+    /// `BuildingClass::PointerExpired @ 0x0044E8F0` nulls an expiring
+    /// C4AppliedBy and keeps the fuse; a load whose source is gone does the
+    /// same.
+    pub(crate) fn forget_source(&mut self) {
+        if let Some(pending) = self.pending.as_mut() {
+            pending.source_entity_id = None;
+        }
+    }
+
+    /// Install a fixture's latch.
+    #[cfg(test)]
+    pub(crate) fn set_for_test(&mut self, pending: Option<PendingC4Detonation>) {
+        self.pending = pending;
+    }
+}
 
 impl Simulation {
     /// `InfantryClass::Per_Cell_Process`'s C4 arm (`0x0051A4BF..0x0051A664`),
@@ -104,7 +213,7 @@ impl Simulation {
         {
             return Ok(false);
         }
-        let heading_for = match infantry.navigation.nav_com {
+        let heading_for = match infantry.navigation.nav_com() {
             Some(
                 NavTargetRef::Entity { id }
                 | NavTargetRef::Object { id }
@@ -116,8 +225,8 @@ impl Simulation {
             .substrate
             .occupancy
             .first_building_on_layer(
-                infantry.position.rx,
-                infantry.position.ry,
+                infantry.position.rx(),
+                infantry.position.ry(),
                 MovementLayer::Ground,
             )
             .filter(|&building| heading_for == Some(building))
@@ -134,7 +243,7 @@ impl Simulation {
                 frame,
             );
         if !refused {
-            if target.pending_c4_detonation.is_some() {
+            if target.pending_c4_detonation.pending().is_some() {
                 self.assign_null_destination(id, Some(rules), registry, effects);
                 self.rearm_c4_planter(id, building, rules);
                 self.scatter_from_building(id, building, rules, registry, effects)?;
@@ -143,10 +252,7 @@ impl Simulation {
             let (flash, fuse) = (rules.c4_flash_frames(), rules.c4_delay_frames());
             if let Some(target) = self.substrate.entities.get_mut(building) {
                 target.flash_building(flash);
-                target.pending_c4_detonation = Some(PendingC4Detonation {
-                    timer: CdTimer::started(frame as i32, fuse),
-                    source_entity_id: Some(id),
-                });
+                target.pending_c4_detonation.plant(frame as i32, fuse, id);
             }
         }
         if let Some(infantry) = self.substrate.entities.get_mut(id) {

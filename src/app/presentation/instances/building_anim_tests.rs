@@ -116,7 +116,7 @@ fn emit(
         crate::render::palette_light::PaletteLight::default(),
         &grid,
         &sim.session.lighting,
-        (building.position.rx, building.position.ry),
+        (building.position.rx(), building.position.ry()),
         sim,
         building,
         &|_| 0,
@@ -243,7 +243,11 @@ fn bunker_migration_keeps_active_anim_offsets_start_and_independent_membership()
         assert_eq!(before[0].pieces[0].instance.source_palette, 1);
         // The retained Anim coordinate is the owner. A changed body coordinate
         // cannot silently recalculate its child's location in presentation.
-        sim.entities_mut().get_mut(building).unwrap().position.rx = 2;
+        sim.entities_mut()
+            .get_mut(building)
+            .unwrap()
+            .position
+            .set_rx(2);
         let after = emit(&sim, &rules, building, &atlas, &order);
         assert_eq!(
             after[0].pieces[0].instance.position,

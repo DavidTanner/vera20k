@@ -1,7 +1,7 @@
 //! Robot Tanks and their Robot Control Center: while a house has an
 //! operational `PowersUnit=` building, its vehicles of that type work; when
 //! it has none, its `PoweredUnit=` vehicles go offline (Techno `+0x1C8`,
-//! [`GameEntity::deactivated`](crate::sim::game_entity::GameEntity)).
+//! [`Deactivation`]).
 //!
 //! gamemd-derived (instruction reading; YR 1.001, SHA-256 `1cdd1180…4298c`):
 //! - the house's count of powered centers (House `+0x2D8`) and each
@@ -74,6 +74,52 @@ pub(crate) const EVA_ROBOT_TANKS_OFFLINE: &str = "EVA_RobotTanksOffline";
 /// String `0x00824FE4`.
 pub(crate) const EVA_ROBOT_TANKS_BACK_ONLINE: &str = "EVA_RobotTanksBackOnline";
 
+/// A `PowersUnit=` building's share in its house's powered centers,
+/// `BuildingClass+0x662`: the operational edge counts it on and off
+/// (`0x004549D1..0x004549F3`, `0x00454B16..0x00454B38`) and
+/// Removed_From_Game stops it counting (`0x0050269F`).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(transparent)]
+pub(crate) struct PoweredCenter {
+    counted: bool,
+}
+
+impl PoweredCenter {
+    /// The building counts among its house's powered centers.
+    pub(crate) const fn is_counted(self) -> bool {
+        self.counted
+    }
+
+    /// Install a fixture's share.
+    #[cfg(test)]
+    pub(crate) fn set_for_test(&mut self, counted: bool) {
+        self.counted = counted;
+    }
+}
+
+/// `TechnoClass+0x1C8`: offline for want of a powering building (a Robot
+/// Tank). `TechnoClass::Deactivate @ 0x0070FC90` raises it and `Reactivate @
+/// 0x0070FBE0` clears it; selection, orders, fire, the select voice and the
+/// voxel draw read it.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(transparent)]
+pub(crate) struct Deactivation {
+    offline: bool,
+}
+
+impl Deactivation {
+    /// The object is offline.
+    pub(crate) const fn is_offline(self) -> bool {
+        self.offline
+    }
+
+    /// Install a fixture's state.
+    #[cfg(test)]
+    pub(crate) fn set_for_test(&mut self, offline: bool) {
+        self.offline = offline;
+    }
+}
+
 impl Simulation {
     /// The `PowersUnit=` arms of the operational-edge dispatcher
     /// (`0x004549B0`), which run before the rest of it: coming online, an
@@ -96,7 +142,7 @@ impl Simulation {
         else {
             return;
         };
-        if building.building_powered_center == operational {
+        if building.building_powered_center.is_counted() == operational {
             return;
         }
         let owner = building.owner();
@@ -104,7 +150,8 @@ impl Simulation {
             .entities
             .get_mut(id)
             .expect("same building")
-            .building_powered_center = operational;
+            .building_powered_center
+            .counted = operational;
         if operational {
             self.house_gained_powered_center(owner, powers_unit, rules, effects);
         } else {
@@ -124,7 +171,9 @@ impl Simulation {
         let Some(building) = self.substrate.entities.get(id) else {
             return;
         };
-        if building.category() != EntityCategory::Structure || !building.building_powered_center {
+        if building.category() != EntityCategory::Structure
+            || !building.building_powered_center.is_counted()
+        {
             return;
         }
         let owner = building.owner();
@@ -135,7 +184,8 @@ impl Simulation {
             .entities
             .get_mut(id)
             .expect("same building")
-            .building_powered_center = false;
+            .building_powered_center
+            .counted = false;
         self.house_lost_powered_center(owner, unit_type, rules, effects);
     }
 
@@ -247,11 +297,11 @@ impl Simulation {
         let Some(entity) = self.substrate.entities.get(id) else {
             return;
         };
-        if entity.dock_entered_with.is_some()
+        if entity.tether.partner().is_some()
             && let Some(contact) = entity.radio_contacts.slot(0)
             && self.substrate.occupancy.first_building_on_layer(
-                entity.position.rx,
-                entity.position.ry,
+                entity.position.rx(),
+                entity.position.ry(),
                 MovementLayer::Ground,
             ) == Some(contact)
         {
@@ -260,7 +310,7 @@ impl Simulation {
         let foot = entity.category().is_foot();
         self.reset_orders_to_guard(id, rules, effects);
         if let Some(entity) = self.substrate.entities.get_mut(id) {
-            entity.selected = false;
+            entity.selection.deselect();
         }
         if foot {
             self.locomotor_power_off(id);
@@ -306,7 +356,7 @@ impl Simulation {
         let Some(entity) = self.substrate.entities.get(id) else {
             return;
         };
-        if entity.deactivated != deactivated
+        if entity.deactivated.is_offline() != deactivated
             && let Some(object) = self.object_type(entity.type_ref(), rules)
             && let Some(sound) = if deactivated {
                 object.deactivate_sound.clone()
@@ -321,7 +371,8 @@ impl Simulation {
             .entities
             .get_mut(id)
             .expect("same object")
-            .deactivated = deactivated;
+            .deactivated
+            .offline = deactivated;
     }
 
     /// `UnitClass::Per_Cell_Process`'s arm for a cell arrival
@@ -345,8 +396,8 @@ impl Simulation {
                 .substrate
                 .occupancy
                 .first_building_on_layer(
-                    entity.position.rx,
-                    entity.position.ry,
+                    entity.position.rx(),
+                    entity.position.ry(),
                     MovementLayer::Ground,
                 )
                 .is_some()
@@ -366,7 +417,7 @@ impl Simulation {
         let Some(entity) = self.substrate.entities.get(id) else {
             return;
         };
-        if !entity.deactivated {
+        if !entity.deactivated.is_offline() {
             return;
         }
         let location = object_location(entity, self.resolved_terrain.as_ref());

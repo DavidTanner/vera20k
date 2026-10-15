@@ -96,13 +96,13 @@ fn fixture(row: &Value) -> Simulation {
     entity.set_owner_for_test(owner);
     entity.set_type_ref_for_test(type_ref);
     entity.set_category_for_test(EntityCategory::Unit);
-    entity.position.sub_x = SimFixed::from_num(x % 256);
-    entity.position.sub_y = SimFixed::from_num(y % 256);
-    entity.position.exact_z_leptons = Some(z);
+    entity.position.set_sub_x(SimFixed::from_num(x % 256));
+    entity.position.set_sub_y(SimFixed::from_num(y % 256));
+    entity.position.set_exact_z_leptons(Some(z));
     entity.health.set_for_test(signed(&before["health"]));
     entity.locomotor = Some(LocomotorState::for_test_kind(LocomotorKind::Drive));
     entity.disguise = Some(state_from_native(&mut sim, before));
-    let origin = (entity.position.rx, entity.position.ry);
+    let origin = (entity.position.rx(), entity.position.ry());
     sim.substrate.entities.insert(entity);
     let tile = row["input"]["tile_index"].as_i64().unwrap_or(0) as i32;
     let mut grid = test_grid(128, 128, |rx, ry| {
@@ -201,8 +201,8 @@ fn native_mirage_first_infantry_layer_and_timer_boundaries() {
             let dx = row["input"]["neighbor_offset"][0].as_i64().unwrap_or(1);
             let dy = row["input"]["neighbor_offset"][1].as_i64().unwrap_or(0);
             let cell = (
-                (i64::from(pos.rx) + dx) as u16,
-                (i64::from(pos.ry) + dy) as u16,
+                (i64::from(pos.rx()) + dx) as u16,
+                (i64::from(pos.ry()) + dy) as u16,
             );
             let layer = if row["input"]["enemy_layer"] == "bridge" {
                 MovementLayer::Bridge

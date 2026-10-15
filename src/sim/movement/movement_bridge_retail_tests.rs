@@ -340,8 +340,6 @@ fn diagnose_rejected_order(
     approach_b: (u16, u16),
     deck: &[(u16, u16)],
 ) {
-    use crate::sim::pathfinding::{AStarOptions, astar_search, find_path};
-
     /// Borrowed view so the body below reads identically for a high
     /// span (`HighBridgeSpan`) and a low one (`LowBridgeSpan`).
     struct SpanView<'a> {
@@ -355,11 +353,7 @@ fn diagnose_rejected_order(
         deck,
     };
 
-    let grid = scenario
-        .sim()
-        .path_grid_snapshot()
-        .expect("navigation published");
-    println!("--- order rejected; diagnosing ---");
+    println!("--- order from {start_cell:?} rejected; diagnosing ---");
     println!(
         "owner match: {}",
         scenario.sim().entity_owned_by_id(owner_name, entity_id)
@@ -368,28 +362,6 @@ fn diagnose_rejected_order(
         "order_actor_admits: {}",
         scenario.sim().order_actor_admits(entity_id)
     );
-    println!(
-        "flat A* {start_cell:?} -> {:?}: {:?} node(s)",
-        span.approach_b,
-        find_path(&grid, start_cell, span.approach_b).map(|path| path.len())
-    );
-    let layered = astar_search(
-        &grid,
-        start_cell,
-        crate::sim::movement::locomotor::MovementLayer::Ground,
-        span.approach_b,
-        &AStarOptions::default(),
-    );
-    match &layered {
-        Ok(steps) => {
-            println!("layered A*: {} step(s)", steps.len());
-            for step in steps.iter().take(30) {
-                println!("   ({:3},{:3}) layer={:?}", step.rx, step.ry, step.layer);
-            }
-        }
-        Err(cause) => println!("layered A*: {cause:?}"),
-    }
-
     // The mover's search inputs and the zones on the span. Orders no longer
     // search; the Foot's first Process does, through its live receiver.
     {
@@ -398,15 +370,16 @@ fn diagnose_rejected_order(
 
         let sim = scenario.sim();
         let entity = sim.entities().get(entity_id).expect("tank present");
-        let speed_type = entity.locomotor.as_ref().map(|loco| loco.speed_type);
-        let movement_zone = entity.locomotor.as_ref().map(|loco| loco.movement_zone);
+        let speed_type = entity.locomotor.as_ref().map(|loco| loco.speed_type());
+        let movement_zone = entity.locomotor.as_ref().map(|loco| loco.movement_zone());
         println!(
             "in_playfield={} speed_type={:?} movement_zone={:?}",
-            entity.in_playfield, speed_type, movement_zone
+            entity.in_playfield(),
+            speed_type,
+            movement_zone
         );
         println!(
-            "terrain cost grid for {speed_type:?}: {}, zone_grid: {}, resolved_terrain: {}, playfield_bounds: {:?}",
-            speed_type.is_some_and(|st| sim.terrain_costs.contains_key(&st)),
+            "zone_grid: {}, resolved_terrain: {}, playfield_bounds: {:?}",
             sim.zone_grid.is_some(),
             sim.resolved_terrain.is_some(),
             sim.playfield_bounds.is_some(),
@@ -448,7 +421,7 @@ fn diagnose_rejected_order(
     println!(
         "NavCom and route length after direct apply: {:?}",
         simulation.entities().get(entity_id).map(|entity| (
-            entity.navigation.nav_com,
+            entity.navigation.nav_com(),
             entity.navigation.path_replay.route_cells().len()
         ))
     );
@@ -462,12 +435,12 @@ fn route_reinstalled(
     previous: &crate::sim::components::FootPathQueue,
     current: &crate::sim::components::FootPathQueue,
 ) -> bool {
-    if current.directions == previous.directions {
-        return current.cursor < previous.cursor;
+    if current.directions() == previous.directions() {
+        return current.cursor() < previous.cursor();
     }
     let mut cleared = previous.clone();
     cleared.clear_live_head();
-    current.directions != cleared.directions || current.cursor < previous.cursor
+    current.directions() != cleared.directions() || current.cursor() < previous.cursor()
 }
 
 /// The accepted order's Foot+5E0 route still ahead: the reference cell plus
@@ -478,7 +451,7 @@ fn accepted_route(
     entity_id: u64,
 ) -> Option<Vec<(u16, u16)>> {
     let entity = scenario.sim().entities().get(entity_id)?;
-    entity.navigation.nav_com?;
+    entity.navigation.nav_com()?;
     Some(entity.navigation.path_replay.route_cells())
 }
 
@@ -654,7 +627,8 @@ fn drive_across_high_bridge_with_order(
             .expect("spawned tank present");
         println!(
             "spawned {unit_type} id={entity_id} at {start_cell:?} z={} on_bridge={}",
-            entity.position.z, entity.on_bridge
+            entity.position.z(),
+            entity.on_bridge()
         );
     }
 
@@ -720,7 +694,7 @@ fn drive_across_high_bridge_with_order(
         let Some(entity) = sim.entities().get(entity_id) else {
             panic!("the tank vanished mid-crossing");
         };
-        let cell = (entity.position.rx, entity.position.ry);
+        let cell = (entity.position.rx(), entity.position.ry());
         let facts = sim
             .path_grid()
             .and_then(|grid| grid.cell(cell.0, cell.1))
@@ -732,8 +706,8 @@ fn drive_across_high_bridge_with_order(
         rows.push(TickRow {
             tick: sim.session.tick,
             cell,
-            z: entity.position.z,
-            on_bridge: entity.on_bridge,
+            z: entity.position.z(),
+            on_bridge: entity.on_bridge(),
             terrain_level: facts.ground_level,
             structural: facts.bridge_structural,
             bridge_walkable: facts.bridge_walkable,
@@ -779,7 +753,7 @@ fn drive_across_high_bridge_with_order(
         for _ in 0..300 {
             scenario.tick();
             if let Some(entity) = scenario.sim().entities().get(entity_id) {
-                let cell = (entity.position.rx, entity.position.ry);
+                let cell = (entity.position.rx(), entity.position.ry());
                 if control_cells.last() != Some(&cell) {
                     control_cells.push(cell);
                 }
@@ -862,10 +836,11 @@ fn drive_across_high_bridge_with_order(
     //
     // A bridgehead cell is one carrying `BRIDGE_FLAG_TRANSITION` (`0x200`),
     // written by `stamp_intact` on the Anchor, Forward1 and Opposite slots
-    // (`map/bridge_facts.rs`) and surfaced as `PathCell::transition`. It is the
-    // cell `cell_entry.rs`'s `evaluate_shared_cell_leaf` short-circuits on,
-    // returning Clear/HardBlocked from `land_passable` alone and skipping the
-    // object-list and speed-row half of the entry test entirely.
+    // (`map/bridge_facts.rs`) and surfaced as `PathCell::transition`. Foot
+    // `0x004D9C60` (`infantry_entry::adjust_height_and_list`) reads it: a step
+    // of four levels down onto a deck needs the target's `0x300`, and an
+    // equal-height step from a structural cell onto a `0x300` cell passes the
+    // height test outright.
     //
     // Asserting it here, rather than treating it as riding along on the deck
     // frames, is the same discipline T1-05 and T1-07 were held to: a crossing
@@ -874,8 +849,8 @@ fn drive_across_high_bridge_with_order(
     // wording implies — on both fixtures **every** deck cell of the drive line
     // carries `0x200`, not just the two end ramps, because consecutive anchors
     // each stamp their own Anchor/F1/Opposite neighbourhood along the line. So
-    // the short-circuit is the entry rule for the entire span, and each crossing
-    // steps onto a bridgehead cell 17 (BayOPigs) or 22 (Hills) times.
+    // that rule applies along the entire span, and each crossing steps onto a
+    // bridgehead cell 17 (BayOPigs) or 22 (Hills) times.
     let bridgehead_frames: Vec<&TickRow> = deck_frames
         .iter()
         .filter(|row| row.transition)
@@ -1367,11 +1342,12 @@ fn drive_across_low_bridge(map_file: &str, unit_type: &str) {
         let zone = entity
             .locomotor
             .as_ref()
-            .map(|loco| loco.movement_zone)
+            .map(|loco| loco.movement_zone())
             .expect("spawned mover has a locomotor");
         println!(
             "spawned {unit_type} id={entity_id} at {start_cell:?} z={} on_bridge={} zone={zone:?}",
-            entity.position.z, entity.on_bridge
+            entity.position.z(),
+            entity.on_bridge()
         );
         zone
     };
@@ -1440,7 +1416,7 @@ fn drive_across_low_bridge(map_file: &str, unit_type: &str) {
         let Some(entity) = sim.entities().get(entity_id) else {
             panic!("the mover vanished mid-crossing");
         };
-        let cell = (entity.position.rx, entity.position.ry);
+        let cell = (entity.position.rx(), entity.position.ry());
         let facts = sim
             .path_grid()
             .and_then(|grid| grid.cell(cell.0, cell.1))
@@ -1452,8 +1428,8 @@ fn drive_across_low_bridge(map_file: &str, unit_type: &str) {
         rows.push(TickRow {
             tick: sim.session.tick,
             cell,
-            z: entity.position.z,
-            on_bridge: entity.on_bridge,
+            z: entity.position.z(),
+            on_bridge: entity.on_bridge(),
             terrain_level: facts.ground_level,
             structural: facts.bridge_structural,
             bridge_walkable: facts.bridge_walkable,
@@ -2090,7 +2066,7 @@ fn tank_repathing_around_a_deck_blocker_stays_on_the_bridge_layer() {
         let Some(entity) = sim.entities().get(crosser) else {
             panic!("the crosser vanished");
         };
-        let cell = (entity.position.rx, entity.position.ry);
+        let cell = (entity.position.rx(), entity.position.ry());
         let Some(facts) = sim
             .path_grid()
             .and_then(|grid| grid.cell(cell.0, cell.1))
@@ -2102,8 +2078,8 @@ fn tank_repathing_around_a_deck_blocker_stays_on_the_bridge_layer() {
         let row = TickRow {
             tick: sim.session.tick,
             cell,
-            z: entity.position.z,
-            on_bridge: entity.on_bridge,
+            z: entity.position.z(),
+            on_bridge: entity.on_bridge(),
             terrain_level: facts.ground_level,
             structural: facts.bridge_structural,
             bridge_walkable: facts.bridge_walkable,
@@ -2116,7 +2092,7 @@ fn tank_repathing_around_a_deck_blocker_stays_on_the_bridge_layer() {
         rows.push(row);
         if blocker_parked.is_none()
             && let Some(parked) = sim.entities().get(blocker).filter(|parked| {
-                (parked.position.rx, parked.position.ry) == park_cell
+                (parked.position.rx(), parked.position.ry()) == park_cell
                     && crate::sim::movement::motion_query::is_moving(&parked) != Some(true)
             })
         {
@@ -2127,8 +2103,8 @@ fn tank_repathing_around_a_deck_blocker_stays_on_the_bridge_layer() {
                 .expect("the park cell is on the path grid");
             blocker_parked = Some((
                 sim.session.tick,
-                parked.position.z,
-                parked.on_bridge,
+                parked.position.z(),
+                parked.on_bridge(),
                 deck.bridge_structural,
                 deck.ground_level,
                 cell,
@@ -2962,10 +2938,6 @@ fn print_under_cell_row(
     cell: (u16, u16),
     grid: &PathGrid,
     terrain: &ResolvedTerrainGrid,
-    costs: &std::collections::BTreeMap<
-        crate::rules::locomotor_type::SpeedType,
-        crate::sim::pathfinding::terrain_cost::TerrainCostGrid,
-    >,
     zones: Option<&crate::sim::pathfinding::zone_map::ZoneGrid>,
 ) {
     use crate::rules::locomotor_type::SpeedType;
@@ -2979,7 +2951,7 @@ fn print_under_cell_row(
         println!("  {label} {cell:?}: NOT IN RESOLVED TERRAIN");
         return;
     };
-    let cost = |st: SpeedType| costs.get(&st).map_or(255, |g| g.cost_at(cell.0, cell.1));
+    let cost = |st: SpeedType| rt.speed_costs.cost_for_speed_type(st).unwrap_or(255);
     let zone_of = |mz: MovementZone| {
         zones
             .and_then(|z| z.map_for(mz))
@@ -2994,7 +2966,7 @@ fn print_under_cell_row(
     println!(
         "  {label} {cell:?}: struct={} bwalk={} trans={} g_lvl={} deck_lvl={} gwalk={} \
          || under: water={} cliff={} gwblk={} base_gwblk={} land={} base_land={} yr_land={} \
-         zone_type={} || cost Foot={} Track={} Wheel={} Amph={} Hover={} \
+         zone_type={} || row Foot={} Track={} Wheel={} Amph={} Hover={} \
          || zone(G/B) Normal={} AmphDest={} Infantry={}",
         pc.bridge_structural,
         pc.bridge_walkable,
@@ -3029,18 +3001,13 @@ fn print_under_cell_row(
 /// `PathGrid::from_resolved_terrain_with_bridges` (`sim/pathfinding/core.rs`)
 /// hardcodes `ground_walkable = true` for any intact structural bridge cell,
 /// with the comment "Intact bridge deck → walkable (overrides underlying
-/// terrain)". `TerrainCostGrid::from_resolved_terrain` (`terrain_cost.rs`) does
-/// the same, returning `COST_NORMAL` for every SpeedType on an elevated bridge
-/// cell. Both flags therefore describe the deck, not the ground under it, on
+/// terrain)". The flag therefore describes the deck, not the ground under it, on
 /// every fixture — which is why this test prints the *underlying* terrain fields
-/// those two overrides mask, and prints them for the valley floor either side of
+/// that override masks, and prints them for the valley floor either side of
 /// the structural band as well.
 #[test]
 #[ignore = "requires a retail RA2/YR install (RA2_DIR or config.toml)"]
 fn retail_under_high_span_geometry() {
-    use crate::sim::movement::locomotor::MovementLayer;
-    use crate::sim::pathfinding::{AStarOptions, astar_search};
-
     let Some(retail) = retail_dir() else {
         eprintln!("SKIPPED: no retail root (set RA2_DIR or provide config.toml)");
         return;
@@ -3128,136 +3095,7 @@ fn retail_under_high_span_geometry() {
                 }
             }
             for (label, c) in &cells {
-                print_under_cell_row(
-                    label,
-                    *c,
-                    grid,
-                    terrain,
-                    &sim.terrain_costs,
-                    sim.zone_grid.as_ref(),
-                );
-            }
-
-            // Which plane of each cell each mover may actually enter. This is
-            // the production predicate (`is_cell_passable_for_category_on_layer`
-            // → `evaluate_can_enter_cell`), not a flag read, and it is what
-            // decides whether an under-span position exists at all.
-            println!("  cell-entry admission by layer (G=Ground plane / B=deck plane):");
-            for (label, c) in &cells {
-                let mut per_mover = Vec::new();
-                for (mover, zone, speed, infantry) in [
-                    (
-                        "MTNK",
-                        MovementZone::Normal,
-                        crate::rules::locomotor_type::SpeedType::Track,
-                        false,
-                    ),
-                    (
-                        "E1",
-                        MovementZone::Infantry,
-                        crate::rules::locomotor_type::SpeedType::Foot,
-                        true,
-                    ),
-                    (
-                        "ROBO",
-                        MovementZone::AmphibiousDestroyer,
-                        crate::rules::locomotor_type::SpeedType::Hover,
-                        false,
-                    ),
-                ] {
-                    let costs = sim.terrain_costs.get(&speed);
-                    let probe = |layer| {
-                        crate::sim::pathfinding::is_cell_passable_for_category_on_layer(
-                            grid,
-                            c.0,
-                            c.1,
-                            layer,
-                            Some(zone),
-                            None,
-                            sim.resolved_terrain.as_ref(),
-                            costs,
-                            infantry,
-                            false,
-                        )
-                    };
-                    per_mover.push(format!(
-                        "{mover} G={} B={}",
-                        probe(MovementLayer::Ground),
-                        probe(MovementLayer::Bridge),
-                    ));
-                }
-                println!("    {label} {c:?}: {}", per_mover.join(" | "));
-            }
-
-            // Ground-plane connectivity across the band, without any of the
-            // production gates: does a layered search starting on Ground even
-            // produce a route, and on which layer does it cross the band?
-            if let (Some(a), Some(b)) = (cut.under_a, cut.under_b) {
-                for (label, zone, speed) in [
-                    (
-                        "MTNK/Normal/Track",
-                        MovementZone::Normal,
-                        crate::rules::locomotor_type::SpeedType::Track,
-                    ),
-                    (
-                        "E1/Infantry/Foot",
-                        MovementZone::Infantry,
-                        crate::rules::locomotor_type::SpeedType::Foot,
-                    ),
-                    (
-                        "ROBO/AmphDest/Hover",
-                        MovementZone::AmphibiousDestroyer,
-                        crate::rules::locomotor_type::SpeedType::Hover,
-                    ),
-                ] {
-                    let options = AStarOptions {
-                        terrain_costs: sim.terrain_costs.get(&speed),
-                        movement_zone: Some(zone),
-                        resolved_terrain: sim.resolved_terrain.as_ref(),
-                        ..Default::default()
-                    };
-                    match astar_search(grid, a, MovementLayer::Ground, b, &options) {
-                        Ok(steps) => {
-                            // Any structural cell, not just this transect's four:
-                            // the band runs the whole length of the span, so a
-                            // route that travels along it sideways touches
-                            // structural cells at other span positions.
-                            let structural_steps = steps
-                                .iter()
-                                .filter(|s| {
-                                    grid.cell(s.rx, s.ry).is_some_and(|c| c.bridge_structural)
-                                })
-                                .map(|s| ((s.rx, s.ry), s.layer))
-                                .collect::<Vec<_>>();
-                            println!(
-                                "  ground-plane A* [{label}] {a:?} -> {b:?}: {} step(s); \
-                                 {} on structural cells: {structural_steps:?}",
-                                steps.len(),
-                                structural_steps.len(),
-                            );
-                            println!(
-                                "    route: {:?}",
-                                steps
-                                    .iter()
-                                    .map(|s| (
-                                        (s.rx, s.ry),
-                                        match s.layer {
-                                            MovementLayer::Bridge => 'B',
-                                            _ => 'g',
-                                        }
-                                    ))
-                                    .collect::<Vec<_>>()
-                            );
-                        }
-                        Err(cause) => {
-                            println!("  ground-plane A* [{label}] {a:?} -> {b:?}: {cause:?}")
-                        }
-                    }
-                }
-            } else {
-                println!(
-                    "  no valley-floor endpoints either side of the band; no under order is expressible here"
-                );
+                print_under_cell_row(label, *c, grid, terrain, sim.zone_grid.as_ref());
             }
         }
     }
@@ -3338,7 +3176,7 @@ fn record_until(
         let Some(entity) = sim.entities().get(entity_id) else {
             panic!("the mover vanished mid-run");
         };
-        let cell = (entity.position.rx, entity.position.ry);
+        let cell = (entity.position.rx(), entity.position.ry());
         let Some(facts) = sim
             .path_grid()
             .and_then(|grid| grid.cell(cell.0, cell.1))
@@ -3349,7 +3187,7 @@ fn record_until(
         let loco_layer = entity.movement_layer_or_ground();
         if entity.category() == crate::map::entities::EntityCategory::Infantry
             && facts.bridge_structural
-            && !entity.on_bridge
+            && !entity.on_bridge()
         {
             use crate::sim::movement::locomotor::MovementLayer;
             let occupation = sim
@@ -3369,7 +3207,7 @@ fn record_until(
             assert_eq!(loco_layer, MovementLayer::Ground);
             let world_xy = super::ground_pose::position_world_xy(&entity.position);
             assert_eq!(
-                entity.position.exact_z_leptons,
+                entity.position.exact_z_leptons(),
                 Some(
                     crate::util::lepton::ground_height_leptons(
                         facts.ground_level,
@@ -3385,8 +3223,8 @@ fn record_until(
         rows.push(TickRow {
             tick: sim.session.tick,
             cell,
-            z: entity.position.z,
-            on_bridge: entity.on_bridge,
+            z: entity.position.z(),
+            on_bridge: entity.on_bridge(),
             terrain_level: facts.ground_level,
             structural: facts.bridge_structural,
             bridge_walkable: facts.bridge_walkable,
@@ -3502,7 +3340,8 @@ fn order_under_high_span(map_file: &str, unit_type: &str) -> Option<UnderSpanRun
             .expect("spawned mover present");
         println!(
             "spawned {unit_type} id={entity_id} at {start_cell:?} z={} on_bridge={}",
-            entity.position.z, entity.on_bridge
+            entity.position.z(),
+            entity.on_bridge()
         );
     }
 
@@ -3634,8 +3473,7 @@ fn judge_under_span_run(run: &UnderSpanRun, unit_type: &str, map_file: &str) {
 /// level (`0x0073F0B7..F0E8`), defers height legality to `CheckBridgeTraversal`
 /// @ `0x004D9C60` whose equal-level arm admits, walks the ground list `+0xE4`
 /// (`0x0073F51A`) and reads the terrain's own land row at `0x0073FAB5`. The
-/// Rust class arm in `cell_entry.rs` now covers every ground-layer mover, and
-/// the cost grid's ground row replaces the deck override beneath a span.
+/// Rust class (`world::object_entry`) answers every ground-layer mover.
 #[test]
 #[ignore = "requires a retail RA2/YR install (RA2_DIR or config.toml)"]
 fn tank_ordered_under_hills_high_bridge_crosses_all_four_ground_lanes() {
@@ -3760,86 +3598,6 @@ fn hover_tank_ordered_under_bay_of_pigs_high_bridge_crosses_all_four_ground_lane
     }
 }
 
-/// Ground-plane admission beneath a span is decided by the mover's own land row,
-/// not by the lane's `bridge_transition` flag.
-///
-/// Until 2026-09-15 supplying a `MovementZone` (hence a speed type) sealed the
-/// one band lane whose `bridge_transition` flag is clear: `evaluate_shared_cell_leaf`
-/// (`sim/pathfinding/cell_entry.rs`) fell through to `evaluate_is_clear_to_move`
-/// (`sim/cell_rect.rs`), whose `has_bridge && !is_bridge → LevelMismatch` arm
-/// refused the ground plane of any `0x100` cell, while the three transition
-/// lanes escaped through the short-circuit above it. That leaf ports
-/// `CellClass::CheckCellPassability` @ `0x004834A0`, which neither Foot
-/// `+0x1AC` implementation calls (`0x0051BF90`, `0x0073F0A0`); the class arm
-/// now covers every ground-layer mover and all four lanes agree.
-#[test]
-#[ignore = "requires a retail RA2/YR install (RA2_DIR or config.toml)"]
-fn ground_entry_under_a_high_span_is_admitted_on_every_lane() {
-    let Some(retail) = retail_dir() else {
-        eprintln!("SKIPPED: no retail root (set RA2_DIR or provide config.toml)");
-        return;
-    };
-    use crate::rules::locomotor_type::SpeedType;
-    use crate::sim::movement::locomotor::MovementLayer;
-
-    let scenario = headless_scenario::load(&retail, "Hills.mmx", SEED).expect("Hills.mmx loads");
-    let sim = scenario.sim();
-    let grid = sim.path_grid().expect("navigation published");
-    let span = find_high_bridge_span(grid).expect("Hills exposes a high span");
-    let cut = build_under_span_transect(grid, &span, span.deck[span.deck.len() / 2]);
-    let costs = sim.terrain_costs.get(&SpeedType::Track);
-    let probe = |cell: (u16, u16), zone: Option<MovementZone>| {
-        crate::sim::pathfinding::is_cell_passable_for_category_on_layer(
-            grid,
-            cell.0,
-            cell.1,
-            MovementLayer::Ground,
-            zone,
-            None,
-            sim.resolved_terrain.as_ref(),
-            costs,
-            false,
-            false,
-        )
-    };
-    let mut sealed = Vec::new();
-    let mut open = Vec::new();
-    for cell in &cut.band {
-        let facts = grid.cell(cell.0, cell.1).expect("band cell in the grid");
-        let with_zone = probe(*cell, Some(MovementZone::Normal));
-        let without_zone = probe(*cell, None);
-        println!(
-            "band {cell:?} transition={} : Ground entry with MovementZone::Normal = {with_zone}, \
-             with no movement zone = {without_zone}",
-            facts.transition,
-        );
-        assert!(
-            without_zone,
-            "band cell {cell:?} refuses ground entry even with no speed type; the mechanism this \
-             test isolates is not the one acting"
-        );
-        if with_zone {
-            open.push((*cell, facts.transition));
-        } else {
-            sealed.push((*cell, facts.transition));
-        }
-    }
-    println!("open lanes {open:?}; sealed lanes {sealed:?}");
-    // Settled 2026-09-15: the Unit entry contract (`0x0073F0A0`) never reaches
-    // the `0x004834A0` level rejection, so every lane of the band — transition
-    // or not — admits ground entry with a speed type supplied.
-    assert!(
-        sealed.is_empty(),
-        "a band lane refused ground entry with a speed type supplied: {sealed:?}; the retired \
-         Cell-leaf level rejection is acting again"
-    );
-    assert!(
-        open.iter().any(|(_, transition)| !*transition),
-        "the band carries no non-transition lane, so this test no longer isolates anything: \
-         {open:?}"
-    );
-}
-
 /// The T1-13 arm on `BayOPigs.mmx`: an `MTNK` cannot be placed on, or ordered
 /// along, the riverbed beside this span at all.
 ///
@@ -3858,7 +3616,6 @@ fn tank_cannot_reach_the_riverbed_beside_bay_of_pigs_high_bridge() {
         return;
     };
     use crate::rules::locomotor_type::SpeedType;
-    use crate::sim::movement::locomotor::MovementLayer;
 
     let scenario =
         headless_scenario::load(&retail, "BayOPigs.mmx", SEED).expect("BayOPigs.mmx loads");
@@ -3870,35 +3627,24 @@ fn tank_cannot_reach_the_riverbed_beside_bay_of_pigs_high_bridge() {
         cut.under_a.expect("west riverbed cell"),
         cut.under_b.expect("east riverbed cell"),
     );
-    let track = sim.terrain_costs.get(&SpeedType::Track);
     for cell in [under_a, under_b] {
-        let admitted = crate::sim::pathfinding::is_cell_passable_for_category_on_layer(
-            grid,
-            cell.0,
-            cell.1,
-            MovementLayer::Ground,
-            Some(MovementZone::Normal),
-            None,
-            sim.resolved_terrain.as_ref(),
-            track,
-            false,
-            false,
-        );
         let rt = sim
             .resolved_terrain
             .as_ref()
             .and_then(|t| t.cell(cell.0, cell.1))
             .expect("riverbed cell resolved");
+        // `UnitClass::Can_Enter_Cell` answers 7 for a zero land row
+        // (`0x0073FAB5`, `world::object_entry`).
+        let track_row = rt.speed_costs.cost_for_speed_type(SpeedType::Track);
         println!(
-            "riverbed {cell:?}: Track cost {} is_water={} zone_type={} -> Ground entry {admitted}",
-            track.map_or(255, |g| g.cost_at(cell.0, cell.1)),
-            rt.is_water,
-            rt.zone_type,
+            "riverbed {cell:?}: Track row {track_row:?} is_water={} zone_type={}",
+            rt.is_water, rt.zone_type,
         );
-        assert!(
-            !admitted,
-            "the riverbed at {cell:?} admits a Normal/Track mover on the ground plane; \
-             T1-13 now has a BayOPigs arm and this test must be replaced by a real run"
+        assert_eq!(
+            track_row,
+            Some(0),
+            "the riverbed at {cell:?} has a nonzero Track row; T1-13 now has a BayOPigs arm \
+             and this test must be replaced by a real run"
         );
     }
 }
@@ -4024,7 +3770,7 @@ fn deck_and_ground_under_one_high_bridge_cell_are_separate_occupancy_planes() {
             .entities()
             .get(under_id)
             .expect("under mover present");
-        (entity.position.z, entity.on_bridge)
+        (entity.position.z(), entity.on_bridge())
     };
     println!("under mover placed on {shared:?}: z={under_z} on_bridge={under_on_bridge}");
 
@@ -4035,12 +3781,12 @@ fn deck_and_ground_under_one_high_bridge_cell_are_separate_occupancy_planes() {
         .get(deck_id)
         .expect("deck mover still present");
     assert_eq!(
-        (deck_still.position.rx, deck_still.position.ry),
+        (deck_still.position.rx(), deck_still.position.ry()),
         shared,
         "placing a mover under the deck displaced the mover on it"
     );
     assert!(
-        deck_still.on_bridge,
+        deck_still.on_bridge(),
         "placing a mover under the deck cleared the deck mover's on_bridge flag"
     );
     assert_eq!(
@@ -4050,7 +3796,8 @@ fn deck_and_ground_under_one_high_bridge_cell_are_separate_occupancy_planes() {
     );
     assert!(!under_on_bridge, "the under mover carries on_bridge");
     assert_ne!(
-        under_z, deck_still.position.z,
+        under_z,
+        deck_still.position.z(),
         "the two movers share one height on one cell"
     );
 
@@ -4091,15 +3838,18 @@ fn deck_and_ground_under_one_high_bridge_cell_are_separate_occupancy_planes() {
         .expect("deck mover survived the under mover's drive");
     println!(
         "deck mover after the under drive: cell ({},{}) z={} on_bridge={}",
-        deck_end.position.rx, deck_end.position.ry, deck_end.position.z, deck_end.on_bridge
+        deck_end.position.rx(),
+        deck_end.position.ry(),
+        deck_end.position.z(),
+        deck_end.on_bridge()
     );
     assert_eq!(
-        (deck_end.position.rx, deck_end.position.ry),
+        (deck_end.position.rx(), deck_end.position.ry()),
         shared,
         "the deck mover moved while a unit drove out from underneath it"
     );
     assert!(
-        deck_end.on_bridge,
+        deck_end.on_bridge(),
         "the deck mover lost on_bridge while a unit drove out from underneath it"
     );
 }
@@ -4232,7 +3982,7 @@ fn scale_benchmark_many_movers_on_hills() {
                 .sim()
                 .entities()
                 .get(id)
-                .is_some_and(|entity| (entity.position.rx, entity.position.ry) != (rx, ry))
+                .is_some_and(|entity| (entity.position.rx(), entity.position.ry()) != (rx, ry))
         })
         .count();
     println!(

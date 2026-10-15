@@ -111,9 +111,9 @@ fn curtain(sim: &Simulation, id: u64) -> Option<(i32, i32, InvulnKind)> {
         .and_then(|entity| entity.invulnerability.as_ref())
         .map(|state| {
             (
-                state.timer.start_frame(),
-                state.timer.duration(),
-                state.kind,
+                state.timer().start_frame(),
+                state.timer().duration(),
+                state.kind(),
             )
         })
 }
@@ -393,7 +393,16 @@ fn the_overrides_match_native() {
             .unwrap_or_else(|| panic!("{kind} stands for {row}"));
         let drone = (row["eaten"] == true).then(|| {
             let drone = sim
-                .construct_object_limbo_at_height("DRON", "Russians", 39, 40, 0, 0, &rules)
+                .construct_object_limbo_at_height(
+                    "DRON",
+                    "Russians",
+                    39,
+                    40,
+                    0,
+                    0,
+                    &rules,
+                    crate::sim::world::FrameEffects::default(),
+                )
                 .unwrap();
             sim.parasite_attach(
                 drone,
@@ -600,10 +609,10 @@ fn curtained_infantry_die_and_announce_each_loss() {
     assert!(launched < radar && radar < first_loss);
     for id in [first, second] {
         let infantry = sim.substrate.entities.get(id).unwrap();
-        assert!(infantry.dying && infantry.health.current() == 0);
+        assert!(infantry.death.is_dying() && infantry.health.current() == 0);
         assert!(infantry.invulnerability.is_none());
     }
-    assert!(!sim.substrate.entities.get(tank).unwrap().dying);
+    assert!(!sim.substrate.entities.get(tank).unwrap().death.is_dying());
     assert!(curtain(&sim, tank).is_some());
 }
 
@@ -657,5 +666,5 @@ fn retail_iron_curtain_through_production_frames() {
         Some((launch_frame, 750, InvulnKind::IronCurtain))
     );
     let conscript = sim.substrate.entities.get(conscript).unwrap();
-    assert!(conscript.dying && conscript.health.current() == 0);
+    assert!(conscript.death.is_dying() && conscript.health.current() == 0);
 }

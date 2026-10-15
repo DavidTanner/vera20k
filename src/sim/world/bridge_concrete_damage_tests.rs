@@ -23,7 +23,7 @@ fn export(scene: &HeadlessScenario, phase: &str) {
             sim, phase, (49..=59).flat_map(|y| (84..=90).map(move |x| (x,y))),
         ),
         "entities": sim.entities().values().filter(|e|
-            (84..=90).contains(&e.position.rx) && (49..=59).contains(&e.position.ry)
+            (84..=90).contains(&e.position.rx()) && (49..=59).contains(&e.position.ry())
         ).map(|e| json!({"type":sim.resolve(e.type_ref()),"entity":e})).collect::<Vec<_>>(),
         "rng": {"main":sim.main_rng,"scenario":sim.scenario_rng,"mapgen":sim.mapgen_rng},
     });

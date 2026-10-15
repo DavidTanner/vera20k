@@ -81,15 +81,12 @@ pub(crate) mod native_path_entry;
 
 use super::{BlockerNeighborCounts, MoverSearchFacts, SearchMarkerOverlay};
 
-use super::terrain_cost::TerrainCostGrid;
 use super::zone_hierarchy::{
     MarkedZones, ZoneLevelGraph, ZonePrecheckExclusions, ZonePrecheckOutcome, ZonePrecheckThreat,
     zone_precheck_flat,
 };
 use super::zone_map::ZoneGrid;
-use super::{
-    HierarchyGate, LayeredPathStep, PathGrid, find_layered_path_marker, find_path_with_costs_marker,
-};
+use super::{HierarchyGate, LayeredPathStep, PathGrid, find_layered_path_marker, find_path_marker};
 use crate::map::resolved_terrain::ResolvedTerrainGrid;
 use crate::map::tube_facts::TubeSource;
 use crate::rules::locomotor_type::MovementZone;
@@ -247,7 +244,7 @@ fn admit_zone_search<'a>(
     resolved_terrain: Option<&ResolvedTerrainGrid>,
     blocker_neighbor_counts: Option<&'a BlockerNeighborCounts>,
     query: &ZoneLadderQuery<'_>,
-    foot_entry: Option<&dyn super::SearchFootEntry>,
+    foot_entry: &dyn super::SearchFootEntry,
 ) -> Result<Option<HierarchyCorridor<'a>>, PathSearchFailure> {
     let entry = query.entry;
     if !can_use_reduced_zone_precheck(movement_zone) {
@@ -283,19 +280,13 @@ fn admit_zone_search<'a>(
         let goal_zone = zg
             .hierarchy_zone_at_native(0, entry.hierarchy_goal)
             .ok_or(PathSearchFailure::MissingHierarchyCell)?;
-        let padded_lookup = |index| {
+        let padded_lookup = |index| foot_entry.hierarchy_house_threat(index);
+        let threat = Some(
             foot_entry
-                .expect("provider present")
-                .hierarchy_house_threat(index)
-        };
-        let threat = foot_entry
-            .map(|provider| {
-                provider
-                    .finishing_threat_coefficient()
-                    .map(|coefficient| ZonePrecheckThreat::new(coefficient, &padded_lookup))
-            })
-            .transpose()
-            .map_err(PathSearchFailure::CellEntryUnavailable)?;
+                .finishing_threat_coefficient()
+                .map(|coefficient| ZonePrecheckThreat::new(coefficient, &padded_lookup))
+                .map_err(PathSearchFailure::CellEntryUnavailable)?,
+        );
         return Ok(
             match zone_precheck_flat(
                 hierarchy,
@@ -353,8 +344,8 @@ fn admit_zone_search<'a>(
 }
 
 /// The flat (ground-only) zone-aware search without a marker overlay, blocker
-/// counts or playfield bounds: the zone test gates a plain cell A*, and no
-/// hierarchy-marked search runs without counts.
+/// counts or playfield bounds, asking [`super::WalkableEntry`]: the zone test
+/// gates a plain cell A*, and no hierarchy-marked search runs without counts.
 ///
 /// TODO(RE): terrain-aware nodeIndex connectivity can still be a little looser than
 /// final movement legality because the recovered node flood-fill is 8-neighbor while
@@ -365,46 +356,38 @@ pub fn find_path_zoned(
     grid: &PathGrid,
     start: (u16, u16),
     goal: (u16, u16),
-    costs: Option<&TerrainCostGrid>,
     zone_grid: Option<&ZoneGrid>,
     mz: MovementZone,
     movement_zone: Option<MovementZone>,
     resolved_terrain: Option<&ResolvedTerrainGrid>,
-    mover_is_crusher: bool,
-    is_infantry: bool,
 ) -> Option<Vec<(u16, u16)>> {
     find_path_zoned_marker(
         grid,
         start,
         goal,
-        costs,
         zone_grid,
         mz,
         movement_zone,
         resolved_terrain,
         None,
         None,
-        mover_is_crusher,
-        is_infantry,
         true,
         None,
     )
 }
 
+/// [`find_path_zoned_marker_detailed`] asking [`super::WalkableEntry`].
 #[cfg(test)]
 pub(crate) fn find_path_zoned_marker(
     grid: &PathGrid,
     start: (u16, u16),
     goal: (u16, u16),
-    costs: Option<&TerrainCostGrid>,
     zone_grid: Option<&ZoneGrid>,
     mz: MovementZone,
     movement_zone: Option<MovementZone>,
     resolved_terrain: Option<&ResolvedTerrainGrid>,
     marker_overlay: Option<&SearchMarkerOverlay>,
     blocker_neighbor_counts: Option<&BlockerNeighborCounts>,
-    mover_is_crusher: bool,
-    is_infantry: bool,
     allow_zone_hierarchy: bool,
     playfield_bounds: Option<PlayfieldBounds>,
 ) -> Option<Vec<(u16, u16)>> {
@@ -412,7 +395,6 @@ pub(crate) fn find_path_zoned_marker(
         grid,
         start,
         goal,
-        costs,
         zone_grid,
         mz,
         movement_zone,
@@ -421,9 +403,7 @@ pub(crate) fn find_path_zoned_marker(
         blocker_neighbor_counts,
         MoverSearchFacts {
             urgency: 0,
-            mover_is_crusher,
-            is_infantry,
-            foot_entry: None,
+            foot_entry: &super::WalkableEntry::new(grid),
         },
         allow_zone_hierarchy,
         playfield_bounds,
@@ -436,7 +416,6 @@ pub(crate) fn find_path_zoned_marker_detailed(
     grid: &PathGrid,
     start: (u16, u16),
     goal: (u16, u16),
-    costs: Option<&TerrainCostGrid>,
     zone_grid: Option<&ZoneGrid>,
     mz: MovementZone,
     movement_zone: Option<MovementZone>,
@@ -462,7 +441,6 @@ pub(crate) fn find_path_zoned_marker_detailed(
         start,
         goal,
         &entry,
-        costs,
         zone_grid,
         mz,
         movement_zone,
@@ -473,7 +451,8 @@ pub(crate) fn find_path_zoned_marker_detailed(
     )
 }
 
-/// The flat search with the native entry's facts given directly (tests).
+/// The flat search with the native entry's facts given directly (tests),
+/// asking [`super::WalkableEntry`].
 #[cfg(test)]
 fn find_path_zoned_marker_inner(
     grid: &PathGrid,
@@ -482,14 +461,11 @@ fn find_path_zoned_marker_inner(
     hierarchy_start: (u16, u16),
     hierarchy_goal: (u16, u16),
     native_zone_equal: Option<bool>,
-    costs: Option<&TerrainCostGrid>,
     zone_grid: Option<&ZoneGrid>,
     mz: MovementZone,
     movement_zone: Option<MovementZone>,
     resolved_terrain: Option<&ResolvedTerrainGrid>,
     marker_overlay: Option<&SearchMarkerOverlay>,
-    mover_is_crusher: bool,
-    is_infantry: bool,
     blocker_neighbor_counts: Option<&BlockerNeighborCounts>,
 ) -> Option<Vec<(u16, u16)>> {
     let entry = NativePathEntry {
@@ -504,7 +480,6 @@ fn find_path_zoned_marker_inner(
         start,
         goal,
         &entry,
-        costs,
         zone_grid,
         mz,
         movement_zone,
@@ -512,9 +487,7 @@ fn find_path_zoned_marker_inner(
         marker_overlay,
         MoverSearchFacts {
             urgency: 0,
-            mover_is_crusher,
-            is_infantry,
-            foot_entry: None,
+            foot_entry: &super::WalkableEntry::new(grid),
         },
         blocker_neighbor_counts,
     )
@@ -522,12 +495,39 @@ fn find_path_zoned_marker_inner(
     .map(|steps| steps.into_iter().map(|step| (step.rx, step.ry)).collect())
 }
 
+/// 429C1A prepares the marker transaction only after 42C900 has admitted
+/// the search; the receiver's transaction, else the caller's overlay, holds
+/// through the cell A*. Returns the facts with the prepared urgency.
+fn prepared_markers<'a>(
+    facts: MoverSearchFacts<'a>,
+) -> Result<
+    (
+        MoverSearchFacts<'a>,
+        Option<std::cell::Ref<'a, SearchMarkerOverlay>>,
+    ),
+    PathSearchFailure,
+> {
+    let prepared = facts
+        .foot_entry
+        .prepare_search_markers()
+        .map_err(PathSearchFailure::CellEntryUnavailable)?;
+    Ok(match prepared {
+        Some((urgency, overlay)) => (
+            MoverSearchFacts {
+                urgency,
+                foot_entry: facts.foot_entry,
+            },
+            Some(overlay),
+        ),
+        None => (facts, None),
+    })
+}
+
 fn find_flat_path_after_entry(
     grid: &PathGrid,
     start: (u16, u16),
     goal: (u16, u16),
     entry: &NativePathEntry,
-    costs: Option<&TerrainCostGrid>,
     zone_grid: Option<&ZoneGrid>,
     mz: MovementZone,
     movement_zone: Option<MovementZone>,
@@ -559,35 +559,19 @@ fn find_flat_path_after_entry(
         },
         facts.foot_entry,
     )?;
-    //429C1A prepares the marker transaction only after42C900 has admitted
-    //the search. Keep its one owner borrowed through the cell A*.
-    let prepared = facts
-        .foot_entry
-        .map(|provider| provider.prepare_search_markers())
-        .transpose()
-        .map_err(PathSearchFailure::CellEntryUnavailable)?
-        .flatten();
-    let mut facts = facts;
-    if let Some((urgency, _)) = prepared.as_ref() {
-        facts.urgency = *urgency;
-    }
-    let marker_overlay = prepared
-        .as_ref()
-        .map(|(_, overlay)| &**overlay)
-        .or(marker_overlay);
-    find_path_with_costs_marker(
+    let (facts, prepared) = prepared_markers(facts)?;
+    find_path_marker(
         grid,
         start,
         goal,
-        costs,
         corridor.as_ref().map(HierarchyCorridor::gate),
-        movement_zone,
         resolved_terrain,
-        marker_overlay,
+        prepared.as_deref().or(marker_overlay),
         facts,
     )
 }
 
+/// [`find_layered_path_zoned_marker_detailed`] asking [`super::WalkableEntry`].
 #[cfg(test)]
 pub(crate) fn find_layered_path_zoned_marker(
     grid: &PathGrid,
@@ -596,13 +580,10 @@ pub(crate) fn find_layered_path_zoned_marker(
     goal: (u16, u16),
     zone_grid: Option<&ZoneGrid>,
     mz: MovementZone,
-    terrain_costs: Option<&TerrainCostGrid>,
     movement_zone: Option<MovementZone>,
     resolved_terrain: Option<&ResolvedTerrainGrid>,
     marker_overlay: Option<&SearchMarkerOverlay>,
     blocker_neighbor_counts: Option<&BlockerNeighborCounts>,
-    mover_is_crusher: bool,
-    is_infantry: bool,
     allow_zone_hierarchy: bool,
     playfield_bounds: Option<PlayfieldBounds>,
 ) -> Option<Vec<LayeredPathStep>> {
@@ -613,16 +594,13 @@ pub(crate) fn find_layered_path_zoned_marker(
         goal,
         zone_grid,
         mz,
-        terrain_costs,
         movement_zone,
         resolved_terrain,
         marker_overlay,
         blocker_neighbor_counts,
         MoverSearchFacts {
             urgency: 0,
-            mover_is_crusher,
-            is_infantry,
-            foot_entry: None,
+            foot_entry: &super::WalkableEntry::new(grid),
         },
         allow_zone_hierarchy,
         playfield_bounds,
@@ -637,7 +615,6 @@ pub(crate) fn find_layered_path_zoned_marker_detailed(
     goal: (u16, u16),
     zone_grid: Option<&ZoneGrid>,
     mz: MovementZone,
-    terrain_costs: Option<&TerrainCostGrid>,
     movement_zone: Option<MovementZone>,
     resolved_terrain: Option<&ResolvedTerrainGrid>,
     marker_overlay: Option<&SearchMarkerOverlay>,
@@ -685,30 +662,15 @@ pub(crate) fn find_layered_path_zoned_marker_detailed(
         },
         facts.foot_entry,
     )?;
-    let prepared = facts
-        .foot_entry
-        .map(|provider| provider.prepare_search_markers())
-        .transpose()
-        .map_err(PathSearchFailure::CellEntryUnavailable)?
-        .flatten();
-    let mut facts = facts;
-    if let Some((urgency, _)) = prepared.as_ref() {
-        facts.urgency = *urgency;
-    }
-    let marker_overlay = prepared
-        .as_ref()
-        .map(|(_, overlay)| &**overlay)
-        .or(marker_overlay);
+    let (facts, prepared) = prepared_markers(facts)?;
     find_layered_path_marker(
         grid,
         start,
         start_layer,
         goal,
-        terrain_costs,
         corridor.as_ref().map(HierarchyCorridor::gate),
-        movement_zone,
         resolved_terrain,
-        marker_overlay,
+        prepared.as_deref().or(marker_overlay),
         facts,
     )
 }

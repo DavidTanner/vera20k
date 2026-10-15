@@ -307,7 +307,7 @@ impl CaptureVictimFacts {
         // no VERA producer); 7: the Iron Curtain; 9: Selling or Construction.
         let refused = target_obj.immune_to_psionics
             || (target.category() == EntityCategory::Unit
-                && target.bunker_link.installed_in().is_some())
+                && target.bunker.link().installed_in().is_some())
             || target.mind_control.is_mind_controlled()
             || crate::sim::superweapon::invulnerability::is_invulnerable(
                 target.invulnerability.as_ref(),

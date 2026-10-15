@@ -83,8 +83,8 @@ fn building(sim: &mut Simulation, id: u64, owner: InternedId, kind: &str, health
     entity.estimated_health = EstimatedHealth::from_raw(health);
     entity.lifecycle.set_object_alive_for_test(true);
     entity.lifecycle.set_in_limbo_for_test(false);
-    entity.lifecycle.cell_marked = true;
-    entity.in_playfield = true;
+    entity.lifecycle.set_cell_marked(true);
+    entity.set_in_playfield(true);
     entity.building_art.set_actually_placed_for_test(true);
     entity.finish_building_construction_for_test();
     mission(&mut entity, MissionType::Guard as i32, -1);
@@ -151,10 +151,9 @@ fn fixture(radar: bool) -> (Simulation, RuleSet, InternedId) {
         rules.object("FACTORY"),
         Some(&rules),
     );
-    sim.update_house_tracking(
-        PRODUCER,
-        crate::sim::house_tracking::HouseTracking::increment_factory_count,
-    );
+    sim.update_house_tracking(PRODUCER, |tracking, entity| {
+        tracking.increment_factory_count(entity)
+    });
     (sim, rules, owner)
 }
 
@@ -326,7 +325,12 @@ fn settled_repair_native_health_sample_factory_cadence_radar_and_later_advice() 
             .unwrap()
             .economy
             .set_spent_for_test(int(&pending["spent"]));
-        sim.substrate.entities.get_mut(PLANT).unwrap().repairing = true;
+        sim.substrate
+            .entities
+            .get_mut(PLANT)
+            .unwrap()
+            .repairing
+            .set_for_test(true);
         assert_joined(&sim, &rules, owner, prior);
         assert_rng(&sim, &row["receipt"]["rng_before"], "joined prior");
         compared += 1;
@@ -471,7 +475,9 @@ fn native_local_radar_projection_uses_represented_provider_predicates_and_house_
             input["mission"].as_i64().unwrap_or(5) as i32,
             input["queued"].as_i64().unwrap_or(-1) as i32,
         );
-        provider.lifecycle.cell_marked = flag(input, "marked", true);
+        provider
+            .lifecycle
+            .set_cell_marked(flag(input, "marked", true));
         provider
             .lifecycle
             .set_in_limbo_for_test(flag(input, "limbo", false));

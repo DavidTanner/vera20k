@@ -815,6 +815,24 @@ where
             spawned.len()
         );
     }
+    if authored_overlay_registry.is_none() {
+        // Authored materialization runs the same line-marker owner below at
+        // its final InitCellAttributes sweep. The eager/generated route has
+        // already installed its final live grid here.
+        let mut terrain = sim.resolved_terrain.take().expect("populated map cells");
+        let shape = crate::map::authored_overlay::NativeOverlayMapShape::new(
+            map_data.header.width as i32,
+            map_data.header.height as i32,
+        );
+        sim.initialize_cell_trigger_lines(
+            &mut terrain,
+            shape
+                .recalc_cells()
+                .into_iter()
+                .map(|(x, y)| (i32::from(x), i32::from(y))),
+        );
+        sim.resolved_terrain = Some(terrain);
+    }
     sim.classify_map_triggers(rules);
     Ok(())
 }
@@ -1043,6 +1061,16 @@ where
     // `ScenarioClass::Full_Init @ 0x00686B20` stores the return at
     // `MapClass+0x134` (`0x0087F91C`).
     let mut tiberium_value_total: i32 = 0;
+    //568CDB..568DCA reads each retained CellTag before its Recalc. This
+    //read-only definition decision spends no RNG/native IDs and only ORs
+    //line bits that neither tiberium valuation nor Recalc changes.
+    sim.initialize_cell_trigger_lines(
+        &mut terrain,
+        shape
+            .recalc_cells()
+            .into_iter()
+            .map(|(x, y)| (i32::from(x), i32::from(y))),
+    );
     {
         let mut host = crate::sim::world::authored_load_host::SimulationAuthoredLoadHost::new(
             sim,
@@ -1115,7 +1143,7 @@ pub(crate) fn map_wall_owner_candidate_from_building(
     let coords =
         crate::sim::movement::ground_pose::object_get_coords(entity, Some(resolved_terrain));
     let (foundation_width, foundation_height) =
-        crate::rules::foundation::foundation_dimensions(&entity.foundation);
+        crate::rules::foundation::foundation_dimensions(entity.type_facts.foundation());
 
     crate::sim::overlay_grid::MapWallOwnerCandidate {
         owner: entity.owner(),
@@ -1125,7 +1153,7 @@ pub(crate) fn map_wall_owner_candidate_from_building(
         foundation_width,
         foundation_height,
         object_alive: entity.lifecycle.object_alive(),
-        cell_marked: entity.lifecycle.cell_marked,
+        cell_marked: entity.lifecycle.cell_marked(),
         house_wall_owner,
     }
 }

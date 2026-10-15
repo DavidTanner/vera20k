@@ -68,9 +68,9 @@ pub(crate) fn air_spatial_tracks_entity(
     let Some(locomotor) = entity.locomotor.as_ref() else {
         return false;
     };
-    locomotor.layer == MovementLayer::Air
+    locomotor.layer() == MovementLayer::Air
         || (entity.category() == EntityCategory::Aircraft
-            && locomotor.kind == LocomotorKind::Fly
+            && locomotor.active_kind() == LocomotorKind::Fly
             && crate::sim::movement::air_movement::current_fly_height(entity, terrain) > 0)
 }
 
@@ -173,7 +173,7 @@ pub(crate) fn cell_list_layer_for_entity(
 ) -> Option<MovementLayer> {
     (crate::sim::world::entity_layer(entity, terrain, None)
         == crate::sim::world::display_layers::DisplayLayer::GROUND)
-        .then_some(if entity.on_bridge {
+        .then_some(if entity.on_bridge() {
             MovementLayer::Bridge
         } else {
             MovementLayer::Ground
@@ -838,19 +838,22 @@ impl CellOccupationGrid {
         }
 
         if entity.category() != EntityCategory::Unit
-            || !entity.lifecycle.cell_marked
+            || !entity.lifecycle.cell_marked()
             || entity.passenger_role.is_inside_transport()
         {
             self.footprints_by_owner.remove(&entity.stable_id());
             return;
         }
-        let current_cleared = !entity.foot_occupation_enabled;
-        let current_layer =
-            lists.listed_layer(entity.position.rx, entity.position.ry, entity.stable_id());
+        let current_cleared = !entity.foot_occupation_enabled();
+        let current_layer = lists.listed_layer(
+            entity.position.rx(),
+            entity.position.ry(),
+            entity.stable_id(),
+        );
         if !current_cleared && let Some(layer) = current_layer {
             self.mark_vehicle_on_layer(
-                entity.position.rx,
-                entity.position.ry,
+                entity.position.rx(),
+                entity.position.ry(),
                 entity.stable_id(),
                 layer,
             );
@@ -1235,7 +1238,7 @@ impl OccupancyGrid {
                     .expect("validated reference");
                 occupant.is_building = entity.category() == EntityCategory::Structure;
                 occupant.sub_cell = if entity.category() == EntityCategory::Infantry {
-                    entity.sub_cell
+                    entity.sub_cell()
                 } else {
                     None
                 };
@@ -1289,7 +1292,7 @@ impl OccupancyGrid {
             // Global storage, native-alive, limbo, and cell-list membership are
             // independent facts. Only an object whose Mark transaction succeeded
             // participates in this rebuilt cache.
-            if !entity.lifecycle.cell_marked {
+            if !entity.lifecycle.cell_marked() {
                 continue;
             }
             // Entities inside transports don't occupy cells.
@@ -1301,7 +1304,7 @@ impl OccupancyGrid {
             };
             let sid = entity.stable_id();
             let sub = if entity.category() == EntityCategory::Infantry {
-                entity.sub_cell
+                entity.sub_cell()
             } else {
                 None
             };
@@ -1320,14 +1323,14 @@ impl OccupancyGrid {
 /// `3x3Refinery`'s, which omits `(2, 1)`.
 pub(crate) fn entity_occupancy_cells(entity: &GameEntity) -> Vec<(u16, u16)> {
     if entity.category() != EntityCategory::Structure {
-        return vec![(entity.position.rx, entity.position.ry)];
+        return vec![(entity.position.rx(), entity.position.ry())];
     }
-    crate::rules::foundation::foundation_cell_offsets(&entity.foundation)
+    crate::rules::foundation::foundation_cell_offsets(entity.type_facts.foundation())
         .into_iter()
         .filter_map(|(dx, dy)| {
             Some((
-                entity.position.rx.checked_add_signed(dx)?,
-                entity.position.ry.checked_add_signed(dy)?,
+                entity.position.rx().checked_add_signed(dx)?,
+                entity.position.ry().checked_add_signed(dy)?,
             ))
         })
         .collect()
@@ -1571,15 +1574,15 @@ mod tests {
 
         let mut entity = GameEntity::test_default(1, "HTNK", "Americans", 5, 5);
         let mut loco = LocomotorState::for_test_kind(LocomotorKind::Drive);
-        loco.layer = MovementLayer::Ground;
+        loco.set_layer(MovementLayer::Ground);
         entity.locomotor = Some(loco);
 
-        entity.on_bridge = true;
+        entity.set_on_bridge(true);
         assert_eq!(
             cell_list_layer_for_entity(&entity, None),
             Some(MovementLayer::Bridge)
         );
-        entity.on_bridge = false;
+        entity.set_on_bridge(false);
         assert_eq!(
             cell_list_layer_for_entity(&entity, None),
             Some(MovementLayer::Ground)
@@ -2166,15 +2169,19 @@ mod tests {
         let mut entities = crate::sim::entity_store::EntityStore::new();
         let mut infantry = GameEntity::test_default(1, "JUMPJET", "Americans", 5, 5);
         infantry.set_category_for_test(EntityCategory::Infantry);
-        infantry.sub_cell = Some(3);
-        infantry.lifecycle.cell_marked = true;
+        infantry.set_sub_cell(Some(3));
+        infantry.lifecycle.set_cell_marked(true);
         infantry.locomotor = Some(
             crate::sim::movement::locomotor::LocomotorState::for_test_kind(
                 crate::rules::locomotor_type::LocomotorKind::Jumpjet,
             ),
         );
-        infantry.locomotor.as_mut().unwrap().layer = MovementLayer::Air;
-        infantry.position.exact_z_leptons = Some(400);
+        infantry
+            .locomotor
+            .as_mut()
+            .unwrap()
+            .set_layer(MovementLayer::Air);
+        infantry.position.set_exact_z_leptons(Some(400));
         entities.insert(infantry);
         let building = GameEntity::test_default_of_category(
             2,
@@ -2345,16 +2352,16 @@ mod tests {
         let mut entities = crate::sim::entity_store::EntityStore::new();
         let mut first = crate::sim::game_entity::GameEntity::test_default(1, "E1", "Allies", 5, 5);
         first.set_category_for_test(EntityCategory::Infantry);
-        first.sub_cell = Some(2);
-        first.lifecycle.cell_marked = true;
+        first.set_sub_cell(Some(2));
+        first.lifecycle.set_cell_marked(true);
         let mut second =
             crate::sim::game_entity::GameEntity::test_default(2, "HTNK", "Allies", 5, 5);
         second.set_category_for_test(EntityCategory::Unit);
-        second.lifecycle.cell_marked = true;
+        second.lifecycle.set_cell_marked(true);
         let mut structure =
             crate::sim::game_entity::GameEntity::test_default(100, "GAPOWR", "Allies", 5, 5);
         structure.set_category_for_test(EntityCategory::Structure);
-        structure.lifecycle.cell_marked = true;
+        structure.lifecycle.set_cell_marked(true);
         entities.insert(first);
         entities.insert(second);
         entities.insert(structure);
@@ -2374,8 +2381,10 @@ mod tests {
         let mut structure =
             crate::sim::game_entity::GameEntity::test_default(100, "GAPOWR", "Allies", 5, 5);
         structure.set_category_for_test(EntityCategory::Structure);
-        structure.foundation = "2x2".to_string();
-        structure.lifecycle.cell_marked = true;
+        structure
+            .type_facts
+            .set_foundation_for_test("2x2".to_string());
+        structure.lifecycle.set_cell_marked(true);
         entities.insert(structure);
 
         let grid = OccupancyGrid::rebuild(&entities);
@@ -2396,7 +2405,7 @@ mod tests {
 
         assert!(limbo.lifecycle.object_alive());
         assert!(limbo.lifecycle.in_limbo());
-        assert!(!limbo.lifecycle.cell_marked);
+        assert!(!limbo.lifecycle.cell_marked());
         entities.insert(limbo);
 
         let grid = OccupancyGrid::rebuild(&entities);
@@ -2408,7 +2417,7 @@ mod tests {
         let mut entity =
             crate::sim::game_entity::GameEntity::test_default(stable_id, "MTNK", "Allies", rx, ry);
         entity.set_category_for_test(EntityCategory::Unit);
-        entity.lifecycle.cell_marked = true;
+        entity.lifecycle.set_cell_marked(true);
         entity.locomotor = Some(
             crate::sim::movement::locomotor::LocomotorState::for_test_kind(
                 crate::rules::locomotor_type::LocomotorKind::Drive,
@@ -2519,7 +2528,7 @@ mod tests {
             bits.mark_vehicle_on_layer(rx, 10, entity_id, layer);
         }
 
-        entity.position.rx = 3;
+        entity.position.set_rx(3);
         lists.remove_on_layer(1, 1, 1, MovementLayer::Ground);
         lists.add(
             3,

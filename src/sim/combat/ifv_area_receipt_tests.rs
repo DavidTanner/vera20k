@@ -70,9 +70,9 @@ fn original_area_receipt_selects_nullify_after_em_effect_rng_and_before_return()
                 .spawn_object("FV", "Americans", 10, 20, 0, &rules)
                 .unwrap();
             let target = world.substrate.entities.get_mut(id).unwrap();
-            target.position.sub_x = SimFixed::from_num(128);
-            target.position.sub_y = SimFixed::from_num(128);
-            target.position.exact_z_leptons = Some(624);
+            target.position.set_sub_x(SimFixed::from_num(128));
+            target.position.set_sub_y(SimFixed::from_num(128));
+            target.position.set_exact_z_leptons(Some(624));
             target
                 .health
                 .set_for_test(input["receiver_health"].as_i64().unwrap() as i32);
@@ -184,7 +184,8 @@ fn original_area_receipt_selects_nullify_after_em_effect_rng_and_before_return()
                     .entities
                     .get(receiver)
                     .unwrap()
-                    .damage_smoke_system_id,
+                    .damage_smoke_system_id
+                    .system(),
                 Some(*id)
             );
         } else if let Some(receiver) = receiver {
@@ -195,6 +196,7 @@ fn original_area_receipt_selects_nullify_after_em_effect_rng_and_before_return()
                     .get(receiver)
                     .unwrap()
                     .damage_smoke_system_id
+                    .system()
                     .is_none()
             );
         }
@@ -309,17 +311,20 @@ fn native_area_receipt_tracks_dispatch_and_strict_iron_curtain_boundary() {
                 .spawn_object("FV", "Americans", 10, 20, 0, &rules)
                 .unwrap();
             let entity = world.substrate.entities.get_mut(id).unwrap();
-            entity.position.sub_x =
-                SimFixed::from_num(128 + input["distance"].as_i64().unwrap() as i32);
-            entity.position.sub_y = SimFixed::from_num(128);
-            entity.position.exact_z_leptons = Some(624);
+            entity.position.set_sub_x(SimFixed::from_num(
+                128 + input["distance"].as_i64().unwrap() as i32,
+            ));
+            entity.position.set_sub_y(SimFixed::from_num(128));
+            entity.position.set_exact_z_leptons(Some(624));
             entity
                 .health
                 .set_for_test(input["health"].as_i64().unwrap() as i32);
             entity
                 .lifecycle
                 .set_object_alive_for_test(input["alive"].as_bool().unwrap());
-            entity.lifecycle.cell_marked = input["marked"].as_bool().unwrap();
+            entity
+                .lifecycle
+                .set_cell_marked(input["marked"].as_bool().unwrap());
             entity
                 .lifecycle
                 .set_in_limbo_for_test(input["limbo"].as_bool().unwrap());

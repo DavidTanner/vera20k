@@ -250,7 +250,7 @@ pub(crate) fn build_voxel_frame_catalog(
     let mut seen = BTreeSet::new();
     for entity in entities.values() {
         let type_str = interner.resolve(entity.type_ref());
-        if !entity.is_voxel && building_voxel_names(type_str, rules).is_none() {
+        if !entity.is_voxel() && building_voxel_names(type_str, rules).is_none() {
             continue;
         }
         for variant in unit_atlas_variants(type_str, rules) {

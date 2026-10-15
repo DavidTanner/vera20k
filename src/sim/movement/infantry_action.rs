@@ -54,6 +54,7 @@ pub(crate) const DO_DEPLOY: i32 = 0x1B;
 pub(crate) const DO_DEPLOYED: i32 = 0x1C;
 pub(crate) const DO_DEPLOYED_IDLE: i32 = 0x1E;
 pub(crate) const DO_UNDEPLOY: i32 = 0x1F;
+pub(crate) const DO_CHEER: i32 = 0x20;
 pub(crate) const DO_PARADROP: i32 = 0x21;
 pub(crate) const DO_AIR_DEATH_START: i32 = 0x22;
 pub(crate) const DO_AIR_DEATH_FALLING: i32 = 0x23;
@@ -110,7 +111,7 @@ fn is_prone(entity: &GameEntity) -> bool {
     entity
         .infantry
         .as_ref()
-        .is_some_and(|infantry| infantry.is_prone)
+        .is_some_and(|infantry| infantry.is_prone())
 }
 
 fn deploy_action(doing: i32) -> bool {
@@ -118,6 +119,36 @@ fn deploy_action(doing: i32) -> bool {
 }
 
 impl Simulation {
+    /// Infantry virtual388 at522C00. Its argument bypasses CanCheer522BC0,
+    /// not DoAction's interruption gate: both paths call51D6F0(32,0,0).
+    /// House50C8C0 passes0; SlaveManager6B0BD1 passes1. GetMission5B3040
+    /// reads the current selector, falling back to the queued selector.
+    /// Steam3e81a617..08600; tools/spatial_oracle/infantry_action_callback
+    /// --cheer records admission, retained Doing/Stage and RNG boundaries.
+    pub(crate) fn infantry_cheer(
+        &mut self,
+        id: u64,
+        bypass_admission: bool,
+        rules: &RuleSet,
+        effects: FrameEffects<'_>,
+    ) {
+        let Some(actor) = self.substrate.entities.get(id) else {
+            return;
+        };
+        let Some(infantry) = actor.mission_leaf.as_infantry() else {
+            return; // Other Techno classes' virtual388 is the no-op receiver.
+        };
+        if !bypass_admission
+            && (!matches!(actor.mission.effective().raw(), 5 | 11)
+                || !matches!(infantry.doing(), DO_READY | DO_IDLE1 | DO_IDLE2 | DO_CHEER))
+        {
+            return;
+        }
+        if let Err(cause) = self.infantry_do_action(id, DO_CHEER, false, rules, effects) {
+            log::debug!("infantry {id} Cheer: {cause}");
+        }
+    }
+
     /// `InfantryClass::Do_Action` 0x0051D6F0 for `requested` with the
     /// caller's `force` and a random-frame argument 0, as the class's own
     /// receivers request it. Answers whether the action was accepted.
@@ -223,7 +254,7 @@ impl Simulation {
             .as_infantry()
             .ok_or("Do_Action requires Infantry Doing")?
             .doing();
-        let on_bridge = actor.on_bridge;
+        let on_bridge = actor.on_bridge();
         if current == DO_PARADROP && actor.is_falling_down() {
             return Ok(false);
         }
@@ -279,10 +310,10 @@ impl Simulation {
                     .push(crate::sim::world::SimSoundEvent::VocAt {
                         sound_id: sound_id.clone(),
                         audible_to: None,
-                        rx: actor.position.rx,
-                        ry: actor.position.ry,
-                        sub_x: actor.position.sub_x,
-                        sub_y: actor.position.sub_y,
+                        rx: actor.position.rx(),
+                        ry: actor.position.ry(),
+                        sub_x: actor.position.sub_x(),
+                        sub_y: actor.position.sub_y(),
                         world_z_leptons: location.z,
                     });
             }
@@ -321,7 +352,7 @@ impl Simulation {
         let fear = actor
             .infantry
             .as_ref()
-            .map_or(0, |infantry| infantry.fear_level);
+            .map_or(0, |infantry| infantry.fear_level());
         if requested == DO_WALK && fear >= 200 {
             requested = DO_PANIC;
         }
@@ -367,8 +398,8 @@ impl Simulation {
         };
         if let Some(infantry) = actor.infantry.as_mut() {
             match requested {
-                DO_DOWN => infantry.is_prone = true,
-                DO_UP | DO_DEPLOY => infantry.is_prone = false,
+                DO_DOWN => infantry.lie_down(),
+                DO_UP | DO_DEPLOY => infantry.stand_up(),
                 _ => {}
             }
         }
@@ -691,7 +722,7 @@ impl Simulation {
                 .substrate
                 .entities
                 .get(id)
-                .and_then(|actor| actor.navigation.nav_com);
+                .and_then(|actor| actor.navigation.nav_com());
             if let Some(destination) = destination {
                 if let Err(cause) =
                     self.assign_infantry_destination(id, destination, rules, registry, effects)

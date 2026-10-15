@@ -202,7 +202,7 @@ impl Simulation {
         let Some(state) = entity
             .locomotor
             .as_ref()
-            .filter(|locomotor| locomotor.powered)
+            .filter(|locomotor| locomotor.is_powered())
             .and_then(|locomotor| locomotor.fly_runtime())
         else {
             return stats;
@@ -299,7 +299,7 @@ impl Simulation {
             .and_then(|locomotor| locomotor.fly_runtime())
             .is_none_or(|state| state.airport_bound());
         if entity.health.current() <= 0
-            || entity.navigation.nav_com.is_none()
+            || entity.navigation.nav_com().is_none()
             || entity.mission.effective() != MissionId::from_known(MissionType::Guard)
             || entity.mission.queued() != MissionId::NONE
             || airport_bound
@@ -350,7 +350,7 @@ impl Simulation {
                 .locomotor
                 .as_ref()
                 .and_then(|locomotor| locomotor.fly_runtime())
-                .map_or(SIM_ZERO, |state| state.current_speed),
+                .map_or(SIM_ZERO, |state| state.current_speed()),
         );
         let mut candidate = location;
         if speed > 0 {
@@ -403,7 +403,7 @@ impl Simulation {
                 .locomotor
                 .as_ref()
                 .and_then(|locomotor| locomotor.fly_runtime())
-                .is_some_and(|state| state.current_speed > SIM_ZERO && !state.taking_off())
+                .is_some_and(|state| state.current_speed() > SIM_ZERO && !state.taking_off())
         {
             entity
                 .flight_attitude
@@ -496,7 +496,7 @@ impl Simulation {
             == MissionId::from_known(MissionType::Enter)
             && entity
                 .navigation
-                .nav_com
+                .nav_com()
                 .and_then(|nav_com| match nav_com {
                     NavTargetRef::Cell { .. } => None,
                     NavTargetRef::Entity { id }
@@ -552,12 +552,12 @@ impl Simulation {
             && entity.health.current() > 0
             && !state.has_phase_callback()
             && coord_cell(state.destination()) == coord_cell(location)
-            && state.target_speed == SIM_ZERO
+            && state.target_speed() == SIM_ZERO
             && (entity.attack_target.target().is_none()
                 || entity
                     .aircraft_ammo
                     .as_ref()
-                    .map_or(-1, |ammo| ammo.current)
+                    .map_or(-1, |ammo| ammo.current())
                     == 0)
     }
 
@@ -625,7 +625,7 @@ impl Simulation {
         let ammo = entity
             .aircraft_ammo
             .as_ref()
-            .map_or(-1, |ammo| ammo.current);
+            .map_or(-1, |ammo| ammo.current());
         let hunter_seeker = object.is_some_and(|object| object.hunter_seeker);
         let armed = target.is_some() && ammo != 0;
         let may_slow = may_slow
@@ -762,7 +762,7 @@ impl Simulation {
         let land = arrival
             && distance < ARRIVAL_STOP
             && !cruise
-            && state.current_speed < air_movement::MIN_CREEP_SPEED;
+            && state.current_speed() < air_movement::MIN_CREEP_SPEED;
 
         let entity = self.substrate.entities.get_mut(id).unwrap();
         if let Some(primary) = primary {
@@ -782,11 +782,11 @@ impl Simulation {
         state.set_flight_level(level);
         if arrival && may_slow {
             if distance < ARRIVAL_STOP {
-                state.target_speed = SIM_ZERO;
+                state.set_target_speed(SIM_ZERO);
             } else if distance < ARRIVAL_HALF {
-                state.target_speed = HALF_SPEED;
+                state.set_target_speed(HALF_SPEED);
             } else if distance < ARRIVAL_THREE_QUARTERS {
-                state.target_speed = THREE_QUARTER_SPEED;
+                state.set_target_speed(THREE_QUARTER_SPEED);
             }
         }
         if land {
@@ -835,7 +835,11 @@ impl Simulation {
             Some(bounds),
             self.resolved_terrain.as_ref(),
         ) {
-            self.substrate.entities.get_mut(id).unwrap().in_playfield = true;
+            self.substrate
+                .entities
+                .get_mut(id)
+                .unwrap()
+                .set_in_playfield(true);
             return;
         }
         if !retreat {
@@ -850,8 +854,10 @@ impl Simulation {
             .and_then(|cargo| cargo.unload_first())
         {
             self.team_script_vm.mark_member_team_leaving_map(passenger);
+            // RemoveFirstPassenger leaves the passenger's own hold for its
+            // teardown.
             if let Some(passenger) = self.substrate.entities.get_mut(passenger) {
-                passenger.passenger_role = crate::sim::passenger::PassengerRole::None;
+                passenger.passenger_role.clear_carrier_relation();
             }
             self.uninit_with_context(passenger, context);
         }

@@ -100,7 +100,7 @@ fn constructed_depot_waiters_take_the_freed_slot_in_live_logic_order() {
             }
         }
         let building = sim.substrate.entities.get(depot).unwrap();
-        assert!(building.lifecycle.cell_marked && building.in_logic_vector);
+        assert!(building.lifecycle.cell_marked() && building.in_logic_vector.is_member());
         // Constructors register the starting tanks before the later depot.
         // The second case explicitly changes only the prepared Logic order,
         // proving that stable IDs/storage order do not decide admission.
@@ -172,7 +172,7 @@ fn constructed_depot_waiters_take_the_freed_slot_in_live_logic_order() {
         assert_eq!(admitted.pending_entry(), None);
         assert_eq!(admitted.mission.current().known(), Some(MissionType::Enter));
         assert_eq!(
-            admitted.navigation.nav_com,
+            admitted.navigation.nav_com(),
             Some(NavTargetRef::Building { id: depot })
         );
         assert_eq!(
@@ -191,8 +191,8 @@ fn constructed_depot_waiters_take_the_freed_slot_in_live_logic_order() {
                 unit.health.current() == rules.object("MTNK").unwrap().strength
                     && unit.pending_entry().is_none()
                     && !linked(&sim, depot, *tank)
-                    && !((10..13).contains(&unit.position.rx)
-                        && (10..13).contains(&unit.position.ry))
+                    && !((10..13).contains(&unit.position.rx())
+                        && (10..13).contains(&unit.position.ry()))
                     && unit
                         .locomotor
                         .as_ref()

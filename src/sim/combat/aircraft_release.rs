@@ -121,7 +121,7 @@ pub(super) fn visit(
         ammo: entity
             .aircraft_ammo
             .as_ref()
-            .map_or(-1, |ammo| ammo.current),
+            .map_or(-1, |ammo| ammo.current()),
         strafe: combat_weapon::aircraft_strafes(rules, obj, entity.veterancy.rank()),
         fighter: obj.fighter,
         curley_shuffle: rules.general.curley_shuffle,
@@ -323,7 +323,7 @@ impl FireAtHost for AircraftFireAt<'_, '_, '_, '_> {
             .entity()
             .and_then(|entity| entity.locomotor.as_ref())
             .and_then(|locomotor| locomotor.fly_runtime())
-            .map_or(crate::util::fixed_math::SIM_ZERO, |fly| fly.current_speed);
+            .map_or(crate::util::fixed_math::SIM_ZERO, |fly| fly.current_speed());
         crate::sim::movement::air_movement::current_fly_speed(
             crate::util::fixed_math::ra2_speed_to_leptons_per_frame(self.strike.obj.speed),
             fraction,
@@ -600,6 +600,6 @@ impl StrikeHost for CombatStrike<'_, '_, '_> {
             .entities
             .get(self.snap.stable_id)
             .and_then(|entity| entity.aircraft_ammo.as_ref())
-            .map_or(-1, |ammo| ammo.current)
+            .map_or(-1, |ammo| ammo.current())
     }
 }

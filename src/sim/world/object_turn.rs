@@ -473,7 +473,7 @@ impl Simulation {
                 .substrate
                 .entities
                 .get(stable_id)
-                .map(|entity| (entity.position.rx as i16, entity.position.ry as i16));
+                .map(|entity| (entity.position.rx() as i16, entity.position.ry() as i16));
             if let Some(cell) = cell {
                 let _ = sim.pickup_crate_at(stable_id, cell, rules, overlay_registry, ctx.effects);
             }
@@ -572,7 +572,7 @@ impl Simulation {
             && entity.low_bridge_tube_state.is_none()
             && let Some(slope) = sim.resolved_terrain.as_ref().and_then(|terrain| {
                 terrain
-                    .cell(entity.position.rx, entity.position.ry)
+                    .cell(entity.position.rx(), entity.position.ry())
                     .map(|cell| cell.slope_type)
             })
         {
@@ -817,7 +817,7 @@ impl Simulation {
         // successful finalization clears the payload but must still skip
         // every ordinary locomotor tail and the second mission checkpoint.
         let tube_active_at_entry = sim.substrate.entities.get(stable_id).is_some_and(|entity| {
-            !entity.dying
+            !entity.death.is_dying()
                 && matches!(
                     entity.category(),
                     EntityCategory::Unit | EntityCategory::Infantry
@@ -841,12 +841,12 @@ impl Simulation {
                 .substrate
                 .entities
                 .get(stable_id)
-                .is_none_or(|entity| entity.dying)
+                .is_none_or(|entity| entity.death.is_dying())
         {
             outcome.destroyed_structure = true;
         }
         if sim.substrate.entities.get(stable_id).is_none_or(|entity| {
-            entity.dying
+            entity.death.is_dying()
                 || (!tube_active_at_entry
                     && matches!(
                         entity.category(),
@@ -896,7 +896,7 @@ impl Simulation {
             .substrate
             .entities
             .get(stable_id)
-            .map(|entity| entity.body_frame_counter)
+            .map(|entity| entity.body_frame_counter.get())
         else {
             return Ok(outcome);
         };
@@ -904,13 +904,13 @@ impl Simulation {
             .substrate
             .entities
             .get(stable_id)
-            .map(|entity| (entity.position.rx, entity.position.ry));
+            .map(|entity| (entity.position.rx(), entity.position.ry()));
         let walk_process_owned = sim
             .substrate
             .entities
             .get(stable_id)
             .and_then(|e| e.locomotor.as_ref())
-            .is_some_and(|l| l.kind == crate::rules::locomotor_type::LocomotorKind::Walk);
+            .is_some_and(|l| l.active_kind() == crate::rules::locomotor_type::LocomotorKind::Walk);
         // An entry-active TubeMovement leaf runs through the ground corridor
         // in place of the Foot AI and its Process.
         let process = if tube_active_at_entry {
@@ -937,7 +937,7 @@ impl Simulation {
                 .substrate
                 .entities
                 .get(stable_id)
-                .is_none_or(|e| e.dying || !e.lifecycle.object_alive())
+                .is_none_or(|e| e.death.is_dying() || !e.lifecycle.object_alive())
         {
             return Ok(outcome);
         }
@@ -1041,7 +1041,7 @@ impl Simulation {
             .substrate
             .entities
             .get(stable_id)
-            .map(|entity| (entity.position.rx, entity.position.ry));
+            .map(|entity| (entity.position.rx(), entity.position.ry()));
         // A mover whose Process has no ported `Per_Cell_Process` call (Fly,
         // a cruising Jumpjet, Rocket) takes
         // VERA's cell-change stand-in for the Foot body's sensor, uncloak,

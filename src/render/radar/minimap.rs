@@ -793,7 +793,7 @@ fn minimap_entity_in_playfield(
     playfield_authority_configured: bool,
     entity: &crate::sim::game_entity::GameEntity,
 ) -> bool {
-    !playfield_authority_configured || entity.in_playfield
+    !playfield_authority_configured || entity.in_playfield()
 }
 
 /// Create a 2x2 solid white texture for drawing lines and rectangles.

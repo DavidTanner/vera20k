@@ -489,7 +489,9 @@ mod tests {
             sim.substrate.anims.get_mut(old3).unwrap().runtime.paused = false;
             let entity = sim.substrate.entities.get_mut(id).unwrap();
             entity.building_art.actually_placed = true;
-            entity.building_last_operational = i["old"].as_bool().unwrap();
+            entity
+                .building_last_operational
+                .set_for_test(i["old"].as_bool().unwrap());
             let owner = entity.owner();
             let state = sim.power_states.entry(owner).or_default();
             state.total_output = i["output"].as_i64().unwrap() as i32;
@@ -507,7 +509,7 @@ mod tests {
             );
             let entity = sim.entities().get(id).unwrap();
             assert_eq!(
-                entity.building_last_operational,
+                entity.building_last_operational.is_operational(),
                 o["operational"].as_bool().unwrap(),
                 "sample row {index}"
             );

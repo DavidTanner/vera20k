@@ -1,9 +1,104 @@
-//! Native AStar height fragments. These compare original instruction results,
-//! not a second Rust model; they do not establish full-route equivalence.
+//! Native AStar height and cost fragments. These compare original
+//! instruction results, not a second Rust model; they do not establish
+//! full-route equivalence.
 
 use super::*;
 use serde_json::Value;
 use std::cell::RefCell;
+
+fn node_corpus() -> Value {
+    serde_json::from_str(crate::test_fixture::text(
+        "tools/spatial_oracle/astar_structural_height.json",
+    ))
+    .unwrap()
+}
+
+fn f32_hex(value: &Value) -> f32 {
+    f32::from_bits(u32::from_str_radix(value.as_str().unwrap(), 16).unwrap())
+}
+
+/// The main loop's edge for every class below 7, urgency and marker, against
+/// the original call and `FMUL`/`FADD`/`FSTP` (`edge_costs`).
+#[test]
+fn original_binary32_edge_cost() {
+    let corpus = node_corpus();
+    let rows = corpus["edge_costs"].as_array().unwrap();
+    assert_eq!(rows.len(), 144);
+    for row in rows {
+        let input = &row["input"];
+        let class = input["cost_class"].as_u64().unwrap() as u8;
+        let mut cost = CLASS_BASE[usize::from(class)];
+        if class == 2 {
+            // The candidate has no occupier, so urgency 0 asks a chain that
+            // clears.
+            let urgency = input["urgency"].as_u64().unwrap() as u8;
+            cost *= code2_multiplier(urgency, || Ok::<_, ()>(false)).unwrap();
+        }
+        let mut overlay = SearchMarkerOverlay::new();
+        if input["marker"].as_bool().unwrap() {
+            overlay.toggle((11, 9));
+        }
+        let cost = apply_search_marker_cost(cost, Some(&overlay), (11, 9));
+        let edge = compass_edge_cost(cost, input["direction"].as_u64().unwrap() as usize);
+        assert_eq!(
+            edge.to_bits(),
+            f32_hex(&row["edge_bits"]).to_bits(),
+            "{input}"
+        );
+    }
+}
+
+/// `AStar_create_node`'s g and f, the heuristic included, against the whole
+/// original function (`node_costs`).
+#[test]
+fn original_binary32_node_costs() {
+    let corpus = node_corpus();
+    let rows = corpus["node_costs"].as_array().unwrap();
+    assert_eq!(rows.len(), 136);
+    for row in rows {
+        let input = &row["input"];
+        let coord = |axis: usize| {
+            let goal = input["goal"][axis].as_i64().unwrap();
+            (
+                goal as u16,
+                (goal + input["offset"][axis].as_i64().unwrap()) as u16,
+            )
+        };
+        let ((goal_x, x), (goal_y, y)) = (coord(0), coord(1));
+        let (g, f) = match input["parent_g_bits"].as_str() {
+            Some(_) => node_costs(
+                f32_hex(&input["parent_g_bits"]),
+                f32_hex(&input["edge_bits"]),
+                (x, y),
+                (goal_x, goal_y),
+            ),
+            // The start node: g 0 and the heuristic alone.
+            None => (0.0, heuristic((x, y), (goal_x, goal_y))),
+        };
+        assert_eq!(g.to_bits(), f32_hex(&row["g_bits"]).to_bits(), "{input}");
+        assert_eq!(f.to_bits(), f32_hex(&row["f_bits"]).to_bits(), "{input}");
+    }
+}
+
+/// The closed-candidate test on both sides of the current g plus 1.009
+/// (`closed_retries`).
+#[test]
+fn original_closed_candidate_retry() {
+    let corpus = node_corpus();
+    let rows = corpus["closed_retries"].as_array().unwrap();
+    assert_eq!(rows.len(), 36);
+    for row in rows {
+        let input = &row["input"];
+        assert_eq!(
+            closed_candidate_retried(
+                f32_hex(&input["stored_g_bits"]),
+                f32_hex(&input["current_g_bits"])
+            ),
+            row["retried"].as_bool().unwrap(),
+            "{input}"
+        );
+    }
+}
 
 fn scalar_cell(level: u8, flags: u32, walkable_hint: bool) -> PathCell {
     PathCell {
@@ -67,10 +162,7 @@ fn original_signed_height_producer_and_blocked_goal_tail() {
 
 #[test]
 fn original_structural_node_height_and_closed_list_selection() {
-    let corpus: Value = serde_json::from_str(crate::test_fixture::text(
-        "tools/spatial_oracle/astar_structural_height.json",
-    ))
-    .unwrap();
+    let corpus = node_corpus();
     let cases = corpus["cases"].as_array().unwrap();
     assert_eq!(cases.len(), 22);
     for case in cases {
@@ -147,11 +239,7 @@ fn canonical_entry_reaches_blocked_goal_before_static_grid_refusal() {
             (0, 0),
             MovementLayer::Ground,
             (1, 0),
-            &AStarOptions {
-                foot_entry: Some(&entry),
-                is_infantry: true,
-                ..Default::default()
-            },
+            &AStarOptions::new(&entry),
         );
         assert_eq!(result.is_ok(), case["outcome"] == "admit_node_creation");
         let queries = entry.queries.borrow();
@@ -177,7 +265,7 @@ fn unavailable_live_entry_is_not_an_ordinary_blocked_route() {
             (0, 0),
             MovementLayer::Ground,
             (1, 0),
-            &AStarOptions { foot_entry: Some(&entry), ..Default::default() },
+            &AStarOptions::new(&entry),
         ),
         Err(PathSearchFailure::CellEntryUnavailable(cause))
             if cause == "unavailable canonical Cell input"
@@ -210,10 +298,7 @@ fn native_null_candidates_never_reach_entry_or_create_routes() {
             Ok(0)
         }
     }
-    let corpus: Value = serde_json::from_str(crate::test_fixture::text(
-        "tools/spatial_oracle/astar_structural_height.json",
-    ))
-    .unwrap();
+    let corpus = node_corpus();
     let controls = corpus["allocation_guards"].as_array().unwrap();
     assert_eq!(controls.len(), 4);
     for control in controls {
@@ -261,9 +346,7 @@ fn native_null_candidates_never_reach_entry_or_create_routes() {
             goal,
             &AStarOptions {
                 resolved_terrain: Some(&terrain),
-                foot_entry: Some(&entry),
-                is_infantry: true,
-                ..Default::default()
+                ..AStarOptions::new(&entry)
             },
         );
         assert_eq!(
@@ -330,6 +413,7 @@ fn original_reconstruction_retains_each_parent_descriptor_height() {
                     encode_from(previous, false)
                 },
                 height: node["height"].as_i64().unwrap() as i16,
+                ..PathDescriptor::UNVISITED
             };
             previous = index;
         }
@@ -388,10 +472,7 @@ fn accepted_descriptor_height_survives_selected_list_transition() {
     // Production owner regression using the original scalar-height producer
     // corpus: selected_list can remain deck even when the accepted new node's
     // height becomes ground. Reconstruction must keep both facts separately.
-    let corpus: Value = serde_json::from_str(crate::test_fixture::text(
-        "tools/spatial_oracle/astar_structural_height.json",
-    ))
-    .unwrap();
+    let corpus = node_corpus();
     for case in corpus["cases"].as_array().unwrap() {
         let input = &case["input"];
         if input["initial_node"].as_bool().unwrap_or(false) {
@@ -415,10 +496,12 @@ fn accepted_descriptor_height_survives_selected_list_transition() {
         ground[0] = PathDescriptor {
             parent: usize::MAX,
             height: previous_height,
+            ..PathDescriptor::UNVISITED
         };
         let next = PathDescriptor {
             parent: encode_from(0, false),
             height: next_height,
+            ..PathDescriptor::UNVISITED
         };
         if next_bridge {
             bridge[1] = next;
@@ -451,6 +534,8 @@ fn accepted_descriptor_height_survives_selected_list_transition() {
 /// and 5 still expand (`AStar_main_loop @ 0x00429A90` refuses only 7), at 60x
 /// and 20x the step (`AStar_compute_edge_cost @ 0x00429830`, table
 /// `0x0081870C`): crossing one 20x cell beats a 32-step detour, 60x does not.
+/// An `IsTrain=` mover prices every admitted class as class 0
+/// (`0x00429F5C..0x00429F69`).
 #[test]
 fn a_wall_class_from_the_live_entry_prices_the_crossing() {
     // Column x=3 is a wall line on a 7x17 board, open only at its foot.
@@ -464,7 +549,7 @@ fn a_wall_class_from_the_live_entry_prices_the_crossing() {
         }
     }
     let grid = PathGrid::new(7, 17);
-    let crosses = |class: u8| {
+    let crosses = |class: u8, mover_is_train: bool| {
         let entry = WallLine(class);
         let route = astar_search(
             &grid,
@@ -472,15 +557,17 @@ fn a_wall_class_from_the_live_entry_prices_the_crossing() {
             MovementLayer::Ground,
             (6, 0),
             &AStarOptions {
-                foot_entry: Some(&entry),
-                ..Default::default()
+                mover_is_train,
+                ..AStarOptions::new(&entry)
             },
         )
         .unwrap();
         assert_eq!(route.last().map(|step| (step.rx, step.ry)), Some((6, 0)));
         route.iter().any(|step| step.rx == 3 && step.ry < 16)
     };
-    assert!(crosses(5), "an enemy wall costs 20x: cross it");
-    assert!(!crosses(4), "an allied wall costs 60x: take the gap");
-    assert!(!crosses(7), "a refused wall never expands");
+    assert!(crosses(5, false), "an enemy wall costs 20x: cross it");
+    assert!(!crosses(4, false), "an allied wall costs 60x: take the gap");
+    assert!(!crosses(7, false), "a refused wall never expands");
+    assert!(crosses(4, true), "a train prices an allied wall as clear");
+    assert!(!crosses(7, true), "a train never expands a refused wall");
 }

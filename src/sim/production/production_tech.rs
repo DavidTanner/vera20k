@@ -200,7 +200,7 @@ pub fn producer_candidates_for_owner_category(
     let mut preferred_factories: Vec<(u64, u16, u16, String)> = Vec::new();
     for e in entities.values() {
         // A Dying factory corpse must not be selected as a unit's producer/exit.
-        if e.dying {
+        if e.death.is_dying() {
             continue;
         }
         if e.lifecycle.in_limbo() {
@@ -223,8 +223,8 @@ pub fn producer_candidates_for_owner_category(
         if !require_matching_factory || is_match {
             preferred_factories.push((
                 e.stable_id(),
-                e.position.rx,
-                e.position.ry,
+                e.position.rx(),
+                e.position.ry(),
                 type_ref_str.to_string(),
             ));
         }

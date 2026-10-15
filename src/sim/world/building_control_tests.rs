@@ -147,7 +147,14 @@ fn building_mission_only_selection_uses_native_virtual_control_admission() {
                     .unwrap(),
                 "mission_only={mission_only}, {input}"
             );
-            assert!(!sim.substrate.entities.get(ACTOR).unwrap().selected);
+            assert!(
+                !sim.substrate
+                    .entities
+                    .get(ACTOR)
+                    .unwrap()
+                    .selection
+                    .is_selected()
+            );
             compared += 1;
         }
     }

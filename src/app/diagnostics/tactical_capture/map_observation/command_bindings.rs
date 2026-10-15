@@ -120,9 +120,9 @@ impl MapScheduledCommand {
                             && !entity.lifecycle.in_limbo()
                             && sim.interner.resolve(entity.type_ref()) == selector.type_id
                             && sim.interner.resolve(entity.owner()) == selector.owner
-                            && selector
-                                .cell
-                                .is_none_or(|cell| cell == [entity.position.rx, entity.position.ry])
+                            && selector.cell.is_none_or(|cell| {
+                                cell == [entity.position.rx(), entity.position.ry()]
+                            })
                     });
                     let (id, entity) = matches.next().with_context(|| format!(
                         "actor selector {selector:?} at {pointer} matched no living non-limbo actor"))?;
@@ -137,7 +137,7 @@ impl MapScheduledCommand {
                         json!({"stable_id": id,
                         "owner": sim.interner.resolve(entity.owner()),
                         "type_id": sim.interner.resolve(entity.type_ref()),
-                        "cell": [entity.position.rx, entity.position.ry]}),
+                        "cell": [entity.position.rx(), entity.position.ry()]}),
                     )
                 }
             };
@@ -401,7 +401,7 @@ mod tests {
             json!({
             "stable_id": 28, "type_id": "MTNK", "owner": "Computer1", "cell": [12, 13]})
         );
-        sim.entities_mut().get_mut(28).unwrap().position.rx = 14;
+        sim.entities_mut().get_mut(28).unwrap().position.set_rx(14);
         assert!(
             narrowed.resolve(&sim, &rules).is_err(),
             "cell is current, not initial"
@@ -426,7 +426,11 @@ mod tests {
             .unwrap()
             .lifecycle
             .set_in_limbo_for_test(false);
-        sim.entities_mut().get_mut(17).unwrap().dying = true;
+        sim.entities_mut()
+            .get_mut(17)
+            .unwrap()
+            .death
+            .set_dying_for_test(true);
         assert!(command.resolve(&sim, &rules).is_err());
     }
 

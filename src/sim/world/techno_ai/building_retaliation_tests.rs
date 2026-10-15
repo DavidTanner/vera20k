@@ -66,7 +66,7 @@ fn rules(input: &Value) -> RuleSet {
     };
     let yes = |set: bool| if set { "yes" } else { "no" };
     RuleSet::from_ini_with_fixed_art_for_test(
-        &IniFile::from_str(&format!(
+        &crate::sim::arena_fixture::clear_ground_ini(&format!(
             "[General]\nGuardAreaTargetingDelay=36\n[CombatDamage]\nPlayerReturnFire={}\n\
          [BuildingTypes]\n0=DEF\n\
          [VehicleTypes]\n0=TANK\n\
@@ -116,6 +116,7 @@ fn mission(name: &str) -> MissionId {
 fn fixture(rules: &RuleSet, input: &Value) -> (Simulation, u64, Option<u64>) {
     let mut sim = Simulation::new();
     sim.install_resolved_terrain_for_new_map(test_flat_ground_grid(24));
+    crate::sim::arena_fixture::supply_native_map(&mut sim);
     for (house, human) in [
         ("Americans", input["human"].as_bool().unwrap_or(false)),
         ("Russians", false),
@@ -308,7 +309,7 @@ fn the_block_matches_the_original() {
 /// turretless `Insignificant=` one, and the enemy `GUN` that hits them (a
 /// building, which the bare test map can place).
 fn production_rules(extra: &str) -> RuleSet {
-    RuleSet::from_ini_with_fixed_art_for_test(&IniFile::from_str(&format!(
+    RuleSet::from_ini_with_fixed_art_for_test(&crate::sim::arena_fixture::clear_ground_ini(&format!(
         "[General]\nGuardAreaTargetingDelay=36\n[BuildingTypes]\n0=DEF\n1=SHACK\n2=GUN\n3=MINER\n\
          [DEF]\nStrength=1000\nArmor=concrete\nPrimary=Gun\nTurret=yes\nROT=10\n\
          [SHACK]\nStrength=1000\nArmor=concrete\nPrimary=Gun\nROT=10\n\
@@ -333,6 +334,7 @@ fn production_fixture(
 ) -> (Simulation, u64, u64) {
     let mut sim = Simulation::new();
     sim.install_resolved_terrain_for_new_map(test_flat_ground_grid(24));
+    crate::sim::arena_fixture::supply_native_map(&mut sim);
     for (house, human) in [("Americans", human), ("Russians", false)] {
         let id = sim.interner.intern(house);
         sim.houses
@@ -519,7 +521,7 @@ fn a_computer_defence_drops_its_out_of_range_target_when_hit_by_it() {
     let entity = sim.substrate.entities.get(building).unwrap();
     assert!(entity.attack_target.target().is_none());
     assert_eq!(
-        entity.suspended_attack_target,
+        entity.suspended_attack_target.target(),
         Some(TargetKind::Entity(source)),
         "the Override archived it"
     );

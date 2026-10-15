@@ -34,12 +34,8 @@ fn occupant_can_use_track_answers_only_at_the_chain_point_of_a_turning_curve() {
             // true at cursor -1 — the never-tracked state — exactly as
             // `0x004B4B80..4B8A` does.
             let expected = raw.chain_index != 0 && head != exit && chained_entry_nonzero;
-            let at_chain = TrackProgress {
-                turn_index: turn_index as i32,
-                cursor: i32::from(raw.chain_index),
-                reversed: false,
-                residual: 0,
-            };
+            let at_chain =
+                TrackProgress::for_test(turn_index as i32, i32::from(raw.chain_index), false, 0);
             assert_eq!(
                 occupant_can_use_track(&at_chain, Some(head)),
                 expected,
@@ -48,9 +44,10 @@ fn occupant_can_use_track_answers_only_at_the_chain_point_of_a_turning_curve() {
             if expected {
                 checked_true += 1;
                 for off in [-1, 1] {
-                    let elsewhere = TrackProgress {
-                        cursor: i32::from(raw.chain_index) + off,
-                        ..at_chain
+                    let elsewhere = {
+                        let mut value = at_chain;
+                        value.set_cursor(i32::from(raw.chain_index) + off);
+                        value
                     };
                     assert!(
                         !occupant_can_use_track(&elsewhere, Some(head)),
@@ -61,9 +58,10 @@ fn occupant_can_use_track_answers_only_at_the_chain_point_of_a_turning_curve() {
                 assert!(!occupant_can_use_track(&at_chain, None), "empty queue");
                 assert!(
                     !occupant_can_use_track(
-                        &TrackProgress {
-                            turn_index: -1,
-                            ..at_chain
+                        &{
+                            let mut value = at_chain;
+                            value.set_turn_index(-1);
+                            value
                         },
                         Some(head)
                     ),
@@ -78,12 +76,7 @@ fn occupant_can_use_track_answers_only_at_the_chain_point_of_a_turning_curve() {
     );
     // A straight run carries chain index -1 and is never answered true at a
     // real cursor; the cursor 0 exit closes the fresh-acceptance state too.
-    let straight = TrackProgress {
-        turn_index: 0,
-        cursor: 0,
-        reversed: false,
-        residual: 0,
-    };
+    let straight = TrackProgress::for_test(0, 0, false, 0);
     assert!(!occupant_can_use_track(&straight, Some(2)));
 }
 
@@ -102,12 +95,12 @@ fn occupant_can_use_track_matches_native_oracle() {
     let mut checked = 0;
     for family in ["drive", "ship"] {
         for case in corpus[family].as_array().unwrap() {
-            let track = TrackProgress {
-                turn_index: case["turn"].as_i64().unwrap() as i32,
-                cursor: case["cursor"].as_i64().unwrap() as i32,
-                reversed: case["reversed"].as_bool().unwrap(),
-                residual: 0,
-            };
+            let track = TrackProgress::for_test(
+                case["turn"].as_i64().unwrap() as i32,
+                case["cursor"].as_i64().unwrap() as i32,
+                case["reversed"].as_bool().unwrap(),
+                0,
+            );
             let head = match case["head"].as_i64().unwrap() {
                 -1 => None,
                 head => Some(head as u8),

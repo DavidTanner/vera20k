@@ -30,8 +30,115 @@
 use crate::rules::object_type::{Ability, ObjectType};
 use crate::sim::combat::veterancy::has_weapon_ability;
 use crate::sim::game_entity::GameEntity;
+use crate::sim::mission::timer::MissionTimer;
 use crate::sim::world::FrameEffects;
 use crate::util::fixed_math::{SIM_ZERO, SimFixed};
+
+/// An infantryman's fear, stance, idle timer and failed-path answer.
+/// - Fear: this module's fear receiver raises and decays it.
+/// - Prone (`+0x6DB`): `InfantryClass::Do_Action` lies down on Down and
+///   stands up on Up or Deploy ([`Self::lie_down`], [`Self::stand_up`]); Limbo
+///   stands a boarding man up.
+/// - The idle timer: this module's idle receiver re-arms it.
+/// - The failed-path answer (`+0x6DC`, [`Self::record_cell_entry`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct InfantryRuntime {
+    fear_level: u16,
+    is_prone: bool,
+    /// Countdown to this man's next idle fidget.
+    ///
+    /// Re-armed to a fresh random wait every time the idle action fires, and
+    /// only then — the same one-shot timer gamemd keeps on the infantry object.
+    /// Its default is the unarmed sentinel, which reads as already due, so a
+    /// freshly built infantryman is eligible on his first idle turn.
+    #[serde(default)]
+    idle_action_timer: MissionTimer,
+    /// Infantry+6DC. `InfantryClass` failed-path receiver `0x0051DAF0`
+    /// (Infantry vtable +0x500, called from `FootClass::Find_Path` failure
+    /// `0x004D4044` and `Do_Action` `0x0051D6F0` at zero health) writes the
+    /// current-cell `Can_Enter_Cell` answer here: 1 when the answer is nonzero
+    /// (`0x51DBBE`), otherwise the zero answer byte (`0x51DBAC`). Readers:
+    /// Infantry Mission_Move restart `0x00520FF1` and save/load `0x00521D0F`.
+    #[serde(default)]
+    cell_entry_blocked: bool,
+}
+
+impl Default for InfantryRuntime {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl InfantryRuntime {
+    /// The fear level.
+    pub fn fear_level(&self) -> u16 {
+        self.fear_level
+    }
+
+    /// The man is prone (`+0x6DB`).
+    pub fn is_prone(&self) -> bool {
+        self.is_prone
+    }
+
+    /// The idle fidget timer.
+    pub fn idle_action_timer(&self) -> MissionTimer {
+        self.idle_action_timer
+    }
+
+    /// `+0x6DC`, the failed-path receiver's Can_Enter_Cell answer.
+    pub fn cell_entry_blocked(&self) -> bool {
+        self.cell_entry_blocked
+    }
+
+    /// Do_Action's Down.
+    pub(crate) fn lie_down(&mut self) {
+        self.is_prone = true;
+    }
+
+    /// Do_Action's Up or Deploy, and Limbo's reset of a boarding man.
+    pub(crate) fn stand_up(&mut self) {
+        self.is_prone = false;
+    }
+
+    /// The failed-path receiver's write (`0x0051DAF0`): set for a nonzero
+    /// Can_Enter_Cell answer (`0x0051DBBE`), clear for zero (`0x0051DBAC`).
+    pub(crate) fn record_cell_entry(&mut self, blocked: bool) {
+        self.cell_entry_blocked = blocked;
+    }
+
+    /// Install a fixture's fear.
+    #[cfg(test)]
+    pub(crate) fn set_fear_level_for_test(&mut self, fear: u16) {
+        self.fear_level = fear;
+    }
+
+    /// Install a fixture's stance.
+    #[cfg(test)]
+    pub(crate) fn set_is_prone_for_test(&mut self, prone: bool) {
+        self.is_prone = prone;
+    }
+
+    /// Install a fixture's idle timer.
+    #[cfg(test)]
+    pub(crate) fn set_idle_action_timer_for_test(&mut self, timer: MissionTimer) {
+        self.idle_action_timer = timer;
+    }
+
+    /// Install a fixture's failed-path answer.
+    #[cfg(test)]
+    pub(crate) fn set_cell_entry_blocked_for_test(&mut self, blocked: bool) {
+        self.cell_entry_blocked = blocked;
+    }
+
+    pub fn new() -> Self {
+        Self {
+            fear_level: 0,
+            is_prone: false,
+            idle_action_timer: MissionTimer::default(),
+            cell_entry_blocked: false,
+        }
+    }
+}
 
 const MAX_FEAR: u16 = 300;
 const FIRST_HIT_FEAR: u16 = 100;
@@ -204,7 +311,7 @@ impl crate::sim::world::Simulation {
                     //52018E..1BA: only a human owner tests these separate
                     // inputs. A movement order is not IsMoving+10.
                     let under_way = human
-                        && (actor.navigation.nav_com.is_some()
+                        && (actor.navigation.nav_com().is_some()
                             || crate::sim::movement::motion_query::is_moving(actor)
                                 .ok_or("Infantry fear requires active IsMoving state")?);
                     if !under_way && !fraidycat {
@@ -241,7 +348,7 @@ impl crate::sim::world::Simulation {
         //520236 queries motion before52023D reads NavCom.
         if crate::sim::movement::motion_query::is_moving(actor)
             .ok_or("Infantry panic requires active IsMoving state")?
-            || actor.navigation.nav_com.is_some()
+            || actor.navigation.nav_com().is_some()
         {
             return Ok(false);
         }
@@ -559,7 +666,8 @@ mod tests {
     use crate::rules::object_type::ObjectCategory;
     use crate::rules::ruleset::RuleSet;
     use crate::sim::combat::Health;
-    use crate::sim::game_entity::{GameEntity, InfantryRuntime};
+    use crate::sim::game_entity::GameEntity;
+    use crate::sim::infantry::InfantryRuntime;
     use crate::sim::intern::test_intern;
 
     fn rules_for(section: &str) -> RuleSet {
@@ -806,7 +914,7 @@ mod tests {
         }
         actor.locomotor = Some(loco);
         if input["nav"].as_bool().unwrap_or(false) {
-            actor.navigation.nav_com = Some(NavTargetRef::cell(4, 4));
+            actor.navigation.set_nav_com(Some(NavTargetRef::cell(4, 4)));
         }
         actor.install_native_stage_fixture(StageClass::from_native_fixture(
             before["stage"].as_i64().unwrap() as i32,
@@ -1164,10 +1272,16 @@ mod tests {
                 false,
             );
             actor.lifecycle.set_in_limbo_for_test(false);
-            actor.position.sub_x = SimFixed::from_num(signed(&before["position"][0]) % 256);
-            actor.position.sub_y = SimFixed::from_num(signed(&before["position"][1]) % 256);
-            actor.position.exact_z_leptons = Some(signed(&before["position"][2]));
-            actor.on_bridge = before["on_bridge"] != 0;
+            actor
+                .position
+                .set_sub_x(SimFixed::from_num(signed(&before["position"][0]) % 256));
+            actor
+                .position
+                .set_sub_y(SimFixed::from_num(signed(&before["position"][1]) % 256));
+            actor
+                .position
+                .set_exact_z_leptons(Some(signed(&before["position"][2])));
+            actor.set_on_bridge(before["on_bridge"] != 0);
             let object = rules.object("E1").unwrap();
             let mut loco = LocomotorState::from_object_type(object, 1);
             if before["walk_moving"]["value"].as_u64().unwrap() != 0 {
@@ -1212,10 +1326,12 @@ mod tests {
                     .set_for_test(Some(TargetKind::Entity(2)));
             }
             if before["nav"] != "0x0" {
-                actor.navigation.nav_com = Some(NavTargetRef::cell(12, 10));
+                actor
+                    .navigation
+                    .set_nav_com(Some(NavTargetRef::cell(12, 10)));
             }
             let target_before = actor.attack_target.target();
-            let nav_before = actor.navigation.nav_com;
+            let nav_before = actor.navigation.nav_com();
             sim.substrate.entities.insert(actor);
             let (admitted, draws) = trace_draws(|| {
                 sim.infantry_idle_action(1, &rules, crate::sim::world::FrameEffects::default())
@@ -1237,7 +1353,7 @@ mod tests {
             );
             let timer = actor.infantry.unwrap().idle_action_timer;
             assert_eq!(
-                json!([timer.start_frame as i32, timer.duration as i32]),
+                json!([timer.start_frame() as i32, timer.duration() as i32]),
                 json!([after["idle_timer"][0], after["idle_timer"][2]]),
                 "{name} idle timer"
             );
@@ -1267,7 +1383,8 @@ mod tests {
                 "{name} target untouched"
             );
             assert_eq!(
-                actor.navigation.nav_com, nav_before,
+                actor.navigation.nav_com(),
+                nav_before,
                 "{name} NavCom untouched"
             );
             let native_words: Vec<_> = row["events"]

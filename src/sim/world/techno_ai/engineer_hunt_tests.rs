@@ -82,7 +82,7 @@ const CAPTURE: MissionId = MissionId::from_known(MissionType::Capture);
 
 fn rules() -> RuleSet {
     RuleSet::from_ini_with_fixed_art_for_test(
-        &IniFile::from_str(RULES),
+        &crate::sim::arena_fixture::clear_ground_ini(RULES),
         &IniFile::from_str("[GAPOWR]\nFoundation=2x2\n"),
     )
     .expect("engineer rules")
@@ -142,7 +142,7 @@ fn target(sim: &Simulation, id: u64) -> Option<TargetKind> {
 }
 
 fn heading(sim: &Simulation, id: u64) -> Option<u64> {
-    match sim.substrate.entities.get(id)?.navigation.nav_com {
+    match sim.substrate.entities.get(id)?.navigation.nav_com() {
         Some(
             NavTargetRef::Entity { id }
             | NavTargetRef::Object { id }

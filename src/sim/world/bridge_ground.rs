@@ -108,7 +108,16 @@ mod tests {
 
     fn place(sim: &mut Simulation, rules: &RuleSet, name: &str, x: u16) -> u64 {
         let id = sim
-            .construct_object_limbo_at_height(name, "Americans", x, 4, 0, 0, rules)
+            .construct_object_limbo_at_height(
+                name,
+                "Americans",
+                x,
+                4,
+                0,
+                0,
+                rules,
+                crate::sim::world::FrameEffects::default(),
+            )
             .unwrap();
         // Supply the fallout scene's pose after the constructor's zero Location.
         crate::sim::movement::ground_pose::put_location(
@@ -221,11 +230,18 @@ mod tests {
             1,
             "only TerrorBomb's first GI kill is credited"
         );
-        assert!(sim.substrate.entities.get(gi).unwrap().destruction_recorded);
+        assert!(
+            sim.substrate
+                .entities
+                .get(gi)
+                .unwrap()
+                .kill_record
+                .is_recorded()
+        );
         assert!(!sim.live_object_order_snapshot().contains(&gi));
         let head = sim.substrate.entities.get(terror).unwrap();
-        assert!(head.infantry_terminal.is_some());
-        assert!(head.destruction_recorded);
+        assert!(head.death.infantry_terminal().is_some());
+        assert!(head.kill_record.is_recorded());
         assert!(sim.live_object_order_snapshot().contains(&terror));
         // Drive its actual Die2 clock through terminal visits and confirm
         // UnInit does not count either fatal callback again. This test does
@@ -236,7 +252,8 @@ mod tests {
                 .entities
                 .get(terror)
                 .unwrap()
-                .infantry_terminal
+                .death
+                .infantry_terminal()
                 .is_none()
             {
                 break;
@@ -248,9 +265,9 @@ mod tests {
             );
         }
         let head = sim.substrate.entities.get(terror).unwrap();
-        assert!(head.infantry_terminal.is_none());
+        assert!(head.death.infantry_terminal().is_none());
         assert!(!head.lifecycle.object_alive());
-        assert!(head.destruction_recorded);
+        assert!(head.kill_record.is_recorded());
         assert!(!sim.live_object_order_snapshot().contains(&terror));
         assert_eq!(sim.houses[&owner].stats.units_lost(), 2);
         assert_eq!(sim.houses[&owner].stats.units_killed(), 1);
@@ -371,7 +388,7 @@ mod tests {
         let object = sim.substrate.entities.get(gi).unwrap();
         assert_eq!(object.mission_leaf.as_infantry().unwrap().doing(), 11);
         assert_eq!(object.native_stage().value(), 0);
-        assert!(object.infantry_terminal.is_none());
+        assert!(object.death.infantry_terminal().is_none());
         assert!(!object.lifecycle.object_alive());
         assert!(!sim.live_object_order_snapshot().contains(&gi));
         assert_eq!(sim.substrate.pending_delete, pending);
@@ -398,7 +415,12 @@ mod tests {
         let occupant = place(&mut sim, &rules, "TANK", 6);
         crate::sim::docking::bunker_link::install_bunker_link(&mut sim, bunker, occupant, &rules);
         assert_eq!(
-            sim.substrate.entities.get(bunker).unwrap().bunker_occupant,
+            sim.substrate
+                .entities
+                .get(bunker)
+                .unwrap()
+                .bunker
+                .occupant(),
             Some(occupant)
         );
         assert_eq!(
@@ -554,7 +576,16 @@ mod tests {
             Some(crate::map::resolved_terrain::ResolvedTerrainGrid::from_cells(8, 8, cells));
         let mut create = |name, x, marked| {
             let id = sim
-                .construct_object_limbo_at_height(name, "Americans", x, 4, 0, 0, &rules)
+                .construct_object_limbo_at_height(
+                    name,
+                    "Americans",
+                    x,
+                    4,
+                    0,
+                    0,
+                    &rules,
+                    crate::sim::world::FrameEffects::default(),
+                )
                 .unwrap();
             // The unmarked contrast has this same pose without Cell membership.
             crate::sim::movement::ground_pose::put_location(

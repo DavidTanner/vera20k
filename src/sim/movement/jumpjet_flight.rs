@@ -113,23 +113,72 @@ const LAND_BEACH: u8 = 6;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct JumpjetFlightParams {
     /// `+0x1C` `JumpjetTurnRate=`: the facing rate and the turn-error threshold.
-    pub turn_rate: i32,
+    turn_rate: i32,
     /// `+0x20` `JumpjetSpeed=` (an int).
-    pub speed: i32,
+    speed: i32,
     /// `+0x24` `JumpjetClimb=`.
-    pub climb_bits: u32,
+    climb_bits: u32,
     /// `+0x28` `JumpjetCrash=`.
-    pub crash_bits: u32,
+    crash_bits: u32,
     /// `+0x2C` `JumpjetHeight=`, floored at two cell levels (`0x0054AD9B`).
-    pub height: i32,
+    height: i32,
     /// `+0x30` `JumpjetAccel=`.
-    pub accel_bits: u32,
+    accel_bits: u32,
     /// `+0x34` `JumpjetWobbles=`.
-    pub wobbles_bits: u32,
+    wobbles_bits: u32,
     /// `+0x38` `JumpjetDeviation=`.
-    pub deviation: i32,
+    deviation: i32,
     /// `+0x3C` `JumpjetNoWobbles=`.
-    pub no_wobbles: bool,
+    no_wobbles: bool,
+}
+
+impl JumpjetFlightParams {
+    /// See the field.
+    #[cfg(test)]
+    pub(crate) const fn turn_rate(&self) -> i32 {
+        self.turn_rate
+    }
+
+    /// See the field.
+    #[cfg(test)]
+    pub(crate) const fn speed(&self) -> i32 {
+        self.speed
+    }
+
+    /// A fixture's value.
+    #[cfg(test)]
+    pub(crate) fn set_speed_for_test(&mut self, speed: i32) {
+        self.speed = speed;
+    }
+
+    /// See the field.
+    #[cfg(test)]
+    pub(crate) const fn climb_bits(&self) -> u32 {
+        self.climb_bits
+    }
+
+    /// See the field.
+    #[cfg(test)]
+    pub(crate) const fn crash_bits(&self) -> u32 {
+        self.crash_bits
+    }
+
+    /// See the field.
+    pub(crate) const fn height(&self) -> i32 {
+        self.height
+    }
+
+    /// A fixture's value.
+    #[cfg(test)]
+    pub(crate) fn set_height_for_test(&mut self, height: i32) {
+        self.height = height;
+    }
+
+    /// See the field.
+    #[cfg(test)]
+    pub(crate) const fn accel_bits(&self) -> u32 {
+        self.accel_bits
+    }
 }
 
 impl Default for JumpjetFlightParams {
@@ -170,15 +219,64 @@ impl JumpjetFlightParams {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct JumpjetFlight {
     /// `+0x54` the locomotor's own facing; the body copies it every Update.
-    pub facing: FacingClass,
+    facing: FacingClass,
     /// `+0x70` current speed, binary64 bits.
-    pub current_speed_bits: u64,
+    current_speed_bits: u64,
     /// `+0x78` target speed, binary64 bits.
-    pub target_speed_bits: u64,
+    target_speed_bits: u64,
     /// `+0x80` target height above the reference.
-    pub target_height: i32,
+    target_height: i32,
     /// `+0x88` hover bob phase in radians, binary64 bits.
-    pub bob_phase_bits: u64,
+    bob_phase_bits: u64,
+}
+
+impl JumpjetFlight {
+    /// See the field.
+    #[cfg(test)]
+    pub(crate) fn facing(&self) -> &FacingClass {
+        &self.facing
+    }
+
+    /// See the field.
+    #[cfg(test)]
+    pub(crate) fn facing_mut(&mut self) -> &mut FacingClass {
+        &mut self.facing
+    }
+
+    /// See the field.
+    #[cfg(test)]
+    pub(crate) const fn current_speed_bits(&self) -> u64 {
+        self.current_speed_bits
+    }
+
+    /// A fixture's value.
+    #[cfg(test)]
+    pub(crate) fn set_current_speed_bits_for_test(&mut self, current_speed_bits: u64) {
+        self.current_speed_bits = current_speed_bits;
+    }
+
+    /// See the field.
+    #[cfg(test)]
+    pub(crate) const fn target_speed_bits(&self) -> u64 {
+        self.target_speed_bits
+    }
+
+    /// See the field.
+    #[cfg(test)]
+    pub(crate) const fn target_height(&self) -> i32 {
+        self.target_height
+    }
+
+    /// Store the field.
+    pub(crate) fn set_target_height(&mut self, target_height: i32) {
+        self.target_height = target_height;
+    }
+
+    /// See the field.
+    #[cfg(test)]
+    pub(crate) const fn bob_phase_bits(&self) -> u64 {
+        self.bob_phase_bits
+    }
 }
 
 impl JumpjetFlight {

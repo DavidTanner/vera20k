@@ -52,11 +52,11 @@ fn placed(id: u64, xyz: [i32; 3], marked: bool, on_bridge: bool) -> GameEntity {
     let [x, y, z] = xyz;
     let mut entity = GameEntity::test_default(id, "FV", "Test", (x / 256) as u16, (y / 256) as u16);
     entity.set_category_for_test(EntityCategory::Unit);
-    entity.position.sub_x = SimFixed::from_num(x % 256);
-    entity.position.sub_y = SimFixed::from_num(y % 256);
-    entity.position.exact_z_leptons = Some(z);
-    entity.lifecycle.cell_marked = marked;
-    entity.on_bridge = on_bridge;
+    entity.position.set_sub_x(SimFixed::from_num(x % 256));
+    entity.position.set_sub_y(SimFixed::from_num(y % 256));
+    entity.position.set_exact_z_leptons(Some(z));
+    entity.lifecycle.set_cell_marked(marked);
+    entity.set_on_bridge(on_bridge);
     entity
 }
 

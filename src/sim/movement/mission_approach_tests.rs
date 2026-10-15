@@ -123,7 +123,7 @@ fn frame(sim: &Simulation, pursuer: u64, target: u64) -> Frame {
             .get(pursuer)
             .unwrap()
             .navigation
-            .nav_com,
+            .nav_com(),
         distance: (dx * dx + dy * dy + dz * dz).sqrt(),
     }
 }
@@ -429,7 +429,7 @@ fn an_area_guarding_chrono_legionnaire_approaches_through_the_foot_body() {
         .get(legionnaire)
         .unwrap()
         .navigation
-        .nav_com;
+        .nav_com();
     let Some(NavTargetRef::Cell { rx, ry }) = nav_com else {
         panic!("Approach sets a cell: {nav_com:?}");
     };
@@ -542,7 +542,13 @@ fn a_night_hawks_approach_picks_a_cell_in_range() {
         None,
         crate::sim::world::FrameEffects::default(),
     );
-    let nav_com = sim.substrate.entities.get(hawk).unwrap().navigation.nav_com;
+    let nav_com = sim
+        .substrate
+        .entities
+        .get(hawk)
+        .unwrap()
+        .navigation
+        .nav_com();
     let Some(NavTargetRef::Cell { rx, ry }) = nav_com else {
         panic!("Approach sets a cell: {nav_com:?}");
     };
@@ -697,7 +703,7 @@ fn a_gi_passes_over_a_taken_approach_cell_without_trying_its_neighbours() {
         target(&mut sim, gi, tank);
         start_mission(&mut sim, gi, MissionType::Attack);
         sim.approach_target(gi, &rules, None, crate::sim::world::FrameEffects::default());
-        match sim.substrate.entities.get(gi).unwrap().navigation.nav_com {
+        match sim.substrate.entities.get(gi).unwrap().navigation.nav_com() {
             Some(NavTargetRef::Cell { rx, ry }) => (rx, ry),
             other => panic!("Approach sets a cell: {other:?}"),
         }
@@ -730,7 +736,7 @@ fn a_gi_ordered_to_fire_on_a_cell_walks_to_his_approach_cell() {
     let (mut first, mut last) = (None, None);
     for _ in 0..900 {
         step(&mut sim, &rules);
-        let nav_com = sim.substrate.entities.get(gi).unwrap().navigation.nav_com;
+        let nav_com = sim.substrate.entities.get(gi).unwrap().navigation.nav_com();
         if nav_com.is_some() {
             first = first.or(nav_com);
             last = nav_com;
@@ -786,7 +792,7 @@ fn a_computers_deployed_gi_undeploys_to_approach_a_target_out_of_reach() {
         for _ in 0..120 {
             step(&mut sim, &rules);
             stood_up |= !deployed(&sim, gi);
-            nav_com = nav_com.or(sim.substrate.entities.get(gi).unwrap().navigation.nav_com);
+            nav_com = nav_com.or(sim.substrate.entities.get(gi).unwrap().navigation.nav_com());
         }
         assert_eq!(stood_up, approaches, "against {tank_cell:?}");
         match nav_com {
@@ -853,7 +859,7 @@ fn a_brute_beside_a_tank_takes_the_spot_in_his_cell_nearer_it() {
         Some((10 * 256 + free.0, 10 * 256 + free.1))
     );
     assert_eq!(
-        entity.navigation.nav_com,
+        entity.navigation.nav_com(),
         Some(NavTargetRef::cell(tank_cell.0, tank_cell.1))
     );
     // Through the frame he steps onto that spot and smashes the tank from it.
@@ -906,7 +912,7 @@ fn a_brutes_search_draws_once_for_each_candidate() {
         .get(brute)
         .unwrap()
         .navigation
-        .nav_com;
+        .nav_com();
     assert_eq!(
         sim.scenario_rng.logical_state(),
         draws.logical_state(),
@@ -927,8 +933,8 @@ fn a_brute_takes_a_spot_beyond_his_reach_under_307_leptons_from_the_tank() {
     let mut sim = arena(&rules);
     let tank = spawn(&mut sim, &rules, "MTNK", "Russians", (17, 16));
     let position = &mut sim.substrate.entities.get_mut(tank).unwrap().position;
-    position.sub_x = crate::util::fixed_math::SimFixed::from_num(110);
-    position.sub_y = crate::util::fixed_math::SimFixed::from_num(192);
+    position.set_sub_x(crate::util::fixed_math::SimFixed::from_num(110));
+    position.set_sub_y(crate::util::fixed_math::SimFixed::from_num(192));
     let brute = spawn(&mut sim, &rules, "BRUTE", "Americans", (11, 16));
     target(&mut sim, brute, tank);
     start_mission(&mut sim, brute, MissionType::Attack);
@@ -949,7 +955,7 @@ fn a_brute_takes_a_spot_beyond_his_reach_under_307_leptons_from_the_tank() {
             .get(brute)
             .unwrap()
             .navigation
-            .nav_com,
+            .nav_com(),
         Some(NavTargetRef::cell(16, 16))
     );
 }
@@ -996,7 +1002,7 @@ fn a_brutes_approach_picks_a_cell_beside_the_tank() {
         .get(brute)
         .unwrap()
         .navigation
-        .nav_com;
+        .nav_com();
     let Some(NavTargetRef::Cell { rx, ry }) = nav_com else {
         panic!("Approach sets a cell: {nav_com:?}");
     };

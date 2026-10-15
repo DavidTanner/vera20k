@@ -16,7 +16,9 @@ const WEST_STEP: u8 = 6;
 
 /// A tank, a tank that cannot move, an infantryman and a one-cell building.
 fn rules() -> RuleSet {
-    RuleSet::from_ini(&IniFile::from_str(
+    // This synthetic scene needs native buildable Clear ground and the
+    // explicitly intended one-cell HUT foundation in the fixed ART reader.
+    let ini = crate::sim::arena_fixture::clear_ground_ini(
         "[VehicleTypes]\n0=TANK\n1=STUCK\n[InfantryTypes]\n0=E1\n[BuildingTypes]\n0=HUT\n\
          [TANK]\nStrength=300\nSpeed=6\n\
          Locomotor={4A582741-9839-11D1-B709-00A024DDAFD1}\n\
@@ -25,8 +27,9 @@ fn rules() -> RuleSet {
          [E1]\nStrength=100\nSpeed=4\n\
          Locomotor={4A582744-9839-11D1-B709-00A024DDAFD1}\n\
          [HUT]\nStrength=100\n",
-    ))
-    .expect("batch rules")
+    );
+    RuleSet::from_ini_with_fixed_art_for_test(&ini, &IniFile::from_str("[HUT]\nFoundation=1x1\n"))
+        .expect("batch rules")
 }
 
 /// The flat arena with an overlay grid, which the batch needs.
@@ -88,7 +91,7 @@ fn jam(rules: &RuleSet) -> (Simulation, [u64; 2]) {
             .unwrap()
             .navigation
             .path_replay
-            .directions = vec![WEST_STEP; 3];
+            .set_directions_for_test(vec![WEST_STEP; 3]);
         movers[mover] = id;
     }
     (sim, movers)
@@ -135,7 +138,7 @@ fn a_batched_answer_is_the_serial_search() {
                         .unwrap()
                         .navigation
                         .path_runtime;
-                    runtime.path_blocked = urgency == 2;
+                    runtime.set_path_blocked(urgency == 2);
                     runtime.start_blocked(frame, 0);
                 }
                 if batched {
@@ -165,7 +168,7 @@ fn a_batched_answer_is_the_serial_search() {
                     );
                 }
                 let route = sim.substrate.entities.get(id).unwrap();
-                (found, route.navigation.path_replay.directions.clone())
+                (found, route.navigation.path_replay.directions().to_vec())
             };
             let serial = search(false);
             assert!(
@@ -199,7 +202,7 @@ fn an_answer_for_another_request_is_not_used() {
         .unwrap()
         .navigation
         .path_runtime;
-    runtime.path_blocked = true;
+    runtime.set_path_blocked(true);
     runtime.start_blocked(frame, 0);
     let request = sim.code2_ladder_request(tank).unwrap();
     assert_eq!(request.urgency, 2);
@@ -408,7 +411,7 @@ fn a_waiting_ladder_uses_its_answer_the_next_frame() {
                     .navigation
                     .path_runtime;
                 assert!(
-                    runtime.movement_timer.expired(frame),
+                    runtime.movement_timer().expired(frame),
                     "{follower}: a Foot that waits asks again"
                 );
                 waited += usize::from(kind == WaitingRequest::Code2Ladder);
@@ -615,10 +618,204 @@ fn a_drive_retry_recursion_waits_after_the_frames_answer() {
     // The retry's own preparation: no path left and the timer run out.
     let frame = sim.session.binary_frame;
     let foot = sim.substrate.entities.get_mut(tank).unwrap();
-    foot.navigation.path_replay.directions.clear();
+    foot.navigation.path_replay.clear_directions();
     foot.navigation.path_runtime.start_movement(frame, 0);
     process(&mut sim, retry);
     let batch = sim.path_batch.as_ref().unwrap();
     assert_eq!(batch.pending.last(), Some(&(tank, WaitingRequest::NoQueue)));
     assert_eq!(batch.used, [1, 0], "the recursion did not search");
+}
+
+/// Over the cap a pass takes the registrations from the next turn on,
+/// wrapping round to the lowest ids, and moves the turn past the last one
+/// taken; under it a pass takes them all and keeps the turn.
+#[test]
+fn a_capped_pass_takes_its_turn_round_the_ids() {
+    let pending = |ids: &[u64]| -> Vec<(u64, WaitingRequest)> {
+        ids.iter()
+            .map(|&id| (id, WaitingRequest::NoQueue))
+            .collect()
+    };
+    let ids = |turn: Vec<(u64, WaitingRequest)>| -> Vec<u64> {
+        turn.into_iter().map(|(id, _)| id).collect()
+    };
+    let mut next = 5;
+    assert_eq!(ids(take_turn(pending(&[2, 4, 6]), &mut next, 3)), [2, 4, 6]);
+    assert_eq!(next, 5, "a pass under the cap keeps the turn");
+    let five = [2, 4, 6, 8, 10];
+    assert_eq!(ids(take_turn(pending(&five), &mut next, 3)), [6, 8, 10]);
+    assert_eq!(next, 11);
+    assert_eq!(ids(take_turn(pending(&five), &mut next, 3)), [2, 4, 6]);
+    assert_eq!(next, 7);
+    assert_eq!(ids(take_turn(pending(&five), &mut next, 3)), [2, 8, 10]);
+    assert_eq!(next, 3);
+}
+
+/// A pass answers at most [`SEARCHES_PER_PASS`] registrations. A Foot it
+/// leaves out has no answer, so its request registers again, and the next
+/// capped pass starts where this one stopped. The turn is saved and hashed.
+#[test]
+fn a_pass_answers_at_most_its_cap_and_the_rest_wait() {
+    let rules = rules();
+    let (mut sim, _) = arena(&rules);
+    sim.batch_path_searches();
+    let cap = SEARCHES_PER_PASS as u64;
+    // Ids no object holds: each search finds no request to answer.
+    let (first, end) = (1_000_000, 1_000_000 + cap + 10);
+    for id in first..end {
+        assert!(sim.defer_path_search(id, WaitingRequest::NoQueue));
+    }
+    sim.answer_batched_path_searches(Some(&rules), None);
+    let batch = sim.path_batch.as_ref().unwrap();
+    assert_eq!(batch.answered, (first..first + cap).collect::<Vec<_>>());
+    assert_eq!(batch.next_turn, first + cap);
+    assert!(
+        sim.defer_path_search(end - 1, WaitingRequest::NoQueue),
+        "a Foot the pass left out registers again"
+    );
+    assert!(
+        !sim.defer_path_search(first, WaitingRequest::NoQueue),
+        "a Foot the pass answered claims its slot"
+    );
+
+    let bytes = crate::sim::snapshot::GameSnapshot::save(&sim, 0, 0, "path_batch_turn", 0);
+    let restored = crate::sim::snapshot::GameSnapshot::load(&bytes)
+        .expect("the save loads")
+        .sim;
+    assert_eq!(restored.path_batch.as_ref().unwrap().next_turn, first + cap);
+    let hash = sim.state_hash();
+    sim.path_batch.as_mut().unwrap().next_turn = 0;
+    assert_ne!(sim.state_hash(), hash, "the turn is hashed");
+    sim.path_batch.as_mut().unwrap().next_turn = first + cap;
+
+    sim.finish_batched_path_searches();
+    for id in first..end {
+        assert!(sim.defer_path_search(id, WaitingRequest::NoQueue));
+    }
+    sim.answer_batched_path_searches(Some(&rules), None);
+    let batch = sim.path_batch.as_ref().unwrap();
+    let mut second: Vec<u64> = (first + cap..end).chain(first..first + cap - 10).collect();
+    second.sort_unstable();
+    assert_eq!(batch.answered, second, "the next pass wraps round");
+    assert_eq!(batch.next_turn, first + cap - 10);
+}
+
+/// However the registrations change between passes, a Foot registered at
+/// every pass is taken within one sweep of the ids, from any turn.
+#[test]
+fn a_foot_registered_every_pass_gets_its_turn_within_one_sweep() {
+    let (limit, top, foot) = (3usize, 30u64, 17u64);
+    let mut state = 0x2545_F491_4F6C_DD1Du64;
+    let mut draw = || {
+        state ^= state << 13;
+        state ^= state >> 7;
+        state ^= state << 17;
+        state
+    };
+    for start in 0..top + 2 {
+        let mut next = start;
+        let mut passes = 0;
+        loop {
+            passes += 1;
+            let mut ids: Vec<u64> = (1..=top).filter(|_| draw() % 3 == 0).collect();
+            if !ids.contains(&foot) {
+                ids.push(foot);
+                ids.sort_unstable();
+            }
+            let pending = ids.into_iter().map(|id| (id, WaitingRequest::NoQueue));
+            if take_turn(pending.collect(), &mut next, limit)
+                .iter()
+                .any(|&(id, _)| id == foot)
+            {
+                break;
+            }
+            assert!(
+                passes <= top.div_ceil(limit as u64) as usize,
+                "from turn {start}: still waiting after {passes} passes"
+            );
+        }
+    }
+}
+
+/// An order given at once to more Foots than a pass answers: the first pass
+/// answers the lowest ids; each Foot it left out still waits with its timer
+/// run out, so it asks again, and the next pass routes it. A save between the
+/// passes keeps the turn, so the loaded game's next pass routes it as well.
+#[test]
+fn an_order_to_more_foots_than_a_pass_answers_routes_over_two_passes() {
+    let rules = rules();
+    let (mut sim, grid) = arena(&rules);
+    let mut foots = Vec::new();
+    for y in 2..12 {
+        for x in 2..28 {
+            foots.push(spawn(&mut sim, &rules, "TANK", (x, y)));
+        }
+    }
+    assert!(foots.len() > SEARCHES_PER_PASS);
+    for &id in &foots {
+        send(&mut sim, &rules, id, (16, 28));
+    }
+    sim.batch_path_searches();
+    let pending = |sim: &Simulation| -> Vec<u64> {
+        let mut ids: Vec<u64> = sim
+            .path_batch
+            .as_ref()
+            .unwrap()
+            .pending
+            .iter()
+            .map(|&(id, _)| id)
+            .collect();
+        ids.sort_unstable();
+        ids.dedup();
+        ids
+    };
+    let routed = |sim: &Simulation, id: u64| {
+        let foot = sim.substrate.entities.get(id).unwrap();
+        !foot
+            .navigation
+            .path_replay
+            .remaining_directions()
+            .is_empty()
+    };
+    for _ in 0..10 {
+        if pending(&sim) == foots {
+            break;
+        }
+        sim.advance_tick(&[], Some(&rules), Some(&grid), None, 67);
+    }
+    assert_eq!(pending(&sim), foots, "the whole order registers at once");
+
+    sim.advance_tick(&[], Some(&rules), Some(&grid), None, 67);
+    let (answered, left_out) = foots.split_at(SEARCHES_PER_PASS);
+    assert_eq!(sim.path_batch.as_ref().unwrap().answered, answered);
+    let frame = sim.session.binary_frame as i32;
+    for &id in left_out {
+        assert!(pending(&sim).contains(&id), "{id} asks again");
+        let foot = sim.substrate.entities.get(id).unwrap();
+        assert!(foot.navigation.path_runtime.movement_timer().expired(frame));
+        assert!(!routed(&sim, id), "{id} waits");
+    }
+
+    let bytes = crate::sim::snapshot::GameSnapshot::save(&sim, 0, 0, "path_batch_turns", 0);
+    let mut restored = crate::sim::snapshot::GameSnapshot::load(&bytes)
+        .expect("the save loads")
+        .sim;
+    restored.restore_after_snapshot_load().unwrap();
+    // A save carries no map: the load re-installs the arena's cells.
+    let restored_grid = crate::sim::arena_fixture::flat_ground(&mut restored, &rules);
+    restored
+        .overlay_grid
+        .get_or_insert_with(|| OverlayGrid::new(32, 32));
+    assert_eq!(
+        restored.path_batch.as_ref().unwrap().next_turn,
+        answered[SEARCHES_PER_PASS - 1] + 1
+    );
+    for (game, grid) in [(&mut sim, &grid), (&mut restored, &restored_grid)] {
+        game.advance_tick(&[], Some(&rules), Some(grid), None, 67);
+        let batch = game.path_batch.as_ref().unwrap();
+        for &id in left_out {
+            assert!(batch.answered.contains(&id), "the next pass answers {id}");
+            assert!(routed(game, id), "{id} routes");
+        }
+    }
 }

@@ -7,8 +7,22 @@ use crate::util::native_x87::{MaskedX87Chop53 as X87, NativeF32Bits, NativeF64Bi
 /// this owner. Ordinary construction6C95E0/43B9AF starts with all zeros.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub(crate) struct BuildingStorage {
-    pub(crate) amounts: [NativeF32Bits; 4],
-    pub(crate) refinery_tier: i32,
+    amounts: [NativeF32Bits; 4],
+    refinery_tier: i32,
+}
+
+impl BuildingStorage {
+    /// A fixture's value.
+    #[cfg(test)]
+    pub(crate) fn set_amounts_for_test(&mut self, amounts: [NativeF32Bits; 4]) {
+        self.amounts = amounts;
+    }
+
+    /// A fixture's value.
+    #[cfg(test)]
+    pub(crate) fn set_refinery_tier_for_test(&mut self, refinery_tier: i32) {
+        self.refinery_tier = refinery_tier;
+    }
 }
 impl Default for BuildingStorage {
     fn default() -> Self {

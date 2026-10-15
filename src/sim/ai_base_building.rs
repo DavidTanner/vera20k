@@ -495,7 +495,7 @@ pub(crate) fn exit_building(
     // The prelude marks the leaving object a playfield member whatever the
     // outcome (`0x00443C81`); a placement's Unlimbo then sets it exactly.
     if let Some(object) = sim.substrate.entities.get_mut(product) {
-        object.in_playfield = true;
+        object.set_in_playfield(true);
     }
     let game_mode_nonzero = sim.session.game_mode_nonzero;
     // `0x00444F19..0x00444F2A` (`0x0050B730`).
@@ -655,7 +655,6 @@ fn place_building(
         return false;
     }
     sim.mission_spawned_entities = true;
-    crate::sim::superweapon::refresh_super_weapons_for_owner(sim, rules, owner);
     sim.slave_manager_hand_off(product, rules, effects);
     // The choice clear at `0x0044531F` compares the product with the choice
     // the exit cleared at its start; nothing in between sets it.
@@ -851,9 +850,9 @@ pub(crate) fn node_building(
         .occupancy
         .first_building_on_layer(rx, ry, MovementLayer::Ground)?;
     let building = sim.substrate.entities.get(id)?;
-    ((building.position.rx, building.position.ry) == (rx, ry)
+    ((building.position.rx(), building.position.ry()) == (rx, ry)
         && building.owner() == owner
-        && building.base_plan_type_index == node.type_or_control)
+        && building.type_facts.base_plan_type_index() == node.type_or_control)
         .then_some(id)
 }
 
@@ -946,7 +945,7 @@ fn build_walls(sim: &mut Simulation, rules: &RuleSet, owner: InternedId, index: 
         let ty = sim.object_type(building.type_ref(), rules)?;
         ty.protect_with_wall.then(|| {
             (
-                (building.position.rx as i16, building.position.ry as i16),
+                (building.position.rx() as i16, building.position.ry() as i16),
                 crate::sim::ai_base_site::foundation_size(ty),
             )
         })

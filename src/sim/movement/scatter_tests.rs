@@ -62,14 +62,18 @@ fn unit_refusals_match_native_and_leave_orders_and_rng_untouched() {
         } else {
             LocomotorKind::Drive
         }));
-        actor.locomotor.as_mut().unwrap().powered = !flag("power_off");
+        actor
+            .locomotor
+            .as_mut()
+            .unwrap()
+            .set_powered_for_test(!flag("power_off"));
         actor.set_unit_simple_deploy_for_test(
             flag("deployed"),
             flag("deploying"),
             flag("undeploying"),
         );
         if flag("nav") {
-            actor.navigation.nav_com = Some(NavTargetRef::cell(8, 8));
+            actor.navigation.set_nav_com(Some(NavTargetRef::cell(8, 8)));
         }
         let mut facing = FacingClass::new(0, input["rot"].as_i64().unwrap_or(5) as i32);
         if flag("turn") {
@@ -141,7 +145,7 @@ fn unit_flags_override_mission_scatter_and_nav_com() {
         100
     ));
     let mut nav = hunt.clone();
-    nav.navigation.nav_com = Some(NavTargetRef::cell(8, 8));
+    nav.navigation.set_nav_com(Some(NavTargetRef::cell(8, 8)));
     assert!(!unit_scatter_admitted(
         &nav,
         ScatterFlags::new(true, false),
@@ -166,8 +170,8 @@ fn unit_checks_active_locomotor_and_body_rotation_not_stashed_slot_or_turret() {
     actor.locomotor = Some(LocomotorState::for_test_kind(LocomotorKind::Teleport));
     assert!(!unit_scatter_admitted(&actor, flags, &rules, 100));
     assert!(crate::sim::movement::locomotor_owner::begin_drive_for_teleporter(&mut actor, 100));
-    actor.turret_rotation_latch = true;
-    actor.navigation.nav_com = Some(NavTargetRef::cell(8, 8));
+    actor.turret_rotation_latch.set_for_test(true);
+    actor.navigation.set_nav_com(Some(NavTargetRef::cell(8, 8)));
     assert!(
         actor
             .locomotor
@@ -511,7 +515,7 @@ fn unit_null_arm_moves_hover_and_jumpjet_units() {
         assert_eq!(actor.locomotor.as_ref().unwrap().active_kind(), kind);
         assert!(
             crate::sim::movement::motion_query::is_moving(&actor) != Some(true)
-                && actor.navigation.nav_com.is_none()
+                && actor.navigation.nav_com().is_none()
         );
     }
     let rng = sim.scenario_rng.state();
@@ -534,10 +538,10 @@ fn unit_null_arm_moves_hover_and_jumpjet_units() {
         "the Hover route"
     );
     assert_eq!(
-        unit.navigation.nav_com,
+        unit.navigation.nav_com(),
         Some(crate::sim::components::NavTargetRef::cell(cell.0, cell.1))
     );
-    assert_eq!((unit.position.rx, unit.position.ry), (10, 10));
+    assert_eq!((unit.position.rx(), unit.position.ry()), (10, 10));
     let cell = sim.scatter_nearby_cell(jumpjet, &rules).unwrap();
     assert!(
         !sim.scatter(
@@ -552,7 +556,7 @@ fn unit_null_arm_moves_hover_and_jumpjet_units() {
     );
     let unit = sim.substrate.entities.get(jumpjet).unwrap();
     assert_eq!(
-        unit.navigation.nav_com,
+        unit.navigation.nav_com(),
         Some(NavTargetRef::cell(cell.0, cell.1)),
         "the Jumpjet's setter writes its NavCom"
     );
@@ -634,7 +638,7 @@ fn unit_null_arm_matches_original_execution() {
         let unit = sim.substrate.entities.get(unit).unwrap();
         match cell {
             Some((x, y)) => {
-                assert_eq!(unit.navigation.nav_com, Some(NavTargetRef::cell(x, y)));
+                assert_eq!(unit.navigation.nav_com(), Some(NavTargetRef::cell(x, y)));
                 assert_eq!(unit.mission.queued(), MissionId::NONE, "{input}");
             }
             None => assert_eq!(serde_json::to_value(unit).unwrap(), before, "{input}"),
@@ -696,7 +700,7 @@ fn receive_damage_scatter_gates_match_original_execution() {
             actor.locomotor = Some(locomotor);
         }
         if flag("tether") {
-            actor.dock_entered_with = Some(9);
+            actor.tether.set_for_test(Some(9));
         }
         if flag("target") {
             actor
@@ -704,7 +708,7 @@ fn receive_damage_scatter_gates_match_original_execution() {
                 .set_for_test(Some(crate::sim::combat::TargetKind::Entity(9)));
         }
         if flag("nav") {
-            actor.navigation.nav_com = Some(NavTargetRef::cell(9, 9));
+            actor.navigation.set_nav_com(Some(NavTargetRef::cell(9, 9)));
         }
         let owner = actor.owner();
         let mut sim = Simulation::new();
@@ -824,21 +828,23 @@ fn unit_source_arm_matches_original_execution() {
         *sim.substrate.entities.get_mut(unit).unwrap() = actor;
         let actor = sim.substrate.entities.get_mut(unit).unwrap();
         if flag("nav") {
-            actor.navigation.nav_com = Some(NavTargetRef::cell(8, 8));
+            actor.navigation.set_nav_com(Some(NavTargetRef::cell(8, 8)));
         }
         if flag("target") {
             actor
                 .attack_target
                 .set_for_test(Some(TargetKind::Cell(5, 5)));
         }
-        actor.turret_rotation_latch = flag("turret_latch");
+        actor
+            .turret_rotation_latch
+            .set_for_test(flag("turret_latch"));
         if flag("unload_active") {
             let mut miner = crate::sim::miner::Miner::new(
                 crate::sim::miner::MinerKind::War,
                 &crate::sim::miner::MinerConfig::default(),
                 0,
             );
-            miner.unload_active = true;
+            miner.set_unload_active_for_test(true);
             actor.miner = Some(miner);
         }
         let head = coord("head", [0, 0, 0]);
@@ -859,7 +865,7 @@ fn unit_source_arm_matches_original_execution() {
                     ))
             );
         }
-        let nav_before = actor.navigation.nav_com;
+        let nav_before = actor.navigation.nav_com();
         sim.scenario_rng = crate::sim::rng::SimRng::new(input["seed"].as_u64().unwrap_or(1));
         let checks = row["checks"].as_array().unwrap();
         fresh_oracle_seam::install(
@@ -902,7 +908,7 @@ fn unit_source_arm_matches_original_execution() {
             Some(cell) => {
                 let at = |i: usize| cell[i].as_u64().unwrap() as u16;
                 assert_eq!(
-                    unit.navigation.nav_com,
+                    unit.navigation.nav_com(),
                     Some(NavTargetRef::cell(at(0), at(1))),
                     "{input}"
                 );
@@ -913,7 +919,7 @@ fn unit_source_arm_matches_original_execution() {
                 );
             }
             None => {
-                assert_eq!(unit.navigation.nav_com, nav_before, "{input}");
+                assert_eq!(unit.navigation.nav_com(), nav_before, "{input}");
                 assert_eq!(unit.mission.queued(), MissionId::NONE, "{input}");
             }
         }

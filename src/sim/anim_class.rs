@@ -844,6 +844,35 @@ fn apply_anim_raw_occupation(
     grid.write_occupant(key, layer, mask, None, put);
 }
 
+/// A building's damage fires: the transition cache (`BuildingClass+0x5E8`),
+/// distinct from the generic damaged-art state, and the eight fixed AnimClass
+/// ownership slots (`+0x5C8..+0x5E4`). `BuildingClass::Update` calls the
+/// producer (or the `0x0043FCA4` recovery) before storing the cache
+/// (`0x0043FC92`, `0x0043FCBE`); an anim's expiry clears its slot.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub(crate) struct DamageFires {
+    active: bool,
+    anim_ids: [Option<AnimId>; 8],
+}
+
+impl DamageFires {
+    /// The cached transition state.
+    pub(crate) const fn is_active(&self) -> bool {
+        self.active
+    }
+
+    /// The eight slots.
+    pub(crate) const fn anim_ids(&self) -> &[Option<AnimId>; 8] {
+        &self.anim_ids
+    }
+
+    /// Install a fixture's slot.
+    #[cfg(test)]
+    pub(crate) fn set_slot_for_test(&mut self, slot: usize, id: Option<AnimId>) {
+        self.anim_ids[slot] = id;
+    }
+}
+
 impl Simulation {
     pub fn anim(&self, id: AnimId) -> Option<&AnimObject> {
         self.substrate.anims.get(id)
@@ -1578,9 +1607,16 @@ impl Simulation {
         };
         let owner_name = self.interner.resolve(owner).to_string();
         let (rx, ry, _, _, _) = location.to_cell_sub_z();
-        let Some(infantry) =
-            self.construct_object_limbo_at_height(kind, &owner_name, rx, ry, 0, 0, rules)
-        else {
+        let Some(infantry) = self.construct_object_limbo_at_height(
+            kind,
+            &owner_name,
+            rx,
+            ry,
+            0,
+            0,
+            rules,
+            frame_effects,
+        ) else {
             log::debug!("MakeInfantry anim {id}: [{kind}] did not construct");
             return true;
         };
@@ -1623,7 +1659,7 @@ impl Simulation {
         if lift {
             self.foot_mark_remove(infantry, Some(rules), overlay_registry, frame_effects);
             if let Some(entity) = self.substrate.entities.get_mut(infantry) {
-                entity.on_bridge = true;
+                entity.set_on_bridge(true);
             }
             self.foot_mark_put(infantry, Some(rules), overlay_registry, frame_effects);
         }
@@ -1737,9 +1773,9 @@ impl Simulation {
             .and_then(|anim| anim.damage_fire_slot.take());
         if let Some((owner, slot)) = link
             && let Some(entity) = self.substrate.entities.get_mut(owner)
-            && entity.damage_fire_anim_ids[usize::from(slot)] == Some(id)
+            && entity.damage_fires.anim_ids[usize::from(slot)] == Some(id)
         {
-            entity.damage_fire_anim_ids[usize::from(slot)] = None;
+            entity.damage_fires.anim_ids[usize::from(slot)] = None;
         }
     }
 
@@ -2088,7 +2124,7 @@ impl Simulation {
                     entity.health.current(),
                     entity.type_ref(),
                     entity.position,
-                    entity.damage_fire_state_active,
+                    entity.damage_fires.active,
                     entity.category(),
                 )
             })
@@ -2146,7 +2182,7 @@ impl Simulation {
                     .substrate
                     .entities
                     .get(building_id)
-                    .and_then(|entity| entity.damage_fire_anim_ids[slot]);
+                    .and_then(|entity| entity.damage_fires.anim_ids[slot]);
                 if occupied.is_some() {
                     break;
                 }
@@ -2157,11 +2193,11 @@ impl Simulation {
                 let fire_type = self.interner.intern(fire_name);
                 let descriptor = AnimClassSpawnDescriptor {
                     type_name: fire_type,
-                    rx: position.rx,
-                    ry: position.ry,
-                    sub_x: position.sub_x,
-                    sub_y: position.sub_y,
-                    z: position.z,
+                    rx: position.rx(),
+                    ry: position.ry(),
+                    sub_x: position.sub_x(),
+                    sub_y: position.sub_y(),
+                    z: position.z(),
                     delay: 0,
                     loop_count: 1,
                     draw_flags: TRAILER_DRAW_FLAGS,
@@ -2186,7 +2222,7 @@ impl Simulation {
                     .expect("new damage fire")
                     .damage_fire_slot = Some((building_id, slot as u8));
                 if let Some(entity) = self.substrate.entities.get_mut(building_id) {
-                    entity.damage_fire_anim_ids[slot] = Some(anim_id);
+                    entity.damage_fires.anim_ids[slot] = Some(anim_id);
                 }
 
                 let scaled = offset
@@ -2217,7 +2253,7 @@ impl Simulation {
         // 43FCBE stores5E8, including a producer's early slot/type exit.
         // Native replay: building_death_anims_joined.json, full target AI.
         if let Some(entity) = self.substrate.entities.get_mut(building_id) {
-            entity.damage_fire_state_active = active;
+            entity.damage_fires.active = active;
         }
     }
 
@@ -2237,13 +2273,13 @@ impl Simulation {
                 .substrate
                 .entities
                 .get(building_id)
-                .and_then(|entity| entity.damage_fire_anim_ids[slot]);
+                .and_then(|entity| entity.damage_fires.anim_ids[slot]);
             let Some(anim_id) = anim_id else {
                 continue;
             };
             self.destroy_anim_with_context(anim_id, rules);
             if let Some(entity) = self.substrate.entities.get_mut(building_id) {
-                entity.damage_fire_anim_ids[slot] = None;
+                entity.damage_fires.anim_ids[slot] = None;
             }
         }
     }
@@ -3047,7 +3083,8 @@ mod tests {
                 .entities
                 .get_mut(building_id)
                 .unwrap()
-                .damage_fire_anim_ids[slot] = Some(id);
+                .damage_fires
+                .anim_ids[slot] = Some(id);
             sim.anim_mut_by_id(id).unwrap().damage_fire_slot = Some((building_id, slot as u8));
             sim.detach_all_pointer_expired(
                 building_id,
@@ -3080,7 +3117,7 @@ mod tests {
                     )
                 );
                 let building = sim.substrate.entities.get(building_id).unwrap();
-                for (i, id) in building.damage_fire_anim_ids.iter().enumerate() {
+                for (i, id) in building.damage_fires.anim_ids.iter().enumerate() {
                     assert_eq!(id.is_some(), expected["slots"][i].as_bool().unwrap());
                 }
                 assert_eq!(sim.substrate.display.layer_of(id), None);
@@ -3102,7 +3139,8 @@ mod tests {
             .entities()
             .get(building_id)
             .unwrap()
-            .damage_fire_anim_ids;
+            .damage_fires
+            .anim_ids;
         // This is the explicit attached-owner expiry control, as in the
         // native eight-slot corpus. The ordinary fire producer leavesCC0.
         for id in ids.into_iter().flatten() {
@@ -3129,7 +3167,8 @@ mod tests {
             sim.entities()
                 .get(building_id)
                 .unwrap()
-                .damage_fire_anim_ids,
+                .damage_fires
+                .anim_ids,
             ids
         );
         for (id, coord) in &coords {
@@ -3210,9 +3249,9 @@ mod tests {
                 5,
                 false,
             );
-            owner.position.sub_x = SimFixed::from_num(128);
-            owner.position.sub_y = SimFixed::from_num(128);
-            owner.position.exact_z_leptons = Some(0);
+            owner.position.set_sub_x(SimFixed::from_num(128));
+            owner.position.set_sub_y(SimFixed::from_num(128));
+            owner.position.set_exact_z_leptons(Some(0));
             sim.substrate.entities.insert(owner);
             let type_id = sim.interner.intern("A");
             let id = sim
@@ -3245,11 +3284,11 @@ mod tests {
                     }
                     "move_owner" => {
                         let owner = sim.substrate.entities.get_mut(owner_id).unwrap();
-                        owner.position.rx = 3000 / 256;
-                        owner.position.ry = 3100 / 256;
-                        owner.position.sub_x = SimFixed::from_num(3000 % 256);
-                        owner.position.sub_y = SimFixed::from_num(3100 % 256);
-                        owner.position.exact_z_leptons = Some(700);
+                        owner.position.set_rx(3000 / 256);
+                        owner.position.set_ry(3100 / 256);
+                        owner.position.set_sub_x(SimFixed::from_num(3000 % 256));
+                        owner.position.set_sub_y(SimFixed::from_num(3100 % 256));
+                        owner.position.set_exact_z_leptons(Some(700));
                     }
                     "expire" => {
                         assert!(sim.expire_anim_owner_reference(id, owner_id));
@@ -3391,7 +3430,9 @@ mod tests {
             5,
             false,
         );
-        building.foundation = "4x4".to_string();
+        building
+            .type_facts
+            .set_foundation_for_test("4x4".to_string());
         sim.substrate.entities.insert(building);
         sim.reveal(id);
         (sim, rules, id)
@@ -3419,11 +3460,11 @@ mod tests {
                     row.output.damage_fire_ordinary
                 };
                 assert_eq!(
-                    building.damage_fire_state_active, expected,
+                    building.damage_fires.active, expected,
                     "{row:?}, occupied={occupied}"
                 );
                 assert_eq!(
-                    building.damage_fire_anim_ids.iter().flatten().count(),
+                    building.damage_fires.anim_ids.iter().flatten().count(),
                     if expected { 2 } else { 0 },
                     "{row:?}"
                 );
@@ -3536,7 +3577,7 @@ mod tests {
         sim.set_anim_owner_object(id, Some(owner_id), &rules);
         let entity = sim.substrate.entities.get_mut(owner_id).unwrap();
         entity.retain_deploy_anim(id);
-        entity.position.rx += 1;
+        entity.position.set_rx(entity.position.rx() + 1);
         let absolute = sim.anim_absolute_coord(id).unwrap();
         assert_ne!(sim.anim(id).unwrap().world_coord, absolute);
 
@@ -4930,7 +4971,8 @@ mod tests {
             .entities
             .get(building_id)
             .unwrap()
-            .damage_fire_anim_ids[0]
+            .damage_fires
+            .anim_ids[0]
             .unwrap();
         sim.set_anim_owner_object(anim_id, Some(building_id), &rules);
         assert_eq!(sim.anim(anim_id).unwrap().owner_entity, Some(building_id));
@@ -4941,7 +4983,8 @@ mod tests {
                 .entities
                 .get(building_id)
                 .unwrap()
-                .damage_fire_anim_ids[0],
+                .damage_fires
+                .anim_ids[0],
             Some(anim_id),
             "native owner expiry retains the slot until the Anim's own expiry"
         );
@@ -4959,7 +5002,8 @@ mod tests {
             sim.entities()
                 .get(building_id)
                 .unwrap()
-                .damage_fire_anim_ids[0]
+                .damage_fires
+                .anim_ids[0]
                 .is_none()
         );
         assert!(!sim.live_object_order_snapshot().contains(&anim_id));
@@ -4982,7 +5026,8 @@ mod tests {
             .entities
             .get_mut(building_id)
             .unwrap()
-            .damage_fire_anim_ids[0] = Some(anim_id);
+            .damage_fires
+            .anim_ids[0] = Some(anim_id);
         sim.rebuild_building_anim_slot_indices();
         // Supply the common post-UnInit retirement state through its existing
         // membership owner;19B remains the independent native expiry byte.
@@ -4998,7 +5043,8 @@ mod tests {
                 .entities
                 .get(building_id)
                 .unwrap()
-                .damage_fire_anim_ids[0]
+                .damage_fires
+                .anim_ids[0]
                 .is_none()
         );
     }
@@ -5023,7 +5069,8 @@ mod tests {
             .entities
             .get(building_id)
             .unwrap()
-            .damage_fire_anim_ids[0]
+            .damage_fires
+            .anim_ids[0]
             .expect("slot zero");
         sim.set_anim_owner_object(anim_id, Some(building_id), &rules);
         let before = sim.anim_absolute_coord(anim_id).expect("attached anim");
@@ -5032,8 +5079,8 @@ mod tests {
         // Move the owner one cell east and one cell south.
         {
             let owner = sim.substrate.entities.get_mut(building_id).unwrap();
-            owner.position.rx += 1;
-            owner.position.ry += 1;
+            owner.position.set_rx(owner.position.rx() + 1);
+            owner.position.set_ry(owner.position.ry() + 1);
         }
 
         assert_eq!(
@@ -5119,7 +5166,8 @@ mod tests {
             .entities
             .get(building_id)
             .unwrap()
-            .damage_fire_anim_ids[0]
+            .damage_fires
+            .anim_ids[0]
             .expect("slot zero");
         sim.set_anim_owner_object(anim_id, Some(building_id), &rules);
         let before = sim.anim_absolute_coord(anim_id).expect("attached anim");
@@ -5129,7 +5177,7 @@ mod tests {
             .get_mut(building_id)
             .unwrap()
             .position
-            .exact_z_leptons = Some(before.z + 250);
+            .set_exact_z_leptons(Some(before.z + 250));
 
         assert_eq!(
             sim.anim_absolute_coord(anim_id).unwrap(),
@@ -5160,11 +5208,11 @@ mod tests {
         sim.update_building_damage_fire(building_id, &rules);
 
         let building = sim.substrate.entities.get(building_id).unwrap();
-        assert!(building.damage_fire_state_active);
-        let first = building.damage_fire_anim_ids[0].expect("slot zero");
-        let second = building.damage_fire_anim_ids[1].expect("slot one");
+        assert!(building.damage_fires.active);
+        let first = building.damage_fires.anim_ids[0].expect("slot zero");
+        let second = building.damage_fires.anim_ids[1].expect("slot one");
         assert!(
-            building.damage_fire_anim_ids[2..]
+            building.damage_fires.anim_ids[2..]
                 .iter()
                 .all(Option::is_none)
         );
@@ -5246,7 +5294,8 @@ mod tests {
             .entities
             .get(building_id)
             .unwrap()
-            .damage_fire_anim_ids;
+            .damage_fires
+            .anim_ids;
 
         sim.update_building_damage_fire(building_id, &rules);
         assert_eq!(sim.scenario_rng.logical_state(), rng_after_spawn);
@@ -5255,7 +5304,8 @@ mod tests {
                 .entities
                 .get(building_id)
                 .unwrap()
-                .damage_fire_anim_ids,
+                .damage_fires
+                .anim_ids,
             ids
         );
 
@@ -5267,8 +5317,8 @@ mod tests {
             .set_for_test(51);
         sim.update_building_damage_fire(building_id, &rules);
         let building = sim.substrate.entities.get(building_id).unwrap();
-        assert!(!building.damage_fire_state_active);
-        assert!(building.damage_fire_anim_ids.iter().all(Option::is_none));
+        assert!(!building.damage_fires.active);
+        assert!(building.damage_fires.anim_ids.iter().all(Option::is_none));
         assert_eq!(sim.live_object_order_snapshot(), vec![building_id]);
     }
 
@@ -5287,8 +5337,8 @@ mod tests {
         sim.update_building_damage_fire(building_id, &rules);
 
         let building = sim.substrate.entities.get(building_id).unwrap();
-        assert!(building.damage_fire_state_active);
-        assert!(building.damage_fire_anim_ids.iter().all(Option::is_none));
+        assert!(building.damage_fires.active);
+        assert!(building.damage_fires.anim_ids.iter().all(Option::is_none));
         assert_eq!(sim.scenario_rng.logical_state(), rng_before);
     }
 
@@ -5319,7 +5369,7 @@ mod tests {
             )
             .unwrap();
         let building = sim.substrate.entities.get_mut(building_id).unwrap();
-        building.damage_fire_anim_ids[0] = Some(occupied_id);
+        building.damage_fires.anim_ids[0] = Some(occupied_id);
         building.health.set_for_test(50);
         let mut expected_rng = sim.scenario_rng.clone();
         let _ = expected_rng.next_range_u32_inclusive(0, 2);
@@ -5331,7 +5381,8 @@ mod tests {
             .entities
             .get(building_id)
             .unwrap()
-            .damage_fire_anim_ids;
+            .damage_fires
+            .anim_ids;
         assert_eq!(slots[0], Some(occupied_id));
         assert!(slots[1..].iter().all(Option::is_none));
         assert_eq!(
@@ -5362,8 +5413,8 @@ mod tests {
         sim.update_building_damage_fire(building_id, &rules);
 
         let building = sim.substrate.entities.get(building_id).unwrap();
-        assert!(!building.damage_fire_state_active);
-        assert!(building.damage_fire_anim_ids.iter().all(Option::is_none));
+        assert!(!building.damage_fires.active);
+        assert!(building.damage_fires.anim_ids.iter().all(Option::is_none));
         assert_eq!(
             sim.sound_events
                 .iter()
@@ -5388,7 +5439,8 @@ mod tests {
                 .entities
                 .get(building_id)
                 .unwrap()
-                .damage_fire_state_active
+                .damage_fires
+                .active
         );
         sim.substrate
             .entities
@@ -5402,7 +5454,8 @@ mod tests {
                 .entities
                 .get(building_id)
                 .unwrap()
-                .damage_fire_state_active
+                .damage_fires
+                .active
         );
     }
 
@@ -5421,7 +5474,8 @@ mod tests {
             .entities
             .get(building_id)
             .unwrap()
-            .damage_fire_anim_ids[0]
+            .damage_fires
+            .anim_ids[0]
             .unwrap();
         let frame = sim.anim(anim_id).unwrap().runtime.current_frame;
         sim.visit_anim(
@@ -5463,12 +5517,14 @@ mod tests {
                 .entities
                 .get(building_id)
                 .unwrap()
-                .damage_fire_anim_ids,
+                .damage_fires
+                .anim_ids,
             sim.substrate
                 .entities
                 .get(building_id)
                 .unwrap()
-                .damage_fire_anim_ids,
+                .damage_fires
+                .anim_ids,
         );
     }
 }

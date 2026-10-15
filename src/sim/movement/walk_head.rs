@@ -79,7 +79,7 @@ pub(super) fn finish_fresh_head(
     let Some(loco) = entity.locomotor.as_mut() else {
         return false;
     };
-    if loco.kind != crate::rules::locomotor_type::LocomotorKind::Walk {
+    if loco.active_kind() != crate::rules::locomotor_type::LocomotorKind::Walk {
         return false;
     }
     let Some(head) = loco.step_head() else {
@@ -92,7 +92,7 @@ pub(super) fn finish_fresh_head(
             head.x.wrapping_sub(current.x),
             head.y.wrapping_sub(current.y),
         );
-        entity.body_facing.snap(facing, native_frame);
+        super::locomotor_turn::walk_do_turn(entity, facing, native_frame);
         entity
             .foot_speed
             .set_speed_fraction(crate::util::fixed_math::SIM_ONE);
@@ -115,7 +115,7 @@ impl crate::sim::world::Simulation {
                 return None;
             }
             let loco = e.locomotor.as_ref()?;
-            if loco.kind != crate::rules::locomotor_type::LocomotorKind::Walk {
+            if loco.active_kind() != crate::rules::locomotor_type::LocomotorKind::Walk {
                 return None;
             }
             Some((
@@ -342,14 +342,11 @@ mod tests {
         slave.set_owner_for_test(owner);
         slave.set_type_ref_for_test(interner.intern("SLAV"));
         slave.set_category_for_test(EntityCategory::Infantry);
-        slave.position.sub_x = SimFixed::from_num(192);
-        slave.position.sub_y = SimFixed::from_num(64);
+        slave.position.set_sub_x(SimFixed::from_num(192));
+        slave.position.set_sub_y(SimFixed::from_num(64));
         slave.locomotor = Some(LocomotorState::for_test_kind(LocomotorKind::Walk));
-        slave.navigation.path_replay = crate::sim::components::FootPathQueue {
-            directions: vec![2],
-            cursor: 0,
-            reference_cell: Some((3, 4)),
-        };
+        slave.navigation.path_replay =
+            crate::sim::components::FootPathQueue::for_test(vec![2], 0, Some((3, 4)));
         slave.slave = crate::sim::slave_manager::SlaveLink::for_test(Some(1), Vec::new());
         let current = super::super::ground_pose::position_world_coord(&slave.position);
         entities.insert(slave);
@@ -662,9 +659,13 @@ mod tests {
                 entity.body_facing = super::super::FacingClass::new(0, 0);
             }
             entity.set_owner_for_test(InternedId::from_index(41));
-            entity.position.sub_x = SimFixed::from_num(input["sub"][0].as_i64().unwrap());
-            entity.position.sub_y = SimFixed::from_num(input["sub"][1].as_i64().unwrap());
-            entity.position.exact_z_leptons = Some(260);
+            entity
+                .position
+                .set_sub_x(SimFixed::from_num(input["sub"][0].as_i64().unwrap()));
+            entity
+                .position
+                .set_sub_y(SimFixed::from_num(input["sub"][1].as_i64().unwrap()));
+            entity.position.set_exact_z_leptons(Some(260));
             entity.locomotor = Some(super::super::locomotor::LocomotorState::for_test_kind(
                 crate::rules::locomotor_type::LocomotorKind::Walk,
             ));
@@ -687,13 +688,12 @@ mod tests {
                 ai_counter: 0,
                 dispatch_timer: crate::sim::mission::MissionDispatchTimer::at_frame(0),
             });
-            entity.navigation.path_replay = FootPathQueue {
-                directions: vec![2, 3, 4, 5],
-                cursor: 0,
-                reference_cell: Some((9, 8)),
-            };
+            entity.navigation.path_replay =
+                FootPathQueue::for_test(vec![2, 3, 4, 5], 0, Some((9, 8)));
             if input["nav"].as_bool().unwrap_or(true) {
-                entity.navigation.nav_com = Some(NavTargetRef::Cell { rx: 10, ry: 10 });
+                entity
+                    .navigation
+                    .set_nav_com(Some(NavTargetRef::Cell { rx: 10, ry: 10 }));
             }
             let current = super::super::ground_pose::position_world_coord(&entity.position);
             let mut raw = RawCellOccupationGrid::default();
@@ -746,8 +746,8 @@ mod tests {
                 entity.foot_speed.applied_fraction(),
                 SimFixed::from_num(row["speed_fraction"].as_f64().unwrap())
             );
-            assert_eq!(entity.navigation.path_replay.directions, vec![2, 3, 4, 5]);
-            assert_eq!(entity.navigation.path_replay.reference_cell, Some((9, 8)));
+            assert_eq!(entity.navigation.path_replay.directions(), vec![2, 3, 4, 5]);
+            assert_eq!(entity.navigation.path_replay.reference_cell(), Some((9, 8)));
             assert_eq!(
                 raw.ground_bits(9, 10),
                 row["current_raw"].as_u64().unwrap() as u8
@@ -759,16 +759,16 @@ mod tests {
             assert_native_rng(&rng, row["rng_after"].as_str().unwrap());
         }
         for row in corpus["completed_queue"].as_array().unwrap() {
-            let mut queue = FootPathQueue {
-                directions: row["before"]
+            let mut queue = FootPathQueue::for_test(
+                row["before"]
                     .as_array()
                     .unwrap()
                     .iter()
                     .map(|v| v.as_i64().unwrap() as u8)
                     .collect(),
-                cursor: 0,
-                reference_cell: Some((9, 8)),
-            };
+                0,
+                Some((9, 8)),
+            );
             super::super::path_markers::consume_walk_path_replay(&mut queue);
             let expected: Vec<u8> = row["after"]
                 .as_array()
@@ -778,10 +778,10 @@ mod tests {
                 .map(|v| v.as_i64().unwrap() as u8)
                 .collect();
             assert_eq!(
-                &queue.directions[usize::from(queue.cursor)..],
+                &queue.directions()[usize::from(queue.cursor())..],
                 expected.as_slice()
             );
-            assert_eq!(queue.reference_cell, Some((9, 8)));
+            assert_eq!(queue.reference_cell(), Some((9, 8)));
             assert_eq!(
                 queue.remaining_directions().is_empty(),
                 row["invalidated"].as_bool().unwrap()
@@ -889,7 +889,7 @@ pub(super) fn prepare_step_head(
     let Some(loco) = entity.locomotor.as_ref() else {
         return true;
     };
-    if loco.kind != LocomotorKind::Walk || loco.step_head().is_some() {
+    if loco.active_kind() != LocomotorKind::Walk || loco.step_head().is_some() {
         return true;
     }
     let Some(&direction) = entity.navigation.path_replay.remaining_directions().first() else {
@@ -947,7 +947,7 @@ pub(super) fn select_step_head_at(
     let Some(loco) = entity.locomotor.as_ref() else {
         return StepHead::Done(true);
     };
-    if loco.kind != LocomotorKind::Walk {
+    if loco.active_kind() != LocomotorKind::Walk {
         return StepHead::Done(true);
     }
     let owner = entity.owner();
@@ -971,7 +971,7 @@ pub(super) fn select_step_head_at(
     let next = ((input.x / 256) as u16, (input.y / 256) as u16);
     let mut priority = false;
     if [7, 8, 9, 11, 25].contains(&entity.mission.current().raw()) {
-        let target = match entity.navigation.nav_com {
+        let target = match entity.navigation.nav_com() {
             Some(
                 crate::sim::components::NavTargetRef::Entity { id }
                 | crate::sim::components::NavTargetRef::Object { id }

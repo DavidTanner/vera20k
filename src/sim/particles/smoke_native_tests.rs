@@ -271,7 +271,8 @@ fn install_system(
             .entities
             .get_mut(owner)
             .unwrap()
-            .damage_smoke_system_id = Some(id);
+            .damage_smoke_system_id
+            .set_for_test(Some(id));
     }
     (id, owner)
 }
@@ -304,6 +305,7 @@ fn assert_system(sim: &Simulation, id: u64, owner: Option<u64>, expected: &Value
                 .get(owner)
                 .unwrap()
                 .damage_smoke_system_id
+                .system()
                 == Some(id),
             expected["owner_has_smoke"].as_bool().unwrap()
         );

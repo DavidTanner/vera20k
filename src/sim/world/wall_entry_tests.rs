@@ -82,7 +82,7 @@ fn wall_fixture() -> (
         mover.set_owner_for_test(owner);
         mover.set_type_ref_for_test(sim.intern(name));
         mover.set_category_for_test(category);
-        mover.in_playfield = true;
+        mover.set_in_playfield(true);
         mover.locomotor = Some(LocomotorState::for_test_kind(kind));
         sim.substrate.entities.insert(mover);
     }

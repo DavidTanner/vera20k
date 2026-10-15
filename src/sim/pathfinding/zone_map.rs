@@ -14,7 +14,7 @@
 //! terrain changes (building placement/destruction, bridge destruction).
 //!
 //! ## Dependency rules
-//! - Part of sim/ — depends on sim/pathfinding, sim/terrain_cost, sim/locomotor.
+//! - Part of sim/ — depends on sim/pathfinding, sim/locomotor.
 //! - sim/ NEVER depends on render/, ui/, audio/, net/.
 
 use std::collections::BTreeMap;

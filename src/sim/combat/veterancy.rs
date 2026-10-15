@@ -476,7 +476,7 @@ pub fn entity_mover_speed_leptons_per_second(
 ) -> SimFixed {
     mover_speed_leptons_per_second(
         raw_type_speed,
-        entity.locomotor.as_ref().map(|loco| loco.kind),
+        entity.locomotor.as_ref().map(|loco| loco.active_kind()),
         entity.veterancy.rank_kind(),
         object,
         veteran_speed,

@@ -133,7 +133,8 @@ pub(crate) use receiver_call::{
     BaseDefenseResponseCallSite, EntityDamageEvent, RAD_NO_ATTACKER, ReceiverCallFlags,
     wave_post_object_damage,
 };
-pub(crate) use record_kill::KillCallback;
+pub(crate) use receiver_health::BerserkState;
+pub(crate) use record_kill::{KillCallback, KillRecord, KillSource};
 pub(crate) use techno_death::{
     FatalLifecycleStage, death_announcement_event, death_arm_explodes, death_weapon_detonation,
 };
@@ -291,8 +292,11 @@ const ARMOR_NAMES: &[&str] = &[
 /// Returns 0 ("none") for unrecognized armor strings.
 /// Used by combat_weapon.rs for weapon selection.
 pub fn armor_index(armor: &str) -> usize {
-    let lower: String = armor.to_ascii_lowercase();
-    ARMOR_NAMES.iter().position(|&a| a == lower).unwrap_or(0)
+    // The names are lowercase, so this matches the lowercased armor string.
+    ARMOR_NAMES
+        .iter()
+        .position(|name| name.eq_ignore_ascii_case(armor))
+        .unwrap_or(0)
 }
 
 /// Aircraft retain their existing phased Mission_Attack delivery. Other

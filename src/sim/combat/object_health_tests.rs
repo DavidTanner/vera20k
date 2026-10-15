@@ -17,7 +17,9 @@ fn actual_signed_object_commit_matches_original_packet_results_and_callbacks() {
         let input = &row["input"];
         let output = &row["output"];
         let mut entity = GameEntity::test_default(1, "X", "Americans", 2, 2);
-        entity.health.current = input["current"].as_i64().unwrap() as i32;
+        entity
+            .health
+            .set_for_test(input["current"].as_i64().unwrap() as i32);
         entity
             .lifecycle
             .set_object_alive_for_test(input["alive"] == 1);
@@ -44,7 +46,7 @@ fn actual_signed_object_commit_matches_original_packet_results_and_callbacks() {
                     HealthCallback::Kill => 0,
                     HealthCallback::Destroy => 1,
                 };
-                let before = entity.health.current;
+                let before = entity.health.current();
                 let alive_before = u8::from(entity.lifecycle.object_alive());
                 let mode = input["callback"].as_str().unwrap();
                 let mutation = match (callback, mode) {
@@ -56,7 +58,7 @@ fn actual_signed_object_commit_matches_original_packet_results_and_callbacks() {
                 };
                 let mut writes = Vec::new();
                 if let Some(health) = mutation {
-                    entity.health.current = health;
+                    entity.health.set_for_test(health);
                     writes.push(json!({"field":"actual", "value":health}));
                 }
                 if matches!(
@@ -69,12 +71,12 @@ fn actual_signed_object_commit_matches_original_packet_results_and_callbacks() {
                     writes.push(json!({"field":"alive", "value":0}));
                 }
                 callbacks.push(json!({"slot":slot,"argument":argument,"health_before":before,
-                    "alive_before":alive_before,"supplied_writes":writes,"health_after":entity.health.current,
+                    "alive_before":alive_before,"supplied_writes":writes,"health_after":entity.health.current(),
                     "alive_after":u8::from(entity.lifecycle.object_alive())}));
             },
         );
         assert_eq!(
-            entity.health.current,
+            entity.health.current(),
             output["actual"].as_i64().unwrap() as i32,
             "{input}"
         );
@@ -102,7 +104,6 @@ fn actual_signed_object_commit_matches_original_packet_results_and_callbacks() {
 fn receiver_commit_keeps_negative_heal_on_exact_zero_techno_tail_and_wide_hits() {
     use crate::rules::{ini_parser::IniFile, ruleset::RuleSet};
     use crate::sim::combat::{EntityDamageEvent, ResolvedReceiveDamage, damage::DamageOutcome};
-    use crate::sim::entity_store::EntityStore;
     use crate::sim::intern::test_interner;
     let rules = RuleSet::from_ini(&IniFile::from_str(
         "[VehicleTypes]\n0=X\n[X]\nStrength=70000\nArmor=none\n",
@@ -125,14 +126,15 @@ fn receiver_commit_keeps_negative_heal_on_exact_zero_techno_tail_and_wide_hits()
         (100, 100, false, 0, DamageState::AlreadyDead, false, false),
         (-17, 1, true, -17, DamageState::Unaffected, false, false),
     ] {
-        let mut entities = EntityStore::new();
+        let mut world = crate::sim::world::Simulation::new();
         let mut entity = GameEntity::test_default(1, "X", "Americans", 2, 2);
         entity.set_type_ref_for_test(interner.intern("X"));
         entity.set_owner_for_test(interner.intern("Americans"));
-        entity.health.current = hp;
+        entity.health.set_for_test(hp);
         entity.lifecycle.set_object_alive_for_test(alive);
         entity.estimated_health = crate::sim::estimated_health::EstimatedHealth::from_raw(-123);
-        entities.insert(entity);
+        world.interner = interner.clone();
+        world.substrate.entities.insert(entity);
         let event =
             EntityDamageEvent::area(1, damage, 0, super::super::RAD_NO_ATTACKER, None, warhead);
         let outcome = DamageOutcome {
@@ -149,18 +151,28 @@ fn receiver_commit_keeps_negative_heal_on_exact_zero_techno_tail_and_wide_hits()
         };
         let receipt = super::super::receiver_health::commit_receiver_health(
             &event,
-            &mut entities,
+            &mut world,
             &rules,
-            &interner,
-            &Default::default(),
-            None,
             None,
             Some(resolved),
-            0,
+            crate::sim::world::FrameEffects::default(),
+            false,
         )
         .unwrap();
-        assert_eq!(entities.get(1).unwrap().health.current, expected);
-        assert_eq!(entities.get(1).unwrap().estimated_health.get(), -123);
+        assert_eq!(
+            world.substrate.entities.get(1).unwrap().health.current(),
+            expected
+        );
+        assert_eq!(
+            world
+                .substrate
+                .entities
+                .get(1)
+                .unwrap()
+                .estimated_health
+                .get(),
+            -123
+        );
         assert_eq!(receipt.state, expected_state);
         assert_eq!(receipt.reached_exact_zero, object_kill);
         assert_eq!(receipt.entered_techno_death, techno_death);

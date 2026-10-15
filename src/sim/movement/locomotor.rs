@@ -49,6 +49,20 @@ pub enum AirMovePhase {
     Descending,
 }
 
+/// Every field of one locomotor object, for the state hash's fold
+/// (`world_hash::hash_locomotor`). [`LocomotorState::hash_fields`] builds it by
+/// destructuring, so a new field fails to compile until the fold takes it.
+pub(crate) struct LocomotorHashFields<'a> {
+    pub(crate) kind: LocomotorKind,
+    pub(crate) powered: bool,
+    pub(crate) piggyback: Option<&'a LocomotorState>,
+    pub(crate) runtime_payload: &'a LocomotorRuntimePayload,
+    pub(crate) layer: MovementLayer,
+    pub(crate) balloon_hover: bool,
+    pub(crate) speed_type: SpeedType,
+    pub(crate) movement_zone: MovementZone,
+}
+
 /// Runtime locomotor state attached to each movable ECS entity.
 ///
 /// Created from `ObjectType` at spawn time. Each object's Process runs the
@@ -63,7 +77,7 @@ pub enum AirMovePhase {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct LocomotorState {
     /// Which locomotor class this object is.
-    pub kind: LocomotorKind,
+    kind: LocomotorKind,
     /// Whether this locomotor is powered.
     ///
     /// Natively a plain flag on the locomotor instance, set by `Power_On` /
@@ -71,26 +85,25 @@ pub struct LocomotorState {
     /// another slot, which has no verified effect and is not modelled. Defaults
     /// to on — an unpowered locomotor is a state something must actively put a
     /// unit into.
-    pub powered: bool,
+    powered: bool,
     /// The suspended locomotor object, when a piggyback displaced it, with any
     /// stash of its own: a Chrono Miner's Drive holds the miner's Teleport,
     /// and a Chrono Warp's Teleport holds whatever it displaced.
     #[serde(default)]
-    pub piggyback: Option<StashedLocomotor>,
+    piggyback: Option<StashedLocomotor>,
     /// Class-local state of this locomotor object.
-    pub runtime_payload: LocomotorRuntimePayload,
+    runtime_payload: LocomotorRuntimePayload,
     /// Which spatial layer the unit currently occupies: the Foot's position,
     /// cached on the active object. `Bridge` is the Ground layer with the
     /// Foot's OnBridge set.
-    pub layer: MovementLayer,
+    layer: MovementLayer,
     /// Stay airborne after reaching destination (BalloonHover=yes).
-    pub balloon_hover: bool,
+    balloon_hover: bool,
     /// Which terrain type this unit traverses (from rules.ini SpeedType=).
-    /// Used to select the correct TerrainCostGrid for cost-aware pathfinding.
-    pub speed_type: SpeedType,
+    speed_type: SpeedType,
     /// Pathfinder movement zone — determines crush capability and special routing.
     /// Cached from ObjectType at spawn to avoid per-tick RuleSet lookups.
-    pub movement_zone: MovementZone,
+    movement_zone: MovementZone,
 }
 
 impl LocomotorState {
@@ -302,7 +315,7 @@ impl LocomotorState {
     /// receivers75CA80/517210, tools/spatial_oracle/locomotor_at_coord.
     pub(crate) fn step_head(&self) -> Option<crate::sim::components::DriveCoord> {
         match (self.kind, &self.runtime_payload) {
-            (LocomotorKind::Walk, LocomotorRuntimePayload::Walk(state)) => state.head,
+            (LocomotorKind::Walk, LocomotorRuntimePayload::Walk(state)) => state.head(),
             (LocomotorKind::Hover, LocomotorRuntimePayload::Hover(runtime)) => runtime.head(),
             _ => None,
         }
@@ -313,7 +326,7 @@ impl LocomotorState {
         if let (LocomotorKind::Walk, LocomotorRuntimePayload::Walk(state)) =
             (self.kind, &mut self.runtime_payload)
         {
-            state.head = head;
+            state.set_head(head);
         }
     }
 
@@ -411,7 +424,7 @@ impl LocomotorState {
 
     pub(crate) fn walk_destination(&self) -> Option<crate::sim::components::DriveCoord> {
         match (self.kind, &self.runtime_payload) {
-            (LocomotorKind::Walk, LocomotorRuntimePayload::Walk(state)) => state.destination,
+            (LocomotorKind::Walk, LocomotorRuntimePayload::Walk(state)) => state.destination(),
             _ => None,
         }
     }
@@ -434,7 +447,7 @@ impl LocomotorState {
 
     pub(crate) fn walk_is_moving(&self) -> Option<bool> {
         match (self.kind, &self.runtime_payload) {
-            (LocomotorKind::Walk, LocomotorRuntimePayload::Walk(state)) => Some(state.moving),
+            (LocomotorKind::Walk, LocomotorRuntimePayload::Walk(state)) => Some(state.moving()),
             _ => None,
         }
     }
@@ -448,11 +461,11 @@ impl LocomotorState {
         if let (LocomotorKind::Walk, LocomotorRuntimePayload::Walk(state)) =
             (self.kind, &mut self.runtime_payload)
         {
-            state.destination = coord.filter(|c| c.x != 0 || c.y != 0 || c.z != 0);
-            if state.destination.is_some() {
-                state.moving = true;
-            } else if state.head.is_none() {
-                state.moving = false;
+            state.set_destination(coord.filter(|c| c.x != 0 || c.y != 0 || c.z != 0));
+            if state.destination().is_some() {
+                state.set_moving(true);
+            } else if state.head().is_none() {
+                state.set_moving(false);
             }
         }
     }
@@ -462,7 +475,7 @@ impl LocomotorState {
     pub(crate) fn walk_animation_moving(&self) -> Option<bool> {
         match (self.kind, &self.runtime_payload) {
             (LocomotorKind::Walk, LocomotorRuntimePayload::Walk(state)) => {
-                Some(state.animation_moving)
+                Some(state.animation_moving())
             }
             _ => None,
         }
@@ -474,9 +487,9 @@ impl LocomotorState {
     pub(crate) fn begin_walk_motion(&mut self) {
         if let (LocomotorKind::Walk, LocomotorRuntimePayload::Walk(state)) =
             (self.kind, &mut self.runtime_payload)
-            && state.head.is_some()
+            && state.head().is_some()
         {
-            state.animation_moving = true;
+            state.set_animation_moving(true);
         }
     }
 
@@ -489,7 +502,7 @@ impl LocomotorState {
         if let (LocomotorKind::Walk, LocomotorRuntimePayload::Walk(state)) =
             (self.kind, &mut self.runtime_payload)
         {
-            state.animation_moving = false;
+            state.set_animation_moving(false);
         }
     }
 
@@ -500,9 +513,9 @@ impl LocomotorState {
         self.set_walk_destination(None);
         if let (LocomotorKind::Walk, LocomotorRuntimePayload::Walk(state)) =
             (self.kind, &mut self.runtime_payload)
-            && state.head.is_none()
+            && state.head().is_none()
         {
-            state.animation_moving = false;
+            state.set_animation_moving(false);
             return true;
         }
         false
@@ -516,8 +529,8 @@ impl LocomotorState {
         if let (LocomotorKind::Walk, LocomotorRuntimePayload::Walk(state)) =
             (self.kind, &mut self.runtime_payload)
         {
-            state.destination = None;
-            state.head = None;
+            state.set_destination(None);
+            state.set_head(None);
         }
     }
 
@@ -604,6 +617,121 @@ impl LocomotorState {
     /// Whether this locomotor is powered.
     pub fn is_powered(&self) -> bool {
         self.powered
+    }
+
+    /// Every field, for the state hash's fold ([`LocomotorHashFields`]).
+    pub(crate) fn hash_fields(&self) -> LocomotorHashFields<'_> {
+        let Self {
+            kind,
+            powered,
+            piggyback,
+            runtime_payload,
+            layer,
+            balloon_hover,
+            speed_type,
+            movement_zone,
+        } = self;
+        LocomotorHashFields {
+            kind: *kind,
+            powered: *powered,
+            piggyback: piggyback.as_deref(),
+            runtime_payload,
+            layer: *layer,
+            balloon_hover: *balloon_hover,
+            speed_type: *speed_type,
+            movement_zone: *movement_zone,
+        }
+    }
+
+    /// A fixture's power flag.
+    #[cfg(test)]
+    pub(crate) fn set_powered_for_test(&mut self, powered: bool) {
+        self.powered = powered;
+    }
+
+    /// The suspended object a piggyback displaced, with any stash of its own.
+    pub(crate) fn piggyback(&self) -> &Option<StashedLocomotor> {
+        &self.piggyback
+    }
+
+    /// The suspended object, for its typed private-storage operations.
+    pub(crate) fn piggyback_mut(&mut self) -> Option<&mut StashedLocomotor> {
+        self.piggyback.as_mut()
+    }
+
+    /// Store the suspended object (BEGIN).
+    pub(crate) fn set_piggyback(&mut self, piggyback: Option<StashedLocomotor>) {
+        self.piggyback = piggyback;
+    }
+
+    /// Take the suspended object out (END).
+    pub(crate) fn take_piggyback(&mut self) -> Option<StashedLocomotor> {
+        self.piggyback.take()
+    }
+
+    /// Class-local state of this locomotor object.
+    pub(crate) fn runtime_payload(&self) -> &LocomotorRuntimePayload {
+        &self.runtime_payload
+    }
+
+    /// Class-local state of this locomotor object, for its class's Process.
+    pub(crate) fn runtime_payload_mut(&mut self) -> &mut LocomotorRuntimePayload {
+        &mut self.runtime_payload
+    }
+
+    /// A fixture's class-local state.
+    #[cfg(test)]
+    pub(crate) fn set_runtime_payload_for_test(&mut self, payload: LocomotorRuntimePayload) {
+        self.runtime_payload = payload;
+    }
+
+    /// The Foot's layer, cached on the active object.
+    pub(crate) fn layer(&self) -> MovementLayer {
+        self.layer
+    }
+
+    /// Store the Foot's layer.
+    pub(crate) fn set_layer(&mut self, layer: MovementLayer) {
+        self.layer = layer;
+    }
+
+    /// The type's `BalloonHover=`.
+    pub(crate) fn balloon_hover(&self) -> bool {
+        self.balloon_hover
+    }
+
+    /// A fixture's `BalloonHover=`.
+    #[cfg(test)]
+    pub(crate) fn set_balloon_hover_for_test(&mut self, balloon_hover: bool) {
+        self.balloon_hover = balloon_hover;
+    }
+
+    /// The type's `SpeedType=`.
+    pub(crate) fn speed_type(&self) -> SpeedType {
+        self.speed_type
+    }
+
+    /// A fixture's `SpeedType=`.
+    #[cfg(test)]
+    pub(crate) fn set_speed_type_for_test(&mut self, speed_type: SpeedType) {
+        self.speed_type = speed_type;
+    }
+
+    /// The type's `MovementZone=`.
+    pub(crate) fn movement_zone(&self) -> MovementZone {
+        self.movement_zone
+    }
+
+    /// A fixture's `MovementZone=`.
+    #[cfg(test)]
+    pub(crate) fn set_movement_zone_for_test(&mut self, movement_zone: MovementZone) {
+        self.movement_zone = movement_zone;
+    }
+
+    /// A fixture's class.
+    #[cfg(test)]
+    pub(crate) fn set_kind_for_test(&mut self, kind: LocomotorKind) {
+        self.kind = kind;
     }
 }
 

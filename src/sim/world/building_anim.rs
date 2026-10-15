@@ -228,9 +228,13 @@ mod tests {
             );
             entity.set_type_ref_for_test(sim.interner.intern("GAREFN"));
             entity.set_owner_for_test(sim.interner.intern("A"));
-            entity.position.sub_x = crate::util::fixed_math::SimFixed::from_num(origin.x & 255);
-            entity.position.sub_y = crate::util::fixed_math::SimFixed::from_num(origin.y & 255);
-            entity.position.exact_z_leptons = Some(origin.z);
+            entity
+                .position
+                .set_sub_x(crate::util::fixed_math::SimFixed::from_num(origin.x & 255));
+            entity
+                .position
+                .set_sub_y(crate::util::fixed_math::SimFixed::from_num(origin.y & 255));
+            entity.position.set_exact_z_leptons(Some(origin.z));
             sim.substrate.entities.insert(entity);
             begin_refinery_unload_gate(&mut sim, &rules, id);
             let actual: Vec<_> = sim

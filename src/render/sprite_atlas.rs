@@ -776,7 +776,7 @@ fn object_pairs<'a>(
 ) -> impl Iterator<Item = (&'a str, HouseColorIndex)> + 'a {
     let placed = entities
         .values()
-        .filter(|entity| !entity.is_voxel)
+        .filter(|entity| !entity.is_voxel())
         .map(move |entity| {
             let owner = interner.map_or("", |i| i.resolve(entity.owner()));
             let color = house_colors
@@ -1136,7 +1136,7 @@ fn insert_new_object_keys<'a>(
 ) -> HashMap<String, Option<ShpSource<'a>>> {
     let categories: HashMap<&str, EntityCategory> = entities
         .values()
-        .filter(|entity| !entity.is_voxel)
+        .filter(|entity| !entity.is_voxel())
         .map(|entity| {
             (
                 interner.map_or("", |i| i.resolve(entity.type_ref())),

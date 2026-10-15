@@ -165,12 +165,12 @@ fn coordinate_term(world_x: i32, world_y: i32) -> u32 {
 #[inline]
 fn entity_world_xy(entity: &GameEntity) -> (i32, i32) {
     (
-        i32::from(entity.position.rx)
+        i32::from(entity.position.rx())
             .wrapping_mul(LEPTONS_PER_CELL)
-            .wrapping_add(entity.position.sub_x.to_num::<i32>()),
-        i32::from(entity.position.ry)
+            .wrapping_add(entity.position.sub_x().to_num::<i32>()),
+        i32::from(entity.position.ry())
             .wrapping_mul(LEPTONS_PER_CELL)
-            .wrapping_add(entity.position.sub_y.to_num::<i32>()),
+            .wrapping_add(entity.position.sub_y().to_num::<i32>()),
     )
 }
 

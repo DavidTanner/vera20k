@@ -631,7 +631,7 @@ pub(crate) fn apply_aoe_damage_with_terrain_and_scenario<O: Into<AoEDamageOrigin
         // Dying corpses (uninit'd this tick, awaiting the end-of-tick drain)
         // are off the live object list — exclude them. A sold/captured corpse
         // keeps health>0, so gate on `dying`, not just health.
-        if entity.health.current() == 0 || entity.dying {
+        if entity.health.current() == 0 || entity.death.is_dying() {
             continue;
         }
 
@@ -641,9 +641,9 @@ pub(crate) fn apply_aoe_damage_with_terrain_and_scenario<O: Into<AoEDamageOrigin
             entity.stable_id(),
             impact_rx,
             impact_ry,
-            entity.position.rx,
-            entity.position.ry,
-            entity.position.rx == impact_rx && entity.position.ry == impact_ry,
+            entity.position.rx(),
+            entity.position.ry(),
+            entity.position.rx() == impact_rx && entity.position.ry() == impact_ry,
             exact_impact,
             layer_context.terrain.as_deref(),
             spread_leptons,
@@ -731,7 +731,7 @@ pub(crate) fn expire_cell_target_references(
         let saved_target_commits = entities.get(listener_id).is_some_and(|entity| {
             crate::sim::mission::concrete_effects::assign_target_commits(
                 entities,
-                entity.suspended_attack_target,
+                entity.suspended_attack_target.target(),
             )
         });
         let Some(entity) = entities.get_mut(listener_id) else {
@@ -864,7 +864,7 @@ fn push_airborne_aoe_damage(
     let Some(entity) = entities.get(entity_id) else {
         return;
     };
-    if entity.health.current() == 0 || entity.dying {
+    if entity.health.current() == 0 || entity.death.is_dying() {
         return;
     }
     let target_z = crate::sim::movement::ground_pose::object_world_z_leptons(entity, Some(terrain));
@@ -874,12 +874,12 @@ fn push_airborne_aoe_damage(
     let impact_y = i32::from(impact_ry)
         .wrapping_mul(256)
         .wrapping_add(impact.sub_y.to_num::<i32>());
-    let target_x = i32::from(entity.position.rx)
+    let target_x = i32::from(entity.position.rx())
         .wrapping_mul(256)
-        .wrapping_add(entity.position.sub_x.to_num::<i32>());
-    let target_y = i32::from(entity.position.ry)
+        .wrapping_add(entity.position.sub_x().to_num::<i32>());
+    let target_y = i32::from(entity.position.ry())
         .wrapping_mul(256)
-        .wrapping_add(entity.position.sub_y.to_num::<i32>());
+        .wrapping_add(entity.position.sub_y().to_num::<i32>());
     let raw_distance_leptons = distance_3d_leptons(
         [impact_x, impact_y, impact.z_leptons],
         [target_x, target_y, target_z],
@@ -952,7 +952,7 @@ fn push_entity_aoe_damage(
     let Some(entity) = entities.get(entity_id) else {
         return;
     };
-    if entity.health.current() == 0 || entity.dying {
+    if entity.health.current() == 0 || entity.death.is_dying() {
         return;
     }
 
@@ -978,15 +978,17 @@ fn push_entity_aoe_damage(
         let z = terrain
             .and_then(|terrain| terrain.cell(scan_rx, scan_ry))
             .and_then(|cell| ground_height_leptons(cell.level, cell.slope_type, x, y).ok())
-            .unwrap_or_else(|| i32::from(entity.position.z).wrapping_mul(LEPTONS_PER_LEVEL as i32));
+            .unwrap_or_else(|| {
+                i32::from(entity.position.z()).wrapping_mul(LEPTONS_PER_LEVEL as i32)
+            });
         [x, y, z]
     } else {
-        let x = i32::from(entity.position.rx)
+        let x = i32::from(entity.position.rx())
             .wrapping_mul(256)
-            .wrapping_add(entity.position.sub_x.to_num::<i32>());
-        let y = i32::from(entity.position.ry)
+            .wrapping_add(entity.position.sub_x().to_num::<i32>());
+        let y = i32::from(entity.position.ry())
             .wrapping_mul(256)
-            .wrapping_add(entity.position.sub_y.to_num::<i32>());
+            .wrapping_add(entity.position.sub_y().to_num::<i32>());
         let z = crate::sim::movement::ground_pose::object_world_z_leptons(entity, terrain);
         [x, y, z]
     };
@@ -1357,13 +1359,13 @@ mod tests {
             // Ordinary Aircraft41B920 reaches Object5F6B90: Object+74 must
             // be marked before the physical GetHeight threshold is queried.
             air.lifecycle.set_in_limbo_for_test(false);
-            air.lifecycle.cell_marked = true;
-            air.position.exact_z_leptons = Some(altitude);
+            air.lifecycle.set_cell_marked(true);
+            air.position.set_exact_z_leptons(Some(altitude));
             let mut locomotor = crate::sim::movement::locomotor::LocomotorState::from_object_type(
                 rules.object(type_id).unwrap(),
                 0,
             );
-            locomotor.layer = MovementLayer::Air;
+            locomotor.set_layer(MovementLayer::Air);
             air.locomotor = Some(locomotor);
             air = air
                 .with_air_spatial_membership_for_test(Some(5 + 5 * 20), stable_id)
@@ -1448,8 +1450,8 @@ mod tests {
         let mut entities = EntityStore::new();
         for (stable_id, rx, sub_x) in [(320, 11, 192), (384, 12, 0), (385, 12, 1), (386, 12, 2)] {
             let mut target = GameEntity::test_default(stable_id, "MTNK", "Soviet", rx, 10);
-            target.position.sub_x = SimFixed::from_num(sub_x);
-            target.position.sub_y = CELL_CENTER_LEPTON;
+            target.position.set_sub_x(SimFixed::from_num(sub_x));
+            target.position.set_sub_y(CELL_CENTER_LEPTON);
             target.health.set_for_test(300);
             entities.insert(target);
         }
@@ -1656,23 +1658,23 @@ mod tests {
             let mut vulnerable = GameEntity::test_default(1, "TARGET", "Victim", 5, 5);
             vulnerable.set_type_ref_for_test(target_ref);
             vulnerable.set_owner_for_test(victim_owner);
-            vulnerable.position.sub_x = CELL_CENTER_LEPTON;
-            vulnerable.position.sub_y = CELL_CENTER_LEPTON;
+            vulnerable.position.set_sub_x(CELL_CENTER_LEPTON);
+            vulnerable.position.set_sub_y(CELL_CENTER_LEPTON);
             vulnerable.lifecycle.set_in_limbo_for_test(false);
-            vulnerable.lifecycle.cell_marked = true;
+            vulnerable.lifecycle.set_cell_marked(true);
             entities.insert(vulnerable);
 
             let mut protected = GameEntity::test_default(2, "TARGET", "Victim", 5, 5);
             protected.set_type_ref_for_test(target_ref);
             protected.set_owner_for_test(victim_owner);
-            protected.position.sub_x = SimFixed::from_num(
+            protected.position.set_sub_x(SimFixed::from_num(
                 CELL_CENTER_LEPTON
                     .to_num::<i32>()
                     .wrapping_add(protected_distance),
-            );
-            protected.position.sub_y = CELL_CENTER_LEPTON;
+            ));
+            protected.position.set_sub_y(CELL_CENTER_LEPTON);
             protected.lifecycle.set_in_limbo_for_test(false);
-            protected.lifecycle.cell_marked = true;
+            protected.lifecycle.set_cell_marked(true);
             protected.invulnerability = Some(InvulnerabilityState::new(
                 crate::sim::timer::CdTimer::started(0, 100),
                 kind,
@@ -1829,15 +1831,15 @@ mod tests {
                 air.set_category_for_test(EntityCategory::Aircraft);
                 air.lifecycle.set_in_limbo_for_test(false);
                 air.health.set_for_test(hp);
-                air.position.z = 0;
+                air.position.set_z(0);
                 let mut air_locomotor =
                     crate::sim::movement::locomotor::LocomotorState::from_object_type(
                         rules.object("AIRBOMB").unwrap(),
                         0,
                     );
-                air_locomotor.layer = MovementLayer::Air;
+                air_locomotor.set_layer(MovementLayer::Air);
                 air.locomotor = Some(air_locomotor);
-                air.position.exact_z_leptons = Some(1);
+                air.position.set_exact_z_leptons(Some(1));
                 air = air
                     .with_air_spatial_membership_for_test(Some(rx + 5 * 20), enter_order)
                     .with_air_tracker_cell_for_test((rx as i16, 5));
@@ -2031,8 +2033,8 @@ mod tests {
 
         let make_ground = |stable_id, rx, ry, sub_x, sub_y, hp| {
             let mut entity = GameEntity::test_default(stable_id, "TESTUNIT", "Soviet", rx, ry);
-            entity.position.sub_x = SimFixed::from_num(sub_x);
-            entity.position.sub_y = SimFixed::from_num(sub_y);
+            entity.position.set_sub_x(SimFixed::from_num(sub_x));
+            entity.position.set_sub_y(SimFixed::from_num(sub_y));
             entity.health.set_for_test(hp);
             entity
         };
@@ -2316,14 +2318,18 @@ mod tests {
             ai_counter: 0,
             dispatch_timer: MissionDispatchTimer::at_frame(0),
         });
-        restored.suspended_attack_target = Some(TargetKind::Cell(8, 8));
+        restored
+            .suspended_attack_target
+            .set_for_test(Some(TargetKind::Cell(8, 8)));
         entities.insert(restored);
 
         let mut cleared = GameEntity::test_default(30, "MTNK", "Americans", 3, 2);
         cleared
             .attack_target
             .set_for_test(Some(TargetKind::Cell(8, 8)));
-        cleared.passively_acquired_target = true;
+        cleared
+            .passive_scan
+            .set_passively_acquired_target_for_test(true);
         entities.insert(cleared);
 
         let mut chain_only = GameEntity::test_default(40, "MTNK", "Americans", 4, 2);
@@ -2387,7 +2393,7 @@ mod tests {
             "cleanup expiry precedes the direct callback; each roster walk is forward and clears before Restore"
         );
         assert!(entities.get(30).unwrap().attack_target.target().is_none());
-        assert!(!entities.get(30).unwrap().passively_acquired_target);
+        assert!(!entities.get(30).unwrap().passive_scan.acquired());
         assert!(matches!(
             entities.get(20).unwrap().attack_target.target(),
             Some(TargetKind::Cell(8, 8))
@@ -3004,8 +3010,8 @@ mod tests {
 
         let target = entities.get(2).unwrap();
         assert_eq!(target.health.current(), 1000, "Psychedelic skips Object HP");
-        assert!(target.berserk.active);
-        assert_eq!(target.berserk.timer, 300, "600 x heavy Verses 50%");
+        assert!(target.berserk.is_active());
+        assert_eq!(target.berserk.timer(), 300, "600 x heavy Verses 50%");
         assert!(target.attack_target.target().is_none());
         assert_eq!(target.mission.current(), MissionId::NONE);
         assert_eq!(
@@ -3028,7 +3034,7 @@ mod tests {
             target
                 .attack_target
                 .set_for_test(Some(TargetKind::Entity(1)));
-            target.berserk.timer = 17;
+            target.berserk.set_timer_for_test(17);
             target.mission.apply_test_fixture(MissionTestFixture {
                 current: MissionId::from_known(MissionType::Guard),
                 suspended: MissionId::NONE,
@@ -3063,7 +3069,7 @@ mod tests {
         assert!(refresh_death.despawned_ids.is_empty());
         assert!(refresh_pings.is_empty());
         assert_eq!(target.health.current(), 1000);
-        assert_eq!(target.berserk.timer, 300);
+        assert_eq!(target.berserk.timer(), 300);
         assert_eq!(target.attack_target.target(), Some(TargetKind::Entity(1)));
         assert_eq!(target.mission.queued(), MissionId::NONE);
     }
@@ -3108,8 +3114,12 @@ mod tests {
         target.set_type_ref_for_test(e1);
         target.set_category_for_test(EntityCategory::Infantry);
         target.health.set_for_test(20);
-        target.infantry = Some(crate::sim::game_entity::InfantryRuntime::new());
-        target.infantry.as_mut().unwrap().is_prone = true;
+        target.infantry = Some(crate::sim::infantry::InfantryRuntime::new());
+        target
+            .infantry
+            .as_mut()
+            .unwrap()
+            .set_is_prone_for_test(true);
         entities.insert(target);
 
         let mut easy_prone = GameEntity::test_default(3, "E1", "EasyHouse", 5, 5);
@@ -3117,8 +3127,12 @@ mod tests {
         easy_prone.set_type_ref_for_test(e1);
         easy_prone.set_category_for_test(EntityCategory::Infantry);
         easy_prone.health.set_for_test(100);
-        easy_prone.infantry = Some(crate::sim::game_entity::InfantryRuntime::new());
-        easy_prone.infantry.as_mut().unwrap().is_prone = true;
+        easy_prone.infantry = Some(crate::sim::infantry::InfantryRuntime::new());
+        easy_prone
+            .infantry
+            .as_mut()
+            .unwrap()
+            .set_is_prone_for_test(true);
         entities.insert(easy_prone);
 
         let mut easy_standing = GameEntity::test_default(4, "E1", "EasyHouse", 5, 5);
@@ -3126,7 +3140,7 @@ mod tests {
         easy_standing.set_type_ref_for_test(e1);
         easy_standing.set_category_for_test(EntityCategory::Infantry);
         easy_standing.health.set_for_test(100);
-        easy_standing.infantry = Some(crate::sim::game_entity::InfantryRuntime::new());
+        easy_standing.infantry = Some(crate::sim::infantry::InfantryRuntime::new());
         entities.insert(easy_standing);
 
         let mut occupancy = OccupancyGrid::new();
@@ -3320,15 +3334,19 @@ mod tests {
                 .unwrap();
             victim.animation = fixture.animation.map(crate::sim::animation::Animation::new);
             victim.health.set_for_test(health);
-            victim.sub_cell = Some(2);
-            victim.on_bridge = fixture
-                .entry_case
-                .as_ref()
-                .and_then(|case| case["on_bridge"].as_bool())
-                .unwrap_or(false);
-            victim.infantry = Some(crate::sim::game_entity::InfantryRuntime::new());
+            victim.set_sub_cell(Some(2));
+            victim.set_on_bridge(
+                fixture
+                    .entry_case
+                    .as_ref()
+                    .and_then(|case| case["on_bridge"].as_bool())
+                    .unwrap_or(false),
+            );
+            victim.infantry = Some(crate::sim::infantry::InfantryRuntime::new());
             if nav {
-                victim.navigation.nav_com = Some(crate::sim::components::NavTargetRef::cell(8, 8));
+                victim
+                    .navigation
+                    .set_nav_com(Some(crate::sim::components::NavTargetRef::cell(8, 8)));
             }
             victim.locomotor = Some(
                 crate::sim::movement::locomotor::LocomotorState::from_object_type(
@@ -3357,21 +3375,23 @@ mod tests {
                 use crate::sim::components::{DriveCoord, FootPathQueue};
                 use crate::sim::timer::CdTimer;
                 victim.body_facing.snap(0x4000, 0);
-                victim.infantry.as_mut().unwrap().cell_entry_blocked = true;
-                victim.navigation.nav_com_aux =
-                    Some(crate::sim::components::NavTargetRef::cell(1, 1));
-                victim.navigation.path_replay = FootPathQueue {
-                    directions: vec![2, 3, 4, 5],
-                    cursor: 0,
-                    reference_cell: Some((9, 8)),
-                };
+                victim
+                    .infantry
+                    .as_mut()
+                    .unwrap()
+                    .set_cell_entry_blocked_for_test(true);
+                victim
+                    .navigation
+                    .set_nav_com_aux(Some(crate::sim::components::NavTargetRef::cell(1, 1)));
+                victim.navigation.path_replay =
+                    FootPathQueue::for_test(vec![2, 3, 4, 5], 0, Some((9, 8)));
                 let path = &mut victim.navigation.path_runtime;
-                path.movement_timer = CdTimer::started(50, 5);
-                path.blocked_timer = CdTimer::started(40, 6);
-                path.path_blocked = true;
-                path.retries_left = 7;
+                path.set_movement_timer_for_test(CdTimer::started(50, 5));
+                path.set_blocked_timer_for_test(CdTimer::started(40, 6));
+                path.set_path_blocked(true);
+                path.set_retries_left(7);
                 let loco = victim.locomotor.as_mut().unwrap();
-                loco.powered = case["power_off"] != true;
+                loco.set_powered_for_test(case["power_off"] != true);
                 if let Some(head) = case["head"].as_array() {
                     loco.set_step_head(Some(DriveCoord {
                         x: head[0].as_i64().unwrap() as i32 - 1280,
@@ -3386,9 +3406,13 @@ mod tests {
                         z: 0,
                     }));
                 }
-                victim.foot_locomotor_swap_active = case["swap_active"] == true;
+                victim
+                    .lift
+                    .set_swap_active_for_test(case["swap_active"] == true);
                 if case["bunker"] == true {
-                    victim.bunker_link = crate::sim::game_entity::BunkerLink::Installed(1);
+                    victim.bunker.set_bunker_link_for_test(
+                        crate::sim::docking::bunker_link::BunkerLink::Installed(1),
+                    );
                 }
                 // BeingWarpedOut (`+0x270`) through a Temporal chain's
                 // head, WarpingIn (`+0x271`) through the teleport's warp-in.
@@ -3405,10 +3429,8 @@ mod tests {
                     )));
                 }
                 if case["open_transport"] == true {
-                    victim.passenger_role = crate::sim::passenger::PassengerRole::Inside {
-                        transport_id: 1,
-                        open_topped: true,
-                    };
+                    victim.passenger_role =
+                        crate::sim::passenger::PassengerRole::inside_for_test(1, true);
                 }
             }
             entities.insert(victim);
@@ -3550,7 +3572,7 @@ mod tests {
                     .infantry
                     .as_ref()
                     .expect("Infantry runtime")
-                    .fear_level,
+                    .fear_level(),
                 destination: victim
                     .locomotor
                     .as_ref()
@@ -3567,25 +3589,25 @@ mod tests {
                     let coord = |value: Option<crate::sim::components::DriveCoord>| {
                         value.map_or([0, 0, 0], |v| [v.x + 1280, v.y + 1280, v.z])
                     };
-                    let nav = victim.navigation.nav_com.and_then(|target| match target {
+                    let nav = victim.navigation.nav_com().and_then(|target| match target {
                         crate::sim::components::NavTargetRef::Cell { rx, ry } => {
                             Some([rx + 5, ry + 5])
                         }
                         _ => None,
                     });
                     serde_json::json!({
-                        "nav": nav, "aux": if victim.navigation.nav_com_aux.is_none() { 0 } else { 123 },
+                        "nav": nav, "aux": if victim.navigation.nav_com_aux().is_none() { 0 } else { 123 },
                         "destination": coord(loco.walk_destination()), "head": coord(loco.step_head()),
-                        "queue": victim.navigation.path_replay.directions.iter().map(|&v| if v == 255 { -1 } else { i32::from(v) }).collect::<Vec<_>>(),
-                        "reference": victim.navigation.path_replay.reference_cell,
+                        "queue": victim.navigation.path_replay.directions().iter().map(|&v| if v == 255 { -1 } else { i32::from(v) }).collect::<Vec<_>>(),
+                        "reference": victim.navigation.path_replay.reference_cell(),
                         "queued_mission": victim.mission.queued().raw(),
                         "facing": u32::from(victim.body_facing.destination()) * 65537,
-                        "moving": u8::from(loco.walk_is_moving().unwrap()), "powered": u8::from(loco.powered),
-                        "blocked": u8::from(path.path_blocked),
-                        "movement_timer": [path.movement_timer.start_frame(), path.movement_timer.duration()],
-                        "blocked_timer": [path.blocked_timer.start_frame(), path.blocked_timer.duration()],
-                        "retries": path.retries_left,
-                        "entry_blocked": u8::from(victim.infantry.as_ref().unwrap().cell_entry_blocked),
+                        "moving": u8::from(loco.walk_is_moving().unwrap()), "powered": u8::from(loco.is_powered()),
+                        "blocked": u8::from(path.path_blocked()),
+                        "movement_timer": [path.movement_timer().start_frame(), path.movement_timer().duration()],
+                        "blocked_timer": [path.blocked_timer().start_frame(), path.blocked_timer().duration()],
+                        "retries": path.retries_left(),
+                        "entry_blocked": u8::from(victim.infantry.as_ref().unwrap().cell_entry_blocked()),
                     })
                 },
             }
@@ -3809,8 +3831,8 @@ mod tests {
 
         let ground = GameEntity::test_default(1, "MTNK", "Soviet", 5, 5);
         let mut bridge = GameEntity::test_default(2, "MTNK", "Soviet", 5, 5);
-        bridge.on_bridge = true;
-        bridge.position.z = 4;
+        bridge.set_on_bridge(true);
+        bridge.position.set_z(4);
 
         let mut entities = EntityStore::new();
         entities.insert(ground);
@@ -3886,8 +3908,8 @@ mod tests {
 
         let mut entities = EntityStore::new();
         let mut unit = GameEntity::test_default(20, "UNIT", "Americans", 5, 5);
-        unit.position.sub_x = CELL_CENTER_LEPTON;
-        unit.position.sub_y = CELL_CENTER_LEPTON;
+        unit.position.set_sub_x(CELL_CENTER_LEPTON);
+        unit.position.set_sub_y(CELL_CENTER_LEPTON);
         entities.insert(unit);
 
         let building = GameEntity::test_default_of_category(
@@ -3902,15 +3924,15 @@ mod tests {
 
         let mut air = GameEntity::test_default(10, "AIR", "Americans", 5, 5);
         air.set_category_for_test(EntityCategory::Aircraft);
-        air.position.sub_x = CELL_CENTER_LEPTON;
-        air.position.sub_y = CELL_CENTER_LEPTON;
+        air.position.set_sub_x(CELL_CENTER_LEPTON);
+        air.position.set_sub_y(CELL_CENTER_LEPTON);
         let mut air_locomotor = crate::sim::movement::locomotor::LocomotorState::from_object_type(
             rules.object("AIR").expect("air type"),
             0,
         );
-        air_locomotor.layer = MovementLayer::Air;
+        air_locomotor.set_layer(MovementLayer::Air);
         air.locomotor = Some(air_locomotor);
-        air.position.exact_z_leptons = Some(1);
+        air.position.set_exact_z_leptons(Some(1));
         air = air
             .with_air_spatial_membership_for_test(Some(5 + 5 * 20), 1)
             .with_air_tracker_cell_for_test((5, 5));
@@ -4098,12 +4120,6 @@ mod tests {
             &terrain_state,
             sim.resolved_terrain.as_mut(),
         );
-        sim.terrain_costs =
-            crate::sim::pathfinding::terrain_cost::build_canonical_terrain_cost_grids(
-                sim.resolved_terrain
-                    .as_ref()
-                    .expect("pre-damage resolved terrain"),
-            );
         let initial_path = crate::sim::pathfinding::PathGrid::from_resolved_terrain(
             sim.resolved_terrain
                 .as_ref()

@@ -82,8 +82,10 @@ fn physical_rules() -> RuleSet {
     )
     .unwrap();
     let (mut rules, _, fixed_art, _) = owner
-        .load_scenario(crate::rules::process_owner::NativeScenarioRulesPrefix::NonCampaign(
-            Some(&sections_ini(&history[2]["inputs"]))),
+        .load_scenario(
+            crate::rules::process_owner::NativeScenarioRulesPrefix::NonCampaign(Some(
+                &sections_ini(&history[2]["inputs"]),
+            )),
             &sections_ini(&history[3]["inputs"]),
         )
         .unwrap()
@@ -138,7 +140,10 @@ fn supplied_rules(input: &Value) -> RuleSet {
     let mut owner =
         NativeRulesProcessOwner::from_cold_start_sources(root, None, art, sounds).unwrap();
     let (mut rules, _, fixed_art, _) = owner
-        .load_scenario(crate::rules::process_owner::NativeScenarioRulesPrefix::NonCampaign(None), &IniFile::from_str(""))
+        .load_scenario(
+            crate::rules::process_owner::NativeScenarioRulesPrefix::NonCampaign(None),
+            &IniFile::from_str(""),
+        )
         .unwrap()
         .into_parts();
     rules.install_art_data(crate::rules::art_data::ArtRegistry::from_ini(&fixed_art));
@@ -180,13 +185,22 @@ fn fixture(row: &Value, rules: &RuleSet, type_name: &str) -> (Simulation, u64) {
     terrain_cell.base_yr_cell_land_type = terrain_cell.yr_cell_land_type;
     sim.install_resolved_terrain_for_new_map(ResolvedTerrainGrid::from_cells(width, height, cells));
     let id = sim
-        .construct_object_limbo_at_height(type_name, "Americans", cell.0, cell.1, 0, 0, rules)
+        .construct_object_limbo_at_height(
+            type_name,
+            "Americans",
+            cell.0,
+            cell.1,
+            0,
+            0,
+            rules,
+            crate::sim::world::FrameEffects::default(),
+        )
         .expect("water action constructor");
     let actor = sim.substrate.entities.get_mut(id).unwrap();
     assert_eq!(actor.mission_leaf.as_infantry().unwrap().water_state(), 2);
     // Synthetic rows supply +74=false; physical rows retain the constructor
     // in limbo. Neither premise claims wet/deck Unlimbo or occupation.
-    actor.lifecycle.cell_marked = false;
+    actor.lifecycle.set_cell_marked(false);
     // These action controls supply Location after construction. Constructor
     // arguments do not place the fresh Object at this native cell/pose.
     ground_pose::put_location(
@@ -197,11 +211,11 @@ fn fixture(row: &Value, rules: &RuleSet, type_name: &str) -> (Simulation, u64) {
             z: xyz[2],
         },
     );
-    actor.on_bridge = input["bridge"].as_bool().unwrap_or(false);
+    actor.set_on_bridge(input["bridge"].as_bool().unwrap_or(false));
     actor.health.set_for_test(
         row["before"]["health"]
-            .as_i64()
-            .or_else(|| input["health"].as_i64())
+        .as_i64()
+        .or_else(|| input["health"].as_i64())
             .unwrap_or(100) as i32,
     );
     actor
@@ -212,8 +226,8 @@ fn fixture(row: &Value, rules: &RuleSet, type_name: &str) -> (Simulation, u64) {
         .mission_leaf
         .install_infantry_water_state_fixture(input["old_water_state"].as_i64().unwrap_or(1) as i32);
     let infantry = actor.infantry.as_mut().unwrap();
-    infantry.fear_level = input["fear"].as_u64().unwrap_or(0) as u16;
-    infantry.is_prone = false;
+    infantry.set_fear_level_for_test(input["fear"].as_u64().unwrap_or(0) as u16);
+    infantry.set_is_prone_for_test(false);
     actor.install_native_stage_fixture(StageClass::from_native_fixture(
         7,
         0,
@@ -279,7 +293,7 @@ fn compare(row: &Value, rules: &RuleSet, type_name: &str) -> (Simulation, u64) {
     );
     if let Some(prone) = out["prone"].as_u64() {
         assert_eq!(
-            actor.infantry.as_ref().unwrap().is_prone,
+            actor.infantry.as_ref().unwrap().is_prone(),
             prone != 0,
             "{input}: remapped action retains the actual prone byte"
         );

@@ -71,7 +71,7 @@ pub(crate) fn observer_draw_context(
         observer_present: local_owner_id.is_some(),
         detects_cloak: local_owner_id.is_some_and(|observer| {
             sim.fog
-                .has_sensor_for_house(observer, entity.position.rx, entity.position.ry)
+                .has_sensor_for_house(observer, entity.position.rx(), entity.position.ry())
         }),
         cloaking_stages: rules.map_or_else(
             || crate::rules::ruleset::GeneralRules::default().cloaking_stages,
@@ -103,10 +103,10 @@ pub(crate) fn drawn_type_uses_voxel(
     rules: Option<&crate::rules::ruleset::RuleSet>,
 ) -> bool {
     if type_id == interner.resolve(entity.type_ref()) {
-        return entity.is_voxel;
+        return entity.is_voxel();
     }
     let Some(rules) = rules else {
-        return entity.is_voxel;
+        return entity.is_voxel();
     };
     if rules
         .terrain_object_type_case_insensitive(type_id)
@@ -117,7 +117,7 @@ pub(crate) fn drawn_type_uses_voxel(
     rules
         .object(type_id)
         .and_then(|object| rules.art().resolve_metadata_entry(type_id, &object.image))
-        .map_or(entity.is_voxel, |art| art.voxel)
+        .map_or(entity.is_voxel(), |art| art.voxel)
 }
 
 /// Native Building6D9920 ->43CEA0 ->43D290 submits ordinary building bodies
@@ -439,8 +439,8 @@ pub(crate) fn is_entity_visible_for_local_owner(
         return true;
     }
     let owner_id = local_owner_id.unwrap_or_default();
-    fog.is_cell_revealed(owner_id, pos.rx, pos.ry)
-        && !fog.is_cell_gap_covered(owner_id, pos.rx, pos.ry)
+    fog.is_cell_revealed(owner_id, pos.rx(), pos.ry())
+        && !fog.is_cell_gap_covered(owner_id, pos.rx(), pos.ry())
 }
 
 pub(crate) fn cell_visibility_for_local_owner(
@@ -515,7 +515,7 @@ mod tests {
     ) -> GameEntity {
         let mut entity = GameEntity::test_default(1, type_ref, "Americans", rx, ry);
         entity.locomotor = Some(LocomotorState::for_test_kind(kind));
-        entity.position.exact_z_leptons = Some(altitude_leptons);
+        entity.position.set_exact_z_leptons(Some(altitude_leptons));
         entity
     }
 
@@ -774,12 +774,16 @@ mod tests {
                 .set_in_limbo_for_test(input["limbo"].as_bool().unwrap_or(false));
             // Native fixture supplies its coordinate independently of class
             // construction; match it rather than testing Infantry's default slot.
-            entity.position.sub_x = crate::util::fixed_math::SimFixed::from_num(
-                native["object_coords"][0].as_i64().unwrap().rem_euclid(256),
-            );
-            entity.position.sub_y = crate::util::fixed_math::SimFixed::from_num(
-                native["object_coords"][1].as_i64().unwrap().rem_euclid(256),
-            );
+            entity
+                .position
+                .set_sub_x(crate::util::fixed_math::SimFixed::from_num(
+                    native["object_coords"][0].as_i64().unwrap().rem_euclid(256),
+                ));
+            entity
+                .position
+                .set_sub_y(crate::util::fixed_math::SimFixed::from_num(
+                    native["object_coords"][1].as_i64().unwrap().rem_euclid(256),
+                ));
             let coord = crate::sim::movement::ground_pose::position_world_coord(&entity.position);
             assert_eq!(
                 serde_json::json!([coord.x, coord.y, coord.z]),
@@ -855,17 +859,14 @@ mod tests {
             "Americans",
             false
         ));
-        entity.passenger_role = PassengerRole::Inside {
-            transport_id: 9,
-            open_topped: false,
-        };
+        entity.passenger_role = PassengerRole::inside_for_test(9, false);
         assert!(!admitted(
             TacticalEntityPurpose::Drawing,
             &entity,
             "Americans",
             false
         ));
-        entity.passenger_role = PassengerRole::None;
+        entity.passenger_role = PassengerRole::default();
         entity.lifecycle.set_in_limbo_for_test(true);
         assert!(!admitted(
             TacticalEntityPurpose::Drawing,
@@ -1059,7 +1060,7 @@ mod tests {
             .get_mut(1)
             .unwrap()
             .position
-            .exact_z_leptons = Some(900);
+            .set_exact_z_leptons(Some(900));
         sim.resubmit_entity_display_for_test(1);
         assert_eq!(sim.display_layers().layer_of(1), Some(DisplayLayer::TOP));
 
@@ -1071,7 +1072,7 @@ mod tests {
             .get_mut(1)
             .unwrap()
             .position
-            .exact_z_leptons = Some(0);
+            .set_exact_z_leptons(Some(0));
         assert_eq!(
             entity_draw_band(sim.display_layers(), 1),
             Some(EntityDrawBand::Top)

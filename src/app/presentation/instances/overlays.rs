@@ -1235,7 +1235,7 @@ pub(crate) fn build_parachute_instances(
                     tint,
                     palette_light: anim_palette_light(
                         state,
-                        (entity.position.rx, entity.position.ry),
+                        (entity.position.rx(), entity.position.ry()),
                         state
                             .rules()
                             .and_then(|r| r.art().anim_runtime_config(shp_name)),

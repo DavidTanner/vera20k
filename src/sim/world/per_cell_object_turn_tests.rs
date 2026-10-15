@@ -36,11 +36,13 @@ fn output_arrival_fixture() -> (Simulation, RuleSet) {
         entity.set_owner_for_test(sim.intern("Americans"));
         entity.set_type_ref_for_test(sim.intern(name));
         entity.lifecycle.set_in_limbo_for_test(false);
-        entity.lifecycle.cell_marked = true;
+        entity.lifecycle.set_cell_marked(true);
         if category == EntityCategory::Infantry {
             entity.locomotor = Some(LocomotorState::for_test_kind(LocomotorKind::Walk));
-            entity.navigation.nav_com = Some(NavTargetRef::cell(15, 16));
-            entity.in_playfield = false;
+            entity
+                .navigation
+                .set_nav_com(Some(NavTargetRef::cell(15, 16)));
+            entity.set_in_playfield(false);
         }
         sim.substrate.entities.insert(entity);
     }
@@ -84,10 +86,10 @@ fn infantry_arrival_runs_reciprocal_clearance_then_the_existing_foot_tail() {
     .unwrap();
     assert!(radio::take_transmit_log().is_empty());
     assert_eq!(
-        sim.substrate.entities.get(1).unwrap().dock_entered_with,
+        sim.substrate.entities.get(1).unwrap().tether.partner(),
         Some(2)
     );
-    assert!(!sim.substrate.entities.get(1).unwrap().in_playfield);
+    assert!(!sim.substrate.entities.get(1).unwrap().in_playfield());
 
     sim.per_cell_process(
         1,
@@ -114,15 +116,15 @@ fn infantry_arrival_runs_reciprocal_clearance_then_the_existing_foot_tail() {
     );
     for id in [1, 2] {
         let entity = sim.substrate.entities.get(id).unwrap();
-        assert_eq!(entity.dock_entered_with, None);
+        assert_eq!(entity.tether.partner(), None);
         assert!(entity.radio_contacts.is_empty());
     }
     let infantry = sim.substrate.entities.get(1).unwrap();
     assert_eq!(
-        infantry.navigation.nav_com,
+        infantry.navigation.nav_com(),
         Some(NavTargetRef::cell(15, 16))
     );
-    assert!(infantry.in_playfield, "the existing Foot tail still runs");
+    assert!(infantry.in_playfield(), "the existing Foot tail still runs");
     assert_eq!(sim.rng_state(), rng_before);
 
     sim.per_cell_process(
@@ -169,10 +171,10 @@ fn an_untethered_infantry_arrival_preserves_its_contact_and_runs_the_foot_tail()
     assert!(radio::take_transmit_log().is_empty());
     for (id, partner) in [(1, 2), (2, 1)] {
         let entity = sim.substrate.entities.get(id).unwrap();
-        assert_eq!(entity.dock_entered_with, None);
+        assert_eq!(entity.tether.partner(), None);
         assert_eq!(entity.radio_contacts.slot(0), Some(partner));
     }
-    assert!(sim.substrate.entities.get(1).unwrap().in_playfield);
+    assert!(sim.substrate.entities.get(1).unwrap().in_playfield());
 }
 
 /// Object AI `0x005F3F8D` calls `Per_Cell_Process(2)` when a fall grounds,
@@ -200,7 +202,7 @@ fn a_parachute_landing_in_its_own_cell_runs_the_foot_body() {
     entity.set_owner_for_test(sim.intern("Americans"));
     entity.set_type_ref_for_test(sim.intern("E1"));
     entity.locomotor = Some(LocomotorState::for_test_kind(LocomotorKind::Walk));
-    entity.position.exact_z_leptons = Some(2);
+    entity.position.set_exact_z_leptons(Some(2));
     entity.set_falling_down_for_test(true);
     entity.set_fall_rate_for_test(-3);
     sim.substrate.entities.insert(entity);
@@ -209,15 +211,19 @@ fn a_parachute_landing_in_its_own_cell_runs_the_foot_body() {
         sim.reveal(1),
         super::super::RevealOutcome::Revealed { .. }
     ));
-    sim.substrate.entities.get_mut(1).unwrap().in_playfield = false;
+    sim.substrate
+        .entities
+        .get_mut(1)
+        .unwrap()
+        .set_in_playfield(false);
 
     sim.advance_live_object_turn(1, Some(&rules), techno_ai::ObjectAiCtx::default())
         .unwrap();
 
     let entity = sim.substrate.entities.get(1).unwrap();
     assert!(!entity.is_falling_down(), "the fall grounded this turn");
-    assert_eq!((entity.position.rx, entity.position.ry), (5, 5));
-    assert!(entity.in_playfield, "the landing's Techno tail promotes");
+    assert_eq!((entity.position.rx(), entity.position.ry()), (5, 5));
+    assert!(entity.in_playfield(), "the landing's Techno tail promotes");
 }
 
 /// Jumpjet54C8CB clears its destination and moving byte before PerCell(2),
@@ -241,23 +247,47 @@ fn a_jumpjet_touchdown_without_a_target_runs_the_class_null_setter() {
     super::super::lifecycle_tests::install_common_raw_terrain(&mut sim, 32, 32, 0, None);
     sim.session.binary_frame = 1000;
     let id = sim
-        .construct_object_limbo_at_height("NIGHTHAWK", "Americans", 10, 10, 0, 0, &rules)
+        .construct_object_limbo_at_height(
+            "NIGHTHAWK",
+            "Americans",
+            10,
+            10,
+            0,
+            0,
+            &rules,
+            crate::sim::world::FrameEffects::default(),
+        )
         .unwrap();
     assert!(matches!(
         sim.reveal(id),
         super::super::RevealOutcome::Revealed { .. }
     ));
     let entity = sim.substrate.entities.get_mut(id).unwrap();
-    entity.position.sub_x = SimFixed::from_num(128);
-    entity.position.sub_y = SimFixed::from_num(128);
-    entity.position.exact_z_leptons = Some(0);
-    entity.navigation.nav_com = Some(NavTargetRef::cell(10, 10));
-    entity.navigation.nav_com_aux = Some(NavTargetRef::cell(11, 10));
-    entity.navigation.nav_queue = vec![NavTargetRef::cell(12, 10)];
-    entity.navigation.path_replay.directions = vec![2, 2];
-    entity.navigation.path_runtime.path_blocked = true;
-    entity.navigation.path_runtime.movement_timer = CdTimer::started(50, 5);
-    entity.navigation.path_runtime.blocked_timer = CdTimer::started(40, 6);
+    entity.position.set_sub_x(SimFixed::from_num(128));
+    entity.position.set_sub_y(SimFixed::from_num(128));
+    entity.position.set_exact_z_leptons(Some(0));
+    entity
+        .navigation
+        .set_nav_com(Some(NavTargetRef::cell(10, 10)));
+    entity
+        .navigation
+        .set_nav_com_aux(Some(NavTargetRef::cell(11, 10)));
+    entity
+        .navigation
+        .set_nav_queue_for_test(vec![NavTargetRef::cell(12, 10)]);
+    entity
+        .navigation
+        .path_replay
+        .set_directions_for_test(vec![2, 2]);
+    entity.navigation.path_runtime.set_path_blocked(true);
+    entity
+        .navigation
+        .path_runtime
+        .set_movement_timer_for_test(CdTimer::started(50, 5));
+    entity
+        .navigation
+        .path_runtime
+        .set_blocked_timer_for_test(CdTimer::started(40, 6));
     let runtime = entity
         .locomotor
         .as_mut()
@@ -295,9 +325,9 @@ fn a_jumpjet_touchdown_without_a_target_runs_the_class_null_setter() {
         entity.attack_target.target().is_none(),
         "no conditional range stop"
     );
-    assert_eq!(entity.navigation.nav_com, None);
-    assert_eq!(entity.navigation.nav_com_aux, None);
-    assert!(entity.navigation.nav_queue.is_empty());
+    assert_eq!(entity.navigation.nav_com(), None);
+    assert_eq!(entity.navigation.nav_com_aux(), None);
+    assert!(entity.navigation.nav_queue().is_empty());
     assert!(
         entity
             .navigation
@@ -306,10 +336,10 @@ fn a_jumpjet_touchdown_without_a_target_runs_the_class_null_setter() {
             .is_empty()
     );
     let timing = &entity.navigation.path_runtime;
-    assert!(!timing.path_blocked);
-    assert_eq!(timing.movement_timer, CdTimer::started(1000, 0));
+    assert!(!timing.path_blocked());
+    assert_eq!(timing.movement_timer(), CdTimer::started(1000, 0));
     assert_eq!(
-        timing.blocked_timer,
+        timing.blocked_timer(),
         CdTimer::started(1000, rules.general.blockage_path_delay_ticks)
     );
     assert_eq!(sim.scenario_rng.native_state_hex(), scenario_before);

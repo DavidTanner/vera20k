@@ -100,5 +100,5 @@ impl Simulation {
 /// `0x004D8956`).
 fn range_stop_admits(entity: &GameEntity) -> bool {
     [21, 11, 1, 15].contains(&entity.mission.effective().raw())
-        && entity.navigation.nav_queue.is_empty()
+        && entity.navigation.nav_queue().is_empty()
 }

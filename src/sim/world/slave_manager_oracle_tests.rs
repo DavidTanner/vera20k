@@ -239,9 +239,13 @@ pub(super) fn row_scene_edited(
             .spawn_object_with_overlay_registry("SMIN", "Americans", 15, 15, 0, rules, registry())
             .unwrap_or_else(|| panic!("slave miner for {}", input["name"]));
         let entity = sim.substrate.entities.get_mut(smin).unwrap();
-        entity.mcv_deploy_pending = input["deploy_pending"] == true;
+        entity
+            .mcv_deploy_pending
+            .set_for_test(input["deploy_pending"] == true);
         if let Some((nx, ny)) = input.get("owner_nav").map(cell) {
-            entity.navigation.nav_com = Some(NavTargetRef::cell(nx, ny));
+            entity
+                .navigation
+                .set_nav_com(Some(NavTargetRef::cell(nx, ny)));
         }
         smin
     } else {
@@ -284,11 +288,11 @@ pub(super) fn row_scene_edited(
         let timer = node["timer"].as_array().map_or((0, 0), |t| {
             (t[0].as_i64().unwrap() as i32, t[1].as_i64().unwrap() as i32)
         });
-        nodes.push(SlaveNode {
+        nodes.push(SlaveNode::for_test(
             slave,
-            state: slave_state(node["state"].as_u64().unwrap()),
-            timer: CdTimer::from_raw(frame as i32 + timer.0, timer.1),
-        });
+            slave_state(node["state"].as_u64().unwrap()),
+            CdTimer::from_raw(frame as i32 + timer.0, timer.1),
+        ));
     }
     let manager_state = manager_state(input["manager_state"].as_u64().unwrap_or(5));
     let manager_frame = match input["manager_frame_ago"].as_i64() {
@@ -329,7 +333,16 @@ fn place_slave(
     let frame = sim.session.binary_frame;
     let (x, y) = node.get("cell").map_or((15, 15), cell);
     let id = sim
-        .construct_object_limbo_at_height("SLAV", "Americans", x, y, 0, 0, rules)
+        .construct_object_limbo_at_height(
+            "SLAV",
+            "Americans",
+            x,
+            y,
+            0,
+            0,
+            rules,
+            crate::sim::world::FrameEffects::default(),
+        )
         .expect("slave");
     // make_slave supplies Object+9C's full XYZ after construction, including
     // held slaves. The constructor's zero Location is a separate input.
@@ -348,14 +361,14 @@ fn place_slave(
         let outcome = sim.try_reveal_entity_with_context(
             id,
             RevealRequest {
-                position: RevealPosition {
-                    exact_z_leptons: None,
-                    rx: x,
-                    ry: y,
-                    z: 0,
-                    sub_x: SimFixed::from_num(128),
-                    sub_y: SimFixed::from_num(128),
-                },
+                position: RevealPosition::new(
+                    x,
+                    y,
+                    0,
+                    None,
+                    SimFixed::from_num(128),
+                    SimFixed::from_num(128),
+                ),
                 placement: PlacementEvidence::MarkSucceeded,
                 logic_eligible: true,
             },
@@ -391,7 +404,9 @@ fn place_slave(
             .unwrap();
     }
     if let Some((nx, ny)) = node.get("nav").map(cell) {
-        entity.navigation.nav_com = Some(NavTargetRef::cell(nx, ny));
+        entity
+            .navigation
+            .set_nav_com(Some(NavTargetRef::cell(nx, ny)));
     }
     let storage = node["storage"].as_array();
     let mut cargo = Vec::new();
@@ -467,9 +482,9 @@ fn compare_state(s: &SlaveScene, row: &Value, context: &str) {
         .iter()
         .map(|node| {
             serde_json::json!({
-                "slave": node.slave.map(|id| s.index_of(id)),
-                "state": node.state as u8,
-                "timer": [node.timer.start_frame(), node.timer.duration()],
+                "slave": node.slave().map(|id| s.index_of(id)),
+                "state": node.state() as u8,
+                "timer": [node.timer().start_frame(), node.timer().duration()],
             })
         })
         .collect();
@@ -508,14 +523,14 @@ fn compare_state(s: &SlaveScene, row: &Value, context: &str) {
             expected["queued"].as_i64().unwrap(),
             "{context}: owner queued mission"
         );
-        let nav = match owner.navigation.nav_com {
+        let nav = match owner.navigation.nav_com() {
             Some(NavTargetRef::Cell { rx, ry }) => serde_json::json!([rx, ry]),
             None => Value::Null,
             Some(other) => panic!("{context}: owner NavCom {other:?}"),
         };
         assert_eq!(nav, expected["nav"], "{context}: owner NavCom");
         assert_eq!(
-            u64::from(owner.mcv_deploy_pending),
+            u64::from(owner.mcv_deploy_pending.is_pending()),
             expected["deploy_pending"].as_u64().unwrap(),
             "{context}: owner deploy pending"
         );
@@ -552,7 +567,7 @@ fn compare_state(s: &SlaveScene, row: &Value, context: &str) {
     let mut compared: Vec<(u64, u64)> = s.slaves.iter().map(|(i, id)| (*i, *id)).collect();
     // A slave the call created stands for the oracle's supplied spare.
     for node in manager.nodes() {
-        if let Some(id) = node.slave
+        if let Some(id) = node.slave()
             && !s.slaves.values().any(|known| *known == id)
         {
             compared.push((SPARE, id));
@@ -580,7 +595,7 @@ fn compare_state(s: &SlaveScene, row: &Value, context: &str) {
                 "{context}: queued"
             );
         }
-        let nav = match entity.navigation.nav_com {
+        let nav = match entity.navigation.nav_com() {
             Some(NavTargetRef::Cell { rx, ry }) => serde_json::json!([rx, ry]),
             None => Value::Null,
             Some(other) => panic!("{context}: NavCom {other:?}"),

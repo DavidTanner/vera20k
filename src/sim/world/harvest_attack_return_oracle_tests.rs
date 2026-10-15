@@ -118,10 +118,12 @@ impl Replay {
         if int(&before["saved_mission"]) == 29 {
             entity.mega_mission = crate::sim::mission::mega_mission::MegaMission::attack_move(None);
         }
-        entity.passive_scan_timer = MissionTimer {
-            start_frame: int(&before["targeting_words"][0]) as u32,
-            duration: int(&before["targeting_words"][2]) as u32,
-        };
+        entity
+            .passive_scan
+            .set_passive_scan_timer_for_test(MissionTimer::armed(
+                int(&before["targeting_words"][0]) as u32,
+                int(&before["targeting_words"][2]) as u32,
+            ));
         if input["target"] == true {
             scene
                 .sim
@@ -211,8 +213,8 @@ impl Replay {
         );
         assert_eq!(
             json!([
-                e.passive_scan_timer.start_frame as i32,
-                e.passive_scan_timer.duration as i32
+                e.passive_scan.timer().start_frame() as i32,
+                e.passive_scan.timer().duration() as i32
             ]),
             json!([native["targeting_words"][0], native["targeting_words"][2]]),
             "{context}: passive timer"
@@ -235,7 +237,7 @@ impl Replay {
             assert_eq!(e.weapon_burst.index(), int(index), "{context}: burst index");
         }
         assert_eq!(
-            e.navigation.nav_queue.len(),
+            e.navigation.nav_queue().len(),
             int(&native["nav_queue_count"]) as usize,
             "{context}: waypoint queue"
         );
@@ -290,7 +292,7 @@ impl Replay {
         compare_state(s, &json!({"input": input, "state": native}), context);
         if let Some(miner) = e.miner.as_ref() {
             assert_eq!(
-                u8::from(miner.unload_active),
+                u8::from(miner.unload_active()),
                 int(&native["unloading"]) as u8,
                 "{context}: unload latch"
             );
@@ -408,7 +410,7 @@ impl Replay {
                 }
                 let e = s.sim.substrate.entities.get(victim).unwrap();
                 let (at, alive, health, owner) = (
-                    (e.position.rx, e.position.ry),
+                    (e.position.rx(), e.position.ry()),
                     e.is_object_alive(),
                     e.health.current(),
                     e.owner(),

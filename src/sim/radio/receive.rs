@@ -434,7 +434,7 @@ fn building_docking(
         .expect("docking retains type");
     let pad_dock = object.dock_unload || object.weeder;
     let helipad = object.helipad;
-    let (rx, ry) = (building.position.rx, building.position.ry);
+    let (rx, ry) = (building.position.rx(), building.position.ry());
     // 0x0043C8A4..0x0043C8CC: a sender that is not a contact is HELLOed back
     // when a slot is free or already its own.
     if !building.radio_contacts.contains(from) && building.radio_contacts.has_free_or(from) {
@@ -459,8 +459,8 @@ fn building_docking(
         && pad_dock
         && sim.substrate.entities.get(from).is_some_and(|foot| {
             foot.category() != EntityCategory::Structure
-                && foot.navigation.nav_com.is_some()
-                && foot.navigation.nav_com
+                && foot.navigation.nav_com().is_some()
+                && foot.navigation.nav_com()
                     != crate::sim::movement::building_dock_cell(
                         &sim.substrate.entities,
                         building_id,
@@ -767,7 +767,7 @@ pub(crate) fn unit_can_enter_radio(
     let occupied = transport
         .passenger_role
         .cargo()
-        .map_or(0, |cargo| cargo.total_size);
+        .map_or(0, |cargo| cargo.total_size());
     if i64::from(occupied) + i64::from(passenger_type.size) > i64::from(transport_type.passengers)
         || passenger_type.size > transport_type.size_limit
     {
@@ -803,7 +803,7 @@ fn unit_prepare_to_dock(
     let Some(entity) = sim.substrate.entities.get_mut(unit) else {
         return RadioResponse::Roger;
     };
-    if !entity.turret_rotation_latch && entity.body_facing_current(frame) != DOCK_FACING {
+    if !entity.turret_rotation_latch.is_set() && entity.body_facing_current(frame) != DOCK_FACING {
         crate::sim::movement::drive_do_turn(entity, DOCK_FACING, frame);
         return RadioResponse::Roger;
     }
@@ -813,7 +813,7 @@ fn unit_prepare_to_dock(
     let dock = entity
         .radio_contacts
         .slot(0)
-        .filter(|_| entity.dock_entered_with.is_some())
+        .filter(|_| entity.tether.partner().is_some())
         .filter(|_| entity.mission.effective() == MissionId::from_known(MissionType::Enter));
     let dock = dock.filter(|&dock| {
         sim.substrate
@@ -852,7 +852,7 @@ fn unit_run_away(
         entity
             .miner
             .as_ref()
-            .is_some_and(|miner| miner.unload_active)
+            .is_some_and(|miner| miner.unload_active())
             && sim
                 .object_type(entity.type_ref(), rules)
                 .is_some_and(|object| object.harvester || object.weeder)
@@ -944,7 +944,7 @@ fn aircraft_receive(
     let ammo = entity
         .aircraft_ammo
         .as_ref()
-        .map_or(-1, |ammo| ammo.current);
+        .map_or(-1, |ammo| ammo.current());
     let object = rules.and_then(|rules| sim.object_type(entity.type_ref(), rules));
     let type_ammo = object.map_or(-1, |object| object.ammo);
     let transport = AircraftHold {
@@ -1095,7 +1095,7 @@ fn aircraft_need_to_move(
     if !crate::sim::movement::motion_query::is_moving(entity).unwrap_or(false) {
         return RadioResponse::Roger;
     }
-    let Some(nav_com) = entity.navigation.nav_com else {
+    let Some(nav_com) = entity.navigation.nav_com() else {
         return RadioResponse::Roger;
     };
     let airport_bound = rules
@@ -1138,7 +1138,7 @@ fn foot_receive(
                 .substrate
                 .entities
                 .get(foot)
-                .is_some_and(|entity| entity.navigation.nav_com.is_some())
+                .is_some_and(|entity| entity.navigation.nav_com().is_some())
             {
                 RadioResponse::Negatory
             } else {
@@ -1238,7 +1238,7 @@ fn foot_run_away(
         return;
     };
     // 0x004D902D..0x004D904F: In_Radio_Contact and NavCom == Contact(0).
-    let aimed_at_contact = match (entity.navigation.nav_com, entity.radio_contacts.slot(0)) {
+    let aimed_at_contact = match (entity.navigation.nav_com(), entity.radio_contacts.slot(0)) {
         (
             Some(
                 NavTargetRef::Entity { id }
@@ -1280,20 +1280,16 @@ fn foot_run_away(
         );
     }
     // 0x004D90A5..0x004D90C6.
-    if sim
-        .substrate
-        .entities
-        .get(foot)
-        .is_some_and(|entity| !entity.turret_rotation_latch && entity.navigation.nav_com.is_none())
-        && let Err(cause) = sim.scatter(
-            foot,
-            None,
-            ScatterFlags::new(true, true),
-            rules,
-            None,
-            effects,
-        )
-    {
+    if sim.substrate.entities.get(foot).is_some_and(|entity| {
+        !entity.turret_rotation_latch.is_set() && entity.navigation.nav_com().is_none()
+    }) && let Err(cause) = sim.scatter(
+        foot,
+        None,
+        ScatterFlags::new(true, true),
+        rules,
+        None,
+        effects,
+    ) {
         log::debug!("RUN_AWAY foot {foot} did not scatter: {cause}");
     }
 }
@@ -1305,7 +1301,7 @@ fn foot_need_to_move(sim: &Simulation, foot: u64) -> RadioResponse {
     let Some(entity) = sim.substrate.entities.get(foot) else {
         return RadioResponse::None;
     };
-    if entity.navigation.nav_com.is_some()
+    if entity.navigation.nav_com().is_some()
         && crate::sim::movement::motion_query::is_moving(entity).unwrap_or(false)
     {
         RadioResponse::Negatory
@@ -1440,10 +1436,10 @@ fn techno_reload(sim: &mut Simulation, techno: u64, rules: Option<&RuleSet>) -> 
     else {
         return RadioResponse::None;
     };
-    if ammo.current == type_ammo {
+    if ammo.current() == type_ammo {
         return RadioResponse::Negatory;
     }
-    ammo.current = ammo.current.wrapping_add(1);
+    ammo.reload_round();
     RadioResponse::Roger
 }
 
@@ -1539,7 +1535,7 @@ fn techno_over_out(
             sim.substrate
                 .entities
                 .get(id)
-                .is_some_and(|e| e.dock_entered_with.is_some())
+                .is_some_and(|e| e.tether.partner().is_some())
         };
         if tethered(techno) && tethered(from) {
             transmit(
@@ -1577,11 +1573,11 @@ fn techno_tether(
         && rules
             .and_then(|rules| sim.object_type(entity.type_ref(), rules))
             .is_some_and(|object| object.airport_bound);
-    if airport_bound || entity.dock_entered_with.is_some() {
+    if airport_bound || entity.tether.partner().is_some() {
         return radio_receive(sim, techno, sender, RadioMessage::Tether);
     }
     if let Some(entity) = sim.substrate.entities.get_mut(techno) {
-        entity.dock_entered_with = Some(from);
+        entity.tether.attach(from);
     }
     transmit(
         sim,
@@ -1606,10 +1602,10 @@ fn techno_untether(
     let Some(entity) = sim.substrate.entities.get_mut(techno) else {
         return RadioResponse::None;
     };
-    if entity.dock_entered_with.is_none() {
+    if entity.tether.partner().is_none() {
         return radio_receive(sim, techno, sender, RadioMessage::Untether);
     }
-    entity.dock_entered_with = None;
+    entity.tether.release();
     if let Some(from) = sender {
         transmit(
             sim,
@@ -1641,10 +1637,10 @@ fn radio_receive(
                 .and_then(|id| sim.substrate.entities.get(id))
                 .map(|entity| {
                     (
-                        entity.lifecycle.cell_marked,
+                        entity.lifecycle.cell_marked(),
                         sim.substrate.occupancy.contains_entity(
-                            entity.position.rx,
-                            entity.position.ry,
+                            entity.position.rx(),
+                            entity.position.ry(),
                             entity.stable_id(),
                         ),
                     )
@@ -1759,12 +1755,13 @@ fn bunker_receive(
         }
         RadioMessage::DockNow => {
             // Commit: start the install machine if the bunker is idle.
-            if let Some(b) = sim.substrate.entities.get_mut(bld)
-                && let Some(rt) = b.bunker_runtime.as_mut()
-                && rt.state == BunkerState::Idle
+            if let Some(rt) = sim
+                .substrate
+                .entities
+                .get_mut(bld)
+                .and_then(|b| b.bunker_runtime.as_mut())
             {
-                rt.state = BunkerState::ArriveWait;
-                rt.installing_unit = Some(unit);
+                rt.dock_now(unit);
             }
             RadioResponse::Roger
         }
@@ -1795,16 +1792,19 @@ fn bunker_admits(sim: &Simulation, bld: u64, unit: u64) -> bool {
     let Some(b) = sim.substrate.entities.get(bld) else {
         return false;
     };
-    if b.dying || b.health.current() == 0 {
+    if b.death.is_dying() || b.health.current() == 0 {
         return false;
     }
     if b.owner() != unit_owner {
         return false;
     }
-    if b.bunker_occupant.is_some() {
+    if b.bunker.occupant().is_some() {
         return false;
     }
-    matches!(b.bunker_runtime.map(|rt| rt.state), Some(BunkerState::Idle))
+    matches!(
+        b.bunker_runtime.map(|rt| rt.state()),
+        Some(BunkerState::Idle)
+    )
 }
 
 #[cfg(test)]
@@ -1920,7 +1920,7 @@ mod tests {
         let building = sim.substrate.entities.get_mut(2).unwrap();
         building.set_type_ref_for_test(type_ref);
         building.lifecycle.set_in_limbo_for_test(false);
-        building.lifecycle.cell_marked = true;
+        building.lifecycle.set_cell_marked(true);
         let owner = sim.intern("Americans");
         let type_ref = sim.intern("E1");
         let mut infantry = GameEntity::new_at_frame_zero_for_test(
@@ -1938,7 +1938,7 @@ mod tests {
             false,
         );
         infantry.lifecycle.set_in_limbo_for_test(false);
-        infantry.lifecycle.cell_marked = true;
+        infantry.lifecycle.set_cell_marked(true);
         infantry.radio_contacts.set_capacity(3);
         sim.substrate.entities.insert(infantry);
         assert_eq!(hello(&mut sim, 1, 2), RadioResponse::Roger);
@@ -1986,7 +1986,7 @@ mod tests {
         for id in [1, 2] {
             let entity = sim.substrate.entities.get(id).unwrap();
             assert!(entity.radio_contacts.is_empty());
-            assert_eq!(entity.dock_entered_with, None);
+            assert_eq!(entity.tether.partner(), None);
         }
         crate::sim::radio::take_transmit_log();
         clear_test_trace();
@@ -2033,7 +2033,7 @@ mod tests {
             let entity = sim.substrate.entities.get(id).unwrap();
             assert_eq!(entity.radio_contacts.len(), 1);
             assert!(entity.has_live_contact_with(peer));
-            assert_eq!(entity.dock_entered_with, Some(peer));
+            assert_eq!(entity.tether.partner(), Some(peer));
         }
         assert_eq!(sim.rng_state(), rng);
     }
@@ -2087,7 +2087,7 @@ mod tests {
         );
         for id in [1, 2] {
             let entity = sim.substrate.entities.get(id).unwrap();
-            assert_eq!(entity.dock_entered_with, None);
+            assert_eq!(entity.tether.partner(), None);
             assert_eq!(entity.radio_contacts.slot(0), None);
             assert_eq!(entity.radio_contacts.slot(1), None);
             assert_eq!(entity.radio_contacts.slot(2), Some(99));
@@ -2117,7 +2117,7 @@ mod tests {
         assert_eq!(log.len(), 5);
         for id in [1, 2] {
             let entity = sim.substrate.entities.get(id).unwrap();
-            assert_eq!(entity.dock_entered_with, None);
+            assert_eq!(entity.tether.partner(), None);
             assert!(entity.radio_contacts.is_empty());
         }
     }
@@ -2198,9 +2198,19 @@ mod tests {
         assert_eq!(can_enter(&mut sim, 3, 2), RadioResponse::Negatory);
 
         // Occupied → rejected.
-        sim.substrate.entities.get_mut(2).unwrap().bunker_occupant = Some(99);
+        sim.substrate
+            .entities
+            .get_mut(2)
+            .unwrap()
+            .bunker
+            .set_bunker_occupant_for_test(Some(99));
         assert_eq!(can_enter(&mut sim, 1, 2), RadioResponse::Negatory);
-        sim.substrate.entities.get_mut(2).unwrap().bunker_occupant = None;
+        sim.substrate
+            .entities
+            .get_mut(2)
+            .unwrap()
+            .bunker
+            .set_bunker_occupant_for_test(None);
 
         // Installing (non-Idle) → rejected.
         sim.substrate
@@ -2210,7 +2220,7 @@ mod tests {
             .bunker_runtime
             .as_mut()
             .unwrap()
-            .state = BunkerState::ArriveWait;
+            .set_state_for_test(BunkerState::ArriveWait);
         assert_eq!(can_enter(&mut sim, 1, 2), RadioResponse::Negatory);
     }
 
@@ -2236,8 +2246,8 @@ mod tests {
             .unwrap()
             .bunker_runtime
             .unwrap();
-        assert_eq!(rt.state, BunkerState::ArriveWait);
-        assert_eq!(rt.installing_unit, Some(1));
+        assert_eq!(rt.state(), BunkerState::ArriveWait);
+        assert_eq!(rt.installing_unit(), Some(1));
     }
 
     #[test]
@@ -2313,7 +2323,7 @@ mod tests {
             crate::sim::world::FrameEffects::default(),
         );
         assert_eq!(
-            sim.substrate.entities.get(1).unwrap().dock_entered_with,
+            sim.substrate.entities.get(1).unwrap().tether.partner(),
             Some(2)
         );
 
@@ -2327,7 +2337,7 @@ mod tests {
             crate::sim::world::FrameEffects::default(),
         );
         assert_eq!(
-            sim.substrate.entities.get(1).unwrap().dock_entered_with,
+            sim.substrate.entities.get(1).unwrap().tether.partner(),
             None
         );
         assert!(
@@ -2396,11 +2406,11 @@ mod tests {
         );
 
         assert_eq!(
-            sim.substrate.entities.get(1).unwrap().dock_entered_with,
+            sim.substrate.entities.get(1).unwrap().tether.partner(),
             None
         );
         assert_eq!(
-            sim.substrate.entities.get(2).unwrap().dock_entered_with,
+            sim.substrate.entities.get(2).unwrap().tether.partner(),
             Some(1)
         );
     }
@@ -2518,7 +2528,7 @@ mod tests {
             ]
         );
         assert_eq!(
-            sim.substrate.entities.get(1).unwrap().dock_entered_with,
+            sim.substrate.entities.get(1).unwrap().tether.partner(),
             None
         );
         assert!(
@@ -2569,7 +2579,7 @@ mod tests {
             .expect("common receiver clear boundary");
         assert!(effect_index < common_index);
         assert_eq!(
-            sim.substrate.entities.get(1).unwrap().dock_entered_with,
+            sim.substrate.entities.get(1).unwrap().tether.partner(),
             None
         );
         assert!(
@@ -2742,7 +2752,7 @@ mod tests {
             for (index, entry) in input["cargo_sizes"].as_array().unwrap().iter().enumerate() {
                 cargo.board_forced(10 + index as u64, entry.as_u64().unwrap() as u32);
             }
-            carrier.passenger_role = PassengerRole::Transport { cargo };
+            carrier.passenger_role = PassengerRole::transport(cargo);
             if input["warped"].as_bool().unwrap_or(false) {
                 carrier.temporal = crate::sim::temporal::TemporalState::warped_by_for_test(99);
             }

@@ -146,10 +146,10 @@ fn first_yard_distance_accepts(
         return false;
     };
     if yard.category() != EntityCategory::Structure
-        || !yard.build_const_eligible
+        || !yard.type_facts.build_const_eligible()
         || !yard.lifecycle.object_alive()
         || yard.lifecycle.in_limbo()
-        || !yard.lifecycle.cell_marked
+        || !yard.lifecycle.cell_marked()
     {
         return false;
     }
@@ -270,7 +270,7 @@ mod tests {
     }
 
     fn naval_integration_rules() -> RuleSet {
-        RuleSet::from_ini_with_fixed_art_for_test(&IniFile::from_str(
+        RuleSet::from_ini_with_fixed_art_for_test(&crate::sim::arena_fixture::clear_ground_ini(
             "[General]\nShipyard=GAYARD\nAINavalYardAdjacency=0\n\
              [AI]\nBuildConst=gacnst\n\
              [Countries]\n0=Americans\n[Sides]\nAllied=Americans\n[Americans]\nSide=Allied\n\
@@ -576,10 +576,11 @@ mod tests {
             5,
             false,
         );
-        yard.foundation = foundation.to_string();
-        yard.build_const_eligible = true;
+        yard.type_facts
+            .set_foundation_for_test(foundation.to_string());
+        yard.type_facts.set_build_const_eligible_for_test(true);
         yard.lifecycle.set_in_limbo_for_test(false);
-        yard.lifecycle.cell_marked = true;
+        yard.lifecycle.set_cell_marked(true);
         sim.substrate.entities.insert(yard);
     }
 
@@ -635,7 +636,7 @@ mod tests {
             .get_mut(30)
             .unwrap()
             .position
-            .exact_z_leptons = Some(0);
+            .set_exact_z_leptons(Some(0));
         assert!(
             !first_yard_distance_accepts(&sim, &distance_rules(0), &house, (10, 10), &elevated),
             "CellClass 104-lepton terrain Z makes this nonzero despite identical 2D coordinates"
@@ -645,7 +646,7 @@ mod tests {
             .get_mut(30)
             .unwrap()
             .position
-            .exact_z_leptons = Some(104);
+            .set_exact_z_leptons(Some(104));
         assert!(first_yard_distance_accepts(
             &sim,
             &distance_rules(0),
@@ -666,6 +667,13 @@ mod tests {
         sim.playfield_bounds = Some(broad_bounds());
         sim.playfield_size_height = Some(24);
         sim.resolved_terrain = Some(water_terrain(24, 24));
+        // The land construction yard has a legal 1x1 clear foundation; its
+        // adjacent naval candidate remains water for the zero-distance test.
+        *sim.resolved_terrain
+            .as_mut()
+            .unwrap()
+            .cell_mut(10, 10)
+            .unwrap() = crate::map::resolved_terrain::test_clear_cell(10, 10);
         let owner = sim.interner.intern("AIHouse");
         let country = sim.interner.intern("Americans");
         sim.houses.insert(
@@ -676,7 +684,13 @@ mod tests {
             .spawn_object("GACNST", "AIHouse", 10, 10, 0, &rules)
             .expect("parsed BuildConst Construction Yard reveals");
         assert_eq!(sim.houses[&owner].build_const_order, [yard]);
-        assert!(sim.entities().get(yard).unwrap().build_const_eligible);
+        assert!(
+            sim.entities()
+                .get(yard)
+                .unwrap()
+                .type_facts
+                .build_const_eligible()
+        );
 
         sim.houses.get_mut(&owner).unwrap().base_center = Some((11, 10));
         let path = PathGrid::from_resolved_terrain(sim.resolved_terrain.as_ref().unwrap());

@@ -77,7 +77,9 @@ pub(crate) use cell_recalc::{
     LoadCellRecalcOutcome, LoadCellRecalcState,
 };
 use cliffs::DestroyableCliffCatalog;
-pub(crate) use native_cell::CellClassProjectionView;
+pub(crate) use native_cell::{
+    CellClassProjectionView, NativeAllocatedCellCursor, NativeLocalCellCursor,
+};
 pub use native_cell::{NativeCellQuery, SharedCellDummy, SharedCellDummySnapshot};
 use recalc_catalog::BridgeRecalcCatalog;
 pub(crate) use recalc_catalog::BridgeRecalcCatalogError;
@@ -316,10 +318,6 @@ impl ResolvedTerrainCell {
 
     pub fn is_bridge_transition_cell(&self) -> bool {
         self.bridge_transition
-    }
-
-    pub fn is_elevated_bridge_cell(&self) -> bool {
-        self.bridge_walkable && self.bridge_deck_level > self.level
     }
 
     pub fn bridge_deck_level_if_any(&self) -> Option<u8> {

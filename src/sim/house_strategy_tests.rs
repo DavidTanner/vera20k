@@ -100,7 +100,7 @@ fn spawn(
         false,
     );
     entity.lifecycle.set_in_limbo_for_test(false);
-    entity.lifecycle.cell_marked = true;
+    entity.lifecycle.set_cell_marked(true);
     sim.substrate.entities.insert(entity);
     sim.substrate.next_stable_object_id = id + 1;
     id
@@ -454,7 +454,7 @@ fn all_to_hunt_matches_native() {
                 health,
             );
             let entity = sim.substrate.entities.get_mut(id).unwrap();
-            entity.lifecycle.cell_marked = flag(&techno["down"]);
+            entity.lifecycle.set_cell_marked(flag(&techno["down"]));
             entity
                 .lifecycle
                 .set_in_limbo_for_test(flag(&techno["limbo"]));

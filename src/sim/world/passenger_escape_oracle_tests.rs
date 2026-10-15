@@ -173,7 +173,16 @@ fn scene(input: &Value) -> Scene {
     let (x, y) = input.get("cell").map_or((15, 15), cell);
     let on_bridge = input["on_bridge"] == true;
     let transport = sim
-        .construct_object_limbo_at_height("APC", "Americans", x, y, 0, 0, &rules)
+        .construct_object_limbo_at_height(
+            "APC",
+            "Americans",
+            x,
+            y,
+            0,
+            0,
+            &rules,
+            crate::sim::world::FrameEffects::default(),
+        )
         .expect("transport");
     let sub = input.get("sub").map_or((128, 128), |sub| {
         (
@@ -206,8 +215,8 @@ fn scene(input: &Value) -> Scene {
                 z: floor + if on_bridge { 416 } else { 0 } + height,
             },
         );
-        unit.position.z = if on_bridge { 4 } else { 0 };
-        unit.on_bridge = on_bridge;
+        unit.position.set_z(if on_bridge { 4 } else { 0 });
+        unit.set_on_bridge(on_bridge);
         // The Unit's FacingClass (`+0x388`), settled on the row's facing.
         let mut body = crate::sim::movement::FacingClass::new(facing, 0);
         body.snap(facing, frame);
@@ -216,9 +225,7 @@ fn scene(input: &Value) -> Scene {
             unit.set_gunner_selection_for_test(0, -1);
         }
         if unit.passenger_role.cargo().is_none() {
-            unit.passenger_role = PassengerRole::Transport {
-                cargo: PassengerCargo::new(5, 0),
-            };
+            unit.passenger_role = PassengerRole::transport(PassengerCargo::new(5, 0));
         }
     }
     let attacker = sim
@@ -247,10 +254,8 @@ fn scene(input: &Value) -> Scene {
             sim.techno_limbo_with_rules(id, &rules, None),
             crate::sim::world::ConcealOutcome::Concealed
         );
-        sim.substrate.entities.get_mut(id).unwrap().passenger_role = PassengerRole::Inside {
-            transport_id: transport,
-            open_topped: input["open_topped"] == true,
-        };
+        sim.substrate.entities.get_mut(id).unwrap().passenger_role =
+            PassengerRole::inside_for_test(transport, input["open_topped"] == true);
         assert!(
             sim.substrate
                 .entities
@@ -285,21 +290,34 @@ fn scene(input: &Value) -> Scene {
         };
         let spot = spec["spot"].as_u64().unwrap() as u8;
         let id = sim
-            .construct_object_limbo_at_height("E1", owner, x, y, 0, 0, &rules)
+            .construct_object_limbo_at_height(
+                "E1",
+                owner,
+                x,
+                y,
+                0,
+                0,
+                &rules,
+                crate::sim::world::FrameEffects::default(),
+            )
             .expect("occupant");
-        sim.substrate.entities.get_mut(id).unwrap().sub_cell = Some(spot);
+        sim.substrate
+            .entities
+            .get_mut(id)
+            .unwrap()
+            .set_sub_cell(Some(spot));
         let (dx, dy) = SPOT_OFFSETS[usize::from(spot)];
         let outcome = sim.try_reveal_entity_with_context(
             id,
             RevealRequest {
-                position: RevealPosition {
-                    exact_z_leptons: None,
-                    rx: x,
-                    ry: y,
-                    z: 0,
-                    sub_x: SimFixed::from_num(dx),
-                    sub_y: SimFixed::from_num(dy),
-                },
+                position: RevealPosition::new(
+                    x,
+                    y,
+                    0,
+                    None,
+                    SimFixed::from_num(dx),
+                    SimFixed::from_num(dy),
+                ),
                 placement: PlacementEvidence::MarkSucceeded,
                 logic_eligible: true,
             },
@@ -388,8 +406,8 @@ fn compare(row: &Value) {
         .passenger_role
         .cargo()
         .unwrap()
-        .passengers
-        .clone();
+        .passengers()
+        .to_vec();
     let head = cargo.first().map_or(Value::Null, |id| {
         passengers.iter().position(|p| p == id).into()
     });
@@ -437,7 +455,7 @@ fn compare(row: &Value) {
             let record = of("record_kill").expect("a killed passenger records its kill");
             let credited = (record[2] == "attacker").then(|| sim.interner.intern("Foreign"));
             assert_eq!(
-                sim.substrate.entities.get(id).unwrap().killed_by,
+                sim.substrate.entities.get(id).unwrap().kill_record.killer(),
                 credited,
                 "{context}: kill credit"
             );
@@ -449,10 +467,7 @@ fn compare(row: &Value) {
             expected["limbo"].as_u64().unwrap(),
             "{context}: limbo"
         );
-        let aboard = matches!(
-            entity.passenger_role,
-            PassengerRole::Inside { transport_id, .. } if transport_id == transport
-        );
+        let aboard = entity.passenger_role.inside_transport_id() == Some(transport);
         assert_eq!(
             aboard,
             expected["transporter"] == "transport",
@@ -485,7 +500,7 @@ fn compare(row: &Value) {
             "{context}: coordinate"
         );
         assert_eq!(
-            u64::from(entity.on_bridge),
+            u64::from(entity.on_bridge()),
             expected["on_bridge"].as_u64().unwrap(),
             "{context}: OnBridge"
         );
@@ -502,14 +517,14 @@ fn compare(row: &Value) {
             expected["queued"].as_i64().unwrap(),
             "{context}: queued mission"
         );
-        let nav = match entity.navigation.nav_com {
+        let nav = match entity.navigation.nav_com() {
             Some(NavTargetRef::Cell { rx, ry }) => serde_json::json!([rx, ry]),
             None => Value::Null,
             Some(other) => panic!("{context}: NavCom {other:?}"),
         };
         assert_eq!(nav, expected["nav"], "{context}: NavCom");
         assert_eq!(
-            entity.selected,
+            entity.selection.is_selected(),
             of("select").is_some(),
             "{context}: selected"
         );

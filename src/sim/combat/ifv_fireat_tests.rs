@@ -93,17 +93,19 @@ fn empty_fv_two_shot_fireat_matches_native_muzzles_ids_rearm_and_rng() {
         let input = &rows[0]["supplied"];
         let origin = coord(&input["source_origin"]);
         let firer = world.substrate.entities.get_mut(firer_id).unwrap();
-        firer.position.rx = (origin.x / 256) as u16;
-        firer.position.ry = (origin.y / 256) as u16;
-        firer.position.sub_x = SimFixed::from_num(origin.x % 256);
-        firer.position.sub_y = SimFixed::from_num(origin.y % 256);
-        firer.position.exact_z_leptons = Some(origin.z);
+        firer.position.set_rx((origin.x / 256) as u16);
+        firer.position.set_ry((origin.y / 256) as u16);
+        firer.position.set_sub_x(SimFixed::from_num(origin.x % 256));
+        firer.position.set_sub_y(SimFixed::from_num(origin.y % 256));
+        firer.position.set_exact_z_leptons(Some(origin.z));
         firer.body_facing = FacingClass::new(input["body_heading"].as_u64().unwrap() as u16, 0);
         firer.barrel_facing = Some(FacingClass::new(
             input["source_heading"].as_u64().unwrap() as u16,
             0,
         ));
-        firer.rearm_timer = crate::sim::timer::CdTimer::started(0, 0);
+        firer
+            .rearm_timer
+            .set_for_test(crate::sim::timer::CdTimer::started(0, 0));
     }
     // Adopt the oracle's declared boundary after source setup, not a claim
     // that the fixture's synthetic world constructed the native full prefix.
@@ -123,7 +125,7 @@ fn empty_fv_two_shot_fireat_matches_native_muzzles_ids_rearm_and_rng() {
             firer.weapon_burst.index(),
             row["launch"]["burst_before"].as_i64().unwrap() as i32
         );
-        assert!(firer.rearm_timer.expired(frame as i32));
+        assert!(firer.rearm_timer.timer().expired(frame as i32));
         let snapshot = build_attacker_snapshot(firer, target, None);
         assert_eq!(
             world.scenario_rng.native_state_hex(),

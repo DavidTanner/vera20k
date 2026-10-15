@@ -93,19 +93,19 @@ impl TrackProgress {
             turn_index < 64,
             "a fresh selector is one of the 64 from/to entries"
         );
-        self.turn_index = turn_index as i32;
-        self.reversed = false;
+        self.set_turn_index(turn_index as i32);
+        self.set_reversed(false);
     }
 
     pub(crate) fn accept_fresh(&mut self) {
-        self.cursor = 0;
+        self.set_cursor(0);
     }
 
     /// Force_Track4B0C53/4B0C56 writes these BEFORE its owner guards,
     /// including caller selector -1. It preserves short selection/residual.
     pub(crate) fn select_forced(&mut self, turn_index: i32) {
-        self.turn_index = turn_index;
-        self.cursor = 0;
+        self.set_turn_index(turn_index);
+        self.set_cursor(0);
     }
 
     /// Candidate selection is observable during the following owner callback.
@@ -125,23 +125,23 @@ impl TrackProgress {
         if raw.entry_index == 0 {
             return false;
         }
-        self.turn_index = turn_index;
-        self.cursor = i32::from(raw.entry_index) - 1;
-        self.reversed = false;
+        self.set_turn_index(turn_index);
+        self.set_cursor(i32::from(raw.entry_index) - 1);
+        self.set_reversed(false);
         true
     }
 
     /// Drive4B210E/Ship6A1751: completion preserves short and residual.
     pub(crate) fn clear_selector(&mut self) {
-        self.turn_index = -1;
-        self.cursor = 0;
+        self.set_turn_index(-1);
+        self.set_cursor(0);
     }
 
     fn selected_raw(&self, family: TrackFamily) -> Option<(u8, &'static TurnTrack)> {
-        let turn = family.turn(self.turn_index)?;
+        let turn = family.turn(self.turn_index())?;
         // Original read selects the short byte directly, without a fallback
         // to normal when that byte is zero. The process host owns that guard.
-        let raw = if self.reversed {
+        let raw = if self.reversed() {
             turn.short_track
         } else {
             turn.normal_track
@@ -158,12 +158,12 @@ impl TrackProgress {
         current: DriveCoord,
         head: DriveCoord,
     ) -> Option<ResidualStep> {
-        if self.residual < 1 {
+        if self.residual() < 1 {
             return None;
         }
         let (raw, turn) = self.selected_raw(family)?;
-        let point = raw_point(raw, self.cursor)?;
-        if self.cursor != 0 && point.x == 0 && point.y == 0 {
+        let point = raw_point(raw, self.cursor())?;
+        if self.cursor() != 0 && point.x == 0 && point.y == 0 {
             return None;
         }
         let (dx, dy, _) =
@@ -179,7 +179,7 @@ impl TrackProgress {
                 full.y.wrapping_sub(current.y),
                 0,
             ],
-            self.residual,
+            self.residual(),
         );
         Some(ResidualStep {
             current,
@@ -285,7 +285,7 @@ impl PaidSample {
         progress: &TrackProgress,
         head: DriveCoord,
     ) -> Option<([i32; 2], u8)> {
-        let turn = family.turn(progress.turn_index)?;
+        let turn = family.turn(progress.turn_index())?;
         let (x, y, facing) = drive_track::transform_track_point(
             i16::try_from(self.xy[0]).ok()?,
             i16::try_from(self.xy[1]).ok()?,
@@ -382,7 +382,7 @@ impl TrackProcess {
         fresh_budget: i32,
         retry: bool,
     ) -> Self {
-        let budget = invocation_budget(fresh_budget, progress.residual, retry);
+        let budget = invocation_budget(fresh_budget, progress.residual(), retry);
         Self {
             family,
             budget,
@@ -411,11 +411,13 @@ impl TrackProcess {
     /// Do not capture this result in PaidSample before those world effects.
     pub fn is_at_occupation_handoff(&self, progress: &TrackProgress) -> bool {
         assert_eq!(self.phase, ProcessPhase::PointCallbacks);
-        progress.cursor != 0
+        progress.cursor() != 0
             && self
                 .selection
                 .and_then(|selection| drive_track::raw_track_meta(selection.raw_index))
-                .is_some_and(|raw| progress.cursor == i32::from(raw.occupation_handoff_point_index))
+                .is_some_and(|raw| {
+                    progress.cursor() == i32::from(raw.occupation_handoff_point_index)
+                })
     }
 
     /// Cursor portion of the later chain gate, Drive4B1B35..1B4A and
@@ -424,11 +426,11 @@ impl TrackProcess {
     /// query this separately from the occupation-handoff gate above.
     pub fn is_at_chain_cursor(&self, progress: &TrackProgress) -> bool {
         assert_eq!(self.phase, ProcessPhase::PointCallbacks);
-        progress.cursor != 0
+        progress.cursor() != 0
             && self
                 .selection
                 .and_then(|selection| drive_track::raw_track_meta(selection.raw_index))
-                .is_some_and(|raw| progress.cursor == i32::from(raw.chain_index))
+                .is_some_and(|raw| progress.cursor() == i32::from(raw.chain_index))
     }
 
     /// Accepted chaining explicitly replaces both retained progress and the
@@ -460,9 +462,9 @@ impl TrackProcess {
         // and the cached raw pointer. Callback selector/short writes do not
         // reselect this paid loop; the later residual branch does reselect.
         let raw_index = self.selection?.raw_index;
-        let point = raw_point(raw_index, progress.cursor)?;
+        let point = raw_point(raw_index, progress.cursor())?;
         self.budget = self.budget.wrapping_sub(POINT_COST);
-        let terminal = progress.cursor != 0 && point.x == 0 && point.y == 0;
+        let terminal = progress.cursor() != 0 && point.x == 0 && point.y == 0;
         self.phase = if terminal {
             ProcessPhase::TerminalCallbacks
         } else {
@@ -470,7 +472,7 @@ impl TrackProcess {
         };
         Some(TrackPayment::Sample(PaidSample {
             raw_index,
-            cursor: progress.cursor,
+            cursor: progress.cursor(),
             xy: [i32::from(point.x), i32::from(point.y)],
             facing: point.facing,
             terminal,
@@ -481,7 +483,7 @@ impl TrackProcess {
     /// with entry-1 while the paid point's callback was running.
     pub fn finish_surviving_point(&mut self, progress: &mut TrackProgress) -> bool {
         assert_eq!(self.phase, ProcessPhase::PointCallbacks);
-        progress.cursor = progress.cursor.wrapping_add(1);
+        progress.set_cursor(progress.cursor().wrapping_add(1));
         self.phase = ProcessPhase::Ready;
         self.budget > POINT_COST
     }
@@ -511,7 +513,7 @@ impl TrackProcess {
     /// Explicit native writeback; do not put this in Drop or a callback finally
     /// path because early lifecycle exits deliberately retain the old residual.
     pub fn store_residual(&self, progress: &mut TrackProgress) {
-        progress.residual = self.budget;
+        progress.set_residual(self.budget);
     }
 }
 

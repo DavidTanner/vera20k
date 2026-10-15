@@ -604,17 +604,8 @@ mod tests {
     use crate::map::overlay::TerrainObject;
     use crate::map::resolved_terrain::{ResolvedTerrainCell, zone_class};
     use crate::rules::ini_parser::IniFile;
-    use crate::rules::locomotor_type::MovementZone;
     use crate::rules::ruleset::RuleSet;
     use crate::rules::terrain_rules::LandType;
-    use crate::sim::movement::bump_crush::{
-        CrushCapability, build_blocker_neighbor_counts, collect_crush_victims,
-    };
-    use crate::sim::movement::locomotor::MovementLayer;
-    use crate::sim::pathfinding::PathGrid;
-    use crate::sim::pathfinding::cell_entry::{
-        CanEnterCellContext, CanEnterCellResult, evaluate_can_enter_cell,
-    };
     use crate::sim::terrain_spawn::seed_terrain_animations;
     use crate::sim::world::Simulation;
 
@@ -786,112 +777,6 @@ mod tests {
 
     fn resolved_clear_grid() -> ResolvedTerrainGrid {
         ResolvedTerrainGrid::from_cells(1, 1, vec![ResolvedTerrainCell::clear_for_test(0, 0)])
-    }
-
-    fn resolved_clear_grid_3x3() -> ResolvedTerrainGrid {
-        let template = resolved_clear_grid()
-            .cell(0, 0)
-            .expect("clear template")
-            .clone();
-        crate::map::resolved_terrain::test_grid(3, 3, |rx, ry| ResolvedTerrainCell {
-            rx,
-            ry,
-            ..template.clone()
-        })
-    }
-
-    #[test]
-    fn gsi_04_10_crushers_do_not_admit_or_remove_terrain_even_when_crushable_yes() {
-        let rules = terrain_rules("TREE01", true, "Crushable=yes\nTemperateOccupationBits=4\n");
-        let mut sim = Simulation::new();
-        let source_cell = (1, 1);
-        seed_one_at(&mut sim, &rules, "TREE01", source_cell);
-        let stable_id = sim.production.terrain_object_cells[&source_cell];
-        let before = sim.production.terrain_objects[&stable_id].clone();
-
-        let mut resolved = resolved_clear_grid_3x3();
-        mark_terrain_occupation(&before, Some(&mut resolved));
-        let path_grid = PathGrid::from_resolved_terrain(&resolved);
-        let blocker_counts = build_blocker_neighbor_counts(
-            &sim.substrate.entities,
-            3,
-            3,
-            Some(&resolved),
-            &sim.interner,
-            None,
-        );
-        let blocker_counts_ref = &blocker_counts;
-        let before_neighbor_total = (0..3)
-            .flat_map(|ry| (0..3).map(move |rx| blocker_counts_ref.count_at(rx, ry) as u32))
-            .sum::<u32>();
-        let before_zone = resolved
-            .cell(source_cell.0, source_cell.1)
-            .expect("Terrain source")
-            .zone_type;
-
-        for movement_zone in [MovementZone::Crusher, MovementZone::CrusherAll] {
-            assert_eq!(
-                evaluate_can_enter_cell(CanEnterCellContext {
-                    target: source_cell,
-                    terrain_layer: MovementLayer::Ground,
-                    movement_zone: Some(movement_zone),
-                    speed_type: None,
-                    path_grid: Some(&path_grid),
-                    resolved_terrain: Some(&resolved),
-                    terrain_costs: None,
-                    is_infantry: false,
-                    mover_is_crusher: false,
-                }),
-                CanEnterCellResult::HardBlocked,
-                "Terrain's ObjectClass identity blocks entry even when custom rules spell Crushable=yes"
-            );
-        }
-
-        for capability in [
-            CrushCapability::new(true, false),
-            CrushCapability::new(false, true),
-        ] {
-            assert!(
-                collect_crush_victims(
-                    source_cell,
-                    &sim.substrate.occupancy,
-                    MovementLayer::Ground,
-                    capability,
-                    &sim.substrate.entities,
-                    // A terrain object is never a crush victim whoever asks, so
-                    // the ally gate is irrelevant here; a neutral crusher keeps
-                    // the assertion about terrain rather than about alliance.
-                    crate::sim::movement::bump_crush::CrushAllyGate::new(
-                        "Neutral",
-                        &crate::map::houses::HouseAllianceMap::new(),
-                        &sim.interner,
-                    ),
-                )
-                .is_empty(),
-                "Terrain never enters the Techno crush-victim list"
-            );
-        }
-
-        let after = &sim.production.terrain_objects[&stable_id];
-        assert_eq!(sim.production.terrain_object_cells[&source_cell], stable_id);
-        assert_eq!(after.lifecycle, TerrainObjectLifecycle::Live);
-        assert_eq!(after.health, before.health);
-        assert_eq!(
-            resolved
-                .cell(source_cell.0, source_cell.1)
-                .unwrap()
-                .terrain_object_occupation,
-            Some(4)
-        );
-        assert_eq!(before_neighbor_total, 8);
-        assert_eq!(before_zone, zone_class::BUILDING);
-        assert_eq!(
-            resolved
-                .cell(source_cell.0, source_cell.1)
-                .expect("unchanged Terrain source")
-                .zone_type,
-            before_zone
-        );
     }
 
     #[test]

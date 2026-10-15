@@ -84,8 +84,8 @@ fn engineer_repair_family(
                 .get(engineer)
                 .ok_or("repair engineer disappeared before family scan")?;
             let point = (
-                (current.position.rx as i16).wrapping_add(x),
-                (current.position.ry as i16).wrapping_add(y),
+                (current.position.rx() as i16).wrapping_add(x),
+                (current.position.ry() as i16).wrapping_add(y),
             );
             let cell = live.lookup(point);
             let tile = live.tile(cell);
@@ -110,7 +110,7 @@ fn engineer_repair_family(
         .entities
         .get(engineer)
         .ok_or("repair engineer disappeared before family entry")?;
-    let input = (current.position.rx as i16, current.position.ry as i16);
+    let input = (current.position.rx() as i16, current.position.ry() as i16);
     Ok((input, family))
 }
 

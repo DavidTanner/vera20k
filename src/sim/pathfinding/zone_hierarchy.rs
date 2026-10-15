@@ -10,6 +10,7 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::sync::{Mutex, MutexGuard, PoisonError};
 
+use super::native_heap::NativeHeap;
 use super::passability;
 use super::stamped_table::StampedTable;
 use super::zone_map::{ZONE_INVALID, ZoneId};
@@ -606,57 +607,11 @@ struct PrecheckNode {
     depth: u32,
 }
 
-/// The native heap's strict comparisons preserve its array order on ties.
-/// `BinaryHeap` with a sequence tie-break does not reproduce this order.
+/// The queue orders nodes by their cost through the shared native heap.
 /// Signed binary32 costs compare through the existing deterministic FP owner;
 /// original ftol's consumed low dword may be negative in raw overflow controls.
-#[derive(Default)]
-struct PrecheckQueue(Vec<usize>);
-
-impl PrecheckQueue {
-    fn clear(&mut self) {
-        self.0.clear();
-    }
-
-    fn push(&mut self, node: usize, nodes: &[PrecheckNode]) {
-        let mut position = self.0.len();
-        self.0.push(node);
-        while position != 0 {
-            let parent = (position - 1) / 2;
-            if !precheck_cost_less(nodes[node].cost, nodes[self.0[parent]].cost) {
-                break;
-            }
-            self.0[position] = self.0[parent];
-            position = parent;
-        }
-        self.0[position] = node;
-    }
-
-    fn pop(&mut self, nodes: &[PrecheckNode]) -> Option<usize> {
-        let first = *self.0.first()?;
-        let last = self.0.pop().expect("nonempty precheck heap");
-        if self.0.is_empty() {
-            return Some(first);
-        }
-        self.0[0] = last;
-        let mut position = 0;
-        loop {
-            let mut smallest = position;
-            for child in [position * 2 + 1, position * 2 + 2] {
-                if child < self.0.len()
-                    && precheck_cost_less(nodes[self.0[child]].cost, nodes[self.0[smallest]].cost)
-                {
-                    smallest = child;
-                }
-            }
-            if smallest == position {
-                break;
-            }
-            self.0.swap(position, smallest);
-            position = smallest;
-        }
-        Some(first)
-    }
+fn by_cost(nodes: &[PrecheckNode]) -> impl Fn(&usize, &usize) -> bool + '_ {
+    move |a, b| precheck_cost_less(nodes[*a].cost, nodes[*b].cost)
 }
 
 /// `42C5BB..42C5D2`: add base type cost, then the edge flag and spill once.
@@ -872,7 +827,10 @@ struct PrecheckScratch {
     /// The best cost each zone has been reached with in the running search.
     best: StampedTable<NativeF32Bits>,
     nodes: Vec<PrecheckNode>,
-    heap: PrecheckQueue,
+    /// The size the PathfinderClass constructor gives this heap (`0x2710` at
+    /// `0x0042A7B2`). A full heap drops the insert, but the record and the
+    /// zone's best cost are kept.
+    heap: NativeHeap<usize, 0x2710>,
 }
 
 thread_local! {
@@ -946,11 +904,11 @@ fn search_precheck_level_in(
         depth: 0,
     });
     best.set(usize::from(start), NativeF32Bits::from_bits(0));
-    heap.push(0, nodes);
+    heap.push(0, by_cost(nodes));
     #[cfg(test)]
     let mut pops = Vec::new();
 
-    while let Some(index) = heap.pop(nodes) {
+    while let Some(index) = heap.pop(by_cost(nodes)) {
         let node = &nodes[index];
         let (zone, cost, depth) = (node.zone, node.cost, node.depth);
         #[cfg(test)]
@@ -1016,7 +974,7 @@ fn search_precheck_level_in(
                     cost: new_cost,
                     depth: depth + 1,
                 });
-                heap.push(next, nodes);
+                heap.push(next, by_cost(nodes));
             }
         }
     }

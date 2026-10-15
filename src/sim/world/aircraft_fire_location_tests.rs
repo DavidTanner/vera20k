@@ -37,9 +37,13 @@ fn insert(
         5,
         true,
     );
-    entity.position.sub_x = SimFixed::from_num(point[0] % 256);
-    entity.position.sub_y = SimFixed::from_num(point[1] % 256);
-    entity.position.exact_z_leptons = Some(point[2]);
+    entity
+        .position
+        .set_sub_x(SimFixed::from_num(point[0] % 256));
+    entity
+        .position
+        .set_sub_y(SimFixed::from_num(point[1] % 256));
+    entity.position.set_exact_z_leptons(Some(point[2]));
     entity.lifecycle.set_object_alive_for_test(marked);
     entity.lifecycle.set_in_limbo_for_test(false);
     sim.substrate.entities.insert(entity);
@@ -175,7 +179,7 @@ fn fixture(input: &Value) -> (Simulation, RuleSet) {
             .get_mut(2)
             .unwrap()
             .navigation
-            .nav_com = Some(NavTargetRef::Entity { id: 3 });
+            .set_nav_com(Some(NavTargetRef::Entity { id: 3 }));
     }
     let owner = sim.substrate.entities.get_mut(1).unwrap();
     owner
@@ -185,7 +189,9 @@ fn fixture(input: &Value) -> (Simulation, RuleSet) {
         owner.mark_mission_only();
     }
     if input["carryall_target"].as_bool().unwrap_or(false) {
-        owner.navigation.nav_com = Some(NavTargetRef::Entity { id: 4 });
+        owner
+            .navigation
+            .set_nav_com(Some(NavTargetRef::Entity { id: 4 }));
     }
     if input.get("blocker").is_some() {
         insert(
@@ -224,10 +230,10 @@ fn fixture(input: &Value) -> (Simulation, RuleSet) {
             let e = sim.substrate.entities.get_mut(id).unwrap();
             e.lifecycle
                 .set_in_limbo_for_test(input["reservation_limbo"].as_bool().unwrap_or(false));
-            e.navigation.nav_com = Some(NavTargetRef::cell(
+            e.navigation.set_nav_com(Some(NavTargetRef::cell(
                 cell[0].as_u64().unwrap() as u16,
                 cell[1].as_u64().unwrap() as u16,
-            ));
+            )));
         }
     }
     let mut cargo = PassengerCargo::new(100, 0);
@@ -248,7 +254,7 @@ fn fixture(input: &Value) -> (Simulation, RuleSet) {
         e.set_gunner_selection_for_test(passenger["current"].as_i64().unwrap_or(0) as i32, -1);
         cargo.board_forced(id, 1);
     }
-    sim.substrate.entities.get_mut(1).unwrap().passenger_role = PassengerRole::Transport { cargo };
+    sim.substrate.entities.get_mut(1).unwrap().passenger_role = PassengerRole::transport(cargo);
     // The original global Cell flags belong to CurrentHouse, even when the
     // searching aircraft belongs to a different house. No UI cache is built.
     let viewer = sim.interner.intern("CURRENT_HOUSE");
@@ -332,33 +338,38 @@ pub(super) fn reengagement_fixture(input: &Value) -> (Simulation, RuleSet) {
             .then(|| crate::sim::combat::TargetKind::Entity(2)),
     );
     let mut ammo = AircraftAmmo::new(2);
-    ammo.current = input["ammo"].as_i64().unwrap_or(2) as i32;
+    ammo.set_current_for_test(input["ammo"].as_i64().unwrap_or(2) as i32);
     if input["pending"].as_bool().unwrap_or(false) {
         ammo.begin_release();
     }
     entity.aircraft_ammo = Some(ammo);
-    entity.navigation.nav_com_aux = Some(NavTargetRef::Entity { id: 2 });
-    entity.navigation.nav_com = input["old_nav"]
-        .as_bool()
-        .unwrap_or(false)
-        .then(|| NavTargetRef::cell(32, 32));
-    entity.foot_locomotor_swap_active = input["swap"].as_bool().unwrap_or(false);
+    entity
+        .navigation
+        .set_nav_com_aux(Some(NavTargetRef::Entity { id: 2 }));
+    entity.navigation.set_nav_com(
+        input["old_nav"]
+            .as_bool()
+            .unwrap_or(false)
+            .then(|| NavTargetRef::cell(32, 32)),
+    );
+    entity
+        .lift
+        .set_swap_active_for_test(input["swap"].as_bool().unwrap_or(false));
     if input["open_transport"].as_bool().unwrap_or(false) {
-        entity.passenger_role = PassengerRole::Inside {
-            transport_id: 4,
-            open_topped: true,
-        };
+        entity.passenger_role = PassengerRole::inside_for_test(4, true);
     }
     if input["bunker"].as_bool().unwrap_or(false) {
-        entity.bunker_link = crate::sim::game_entity::BunkerLink::Installed(2);
+        entity
+            .bunker
+            .set_bunker_link_for_test(crate::sim::docking::bunker_link::BunkerLink::Installed(2));
     }
     let path = &mut entity.navigation.path_runtime;
-    path.movement_timer = crate::sim::timer::CdTimer::from_raw(7, 23);
-    path.blocked_timer = crate::sim::timer::CdTimer::from_raw(9, 29);
-    path.retries_left = 19;
-    path.path_blocked = true;
+    path.set_movement_timer_for_test(crate::sim::timer::CdTimer::from_raw(7, 23));
+    path.set_blocked_timer_for_test(crate::sim::timer::CdTimer::from_raw(9, 29));
+    path.set_retries_left(19);
+    path.set_path_blocked(true);
     let mut loco = LocomotorState::from_object_type(rules.object("TEST").unwrap(), 0);
-    loco.powered = input["powered"].as_bool().unwrap_or(true);
+    loco.set_powered_for_test(input["powered"].as_bool().unwrap_or(true));
     loco.set_fly_target_height(37);
     loco.fly_runtime_mut().unwrap().retain_destination(
         DriveCoord {
@@ -376,7 +387,7 @@ pub(super) fn reengagement_fixture(input: &Value) -> (Simulation, RuleSet) {
 
 pub(super) fn assert_reengagement(sim: &mut Simulation, row: &Value) {
     let entity = sim.substrate.entities.get(1).unwrap();
-    let nav = match entity.navigation.nav_com {
+    let nav = match entity.navigation.nav_com() {
         Some(NavTargetRef::Cell { rx, ry }) => json!([rx, ry]),
         Some(NavTargetRef::Entity { id: 2 }) => json!("target"),
         None => Value::Null,
@@ -391,15 +402,15 @@ pub(super) fn assert_reengagement(sim: &mut Simulation, row: &Value) {
     let fields = json!({
         "state": sub_state,
         "delay": entity.mission.dispatch_timer().delay(),
-        "nav": nav, "aux": entity.navigation.nav_com_aux.is_some(),
-        "ammo": entity.aircraft_ammo.as_ref().unwrap().current,
+        "nav": nav, "aux": entity.navigation.nav_com_aux().is_some(),
+        "ammo": entity.aircraft_ammo.as_ref().unwrap().current(),
         "pending": entity.aircraft_ammo.as_ref().unwrap().release_pending(),
         "latch": entity.mission_leaf.as_aircraft().unwrap().action_latch() != 0,
         "destination": [point.x, point.y, point.z], "moving": fly.moving(),
         "height": fly.target_height(),
-        "movement_timer": [path.movement_timer.start_frame(), path.movement_timer.duration()],
-        "blocked_timer": [path.blocked_timer.start_frame(), path.blocked_timer.duration()],
-        "retry": path.retries_left, "blocked": path.path_blocked,
+        "movement_timer": [path.movement_timer().start_frame(), path.movement_timer().duration()],
+        "blocked_timer": [path.blocked_timer().start_frame(), path.blocked_timer().duration()],
+        "retry": path.retries_left(), "blocked": path.path_blocked(),
     });
     for (key, value) in fields.as_object().unwrap() {
         assert_eq!(value, &row[key], "{} {key}", row["input"]);
@@ -457,24 +468,25 @@ fn aircraft_reengagement_reserves_in_logic_order_and_ignores_inactive_objects() 
         sim.set_logic_order_for_test(order.clone());
         crate::sim::aircraft::tick_aircraft_missions(&mut sim, &rules);
         let first = sim.substrate.entities.get(order[0]).unwrap();
-        assert_eq!(selected(first.navigation.nav_com), base["nav"]);
+        assert_eq!(selected(first.navigation.nav_com()), base["nav"]);
         assert_eq!(
             first.mission.dispatch_timer().delay(),
             base["delay"].as_i64().unwrap() as i32
         );
         let second = sim.substrate.entities.get(order[1]).unwrap();
-        assert!(second.navigation.nav_com.is_some());
+        assert!(second.navigation.nav_com().is_some());
         assert_ne!(
-            first.navigation.nav_com, second.navigation.nav_com,
+            first.navigation.nav_com(),
+            second.navigation.nav_com(),
             "later search observes the first live reservation"
         );
         let inactive = sim.substrate.entities.get(9).unwrap();
         assert_eq!(inactive.mission.handler_state(), 1);
         assert_eq!(inactive.mission.dispatch_timer().delay(), 0);
-        assert_eq!(inactive.navigation.nav_com, None);
+        assert_eq!(inactive.navigation.nav_com(), None);
         (
-            first.navigation.nav_com,
-            second.navigation.nav_com,
+            first.navigation.nav_com(),
+            second.navigation.nav_com(),
             second.mission.dispatch_timer().delay(),
             sim.scenario_rng.logical_state(),
         )

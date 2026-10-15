@@ -1120,8 +1120,8 @@ mod retail_construction_tests {
                             format!(
                                 "{}@({},{}) m{} aims away {}",
                                 sim.interner.resolve(entity.type_ref()),
-                                entity.position.rx,
-                                entity.position.ry,
+                                entity.position.rx(),
+                                entity.position.ry(),
                                 entity.mission.effective().raw(),
                                 aims_at_another_house(sim, entity),
                             )
@@ -1311,8 +1311,8 @@ mod retail_construction_tests {
                             format!(
                                 "{}@({},{}) hp{} m{} {} nav {:?}{}",
                                 sim.interner.resolve(entity.type_ref()),
-                                entity.position.rx,
-                                entity.position.ry,
+                                entity.position.rx(),
+                                entity.position.ry(),
                                 entity.health.current(),
                                 entity.mission.effective().raw(),
                                 match sim.team_script_vm.team_for_member(id) {
@@ -1320,7 +1320,7 @@ mod retail_construction_tests {
                                     Some(_) => "in another team",
                                     None => "out",
                                 },
-                                entity.navigation.nav_com,
+                                entity.navigation.nav_com(),
                                 if entity.passenger_role.is_inside_transport() {
                                     " aboard"
                                 } else if entity.passenger_role.boarding_transport_id().is_some() {
@@ -1349,7 +1349,7 @@ mod retail_construction_tests {
                             frame,
                             sim.entities()
                                 .get(transport)
-                                .and_then(|entity| entity.navigation.nav_com),
+                                .and_then(|entity| entity.navigation.nav_com()),
                         ));
                     }
                     if frame >= done + 60 {
@@ -1450,7 +1450,10 @@ mod retail_construction_tests {
                 .expect("the local Construction Yard");
             let at = |sim: &Simulation, id| {
                 let entity = sim.entities().get(id).expect("spawned");
-                (i32::from(entity.position.rx), i32::from(entity.position.ry))
+                (
+                    i32::from(entity.position.rx()),
+                    i32::from(entity.position.ry()),
+                )
             };
             let (yx, yy) = at(sim, yard);
             let russians = house_of(sim, "Russians");
@@ -1630,8 +1633,8 @@ mod retail_construction_tests {
                     .iter()
                     .find(|&&id| {
                         sim.entities().get(id).is_some_and(|entity| {
-                            entity.bunker_link
-                                == crate::sim::game_entity::BunkerLink::Approaching(bunker)
+                            entity.bunker.link()
+                                == crate::sim::docking::bunker_link::BunkerLink::Approaching(bunker)
                         })
                     })
                     .map(|&id| (frame, id));
@@ -1640,7 +1643,7 @@ mod retail_construction_tests {
                 installed = sim
                     .entities()
                     .get(bunker)
-                    .and_then(|entity| entity.bunker_occupant)
+                    .and_then(|entity| entity.bunker.occupant())
                     .filter(|occupant| members.contains(occupant))
                     .map(|occupant| (frame, occupant));
             }
@@ -1704,10 +1707,10 @@ mod retail_construction_tests {
                 on_61 = Some((frame, members));
             } else if line.cursor() >= 2 && on_61.is_some() {
                 let held = sim.entities().get(free).is_none_or(|bunker| {
-                    bunker.bunker_occupant.is_some()
+                    bunker.bunker.occupant().is_some()
                         || bunker
                             .bunker_runtime
-                            .is_some_and(|runtime| runtime.installing_unit.is_some())
+                            .is_some_and(|runtime| runtime.installing_unit().is_some())
                 });
                 past = Some((frame, members, held));
                 break;
@@ -1782,7 +1785,7 @@ mod retail_construction_tests {
             sim.entities().get(id).is_some_and(|entity| {
                 let at = crate::sim::movement::ground_pose::position_world_coord(&entity.position);
                 entity.mission.current().known() == Some(MissionType::Move)
-                    && entity.navigation.nav_com.is_some()
+                    && entity.navigation.nav_com().is_some()
                     && entity
                         .locomotor
                         .as_ref()
@@ -1823,8 +1826,8 @@ mod retail_construction_tests {
             .filter_map(|&id| sim.entities().get(id))
             .map(|entity| {
                 (
-                    (entity.position.rx, entity.position.ry),
-                    entity.navigation.nav_com,
+                    (entity.position.rx(), entity.position.ry()),
+                    entity.navigation.nav_com(),
                 )
             })
             .collect();
@@ -1923,7 +1926,7 @@ mod retail_construction_tests {
             sim.entities()
                 .values()
                 .filter(|entity| {
-                    !entity.dying
+                    !entity.death.is_dying()
                         && entity.owner() == owner
                         && sim.interner.resolve(entity.type_ref()) == "NACNST"
                 })
@@ -1965,7 +1968,11 @@ mod retail_construction_tests {
             if on_9.is_none() && line.is_some_and(|line| line.cursor() == 1) {
                 on_9 = Some((frame, line.map(|line| line.member_count())));
             }
-            if let Some(entity) = sim.entities().get(mcv).filter(|entity| !entity.dying) {
+            if let Some(entity) = sim
+                .entities()
+                .get(mcv)
+                .filter(|entity| !entity.death.is_dying())
+            {
                 let order = (
                     entity.mission.current().known(),
                     entity.mission.queued().known(),
@@ -2023,7 +2030,7 @@ mod retail_construction_tests {
             sim.entities()
                 .values()
                 .filter(|entity| {
-                    !entity.dying
+                    !entity.death.is_dying()
                         && entity.owner() == owner
                         && sim.interner.resolve(entity.type_ref()) == "NACNST"
                 })
@@ -2183,7 +2190,7 @@ mod retail_construction_tests {
         let rhino = spawned[0];
         let start = {
             let entity = sim.entities().get(rhino).expect("the Rhino");
-            (entity.position.rx, entity.position.ry)
+            (entity.position.rx(), entity.position.ry())
         };
         let america = house_of(sim, "Americans");
         let gi = spawn_on_free_cells(
@@ -2218,7 +2225,7 @@ mod retail_construction_tests {
                 hit = Some(frame);
             }
             if charged.is_none()
-                && entity.navigation.nav_com == Some(NavTargetRef::Entity { id: gi })
+                && entity.navigation.nav_com() == Some(NavTargetRef::Entity { id: gi })
                 && (entity.mission.queued() == move_mission
                     || entity.mission.current() == move_mission)
             {
@@ -2226,16 +2233,16 @@ mod retail_construction_tests {
             }
             if charged.is_some()
                 && moved.is_none()
-                && (entity.position.rx, entity.position.ry) != start
+                && (entity.position.rx(), entity.position.ry()) != start
             {
                 moved = Some(frame);
             }
             match sim
                 .entities()
                 .get(gi)
-                .filter(|gi| !gi.dying && gi.health.current() > 0)
+                .filter(|gi| !gi.death.is_dying() && gi.health.current() > 0)
             {
-                Some(gi) => gi_cell = Some((gi.position.rx, gi.position.ry)),
+                Some(gi) => gi_cell = Some((gi.position.rx(), gi.position.ry())),
                 None => {
                     died = Some(frame);
                     // The per-cell crush plays the victim's `CrushSound=` at
@@ -2286,7 +2293,7 @@ mod retail_construction_tests {
         let rhino = spawned[0];
         let start = {
             let entity = sim.entities().get(rhino).expect("the Rhino");
-            (entity.position.rx, entity.position.ry)
+            (entity.position.rx(), entity.position.ry())
         };
         let america = house_of(sim, "Americans");
         let gi = spawn_on_free_cells(
@@ -2313,15 +2320,15 @@ mod retail_construction_tests {
             let output = tick_with_due_commands(&mut scenario);
             let sim = scenario.sim();
             let entity = sim.entities().get(rhino).expect("the Rhino lives");
-            if charged.is_none() && entity.navigation.nav_com == Some(NavTargetRef::object(gi)) {
+            if charged.is_none() && entity.navigation.nav_com() == Some(NavTargetRef::object(gi)) {
                 charged = Some(frame);
             }
             match sim
                 .entities()
                 .get(gi)
-                .filter(|gi| !gi.dying && gi.health.current() > 0)
+                .filter(|gi| !gi.death.is_dying() && gi.health.current() > 0)
             {
-                Some(gi) => gi_cell = Some((gi.position.rx, gi.position.ry)),
+                Some(gi) => gi_cell = Some((gi.position.rx(), gi.position.ry())),
                 None => {
                     died = Some(frame);
                     crushed = output.sound_events.iter().any(|event| {
@@ -2365,7 +2372,7 @@ mod retail_construction_tests {
                 .values()
                 .find(|entity| {
                     entity.owner() == soviet
-                        && !entity.dying
+                        && !entity.death.is_dying()
                         && !entity.lifecycle.in_limbo()
                         && sim.interner.resolve(entity.type_ref()) == "NAPOWR"
                 })
@@ -2383,7 +2390,10 @@ mod retail_construction_tests {
         let (sim, rules) = (&mut runtime.simulation, &runtime.resources.rules);
         let at = {
             let entity = sim.entities().get(reactor).expect("the reactor stands");
-            (i32::from(entity.position.rx), i32::from(entity.position.ry))
+            (
+                i32::from(entity.position.rx()),
+                i32::from(entity.position.ry()),
+            )
         };
         let america = house_of(sim, "Americans");
         let cells = cells_nearest(at)
@@ -2461,7 +2471,10 @@ mod retail_construction_tests {
         let america = house_of(sim, "Americans");
         let at = |sim: &Simulation, id| {
             let entity = sim.entities().get(id).expect("spawned");
-            (i32::from(entity.position.rx), i32::from(entity.position.ry))
+            (
+                i32::from(entity.position.rx()),
+                i32::from(entity.position.ry()),
+            )
         };
         let mcv = sim
             .substrate
@@ -2587,7 +2600,10 @@ mod retail_construction_tests {
         let america = house_of(sim, "Americans");
         let at = |sim: &Simulation, id| {
             let entity = sim.entities().get(id).expect("spawned");
-            (i32::from(entity.position.rx), i32::from(entity.position.ry))
+            (
+                i32::from(entity.position.rx()),
+                i32::from(entity.position.ry()),
+            )
         };
         let mcv_of = |sim: &Simulation, house| {
             sim.substrate
@@ -2641,14 +2657,14 @@ mod retail_construction_tests {
                 && let Some(pending) = sim
                     .entities()
                     .get(reactor)
-                    .and_then(|reactor| reactor.pending_c4_detonation)
+                    .and_then(|reactor| reactor.pending_c4_detonation.pending())
             {
                 planted = Some((frame, pending));
             }
             if sim
                 .entities()
                 .get(reactor)
-                .is_none_or(|reactor| reactor.dying)
+                .is_none_or(|reactor| reactor.death.is_dying())
             {
                 died = Some(frame);
                 break;
@@ -2657,15 +2673,15 @@ mod retail_construction_tests {
         eprintln!("TANY: Sabotage at {sabotage:?}, planted {planted:?}, reactor died {died:?}");
         assert!(sabotage.is_some(), "Tanya never took Sabotage");
         let (plant_frame, pending) = planted.expect("Tanya planted no charge");
-        assert_eq!(pending.source_entity_id, Some(tanya));
-        assert_eq!(pending.timer.duration(), 26);
+        assert_eq!(pending.source_entity_id(), Some(tanya));
+        assert_eq!(pending.timer().duration(), 26);
         assert_eq!(died, Some(plant_frame + 26));
         assert!(
             scenario
                 .sim()
                 .entities()
                 .get(tanya)
-                .is_some_and(|tanya| !tanya.dying),
+                .is_some_and(|tanya| !tanya.death.is_dying()),
             "Tanya died"
         );
     }
@@ -2693,14 +2709,14 @@ mod retail_construction_tests {
                 .values()
                 .find(|entity| {
                     entity.owner() == soviet
-                        && !entity.dying
+                        && !entity.death.is_dying()
                         && sim.interner.resolve(entity.type_ref()) == "HARV"
                         && entity.radio_contacts.is_empty()
                         && entity.mission.current() == harvest
                         && entity
                             .miner
                             .as_ref()
-                            .is_some_and(|miner| miner.cargo.len() >= 5)
+                            .is_some_and(|miner| miner.cargo().len() >= 5)
                 })
                 .map(|entity| entity.stable_id());
             if miner.is_some() {
@@ -2714,7 +2730,10 @@ mod retail_construction_tests {
         let at = {
             let entity = sim.substrate.entities.get_mut(miner).unwrap();
             entity.health.set_for_test(strength / 2);
-            (i32::from(entity.position.rx), i32::from(entity.position.ry))
+            (
+                i32::from(entity.position.rx()),
+                i32::from(entity.position.ry()),
+            )
         };
         let america = house_of(sim, "Americans");
         let cells = cells_nearest(at)
@@ -2747,7 +2766,7 @@ mod retail_construction_tests {
             {
                 entered = Some(frame);
             }
-            if entered.is_some() && entity.dock_entered_with.is_some() {
+            if entered.is_some() && entity.tether.partner().is_some() {
                 docked = Some(frame);
                 break;
             }
@@ -2781,7 +2800,7 @@ mod retail_construction_tests {
             sim.entities()
                 .values()
                 .filter(|entity| {
-                    !entity.dying
+                    !entity.death.is_dying()
                         && (limbo || !entity.lifecycle.in_limbo())
                         && entity.owner() == soviet
                         && sim.interner.resolve(entity.type_ref()) == name

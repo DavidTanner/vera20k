@@ -128,7 +128,7 @@ fn whole_unit_fixture(
         SuppliedFootFixture, install_recorded_cell_coordinates, oracle, signed, xyz,
     };
     use crate::sim::combat::Health;
-    use crate::sim::game_entity::InfantryRuntime;
+    use crate::sim::infantry::InfantryRuntime;
     use crate::sim::mission::state::MissionTestFixture;
     use crate::sim::mission::{MissionDispatchTimer, MissionId, MissionTimer};
     use crate::sim::movement::locomotor::MovementLayer;
@@ -250,15 +250,15 @@ fn whole_unit_fixture(
             category == EntityCategory::Unit,
             frame,
         );
-        entity.position.sub_x = SimFixed::from_num(x % 256);
-        entity.position.sub_y = SimFixed::from_num(y % 256);
-        entity.position.exact_z_leptons = Some(z);
+        entity.position.set_sub_x(SimFixed::from_num(x % 256));
+        entity.position.set_sub_y(SimFixed::from_num(y % 256));
+        entity.position.set_exact_z_leptons(Some(z));
         entity.lifecycle.set_in_limbo_for_test(before["limbo"] != 0);
         entity
             .lifecycle
             .set_object_alive_for_test(before["alive"] != 0);
-        entity.lifecycle.cell_marked = before["limbo"] == 0;
-        entity.in_playfield = before["limbo"] == 0;
+        entity.lifecycle.set_cell_marked(before["limbo"] == 0);
+        entity.set_in_playfield(before["limbo"] == 0);
         entity.locomotor = Some(LocomotorState::from_object_type(object, frame));
         entity.set_body_facing_rot(object.turret_rot);
         if role == "mirage" {
@@ -277,11 +277,13 @@ fn whole_unit_fixture(
                     signed(&foot["dispatch"][1]),
                 ),
             });
-            entity.passive_scan_timer = MissionTimer::armed(
-                signed(&foot["targeting_timer"][0]) as u32,
-                signed(&foot["targeting_timer"][2]) as u32,
-            );
-            entity.on_bridge = foot["on_bridge"] != 0;
+            entity
+                .passive_scan
+                .set_passive_scan_timer_for_test(MissionTimer::armed(
+                    signed(&foot["targeting_timer"][0]) as u32,
+                    signed(&foot["targeting_timer"][2]) as u32,
+                ));
+            entity.set_on_bridge(foot["on_bridge"] != 0);
             entity.body_facing.snap(
                 signed(&foot["body_facing_words"][0]) as u16,
                 signed(&foot["body_facing_words"][2]) as u32,
@@ -355,7 +357,7 @@ fn whole_unit_fixture(
             "{role}: Limbo"
         );
         assert_eq!(
-            entity.in_logic_vector,
+            entity.in_logic_vector.is_member(),
             before["logic_registered"] != 0,
             "{role}: Logic registration"
         );

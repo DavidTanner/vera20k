@@ -57,8 +57,14 @@ fn air_motion_matches_original_queries_independently_of_orders_and_restore() {
         let expected = row["moving"].as_bool().unwrap();
         for has_order in [false, true] {
             for powered in [false, true] {
-                entity.navigation.nav_com = has_order.then(|| NavTargetRef::cell(15, 15));
-                entity.locomotor.as_mut().unwrap().powered = powered;
+                entity
+                    .navigation
+                    .set_nav_com(has_order.then(|| NavTargetRef::cell(15, 15)));
+                entity
+                    .locomotor
+                    .as_mut()
+                    .unwrap()
+                    .set_powered_for_test(powered);
                 assert_eq!(
                     is_moving(&entity),
                     Some(expected),

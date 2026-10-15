@@ -205,7 +205,8 @@ pub(super) fn start_active_production(
     // A factory-held object is still in limbo and has no cell authority. Zero
     // is only inert storage here; the result-bearing Unlimbo later installs the
     // selected delivery/placement coordinate on this same stable identity.
-    let stable_id = sim.construct_object_limbo_at_height(&type_name, &owner, 0, 0, 0, 0, rules)?;
+    let stable_id =
+        sim.construct_object_limbo_at_height(&type_name, &owner, 0, 0, 0, 0, rules, effects)?;
     let linked = sim
         .production
         .factories
@@ -960,13 +961,16 @@ pub(crate) fn validate_restored_factory_state(
                 "constructed identity has the wrong concrete category",
             ));
         }
-        if entity.spawn_owner_id.is_some() || entity.slave.owner().is_some() {
+        if entity.spawn_owner_id.owner().is_some() || entity.slave.owner().is_some() {
             return Err(fail(owner, "factory root is itself a manager child"));
         }
         // Factory admission validates retained identity and membership, without
         // inferring health or death flags. Terminal-state admission separately
         // validates the object's lifecycle handoff.
-        if !entity.lifecycle.in_limbo() || entity.lifecycle.cell_marked || entity.in_logic_vector {
+        if !entity.lifecycle.in_limbo()
+            || entity.lifecycle.cell_marked()
+            || entity.in_logic_vector.is_member()
+        {
             return Err(fail(
                 owner,
                 "factory object is already admitted to the world",
@@ -994,9 +998,9 @@ pub(crate) fn validate_restored_factory_state(
             .expect("validated factory root");
         let spawn_alias = entity.spawn_manager.as_ref().is_some_and(|manager| {
             manager
-                .slots
+                .slots()
                 .iter()
-                .filter_map(|slot| slot.spawn)
+                .filter_map(|slot| slot.spawn())
                 .any(|id| roots.contains(&id))
         });
         let slave_alias = entity

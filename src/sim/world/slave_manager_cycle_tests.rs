@@ -59,7 +59,7 @@ fn node_states(s: &SlaveScene) -> Vec<SlaveState> {
         .unwrap()
         .nodes()
         .iter()
-        .map(|node| node.state)
+        .map(|node| node.state())
         .collect()
 }
 
@@ -106,7 +106,7 @@ fn slave_refinery_deploys_digs_carries_home_pays_and_goes_out_again() {
         let entity = s.scene.sim.substrate.entities.get(slave).unwrap();
         assert!(!entity.lifecycle.in_limbo());
         assert!(
-            entity.navigation.nav_com.is_some(),
+            entity.navigation.nav_com().is_some(),
             "scattered off the drop cell"
         );
     }
@@ -147,6 +147,58 @@ fn slave_refinery_deploys_digs_carries_home_pays_and_goes_out_again() {
         "back out after the reload (paid at {paid_at}): {:?}",
         node_states(&s)
     );
+}
+
+/// DeploySlaves raises no `A8E7AC` around a slave's Unlimbo (`0x006B0647`),
+/// so Object's class `+0x1AC` query (`0x005F4F1B`) runs. An enemy standing on
+/// the drop cell refuses each unarmed slave, and every node waits inside for
+/// the next visit.
+#[test]
+fn an_enemy_on_the_drop_cell_keeps_the_slaves_inside() {
+    use crate::sim::house_state::HouseState;
+
+    let mut s = refinery_with_slaves(2);
+    let enemy_house = s.scene.sim.interner.intern("Russians");
+    s.scene.sim.houses.insert(
+        enemy_house,
+        HouseState::new(enemy_house, 0, None, true, 0, 10),
+    );
+    s.scene.sim.session.house_order.push(enemy_house);
+    let drop = s
+        .scene
+        .sim
+        .slave_drop_cell(s.master, &s.scene.rules)
+        .expect("the refinery's drop cell");
+    // The drop cell lies in the refinery's foundation; the enemy stands there
+    // under a placement scope, as a map's object would.
+    let rules = &s.scene.rules;
+    let enemy = s
+        .scene
+        .sim
+        .with_object_placement_scope(|sim| {
+            sim.spawn_object("SLAV", "Russians", drop.0, drop.1, 0, rules)
+        })
+        .expect("enemy slave");
+    assert!(
+        !s.scene
+            .sim
+            .substrate
+            .entities
+            .get(enemy)
+            .unwrap()
+            .lifecycle
+            .in_limbo()
+    );
+
+    for _ in 0..21 {
+        frame(&mut s);
+    }
+    assert_eq!(manager_state(&s), ManagerState::Working);
+    assert_eq!(node_states(&s), vec![SlaveState::Ready; 2], "both refused");
+    for slave in s.slaves.values() {
+        let entity = s.scene.sim.substrate.entities.get(*slave).unwrap();
+        assert!(entity.lifecycle.in_limbo(), "slave {slave} stayed inside");
+    }
 }
 
 /// A refinery still building up keeps its slaves inside: VERA's
@@ -271,10 +323,11 @@ fn a_slave_miner_sets_out_deploys_at_a_field_and_lets_its_slaves_out() {
     );
     let at = sim.substrate.entities.get(refinery).unwrap();
     assert!(
-        (i32::from(at.position.rx) - 22).abs() <= 3 && (i32::from(at.position.ry) - 15).abs() <= 3,
+        (i32::from(at.position.rx()) - 22).abs() <= 3
+            && (i32::from(at.position.ry()) - 15).abs() <= 3,
         "deployed beside the field: ({}, {})",
-        at.position.rx,
-        at.position.ry
+        at.position.rx(),
+        at.position.ry()
     );
     for &slave in &slaves {
         let entity = sim.substrate.entities.get(slave).unwrap();
@@ -343,7 +396,7 @@ fn a_harvest_order_sends_the_slave_miner_to_deploy_beside_the_field() {
         .get(s.master)
         .unwrap()
         .navigation
-        .nav_com;
+        .nav_com();
     assert!(
         nav.is_some() && nav != Some(NavTargetRef::cell(24, 20)),
         "driving to a deploy cell, not onto the clicked ore: {nav:?}"
@@ -359,10 +412,11 @@ fn a_harvest_order_sends_the_slave_miner_to_deploy_beside_the_field() {
     let refinery = refinery.expect("the ordered Slave Miner deploys");
     let at = s.scene.sim.substrate.entities.get(refinery).unwrap();
     assert!(
-        (i32::from(at.position.rx) - 24).abs() <= 3 && (i32::from(at.position.ry) - 20).abs() <= 3,
+        (i32::from(at.position.rx()) - 24).abs() <= 3
+            && (i32::from(at.position.ry()) - 20).abs() <= 3,
         "deployed beside the clicked field: ({}, {})",
-        at.position.rx,
-        at.position.ry
+        at.position.rx(),
+        at.position.ry()
     );
 }
 
@@ -525,7 +579,7 @@ fn a_destroyed_refinery_frees_its_slaves_to_the_killer() {
     assert!(sim.sound_events.iter().any(|event| matches!(
         event,
         SimSoundEvent::VocAt { sound_id, rx, ry, .. }
-            if sound_id == "SlavesFreed" && (*rx, *ry) == (freed.position.rx, freed.position.ry)
+            if sound_id == "SlavesFreed" && (*rx, *ry) == (freed.position.rx(), freed.position.ry())
     )));
 
     // The Cheer cannot be interrupted: a Move order given during it walks the
@@ -624,15 +678,15 @@ fn a_dead_slave_is_regrown_after_the_regen_rate_and_goes_out_again() {
             .nodes()[0]
     };
     let lost = node(&s);
-    assert_eq!((lost.slave, lost.state), (None, SlaveState::Dead));
+    assert_eq!((lost.slave(), lost.state()), (None, SlaveState::Dead));
     assert_eq!(
-        (lost.timer.start_frame(), lost.timer.duration()),
+        (lost.timer().start_frame(), lost.timer().duration()),
         (died_at, 500)
     );
     let mut regrown = None;
     for _ in 0..560 {
         frame(&mut s);
-        if let Some(id) = node(&s).slave {
+        if let Some(id) = node(&s).slave() {
             regrown.get_or_insert(id);
         }
     }
@@ -650,9 +704,9 @@ fn a_dead_slave_is_regrown_after_the_regen_rate_and_goes_out_again() {
         Some(s.master)
     );
     assert!(
-        matches!(node(&s).state, SlaveState::Scanning | SlaveState::Moving),
+        matches!(node(&s).state(), SlaveState::Scanning | SlaveState::Moving),
         "let out again: {:?}",
-        node(&s).state
+        node(&s).state()
     );
 }
 
@@ -879,7 +933,7 @@ fn a_refinery_whose_ore_runs_out_packs_up_and_moves_to_the_next_field() {
                 // `BuildingClass::Mission_Selling 0x0044A091..0x0044A0AE`: the
                 // unit is sent to the refinery's archived cell, its own.
                 let unit = sim.substrate.entities.get(holder).unwrap();
-                assert_eq!(unit.navigation.nav_com, Some(NavTargetRef::cell(12, 12)));
+                assert_eq!(unit.navigation.nav_com(), Some(NavTargetRef::cell(12, 12)));
                 assert_eq!(unit.mission.queued().known(), Some(MissionType::Move));
                 assert_eq!(manager_state_of(&s, holder), ManagerState::PackingUp);
                 let manager = unit.slave_manager.as_ref().unwrap();
@@ -919,10 +973,11 @@ fn a_refinery_whose_ore_runs_out_packs_up_and_moves_to_the_next_field() {
     let at = sim.substrate.entities.get(relocated).unwrap();
     assert_eq!(sim.interner.resolve(at.type_ref()), "YAREFN");
     assert!(
-        (i32::from(at.position.rx) - 24).abs() <= 3 && (i32::from(at.position.ry) - 13).abs() <= 3,
+        (i32::from(at.position.rx()) - 24).abs() <= 3
+            && (i32::from(at.position.ry()) - 13).abs() <= 3,
         "redeployed beside the field: ({}, {})",
-        at.position.rx,
-        at.position.ry
+        at.position.rx(),
+        at.position.ry()
     );
     for &slave in &slaves {
         assert_eq!(
@@ -1008,8 +1063,8 @@ fn an_attacker_of_a_packing_refinery_takes_the_slave_miner() {
     attacker
         .attack_target
         .set_for_test(Some(TargetKind::Entity(refinery)));
-    attacker.passive_scan_timer.arm(frame, 100);
-    let scan_timer = attacker.passive_scan_timer;
+    attacker.passive_scan.timer_mut_for_test().arm(frame, 100);
+    let scan_timer = attacker.passive_scan.timer();
     sim.substrate
         .entities
         .get_mut(refinery)
@@ -1063,6 +1118,6 @@ fn an_attacker_of_a_packing_refinery_takes_the_slave_miner() {
     let delay = expected.next_range_u32_inclusive(4, 8);
     let mut rearmed = scan_timer;
     rearmed.arm(frame, delay);
-    assert_eq!(attacker.passive_scan_timer, rearmed);
+    assert_eq!(attacker.passive_scan.timer(), rearmed);
     assert_eq!(sim.scenario_rng.logical_state(), expected.logical_state());
 }

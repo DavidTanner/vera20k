@@ -25,21 +25,24 @@ fn fixture(input: &Value) -> (Simulation, RuleSet) {
     // The oracle's target mark is Object+0x74, which IsHighFlying reads.
     let marked = input["target_marked"].as_bool().unwrap_or(true);
     let target = sim.substrate.entities.get_mut(2).unwrap();
-    target.lifecycle.cell_marked = marked;
+    target.lifecycle.set_cell_marked(marked);
     let entity = sim.substrate.entities.get_mut(1).unwrap();
     let state = input["state"].as_u64().unwrap_or(3) as u8;
     entity.mission.set_handler_state(u32::from(state));
     entity.mission_leaf =
         crate::sim::mission::MissionLeafState::aircraft_raw_for_test(1, state, true);
-    entity.navigation.nav_com = input["nav"].as_array().map(|xy| {
-        NavTargetRef::cell(
-            xy[0].as_u64().unwrap() as u16,
-            xy[1].as_u64().unwrap() as u16,
-        )
-    });
+    entity
+        .navigation
+        .set_nav_com(input["nav"].as_array().map(|xy| {
+            NavTargetRef::cell(
+                xy[0].as_u64().unwrap() as u16,
+                xy[1].as_u64().unwrap() as u16,
+            )
+        }));
     let loco = entity.locomotor.as_mut().unwrap();
-    loco.fly_runtime_mut().unwrap().current_speed =
-        SimFixed::from_num(input["speed"].as_f64().unwrap_or(1.0));
+    loco.fly_runtime_mut()
+        .unwrap()
+        .set_current_speed(SimFixed::from_num(input["speed"].as_f64().unwrap_or(1.0)));
     let mut fly = serde_json::to_value(loco.fly_runtime().unwrap()).unwrap();
     fly["moving"] = json!(input["moving"].as_bool().unwrap_or(true));
     *loco.fly_runtime_mut().unwrap() = serde_json::from_value(fly).unwrap();
@@ -158,7 +161,7 @@ fn aircraft_initial_attack_reaches_live_search_on_the_next_due_visit() {
     let entity = sim.substrate.entities.get(1).unwrap();
     assert_eq!(crate::sim::aircraft::attack_state(entity), Some(1));
     assert_eq!(entity.mission.dispatch_timer().delay(), 1);
-    assert!(entity.navigation.nav_com.is_none());
+    assert!(entity.navigation.nav_com().is_none());
     assert_eq!(sim.scenario_rng.logical_state(), rng);
     let saved = GameSnapshot::save(&sim, 0, 0, "initial attack before search", 0);
     let mut restored = GameSnapshot::load(&saved).unwrap().sim;
@@ -177,7 +180,7 @@ fn aircraft_initial_attack_reaches_live_search_on_the_next_due_visit() {
             i64::from(entity.mission.dispatch_timer().delay()),
             row["delay"].as_i64().unwrap()
         );
-        let Some(NavTargetRef::Cell { rx, ry }) = entity.navigation.nav_com else {
+        let Some(NavTargetRef::Cell { rx, ry }) = entity.navigation.nav_com() else {
             panic!("search must assign its result");
         };
         assert_eq!(json!([rx, ry]), row["nav"]);

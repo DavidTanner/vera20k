@@ -62,3 +62,97 @@ mod rocking_tests;
 pub use impulse::apply_rocker_impulse;
 pub use rocking_system::tick;
 pub use self_destruct::{NoopSelfDestruct, SelfDestructHook, check_and_fire};
+
+use crate::util::fixed_math::SimFixed;
+
+/// Body rocking state for voxel-bodied units.
+///
+/// Tracks spring-damped roll/pitch angles driven by weapon impacts and EMP
+/// wobble. Drive/Ship slope interpolation is locomotor-owned state and is
+/// intentionally independent from this optional component.
+///
+/// Optional component on `GameEntity` — present on vehicles, ships, and
+/// voxel-bodied buildings; `None` for infantry and SHP-bodied buildings, and
+/// for aircraft until `FootClass::Crash` sets their spin rates.
+#[derive(Debug, Clone, Copy, Default, serde::Serialize, serde::Deserialize)]
+pub struct RockingState {
+    /// Roll angle, rad. Positive sign matches AngleRotatedSideways convention.
+    angle_sideways: SimFixed,
+    /// Pitch angle, rad. Positive sign matches AngleRotatedForwards convention.
+    angle_forwards: SimFixed,
+    /// Roll angular velocity, rad/tick.
+    vel_sideways: SimFixed,
+    /// Pitch angular velocity, rad/tick.
+    vel_forwards: SimFixed,
+    /// If true, integrate without damping (EMP wobble, naval continuous rocking).
+    is_ship_rocking: bool,
+}
+
+impl RockingState {
+    /// Tilt-renderer deadband — both angles below this snap to zero and the unit
+    /// renders via the static atlas path.
+    pub const DEADBAND: SimFixed = SimFixed::lit("0.00002");
+
+    /// Roll angle, rad.
+    pub fn angle_sideways(&self) -> SimFixed {
+        self.angle_sideways
+    }
+
+    /// Pitch angle, rad.
+    pub fn angle_forwards(&self) -> SimFixed {
+        self.angle_forwards
+    }
+
+    /// Roll angular velocity, rad/tick.
+    pub fn vel_sideways(&self) -> SimFixed {
+        self.vel_sideways
+    }
+
+    /// Pitch angular velocity, rad/tick.
+    pub fn vel_forwards(&self) -> SimFixed {
+        self.vel_forwards
+    }
+
+    /// Integrates without damping.
+    pub fn is_ship_rocking(&self) -> bool {
+        self.is_ship_rocking
+    }
+
+    /// `FootClass::Crash @ 0x004DEBB0`'s spin rates on a crashing object,
+    /// installing the state when it has none.
+    pub(crate) fn spin_for_crash(
+        rocking: &mut Option<Self>,
+        vel_sideways: SimFixed,
+        vel_forwards: SimFixed,
+    ) {
+        let rocking = rocking.get_or_insert_with(Self::default);
+        rocking.vel_sideways = vel_sideways;
+        rocking.vel_forwards = vel_forwards;
+    }
+
+    /// Install a fixture's sideways angle.
+    #[cfg(test)]
+    pub(crate) fn set_angle_sideways_for_test(&mut self, angle: SimFixed) {
+        self.angle_sideways = angle;
+    }
+
+    /// Install a fixture's forwards angle.
+    #[cfg(test)]
+    pub(crate) fn set_angle_forwards_for_test(&mut self, angle: SimFixed) {
+        self.angle_forwards = angle;
+    }
+
+    /// Install a fixture's sideways rate.
+    #[cfg(test)]
+    pub(crate) fn set_vel_sideways_for_test(&mut self, vel: SimFixed) {
+        self.vel_sideways = vel;
+    }
+
+    /// Returns true when the body-rocking transform is neutral.
+    #[cfg(test)]
+    pub fn is_neutral(&self) -> bool {
+        !self.is_ship_rocking
+            && self.angle_sideways.abs() <= Self::DEADBAND
+            && self.angle_forwards.abs() <= Self::DEADBAND
+    }
+}

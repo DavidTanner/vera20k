@@ -33,7 +33,6 @@ use crate::app::frontend::launch::TacticalCaptureRequest;
 use crate::app::match_bootstrap::{MatchSeedClock, MatchSeedSource, StartupSessionClassification};
 use crate::app::presentation::render::GameRenderOutput;
 use crate::app::types::{CursorId, SIM_TICK_MS};
-use crate::render::radar::anim::RadarAnimPhase;
 use crate::render::sidebar_chrome::SidebarTheme;
 use crate::sim::command::Command;
 use crate::sim::house_state::HouseDifficulty;
@@ -814,10 +813,10 @@ impl TacticalCaptureSession {
                 stable_id: entity.stable_id(),
                 owner: sim.interner.resolve(entity.owner()).to_owned(),
                 type_id: sim.interner.resolve(entity.type_ref()).to_owned(),
-                cell: (entity.position.rx, entity.position.ry),
+                cell: (entity.position.rx(), entity.position.ry()),
                 facing: entity.body_facing_byte(sim.session.binary_frame),
                 active: entity.is_active(),
-                dying: entity.dying,
+                dying: entity.death.is_dying(),
                 building_up: entity.building_up(),
             })
             .collect();
@@ -893,11 +892,11 @@ impl TacticalCaptureSession {
             .match_presentation
             .radar_anim
             .as_ref()
-            .is_some_and(|radar| radar.phase() == RadarAnimPhase::Online);
+            .is_some_and(|radar| radar.is_minimap_visible());
         let match_ended = sim
             .houses
             .get(&owner_id)
-            .is_some_and(|house| house.is_defeated || house.has_won || house.has_lost);
+            .is_some_and(|house| house.is_defeated || house.has_won() || house.has_lost());
         let wall_elapsed_ms = self
             .post_l0_started_at
             .unwrap_or(self.started_at)
@@ -999,7 +998,7 @@ impl TacticalCaptureSession {
             .match_presentation
             .radar_anim
             .as_ref()
-            .is_some_and(|radar| radar.phase() == RadarAnimPhase::Online);
+            .is_some_and(|radar| radar.is_minimap_visible());
         let radar_source = state
             .match_state
             .match_presentation
@@ -1170,7 +1169,7 @@ impl TacticalCaptureSession {
                 return Ok(false);
             };
             if !entity.is_active()
-                || entity.dying
+                || entity.death.is_dying()
                 || entity.building_up()
                 || sim.interner.resolve(entity.owner())
                     != self.request.profile()?.launch.player_name
@@ -1178,7 +1177,7 @@ impl TacticalCaptureSession {
                     .interner
                     .resolve(entity.type_ref())
                     .eq_ignore_ascii_case(&binding.type_id)
-                || (entity.position.rx, entity.position.ry) != binding.cell
+                || (entity.position.rx(), entity.position.ry()) != binding.cell
             {
                 return Ok(false);
             }

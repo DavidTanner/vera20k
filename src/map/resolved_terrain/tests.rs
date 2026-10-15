@@ -1972,12 +1972,6 @@ fn gsi_04_02_production_build_prefills_before_selector_and_skips_outside_slots()
         );
         let path_grid = crate::sim::pathfinding::PathGrid::from_resolved_terrain(&grid);
         assert!(!path_grid.is_walkable(0, 0));
-        let terrain_cost =
-            crate::sim::pathfinding::terrain_cost::TerrainCostGrid::from_resolved_terrain(
-                &grid,
-                crate::rules::locomotor_type::SpeedType::Track,
-            );
-        assert_eq!(terrain_cost.cost_at(0, 0), 0);
         assert_eq!(selector.map_fill_scenario_advance_count(), 10);
         assert!(selector.generated_table());
         assert!(selector.raw_draw_count() > 0);

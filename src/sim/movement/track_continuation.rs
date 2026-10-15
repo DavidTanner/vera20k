@@ -51,7 +51,7 @@ impl Simulation {
             .locomotor
             .as_ref()
             .and_then(|loco| loco.track_progress(family))
-            .map(|p| p.turn_index);
+            .map(|p| p.turn_index());
         if selector.is_some_and(|selector| selector != -1) {
             return Ok(false);
         }
@@ -78,7 +78,7 @@ impl Simulation {
             && entity
                 .miner
                 .as_ref()
-                .is_some_and(|miner| miner.unload_active)
+                .is_some_and(|miner| miner.unload_active())
         {
             return Ok(false);
         }
@@ -101,7 +101,7 @@ impl Simulation {
         let Some(entity) = entities.get(id) else {
             return Ok(());
         };
-        let target = entity.navigation.nav_com.filter(|target| {
+        let target = entity.navigation.nav_com().filter(|target| {
             entity.category() == EntityCategory::Unit
                 && match *target {
                     NavTargetRef::Cell { .. } => false,

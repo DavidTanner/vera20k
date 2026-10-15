@@ -54,7 +54,7 @@ fn run_cycle(sim: &mut Simulation, rules: &RuleSet, orca: u64, airfield: u64) ->
         let full = entity
             .aircraft_ammo
             .as_ref()
-            .is_some_and(|ammo| ammo.current == ammo.max);
+            .is_some_and(|ammo| ammo.current() == ammo.max());
         seen.reloaded |= seen.landed_linked && full;
         if seen.reloaded
             && mission(sim, orca) == Some(MissionType::Guard)
@@ -94,7 +94,11 @@ fn spent_orca(rules: &RuleSet, human: bool) -> (Simulation, u64, u64) {
     };
     assert_eq!(mission(&sim, orca), Some(pick));
     let entity = sim.substrate.entities.get_mut(orca).unwrap();
-    entity.aircraft_ammo.as_mut().unwrap().current = 0;
+    entity
+        .aircraft_ammo
+        .as_mut()
+        .unwrap()
+        .set_current_for_test(0);
     (sim, orca, airfield)
 }
 
@@ -180,7 +184,7 @@ fn a_guarding_aircraft_scans_passively_unless_its_type_may_not_and_takes_nothing
                 entity.attack_target.target().is_none(),
                 "the scan takes nothing"
             );
-            scans.insert(entity.last_target_scan_frame);
+            scans.insert(entity.passive_scan.last_scan_frame());
         }
         // Each scan re-arms the timer for the Guard delay plus RandomRanged(0, 2).
         assert_eq!(
@@ -295,7 +299,7 @@ fn retail_harriers_strike_return_reload_and_guard_at_their_airfield() {
                 .get(harrier)
                 .expect("Harrier survives");
             let ammo = entity.aircraft_ammo.as_ref().expect("Harrier ammo");
-            fired[n] |= ammo.current < ammo.max;
+            fired[n] |= ammo.current() < ammo.max();
             let linked = entity.radio_contacts.contains(airfield)
                 && sim
                     .substrate
@@ -307,7 +311,7 @@ fn retail_harriers_strike_return_reload_and_guard_at_their_airfield() {
             seen.entered |= fired[n] && mission(sim, harrier) == Some(MissionType::Enter);
             seen.linked |= linked;
             seen.landed_linked |= fired[n] && linked && height == 0;
-            seen.reloaded |= seen.landed_linked && ammo.current == ammo.max;
+            seen.reloaded |= seen.landed_linked && ammo.current() == ammo.max();
             if seen.reloaded
                 && mission(sim, harrier) == Some(MissionType::Guard)
                 && height == 0

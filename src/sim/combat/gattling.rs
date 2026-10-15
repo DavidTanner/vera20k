@@ -278,6 +278,40 @@ pub(crate) fn unit_fire_tail(outcome: UnitFireOutcome) -> StageCall {
     }
 }
 
+/// `TechnoClass+0x148`, the voxel turret's animation counter. The
+/// constructor zeroes it (`0x006F2BE2`); the unit firing update
+/// (`0x007370D5`, `0x007370F2`, `0x0073713A`, [`unit_turret_anim_advances`])
+/// and the building's attack (`0x0044B23C`, `0x0044B713`) and Gattling block
+/// (`0x0043FE88`, `0x0043FF8B`) advance it. Only the draws read it
+/// (`UnitClass::DrawVoxelBody @ 0x0073B500`: while the body's HVA frame is 0
+/// the turret's frame is this modulo its frame count; the building's voxel
+/// draw `0x0043DA80`, emitted by `emit_building_turret_vxl`).
+///
+/// Not folded into `world_hash`: its one reader is presentation.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(transparent)]
+pub(crate) struct TurretAnimCounter {
+    frame: i32,
+}
+
+impl TurretAnimCounter {
+    /// The counter.
+    pub(crate) const fn frame(self) -> i32 {
+        self.frame
+    }
+
+    /// `+0x148 += 1`, wrapping.
+    pub(crate) fn advance(&mut self) {
+        self.frame = self.frame.wrapping_add(1);
+    }
+
+    /// Install a fixture's counter.
+    #[cfg(test)]
+    pub(crate) fn set_for_test(&mut self, frame: i32) {
+        self.frame = frame;
+    }
+}
+
 /// Whether the unit update advances `+0x148`, the turret animation counter
 /// (`0x007370D5`, `0x007370F2`, `0x0073713A`): a gattling type while its
 /// value is positive after the tail, any other type on OK and REARM.
@@ -358,7 +392,7 @@ impl crate::sim::world::Simulation {
         if let Some(entity) = self.substrate.entities.get_mut(id)
             && unit_turret_anim_advances(is_gattling, outcome, entity.gattling.value())
         {
-            entity.turret_anim_frame = entity.turret_anim_frame.wrapping_add(1);
+            entity.turret_anim_frame.advance();
         }
     }
 

@@ -167,9 +167,15 @@ fn compare_original_infantry_target_rows(consumer: TargetConsumer) {
         actor
             .mission_leaf
             .set_foot_firing_sequence(before["firing_latch"].as_u64().unwrap() as u8);
-        actor.infantry.as_mut().unwrap().is_prone = before["prone"].as_u64().unwrap() != 0;
+        actor
+            .infantry
+            .as_mut()
+            .unwrap()
+            .set_is_prone_for_test(before["prone"].as_u64().unwrap() != 0);
         actor.set_falling_down_for_test(input["falling"].as_u64().unwrap() != 0);
-        actor.passively_acquired_target = before["passive"].as_u64().unwrap() != 0;
+        actor
+            .passive_scan
+            .set_passively_acquired_target_for_test(before["passive"].as_u64().unwrap() != 0);
         actor
             .attack_target
             .set_for_test(
@@ -178,8 +184,11 @@ fn compare_original_infantry_target_rows(consumer: TargetConsumer) {
                     _ => unreachable!(),
                 }),
             );
-        actor.navigation.path_replay.directions =
-            vec![before["path_field"].as_i64().unwrap() as u8, 2, 3];
+        actor.navigation.path_replay.set_directions_for_test(vec![
+            before["path_field"].as_i64().unwrap() as u8,
+            2,
+            3,
+        ]);
         // Original51B1F0 observes the single signed +F8 and retained stage
         // timer/rate. +104 is copied stack data; FC/increment are unobserved
         // by this corpus and do not participate in the class setter.
@@ -298,7 +307,7 @@ fn compare_original_infantry_target_rows(consumer: TargetConsumer) {
                         0,
                         true,
                     );
-                    transport.passenger_role = PassengerRole::Transport { cargo };
+                    transport.passenger_role = PassengerRole::transport(cargo);
                     sim.substrate.entities.insert(transport);
                     sim.open_topped_passengers_take_target(
                         4,
@@ -350,12 +359,12 @@ fn compare_original_infantry_target_rows(consumer: TargetConsumer) {
             "{name}",
         );
         assert_eq!(
-            actor.passively_acquired_target,
+            actor.passive_scan.acquired(),
             after["passive"].as_u64().unwrap() != 0,
             "{name}",
         );
         assert_eq!(
-            actor.infantry.as_ref().unwrap().is_prone,
+            actor.infantry.as_ref().unwrap().is_prone(),
             after["prone"].as_u64().unwrap() != 0,
             "{name}",
         );

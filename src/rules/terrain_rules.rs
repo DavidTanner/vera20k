@@ -466,9 +466,8 @@ fn built_in_semantics(section_name: &'static str) -> LandTypeSemantics {
 /// A missing *section* does not: the native loop skips the whole row when
 /// `INIClass::FindSectionByName` returns 0, and the block at `0x0089EA40` is
 /// zero-filled in the image, so an unauthored land type is impassable to every
-/// SpeedType. VERA drops the row here too, and the consumer decides — see the
-/// recorded VERA-internal disagreement on
-/// `sim::pathfinding::terrain_cost::classify_terrain_cost`.
+/// SpeedType. VERA drops the row here too, and each consumer decides what a
+/// missing row means.
 fn parse_speed_costs(section: &IniSection) -> SpeedCostProfile {
     SpeedCostProfile {
         foot: parse_cost(section, "Foot"),

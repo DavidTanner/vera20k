@@ -32,7 +32,7 @@ fn export_scene(scene: &HeadlessScenario, phase: &str) {
     let entities: Vec<Value> = sim
         .entities()
         .values()
-        .filter(|e| (110..=121).contains(&e.position.rx) && (50..=68).contains(&e.position.ry))
+        .filter(|e| (110..=121).contains(&e.position.rx()) && (50..=68).contains(&e.position.ry()))
         .map(|e| json!({"type":sim.resolve(e.type_ref()), "entity":e}))
         .collect();
     let result = json!({
@@ -83,7 +83,7 @@ fn retail_shrapnel_engineer_repairs_authored_water_gap() {
         .values()
         .find_map(|entity| {
             (runtime.simulation.resolve(entity.type_ref()) == "CABHUT"
-                && (entity.position.rx, entity.position.ry) == (117, 56))
+                && (entity.position.rx(), entity.position.ry()) == (117, 56))
                 .then_some(entity.stable_id())
         })
         .unwrap();
@@ -236,16 +236,16 @@ fn cross_repaired_road(scene: &mut HeadlessScenario) {
             .unwrap();
         let actor = runtime.simulation.entities().get(fv).unwrap();
         assert!(
-            !actor.on_bridge,
+            !actor.on_bridge(),
             "low road must not create raised-deck occupation"
         );
         assert!(actor.low_bridge_tube_state.is_none());
-        crossed_gap |= (114..=116).contains(&actor.position.rx) && actor.position.ry == 59;
-        if (actor.position.rx, actor.position.ry) == (115, 63)
+        crossed_gap |= (114..=116).contains(&actor.position.rx()) && actor.position.ry() == 59;
+        if (actor.position.rx(), actor.position.ry()) == (115, 63)
             && crate::sim::movement::motion_query::is_moving(&actor) != Some(true)
         {
             assert!(crossed_gap, "the FV must physically cross the repaired row");
-            assert_eq!(actor.position.exact_z_leptons, Some(208));
+            assert_eq!(actor.position.exact_z_leptons(), Some(208));
             assert!(
                 runtime
                     .simulation
@@ -318,7 +318,7 @@ fn retail_shrapnel_repair_reaches_moving_water_neighbor() {
         .values()
         .find_map(|entity| {
             (runtime.simulation.resolve(entity.type_ref()) == "CABHUT"
-                && (entity.position.rx, entity.position.ry) == (117, 56))
+                && (entity.position.rx(), entity.position.ry()) == (117, 56))
                 .then_some(entity.stable_id())
         })
         .unwrap();
@@ -414,7 +414,7 @@ fn retail_shrapnel_repair_reaches_moving_water_neighbor() {
             let coord = crate::sim::movement::ground_pose::position_world_coord(&actor.position);
             assert_eq!(u64::from(visit_frame), head_input["order_frame"]);
             assert_eq!(
-                json!([actor.position.rx, actor.position.ry]),
+                json!([actor.position.rx(), actor.position.ry()]),
                 head_input["source_cell"]
             );
             assert_eq!(json!([coord.x, coord.y, coord.z]), head_input["source_xyz"]);
@@ -422,7 +422,7 @@ fn retail_shrapnel_repair_reaches_moving_water_neighbor() {
                 u64::from(actor.body_facing_current(visit_frame)),
                 head_input["facing_raw"]
             );
-            assert_eq!(actor.lifecycle.cell_marked, head_input["initial_marked"]);
+            assert_eq!(actor.lifecycle.cell_marked(), head_input["initial_marked"]);
             assert!(
                 actor
                     .locomotor
@@ -521,16 +521,19 @@ fn retail_shrapnel_repair_reaches_moving_water_neighbor() {
                 );
                 assert_eq!(actor.navigation.path_replay.remaining_directions(), route);
                 assert_eq!(
-                    i64::from(loco.track().turn_index),
+                    i64::from(loco.track().turn_index()),
                     head_process["track_selector"]
                 );
-                assert_eq!(i64::from(loco.track().cursor), head_process["track_cursor"]);
+                assert_eq!(
+                    i64::from(loco.track().cursor()),
+                    head_process["track_cursor"]
+                );
                 assert_eq!(u64::from(loco.track_valid()), head_process["head_valid"]);
                 assert_eq!(
                     loco.target_speed_fraction().to_num::<f64>(),
                     head_process["fraction"].as_f64().unwrap()
                 );
-                let timer = actor.navigation.path_runtime.movement_timer;
+                let timer = actor.navigation.path_runtime.movement_timer();
                 assert_eq!(
                     i64::from(timer.start_frame()),
                     head_process["movement_timer"][0]
@@ -540,11 +543,11 @@ fn retail_shrapnel_repair_reaches_moving_water_neighbor() {
                     head_process["movement_timer"][2]
                 );
                 assert_eq!(
-                    u64::from(actor.navigation.path_runtime.retries_left),
+                    u64::from(actor.navigation.path_runtime.retries_left()),
                     head_process["retries"]
                 );
                 assert_eq!(
-                    u64::from(actor.lifecycle.cell_marked),
+                    u64::from(actor.lifecycle.cell_marked()),
                     head_process["marked"]
                 );
                 assert_eq!(
@@ -748,9 +751,12 @@ fn assert_retained_naval_ship(
     );
     assert_eq!(actor.lifecycle.object_alive(), native["alive"] == 1);
     assert_eq!(actor.lifecycle.in_limbo(), native["limbo"] == 1);
-    assert_eq!(actor.lifecycle.cell_marked, native["marked"] == 1);
+    assert_eq!(actor.lifecycle.cell_marked(), native["marked"] == 1);
     assert_eq!(actor.sinking.is_active(), native["sinking"] == 1);
-    assert_eq!(actor.in_logic_vector, native["logic_registered"] == 1);
+    assert_eq!(
+        actor.in_logic_vector.is_member(),
+        native["logic_registered"] == 1
+    );
     assert_eq!(
         sim.logic_order()
             .iter()

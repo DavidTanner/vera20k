@@ -169,7 +169,7 @@ fn snapshot(sim: &mut Simulation, id: u64, rules: &RuleSet, sound: bool) {
         .houses
         .get(&plane.owner())
         .is_some_and(|house| house.multiplay_passive);
-    if plane.in_playfield && !passive {
+    if plane.in_playfield() && !passive {
         let config = sim.sight_reveal_config(Some(rules));
         let heights = sim.sight_height_grid(&config);
         let ability =

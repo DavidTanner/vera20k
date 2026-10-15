@@ -203,7 +203,8 @@ fn infantry_exit_coordinate_and_facing(
         [centre(dock.0), centre(dock.1)],
     );
     let facing = crate::util::direction_tables::quantize::round_facing16_to_8(word);
-    let (width, height) = crate::rules::foundation::foundation_dimensions(&producer.foundation);
+    let (width, height) =
+        crate::rules::foundation::foundation_dimensions(producer.type_facts.foundation());
     let inward = |cell: i16, base: i16, size: u16| {
         if i32::from(cell) >= i32::from(base) + i32::from(size) {
             cell.wrapping_sub(1)
@@ -788,13 +789,19 @@ fn spawn_cell_passable(
     require_water: bool,
 ) -> bool {
     if require_water {
-        crate::sim::pathfinding::is_cell_passable_for_mover(
-            grid,
-            cell.0,
-            cell.1,
-            Some(MovementZone::Water),
-            resolved_terrain,
-        )
+        // The reduced ZoneType matrix with the coastal-water fallback, and no
+        // wall off a bridgehead; this legacy adapter asks no Can_Enter_Cell.
+        resolved_terrain
+            .and_then(|terrain| terrain.cell(cell.0, cell.1))
+            .is_some_and(|cell| {
+                use crate::map::resolved_terrain::zone_class;
+                let surface = crate::sim::pathfinding::passability::is_passable_for_zone(
+                    cell.zone_type,
+                    MovementZone::Water,
+                ) || cell.is_water;
+                let wall = matches!(cell.zone_type, zone_class::WALL | zone_class::CRUSHABLE);
+                surface && (!wall || cell.is_bridge_transition_cell())
+            })
     } else {
         grid.is_walkable(cell.0, cell.1)
     }
@@ -951,7 +958,7 @@ mod tests {
                 14,
                 crate::map::entities::EntityCategory::Structure,
             );
-            producer.foundation = "3x2".into();
+            producer.type_facts.set_foundation_for_test("3x2".into());
             ground_pose::put_location(&mut producer.position, location);
             let dock = (number("dock", 0) as i16, number("dock", 1) as i16);
             let producer_type = rules.object("GAPILE").unwrap();
@@ -1175,7 +1182,9 @@ mod tests {
         let mut producer =
             crate::sim::game_entity::GameEntity::test_default(10, "GAYARD", "Americans", 10, 10);
         producer.set_category_for_test(crate::map::entities::EntityCategory::Structure);
-        producer.foundation = "4x4".to_string();
+        producer
+            .type_facts
+            .set_foundation_for_test("4x4".to_string());
         producer
     }
 
@@ -1350,8 +1359,8 @@ mod tests {
         let entity = sim.substrate.entities.get(stable_id).unwrap();
         // Original Foot4D9C60 changes only caller-local query outputs;
         // initialized native bridge_clear_ground_input retains OnBridge0.
-        assert!(!entity.on_bridge);
-        assert_eq!(entity.position.exact_z_leptons, Some(312));
+        assert!(!entity.on_bridge());
+        assert_eq!(entity.position.exact_z_leptons(), Some(312));
         assert_eq!(
             sim.substrate.raw_cell_occupation.ground_bits(8, 8) & 0x20,
             0x20
@@ -1380,7 +1389,7 @@ mod tests {
             "the production API exposes no caller-forced Mark outcome"
         );
         let entity = sim.substrate.entities.get(stable_id).unwrap();
-        assert!(!entity.lifecycle.in_limbo() && entity.lifecycle.cell_marked);
+        assert!(!entity.lifecycle.in_limbo() && entity.lifecycle.cell_marked());
     }
 
     #[test]

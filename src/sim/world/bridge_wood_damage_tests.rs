@@ -24,7 +24,7 @@ fn export(scene: &HeadlessScenario, phase: &str) {
         "phase":phase, "frame":sim.session.binary_frame,
         "navigation":navigation_snapshot(sim, phase, points()),
         "entities":sim.entities().values().filter(|e|
-            (111..=120).contains(&e.position.rx) && (51..=67).contains(&e.position.ry)
+            (111..=120).contains(&e.position.rx()) && (51..=67).contains(&e.position.ry())
         ).map(|e| json!({"type":sim.resolve(e.type_ref()),"entity":e})).collect::<Vec<_>>(),
         "rng":{"main":sim.main_rng,"scenario":sim.scenario_rng,"mapgen":sim.mapgen_rng},
     });

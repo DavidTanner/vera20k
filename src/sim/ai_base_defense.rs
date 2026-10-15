@@ -344,7 +344,7 @@ impl<'r> DefenseChoice<'r> {
                 let building = sim.substrate.entities.get(id)?;
                 let ty = sim.object_type(building.type_ref(), rules)?;
                 Some((
-                    (building.position.rx as i16, building.position.ry as i16),
+                    (building.position.rx() as i16, building.position.ry() as i16),
                     ty,
                 ))
             })

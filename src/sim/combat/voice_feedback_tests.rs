@@ -58,8 +58,8 @@ fn damage_feedback_matches_original_draws_house_admission_coordinates_and_contin
         target.set_category_for_test(EntityCategory::Infantry);
         target.health.set_for_test(100);
         target.lifecycle.set_in_limbo_for_test(false);
-        target.lifecycle.cell_marked = true;
-        target.in_playfield = true;
+        target.lifecycle.set_cell_marked(true);
+        target.set_in_playfield(true);
         let coordinate = &input["coordinate"];
         crate::sim::movement::ground_pose::put_location(
             &mut target.position,

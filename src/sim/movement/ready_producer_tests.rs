@@ -129,8 +129,8 @@ fn unit_parked_on_its_head_to_reports_not_moving() {
             .unwrap()
             .install_drive_state_for_test(Some(
                 DriveLocomotionRuntime::default().with_head_to_for_test(Some(DriveCoord {
-                    x: 5 * 256 + i32::from(entity.position.sub_x.to_num::<i32>() as i16),
-                    y: 5 * 256 + i32::from(entity.position.sub_y.to_num::<i32>() as i16),
+                    x: 5 * 256 + i32::from(entity.position.sub_x().to_num::<i32>() as i16),
+                    y: 5 * 256 + i32::from(entity.position.sub_y().to_num::<i32>() as i16),
                     z: 0,
                 }))
             ))
@@ -315,10 +315,14 @@ fn retained_motion_and_walk_readiness_match_original_queries() {
         };
         let mut entity = entity_with(kind);
         let current = coord(&input["current"]);
-        entity.position.rx = (current.x / 256) as u16;
-        entity.position.ry = (current.y / 256) as u16;
-        entity.position.sub_x = SimFixed::from_num(current.x % 256);
-        entity.position.sub_y = SimFixed::from_num(current.y % 256);
+        entity.position.set_rx((current.x / 256) as u16);
+        entity.position.set_ry((current.y / 256) as u16);
+        entity
+            .position
+            .set_sub_x(SimFixed::from_num(current.x % 256));
+        entity
+            .position
+            .set_sub_y(SimFixed::from_num(current.y % 256));
         let head = optional(coord(&input["head"]));
         match kind {
             LocomotorKind::Drive => {
@@ -349,12 +353,12 @@ fn retained_motion_and_walk_readiness_match_original_queries() {
             }
             LocomotorKind::Walk => {
                 let LocomotorRuntimePayload::Walk(state) =
-                    &mut entity.locomotor.as_mut().unwrap().runtime_payload
+                    entity.locomotor.as_mut().unwrap().runtime_payload_mut()
                 else {
                     unreachable!()
                 };
-                state.head = head;
-                state.moving = input["moving"].as_bool().unwrap();
+                state.set_head(head);
+                state.set_moving(input["moving"].as_bool().unwrap());
                 // The harness pokes Foot+0x578 directly, including -1, which
                 // SetSpeedFraction (its only writer) never stores: the owner
                 // stores +0 for it. IsMovingNow's `<= 0` test (0x0075AB52..63)
@@ -372,8 +376,9 @@ fn retained_motion_and_walk_readiness_match_original_queries() {
             } else {
                 Default::default()
             };
-            entity.navigation.nav_com =
-                has_order.then(|| crate::sim::components::NavTargetRef::cell(6, 5));
+            entity
+                .navigation
+                .set_nav_com(has_order.then(|| crate::sim::components::NavTargetRef::cell(6, 5)));
             if kind == LocomotorKind::Walk {
                 assert_eq!(
                     is_moving_now(&entity, None, 100),
@@ -392,8 +397,9 @@ fn retained_motion_and_walk_readiness_match_original_queries() {
 
 fn hover_runtime(entity: &mut GameEntity, runtime: super::super::hover::HoverRuntime) {
     if let Some(locomotor) = entity.locomotor.as_mut() {
-        locomotor.runtime_payload =
-            super::super::locomotion::piggyback::LocomotorRuntimePayload::Hover(runtime);
+        locomotor.set_runtime_payload_for_test(
+            super::super::locomotion::piggyback::LocomotorRuntimePayload::Hover(runtime),
+        );
     }
 }
 

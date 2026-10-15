@@ -166,7 +166,7 @@ impl Fixture {
                 .rules
                 .object(self.sim.interner.resolve(t.type_ref()))
                 .is_some_and(|object| object.open_topped);
-            (t.position.rx, t.position.ry, open_topped)
+            (t.position.rx(), t.position.ry(), open_topped)
         };
         let mut ids = Vec::new();
         for i in 0..count {
@@ -207,10 +207,7 @@ impl Fixture {
                 .entities
                 .get_mut(pax)
                 .expect("passenger")
-                .passenger_role = PassengerRole::Inside {
-                transport_id: transport,
-                open_topped,
-            };
+                .passenger_role = PassengerRole::inside_for_test(transport, open_topped);
             ids.push(pax);
         }
         ids
@@ -244,7 +241,7 @@ impl Fixture {
             .entities
             .get(transport)
             .and_then(|t| t.passenger_role.cargo())
-            .map(|c| c.passengers.clone())
+            .map(|c| c.passengers().to_vec())
             .unwrap_or_default()
     }
 
@@ -281,7 +278,7 @@ impl Fixture {
 
     fn cell(&self, id: u64) -> (u16, u16) {
         let e = self.sim.substrate.entities.get(id).expect("entity");
-        (e.position.rx, e.position.ry)
+        (e.position.rx(), e.position.ry())
     }
 
     /// Tick until every id is revealed, recording the frame each surfaced and
@@ -411,7 +408,11 @@ fn vehicle_unload_republishes_threat_and_foot_coefficient_before_movement() {
         crate::sim::world::FrameEffects::default(),
     );
     let entity = fx.sim.substrate.entities.get_mut(passenger).unwrap();
-    entity.navigation.nav_com = Some(crate::sim::components::NavTargetRef::object(transport));
+    entity
+        .navigation
+        .set_nav_com(Some(crate::sim::components::NavTargetRef::object(
+            transport,
+        )));
     entity
         .mission
         .set_current_for_test(MissionId::from_known(MissionType::Enter), 0);
@@ -476,7 +477,10 @@ fn vehicle_unload_republishes_threat_and_foot_coefficient_before_movement() {
     assert!(fx.cargo_ids(transport).is_empty());
 
     let passenger = fx.sim.substrate.entities.get(passenger).unwrap();
-    let cell = (passenger.position.rx as i16, passenger.position.ry as i16);
+    let cell = (
+        passenger.position.rx() as i16,
+        passenger.position.ry() as i16,
+    );
     let center = crate::sim::house_threat::HouseSpatialThreat::index(cell);
     let actual_slots: Vec<_> = adjustment["offsets"]
         .as_array()
@@ -628,7 +632,8 @@ fn ejection_keeps_the_passengers_target_unless_it_leaves_another_houses_open_tra
         let other = fx.sim.intern("Russians");
         let pax = fx.sim.substrate.entities.get_mut(passenger).unwrap();
         pax.attack_target.set_for_test(target);
-        pax.passively_acquired_target = true;
+        pax.passive_scan
+            .set_passively_acquired_target_for_test(true);
         pax.weapon_burst.complete_shot(3);
         if other_house {
             pax.set_owner_for_test(other);
@@ -653,13 +658,13 @@ fn ejection_keeps_the_passengers_target_unless_it_leaves_another_houses_open_tra
         let case = format!("{transport_type}, other house {other_house}");
         if keeps {
             assert_eq!(pax.attack_target.target(), target, "{case}");
-            assert!(pax.passively_acquired_target, "{case}");
+            assert!(pax.passive_scan.acquired(), "{case}");
             assert_eq!(pax.weapon_burst.index(), 1, "{case}");
         } else {
             // Through the class setter: its NULL arm resets the burst
             // (`0x006FCF5B`), which a raw store would not.
             assert_eq!(pax.attack_target.target(), None, "{case}");
-            assert!(!pax.passively_acquired_target, "{case}");
+            assert!(!pax.passive_scan.acquired(), "{case}");
             assert_eq!(pax.weapon_burst.index(), 0, "{case}");
         }
     }
@@ -707,7 +712,7 @@ fn hover_transport_on_water_moves_to_shore_before_unloading() {
     }
     let moving = fx.sim.substrate.entities.get(lcrf).is_some_and(|e| {
         crate::sim::movement::motion_query::is_moving(&e) == Some(true)
-            || e.navigation.nav_com.is_some()
+            || e.navigation.nav_com().is_some()
     });
     assert!(moving, "the landing craft is driven toward land first");
     assert_eq!(
@@ -755,7 +760,7 @@ fn hover_transport_on_water_is_sent_to_a_raised_bank() {
             .get(lcrf)
             .unwrap()
             .navigation
-            .nav_com;
+            .nav_com();
         if sent.is_some() {
             break;
         }
@@ -863,7 +868,7 @@ fn nighthawk_unloads_only_when_landed() {
 /// `0x00415B10`: five conscripts leave a landed Nighthawk one per `[Unload]`
 /// dispatch, each `Unlimbo`ed at the aircraft's own cell and sent on a Move
 /// to the first table-order neighbour (`DAT_00817A58`: S, SW, SE, NW, NE, N,
-/// W, E) its `IsCellOccupied` accepted; the aircraft ends up in Guard.
+/// W, E) its `Can_Enter_Cell` accepted; the aircraft ends up in Guard.
 /// Native gives no distinctness guarantee across passengers — the scan
 /// restarts at S every time — so the assertion is membership in the eight
 /// neighbours plus the table's first entry for the first passenger.
@@ -884,7 +889,7 @@ fn nighthawk_ejects_five_passengers_to_scanned_neighbours() {
             if fx.revealed(id) && !out.iter().any(|(seen, ..)| *seen == id) {
                 let e = fx.sim.substrate.entities.get(id).expect("passenger");
                 let dest =
-                    crate::sim::movement::movement_goal_cell(e).or(match e.navigation.nav_com {
+                    crate::sim::movement::movement_goal_cell(e).or(match e.navigation.nav_com() {
                         Some(crate::sim::components::NavTargetRef::Cell { rx, ry }) => {
                             Some((rx, ry))
                         }
@@ -1016,10 +1021,7 @@ fn relaxed_pass_drives_vehicle_passenger_to_the_fnpc_cell() {
         .entities
         .get_mut(bggy)
         .expect("passenger")
-        .passenger_role = PassengerRole::Inside {
-        transport_id: bfrt,
-        open_topped: true,
-    };
+        .passenger_role = PassengerRole::inside_for_test(bfrt, true);
     // Facing 0: state 0 picks octant 5 (SW) and turns the hull to NE (0x20),
     // so the state-3 scan starts at octant 5; the strict pass fails
     // everywhere (ring two is water) and the relaxed restart accepts octant
@@ -1055,7 +1057,7 @@ fn relaxed_pass_drives_vehicle_passenger_to_the_fnpc_cell() {
     assert!(elevation.timer_start_frame() > spawn_elevation);
     assert_eq!(elevation.destination(), 0x3800);
     let e = fx.sim.substrate.entities.get(bggy).expect("passenger");
-    let dest = crate::sim::movement::movement_goal_cell(e).or(match e.navigation.nav_com {
+    let dest = crate::sim::movement::movement_goal_cell(e).or(match e.navigation.nav_com() {
         Some(crate::sim::components::NavTargetRef::Cell { rx, ry }) => Some((rx, ry)),
         _ => None,
     });
@@ -1070,10 +1072,170 @@ fn relaxed_pass_drives_vehicle_passenger_to_the_fnpc_cell() {
     );
 }
 
+/// State 0's scorer (`0x00740B60`) calls a cell full of infantry only when
+/// all five raw infantry bits are set (`+0x124 & 0x1F == 0x1F`), and it asks
+/// only the nearest object's alliance. Three allied conscripts leave octant
+/// 5's cell (19, 21) open, so from facing 0 the transport still backs onto
+/// octant 5 and turns to octant 1 (0x20). Calling that cell closed would
+/// pick octant 6 and turn to 0x40.
+#[test]
+fn exit_scorer_keeps_a_cell_with_three_allied_infantry_open() {
+    let mut fx = Fixture::new(|_, _| false);
+    for _ in 0..3 {
+        let conscript = fx.spawn("E1", 19, 21, 0);
+        assert!(fx.revealed(conscript));
+    }
+    let bfrt = fx.spawn("BFRT", 20, 20, 0);
+    let pax = fx.board(bfrt, 1);
+    assert!(fx.apply(Command::UnloadPassengers { transport_id: bfrt }));
+
+    let order = fx.run_until_revealed(&pax, 200);
+    assert_eq!(order.len(), 1, "the conscript left: {order:?}");
+    assert_eq!(fx.facing(bfrt), 0x20, "backs onto octant 5");
+}
+
+/// Mission_Unload's scan asks the passenger's own `Can_Enter_Cell` at the
+/// transport's height (`0x0073D994`, `0x0073D9C2`). Its height prelude
+/// (`0x004D9C60`) refuses a cell two levels above the transport, so the strict
+/// pass leaves octant 5's exit (19, 21) for octant 6's (19, 20).
+#[test]
+fn vehicle_unload_scan_refuses_an_exit_two_levels_up() {
+    let mut fx = Fixture::new(|_, _| false);
+    let terrain = fx.sim.resolved_terrain.as_mut().unwrap();
+    terrain.cell_mut(19, 21).unwrap().level = 2;
+    let bfrt = fx.spawn("BFRT", 20, 20, 0);
+    let pax = fx.board(bfrt, 1);
+    assert!(fx.apply(Command::UnloadPassengers { transport_id: bfrt }));
+
+    let order = fx.run_until_revealed(&pax, 200);
+    assert_eq!(order.len(), 1, "the conscript left: {order:?}");
+    assert_eq!(fx.facing(bfrt), 0x20, "state 0 still backs onto octant 5");
+    assert_eq!(fx.cell(pax[0]), (19, 20), "octant 6, not the raised exit");
+}
+
+/// Mission_Unload hands its Unlimbo the exit direction (`0x0073DB45..0x0073DB5B`).
+/// After Foot success, UnitClass::Unlimbo snaps the turret (`+0x3A0`) to it
+/// (`0x00737BBE..0x00737BD2`), and TechnoClass::Unlimbo the body (`0x006F6DAA`).
+/// Same exit as `relaxed_pass_drives_vehicle_passenger_to_the_fnpc_cell`:
+/// octant 6, direction 0xC0.
+#[test]
+fn vehicle_passenger_leaves_with_its_turret_on_the_exit_direction() {
+    let ring_two = |x: u16, y: u16| (i32::from(x) - 20).abs().max((i32::from(y) - 20).abs()) == 2;
+    let mut fx = Fixture::new(ring_two);
+    fx.rules = rules_with_patch("[BGGY]\nTurret=yes\n");
+    let bfrt = fx.spawn("BFRT", 20, 20, 0);
+    let bggy = fx.spawn("BGGY", 24, 24, 0);
+    assert_eq!(
+        fx.sim.techno_limbo_with_rules(bggy, &fx.rules, None),
+        ConcealOutcome::Concealed
+    );
+    let boarded = fx
+        .sim
+        .substrate
+        .entities
+        .get_mut(bfrt)
+        .and_then(|t| t.passenger_role.cargo_mut())
+        .is_some_and(|cargo| cargo.board(bggy, 1));
+    assert!(boarded, "cargo accepts the vehicle");
+    fx.sim
+        .substrate
+        .entities
+        .get_mut(bggy)
+        .expect("passenger")
+        .passenger_role = PassengerRole::inside_for_test(bfrt, true);
+    assert!(fx.apply(Command::UnloadPassengers { transport_id: bfrt }));
+
+    let order = fx.run_until_revealed(&[bggy], 200);
+    assert_eq!(order.len(), 1, "the vehicle left: {order:?}");
+    assert_eq!(fx.cell(bggy), (19, 20));
+    assert_eq!(fx.facing(bggy), 0xC0, "octant 6 * 32");
+    let frame = fx.sim.session.binary_frame;
+    let turret = fx
+        .sim
+        .substrate
+        .entities
+        .get(bggy)
+        .and_then(|bggy| bggy.barrel_facing.as_ref())
+        .expect("a Turret= unit has a turret facing")
+        .current(frame);
+    assert_eq!(turret, 0xC000, "the turret faces the exit too");
+}
+
+/// Both scan calls take the transport's height (`0x0073D97B`, `0x0073D9A9`),
+/// not the exit's level. From a ramp at level 0, octant 5's exit (19, 21) is a
+/// one-level step up the ramp admits. Its far cell (18, 22), also at level 1,
+/// is one level above the transport's height behind a flat exit, so the strict
+/// pass leaves octant 5 for octant 6's exit (19, 20).
+#[test]
+fn vehicle_unload_scan_judges_the_far_cell_from_the_transport_height() {
+    let mut fx = Fixture::new(|_, _| false);
+    let terrain = fx.sim.resolved_terrain.as_mut().unwrap();
+    terrain.cell_mut(20, 20).unwrap().slope_type = 1;
+    for (x, y) in [(19, 21), (18, 22)] {
+        terrain.cell_mut(x, y).unwrap().level = 1;
+    }
+    let bfrt = fx.spawn("BFRT", 20, 20, 0);
+    let pax = fx.board(bfrt, 1);
+    assert!(fx.apply(Command::UnloadPassengers { transport_id: bfrt }));
+
+    let order = fx.run_until_revealed(&pax, 200);
+    assert_eq!(order.len(), 1, "the conscript left: {order:?}");
+    assert_eq!(fx.cell(pax[0]), (19, 20), "octant 6, not the step up");
+}
+
+/// The relaxed pass accepts an exit on its own answer (`0x0073D9CC..0x0073D9DC`),
+/// even when the cell two steps out has no coordinate. Water two cells from
+/// (1, 20) refuses every strict candidate, and the relaxed pass starts at
+/// octant 6, whose exit is (0, 20).
+#[test]
+fn relaxed_pass_takes_an_exit_whose_far_cell_is_off_the_map() {
+    let ring_two = |x: u16, y: u16| (i32::from(x) - 1).abs().max((i32::from(y) - 20).abs()) == 2;
+    let mut fx = Fixture::new(ring_two);
+    let bfrt = fx.spawn("BFRT", 1, 20, 0);
+    let pax = fx.board(bfrt, 1);
+    assert!(fx.apply(Command::UnloadPassengers { transport_id: bfrt }));
+
+    let order = fx.run_until_revealed(&pax, 200);
+    assert_eq!(order.len(), 1, "the conscript left: {order:?}");
+    assert_eq!(fx.cell(pax[0]), (0, 20));
+}
+
+/// A passenger that was in the playfield (`+0x3D5`) gets 7 from its
+/// `Can_Enter_Cell` for a cell outside it (`0x0073F34C`); Mission_Unload raises
+/// no `A8E7AC` until after the scan (`0x0073DA33`). In this playfield diamond
+/// (`y - x < 2`) octant 5's exit (19, 21) and octant 6's far cell (18, 20) lie
+/// outside, so the strict pass takes octant 7.
+#[test]
+fn vehicle_unload_scan_refuses_exits_outside_the_playfield() {
+    let mut fx = Fixture::new(|_, _| false);
+    fx.sim.playfield_bounds = Some(crate::map::playfield::PlayfieldBounds {
+        base: 0,
+        off_fc: -1,
+        off_100: -100,
+        off_104: 100,
+        off_108: 200,
+    });
+    let bfrt = fx.spawn("BFRT", 20, 20, 0);
+    let pax = fx.board(bfrt, 1);
+    fx.sim
+        .substrate
+        .entities
+        .get_mut(pax[0])
+        .expect("passenger")
+        .set_in_playfield(true);
+    assert!(fx.apply(Command::UnloadPassengers { transport_id: bfrt }));
+
+    let order = fx.run_until_revealed(&pax, 200);
+    assert_eq!(order.len(), 1, "the conscript left: {order:?}");
+    assert_eq!(fx.cell(pax[0]), (19, 19), "octant 7's exit");
+}
+
 /// The vehicle passenger's Find_Nearby_Passable_Cell (`0x0073DA96..0x0073DADD`)
-/// runs the playfield anchor gate with no height gate. The strict pass takes
-/// octant 5, exit (19, 21), which lies outside this playfield diamond
-/// (`y - x < 2`), so ring 0 fails and ring 1 answers. Its only in-diamond
+/// runs the playfield anchor gate with no height gate. The passenger never
+/// entered the playfield (`+0x3D5` clear, as a reinforcement's cargo), so its
+/// `Can_Enter_Cell` does not refuse cells outside it (`0x0073F34C`), and the
+/// strict pass takes octant 5, exit (19, 21), which lies outside this playfield
+/// diamond (`y - x < 2`). Ring 0 fails and ring 1 answers. Its only in-diamond
 /// cells besides the transport's own are (19, 20) and (20, 21), raised two
 /// levels.
 #[test]
@@ -1109,10 +1271,13 @@ fn vehicle_passenger_off_the_playfield_exit_lands_on_raised_in_playfield_ground(
         .entities
         .get_mut(bggy)
         .expect("passenger")
-        .passenger_role = PassengerRole::Inside {
-        transport_id: bfrt,
-        open_topped: true,
-    };
+        .passenger_role = PassengerRole::inside_for_test(bfrt, true);
+    fx.sim
+        .substrate
+        .entities
+        .get_mut(bggy)
+        .expect("passenger")
+        .set_in_playfield(false);
     assert!(fx.apply(Command::UnloadPassengers { transport_id: bfrt }));
 
     let order = fx.run_until_revealed_with_missions(&[bggy], 200);
@@ -1343,7 +1508,7 @@ fn unload_order_stops_a_driving_transport_where_it_is() {
     assert!(fx.apply(Command::UnloadPassengers { transport_id: bfrt }));
     let transport = fx.sim.substrate.entities.get(bfrt).expect("transport");
     assert!(
-        transport.navigation.nav_com.is_none(),
+        transport.navigation.nav_com().is_none(),
         "the order nulls the NavCom"
     );
     assert_eq!(fx.run_until_revealed(&pax, 400).len(), 2);
@@ -1414,7 +1579,14 @@ fn nighthawk_failed_ejection_keeps_cargo_and_leaves_for_guard() {
     let blockers: Vec<u64> = (0..3).map(|_| fx.spawn("E1", 20, 20, 0)).collect();
     let spots: Vec<Option<u8>> = blockers
         .iter()
-        .map(|&id| fx.sim.substrate.entities.get(id).expect("blocker").sub_cell)
+        .map(|&id| {
+            fx.sim
+                .substrate
+                .entities
+                .get(id)
+                .expect("blocker")
+                .sub_cell()
+        })
         .collect();
     assert_eq!(
         spots.iter().flatten().count(),
@@ -1472,6 +1644,54 @@ fn nighthawk_failed_ejection_keeps_cargo_and_leaves_for_guard() {
     assert_eq!(fx.cargo_ids(shad), held, "cargo still retained");
 }
 
+/// KickOutUnit raises no A8E7AC (`0x00415B10..0x00415C50`), so the
+/// passenger's Unlimbo runs Object's class +1AC query (`0x005F4F1B`) after
+/// PlaceInfantryInCell found him a free spot: an enemy infantryman standing
+/// in the landed aircraft's cell refuses him. The refusal takes the bounded
+/// escape above.
+#[test]
+fn nighthawk_passenger_is_refused_by_an_enemy_in_the_aircraft_cell() {
+    use crate::sim::house_state::HouseState;
+
+    let mut fx = Fixture::new(|_, _| false);
+    let owners: Vec<_> = [OWNER, "Russians"]
+        .into_iter()
+        .map(|name| {
+            let owner = fx.sim.interner.intern(name);
+            fx.sim
+                .houses
+                .insert(owner, HouseState::new(owner, 0, None, true, 0, 10));
+            owner
+        })
+        .collect();
+    fx.sim.session.house_order = owners;
+    fx.sim.session.game_mode_nonzero = true;
+    let enemy = fx
+        .sim
+        .spawn_object("E1", "Russians", 20, 20, 0, &fx.rules)
+        .expect("enemy conscript");
+    assert!(fx.revealed(enemy));
+    let shad = fx.spawn("SHAD", 20, 20, 0);
+    let pax = fx.board(shad, 1);
+    set_altitude(&mut fx, shad, 0);
+    assert!(fx.apply(Command::UnloadPassengers { transport_id: shad }));
+
+    for _ in 0..40 {
+        fx.sim.session.binary_frame += 1;
+        crate::sim::aircraft::dispatch_mission(&mut fx.sim, shad, &fx.rules, Default::default());
+        if fx.mission(shad) == MissionId::from_known(MissionType::Guard) {
+            break;
+        }
+    }
+    assert_eq!(
+        fx.mission(shad),
+        MissionId::from_known(MissionType::Guard),
+        "the refused ejection leaves for Guard"
+    );
+    assert_eq!(fx.cargo_ids(shad), pax, "the passenger stays in the hold");
+    assert!(!fx.revealed(pax[0]));
+}
+
 #[test]
 fn cargo_departure_ground_reveal_rejection_preserves_route_retry_state() {
     use crate::sim::movement::locomotor::MovementLayer;
@@ -1495,7 +1715,7 @@ fn cargo_departure_ground_reveal_rejection_preserves_route_retry_state() {
                     .get_mut(passenger)
                     .unwrap()
                     .lifecycle
-                    .cell_marked = true;
+                    .set_cell_marked(true);
             }
             fx.sim
                 .substrate
@@ -1508,8 +1728,10 @@ fn cargo_departure_ground_reveal_rejection_preserves_route_retry_state() {
                 carrier.set_gunner_selection_for_test(99, -1);
                 let cargo = carrier.passenger_role.cargo_mut().unwrap();
                 // Admission-time size differs from current E1 Size=1.
-                cargo.passenger_sizes[0] = 7;
-                cargo.total_size = 7;
+                let mut sizes = cargo.passenger_sizes().to_vec();
+                sizes[0] = 7;
+                cargo.set_passenger_sizes_for_test(sizes);
+                cargo.set_total_size_for_test(7);
             }
             let held = serde_json::to_value(
                 fx.sim
@@ -1557,9 +1779,12 @@ fn cargo_departure_ground_reveal_rejection_preserves_route_retry_state() {
             let pax = fx.sim.substrate.entities.get(passenger).unwrap();
             assert_eq!(pax.passenger_role.inside_transport_id(), Some(transport));
             assert!(pax.lifecycle.in_limbo());
-            assert_eq!(pax.lifecycle.cell_marked, !already_revealed);
-            assert!(!pax.in_logic_vector);
-            assert_eq!(pax.locomotor.as_ref().unwrap().layer, MovementLayer::Ground);
+            assert_eq!(pax.lifecycle.cell_marked(), !already_revealed);
+            assert!(!pax.in_logic_vector.is_member());
+            assert_eq!(
+                pax.locomotor.as_ref().unwrap().layer(),
+                MovementLayer::Ground
+            );
             assert_eq!(
                 fx.sim
                     .substrate

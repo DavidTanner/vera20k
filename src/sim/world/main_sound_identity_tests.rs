@@ -79,7 +79,7 @@ fn scene(rules: &RuleSet) -> (Simulation, [u64; 2], u64, u64) {
             0,
         ));
         // Supplied Process result, as in the native no-movement tail controls.
-        actor.body_frame_counter = 1;
+        actor.body_frame_counter.set_for_test(1);
         sim.substrate.entities.insert(actor);
         id
     });

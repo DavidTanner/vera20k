@@ -10,8 +10,8 @@ use crate::rules::locomotor_type::LocomotorKind;
 use crate::rules::object_type::{FactoryType, ObjectType};
 use crate::rules::ruleset::RuleSet;
 use crate::sim::animation::{Animation, SequenceKind};
+use crate::sim::animation::{HarvestOverlay, VoxelAnimation};
 use crate::sim::combat::Health;
-use crate::sim::components::{HarvestOverlay, VoxelAnimation};
 use crate::sim::game_entity::{GameEntity, TechnoConstructorInit};
 use crate::sim::miner::{Miner, MinerConfig, miner_kind_for_object};
 use crate::sim::movement::locomotor::{LocomotorState, MovementLayer};
@@ -88,17 +88,19 @@ impl Simulation {
     ) {
         let category = ge.category();
         let initial = ge.body_facing.destination();
-        let uses_voxel = ge.is_voxel;
+        let uses_voxel = ge.is_voxel();
         // InitManagers6F3F40 classifies the owner after construction; it does
         // not manufacture either discovery-history byte. The launch-owned
         // current house is distinct from the notification/viewer binding.
-        ge.discovery.owned_by_current_house = self.session.current_house == Some(ge.owner());
+        ge.discovery
+            .classify_owner(self.session.current_house == Some(ge.owner()));
         if self.debug_event_logging {
-            ge.debug_log = Some(crate::sim::debug_event_log::DebugEventLog::new());
+            ge.set_debug_logging(true);
         }
 
         stamp_scoring_flags(ge, obj, rules);
-        ge.sight_is_zero = obj.is_some_and(|object| object.sight == 0);
+        ge.sight
+            .stamp_zero(obj.is_some_and(|object| object.sight == 0));
         // The class constructor's one `+0x388` rate write (`Set_ROT`): `ROT=`
         // for a unit (`0x00735579`), an aircraft (`0x00413FE7`) and a building
         // (`BuildingClass::Init`, `0x00442CA5`, without testing `Turret=`: a
@@ -130,17 +132,17 @@ impl Simulation {
         if category == EntityCategory::Infantry {
             match origin {
                 ComponentOrigin::Authored { sub_cell, .. } => {
-                    ge.sub_cell = Some(sub_cell);
-                    let (lx, ly) = crate::util::lepton::subcell_lepton_offset(ge.sub_cell);
-                    ge.position.sub_x = lx;
-                    ge.position.sub_y = ly;
+                    ge.set_sub_cell(Some(sub_cell));
+                    let (lx, ly) = crate::util::lepton::subcell_lepton_offset(ge.sub_cell());
+                    ge.position.set_sub_x(lx);
+                    ge.position.set_sub_y(ly);
                 }
                 ComponentOrigin::Runtime => {
                     // Infantry51DFF0 chooses the spot only at Unlimbo, from
                     // the caller's actual XY/Z and live occupation bytes.
                     // Constructor-held objects reserve no spot and retain
                     // their requested XY until the shared placement boundary.
-                    ge.sub_cell = None;
+                    ge.set_sub_cell(None);
                 }
             }
         }
@@ -167,14 +169,9 @@ impl Simulation {
             ge.set_gunner_weapon(0, obj);
         }
         ge.initialize_voxel_recoil(obj.recoil);
-        ge.crushable = obj.crushable;
-        ge.deployed_crushable = obj.deployed_crushable;
-        ge.omni_crusher = obj.omni_crusher;
-        ge.regular_crusher = obj.crusher;
-        ge.drive_accelerates = obj.accelerates;
-        ge.omni_crush_resistant = obj.omni_crush_resistant;
-        ge.immune_to_radiation = obj.immune_to_radiation;
-        ge.occupier = obj.occupier;
+        ge.crushable_facts = CrushableFacts::stamp(obj);
+        ge.mover_facts = MoverFacts::stamp(obj);
+        ge.removal_facts.stamp_occupier(obj.occupier);
         if category == EntityCategory::Structure && obj.gate {
             ge.building_gate = Some(crate::sim::game_entity::BuildingGateRuntime::at_frame(
                 self.session.binary_frame,
@@ -193,8 +190,10 @@ impl Simulation {
                 ge.initialize_building_idle_body(self.session.binary_frame as i32);
             }
         }
-        ge.ai_sellable = category == EntityCategory::Structure
-            && rules.is_some_and(|rules| rules.has_buildup(&obj.id));
+        ge.ai_sell_repair.construct(
+            category == EntityCategory::Structure
+                && rules.is_some_and(|rules| rules.has_buildup(&obj.id)),
+        );
         if should_construct_locomotor(category, obj) {
             ge.locomotor = Some(LocomotorState::from_object_type(
                 obj,
@@ -202,7 +201,7 @@ impl Simulation {
             ));
             if matches!(origin, ComponentOrigin::Runtime)
                 && ge.locomotor.as_ref().is_some_and(|locomotor| {
-                    locomotor.kind == crate::rules::locomotor_type::LocomotorKind::Ship
+                    locomotor.active_kind() == crate::rules::locomotor_type::LocomotorKind::Ship
                 })
             {
                 ge.locomotor
@@ -236,23 +235,17 @@ impl Simulation {
             let mcfg: MinerConfig = rules.map(MinerConfig::from_rules).unwrap_or_default();
             let storage = obj.storage.max(0) as u16;
             ge.miner = Some(Miner::new(kind, &mcfg, storage));
-            ge.harvest_overlay = Some(HarvestOverlay {
-                frame: 0,
-                visible: false,
-            });
+            ge.harvest_overlay = Some(HarvestOverlay::hidden());
         }
         // Passenger cargo for transports and garrisonable buildings.
         if obj.passengers > 0 {
-            ge.passenger_role = crate::sim::passenger::PassengerRole::Transport {
-                cargo: crate::sim::passenger::PassengerCargo::new(
-                    obj.passengers as u32,
-                    obj.size_limit,
-                ),
-            };
+            ge.passenger_role = crate::sim::passenger::PassengerRole::transport(
+                crate::sim::passenger::PassengerCargo::new(obj.passengers as u32, obj.size_limit),
+            );
         } else if obj.can_be_occupied && obj.max_number_occupants > 0 {
-            ge.passenger_role = crate::sim::passenger::PassengerRole::Transport {
-                cargo: crate::sim::passenger::PassengerCargo::new(obj.max_number_occupants, 1),
-            };
+            ge.passenger_role = crate::sim::passenger::PassengerRole::transport(
+                crate::sim::passenger::PassengerCargo::new(obj.max_number_occupants, 1),
+            );
         }
 
         stamp_building_cell_profile(ge, Some(obj));
@@ -302,9 +295,9 @@ fn install_authored_bridge(ge: &mut GameEntity, origin: ComponentOrigin) {
     } = origin
     {
         if let Some(loco) = &mut ge.locomotor {
-            loco.layer = MovementLayer::Bridge;
+            loco.set_layer(MovementLayer::Bridge);
         }
-        ge.on_bridge = true;
+        ge.set_on_bridge(true);
     }
 }
 
@@ -321,7 +314,6 @@ fn stamp_scoring_flags(
     obj: Option<&crate::rules::object_type::ObjectType>,
     rules: Option<&RuleSet>,
 ) {
-    ge.dont_score = obj.is_some_and(|o| o.dont_score);
     ge.tracking_facts = crate::sim::house_tracking::TrackingFacts::of(ge.category(), obj, rules);
 }
 
@@ -332,19 +324,335 @@ fn stamp_building_cell_profile(
     let Some(obj) = obj else {
         return;
     };
-    ge.foundation = obj.foundation.clone();
-    ge.spotlight_capable = obj.has_spotlight;
-    if ge.category() == EntityCategory::Structure {
-        ge.building_hidden_occupancy = Some(obj.hidden_occupancy);
-        ge.base_reservation_spacing = obj.base_reservation_spacing;
-        ge.determines_waypoint_edge = obj.factory == Some(FactoryType::BuildingType);
-        ge.build_const_eligible = obj.build_const_eligible;
-        ge.base_plan_type_index = obj.base_plan_type_index;
-        ge.base_plan_is_defense = obj.is_base_defense;
-        // Projection of native BuildingType+0x408 after
-        // UnitTypeClass__FindOrAllocate @ 0x007480D0 has resolved
-        // `none`/`<none>` to a null pointer.
-        ge.base_plan_has_undeploy_target = obj.undeploys_into.is_some();
+    ge.building_light.stamp(obj.has_spotlight);
+    ge.type_facts.stamp(ge.category(), obj);
+}
+
+/// `Crushable=` and `DeployedCrushable=`, copied when the object is built for
+/// the crush passes (natively read through the type pointer). Only the
+/// construction stamp writes them.
+///
+/// Nothing reads the `DeployedCrushable=` copy: the deploy completion
+/// re-reads the type's key (`0x00520B3B`, `0x00520B9A`) and stamps the
+/// object's crush immunity byte instead. The copy stays because saves carry
+/// it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub(crate) struct CrushableFacts {
+    /// `Crushable=`: a crusher may crush the object.
+    crushable: bool,
+    /// `DeployedCrushable=`: a deployed infantryman stays crushable by a
+    /// regular crusher; `no` (low-silhouette infantry) blocks it. Unread
+    /// (see the type doc).
+    #[serde(default = "default_true")]
+    deployed_crushable: bool,
+}
+
+impl Default for CrushableFacts {
+    /// The object before the stamp: not crushable, crushable when deployed.
+    fn default() -> Self {
+        Self {
+            crushable: false,
+            deployed_crushable: true,
+        }
+    }
+}
+
+impl CrushableFacts {
+    /// Copy the type's facts.
+    fn stamp(obj: &ObjectType) -> Self {
+        Self {
+            crushable: obj.crushable,
+            deployed_crushable: obj.deployed_crushable,
+        }
+    }
+
+    /// `Crushable=`.
+    pub(crate) const fn crushable(self) -> bool {
+        self.crushable
+    }
+
+    /// Install a fixture's `Crushable=`.
+    #[cfg(test)]
+    pub(crate) fn set_crushable_for_test(&mut self, value: bool) {
+        self.crushable = value;
+    }
+}
+
+/// `OmniCrusher=`, `Crusher=`, `Accelerates=`, `OmniCrushResistant=` and
+/// `ImmuneToRadiation=`, copied when the object is built for the crush, drive
+/// and radiation passes (natively read through the type pointer). Only the
+/// construction stamp writes them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub(crate) struct MoverFacts {
+    /// `OmniCrusher=`: crushes targets that are not `Crushable=` (only the
+    /// Battle Fortress in YR).
+    omni_crusher: bool,
+    /// `Crusher=`: the ordinary crush, kept apart from MovementZone and
+    /// `OmniCrusher=`; it acts on the Drive PerCellProcess path.
+    #[serde(default)]
+    regular_crusher: bool,
+    /// `Accelerates=`: Drive/Ship locomotion ramps toward its target speed
+    /// fraction.
+    #[serde(default = "default_true")]
+    drive_accelerates: bool,
+    /// `OmniCrushResistant=`: immune to every crush.
+    omni_crush_resistant: bool,
+    /// `ImmuneToRadiation=`: per-cell radiation does no damage.
+    #[serde(default)]
+    immune_to_radiation: bool,
+}
+
+impl Default for MoverFacts {
+    /// The object before the stamp: accelerates, nothing else.
+    fn default() -> Self {
+        Self {
+            omni_crusher: false,
+            regular_crusher: false,
+            drive_accelerates: true,
+            omni_crush_resistant: false,
+            immune_to_radiation: false,
+        }
+    }
+}
+
+impl MoverFacts {
+    /// Copy the type's facts.
+    fn stamp(obj: &ObjectType) -> Self {
+        Self {
+            omni_crusher: obj.omni_crusher,
+            regular_crusher: obj.crusher,
+            drive_accelerates: obj.accelerates,
+            omni_crush_resistant: obj.omni_crush_resistant,
+            immune_to_radiation: obj.immune_to_radiation,
+        }
+    }
+
+    /// `OmniCrusher=`.
+    pub(crate) const fn omni_crusher(self) -> bool {
+        self.omni_crusher
+    }
+
+    /// `Crusher=`.
+    pub(crate) const fn regular_crusher(self) -> bool {
+        self.regular_crusher
+    }
+
+    /// `Accelerates=`.
+    pub(crate) const fn drive_accelerates(self) -> bool {
+        self.drive_accelerates
+    }
+
+    /// `OmniCrushResistant=`.
+    pub(crate) const fn omni_crush_resistant(self) -> bool {
+        self.omni_crush_resistant
+    }
+
+    /// `ImmuneToRadiation=`.
+    pub(crate) const fn immune_to_radiation(self) -> bool {
+        self.immune_to_radiation
+    }
+
+    /// Install a fixture's `OmniCrusher=`.
+    #[cfg(test)]
+    pub(crate) fn set_omni_crusher_for_test(&mut self, value: bool) {
+        self.omni_crusher = value;
+    }
+
+    /// Install a fixture's `Crusher=`.
+    #[cfg(test)]
+    pub(crate) fn set_regular_crusher_for_test(&mut self, value: bool) {
+        self.regular_crusher = value;
+    }
+
+    /// Install a fixture's `Accelerates=`.
+    #[cfg(test)]
+    pub(crate) fn set_drive_accelerates_for_test(&mut self, value: bool) {
+        self.drive_accelerates = value;
+    }
+
+    /// Install a fixture's `OmniCrushResistant=`.
+    #[cfg(test)]
+    pub(crate) fn set_omni_crush_resistant_for_test(&mut self, value: bool) {
+        self.omni_crush_resistant = value;
+    }
+}
+
+fn default_true() -> bool {
+    true
+}
+
+/// Facts the object's type fixes, copied when the object is built so paths
+/// without a RuleSet can read them: the cell-list exits of UnInit and Limbo,
+/// the House base lists, BasePlan and owner transfer. Natively a building
+/// reads each through its type pointer (`BuildingClass+0x520`); the rules
+/// reader owns the native reads (the matching `ObjectType` fields). Only the
+/// construction stamp writes them.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub(crate) struct TypeFacts {
+    /// `Foundation=`, as its rules string: the structure footprint the cell
+    /// lists cover; `1x1` for a type without one.
+    #[serde(default = "default_foundation")]
+    foundation: String,
+    /// A building's hidden-object counter inputs
+    /// (`ObjectType::hidden_occupancy`), so cell-list exit can reverse its
+    /// contribution.
+    #[serde(default)]
+    building_hidden_occupancy: Option<crate::rules::object_type::BuildingHiddenOccupancyProfile>,
+    /// `[AI] AIBaseSpacing=` for a building that runs the House base
+    /// reservation writer; `None` is the native BuildingType gate.
+    #[serde(default)]
+    base_reservation_spacing: Option<i32>,
+    /// `Factory=BuildingType`: the House edge refresh callback's input.
+    #[serde(default)]
+    determines_waypoint_edge: bool,
+    /// Membership in the resolved `[AI] BuildConst=` vector
+    /// (`RulesClass__ReadAI @ 0x00672AE0`, `0x00672B14..0x00672C01`).
+    #[serde(default)]
+    build_const_eligible: bool,
+    /// The BuildingType registry index ordered House BasePlan nodes use;
+    /// `-1` for any other type.
+    #[serde(default = "default_base_plan_type_index")]
+    base_plan_type_index: i32,
+    /// `IsBaseDefense=` (`BuildingType+0x1706`).
+    #[serde(default)]
+    base_plan_is_defense: bool,
+    /// `UndeploysInto=` resolved to a type (`BuildingType+0x408`, null for
+    /// `none`/`<none>` after `UnitTypeClass__FindOrAllocate @ 0x007480D0`).
+    #[serde(default)]
+    base_plan_has_undeploy_target: bool,
+}
+
+fn default_foundation() -> String {
+    "1x1".to_string()
+}
+
+fn default_base_plan_type_index() -> i32 {
+    -1
+}
+
+impl TypeFacts {
+    /// A new object's facts before the construction stamp: a building's
+    /// empty hidden-occupancy profile, no other type's.
+    pub(crate) fn new(category: EntityCategory) -> Self {
+        Self {
+            foundation: default_foundation(),
+            building_hidden_occupancy: (category == EntityCategory::Structure)
+                .then(crate::rules::object_type::BuildingHiddenOccupancyProfile::default),
+            base_reservation_spacing: None,
+            determines_waypoint_edge: false,
+            build_const_eligible: false,
+            base_plan_type_index: default_base_plan_type_index(),
+            base_plan_is_defense: false,
+            base_plan_has_undeploy_target: false,
+        }
+    }
+
+    /// Copy the type's facts: the foundation for every object, the rest for
+    /// a building.
+    fn stamp(&mut self, category: EntityCategory, obj: &ObjectType) {
+        self.foundation = obj.foundation.clone();
+        if category == EntityCategory::Structure {
+            self.building_hidden_occupancy = Some(obj.hidden_occupancy);
+            self.base_reservation_spacing = obj.base_reservation_spacing;
+            self.determines_waypoint_edge = obj.factory == Some(FactoryType::BuildingType);
+            self.build_const_eligible = obj.build_const_eligible;
+            self.base_plan_type_index = obj.base_plan_type_index;
+            self.base_plan_is_defense = obj.is_base_defense;
+            self.base_plan_has_undeploy_target = obj.undeploys_into.is_some();
+        }
+    }
+
+    /// `Foundation=`, as its rules string.
+    pub(crate) fn foundation(&self) -> &str {
+        &self.foundation
+    }
+
+    /// A building's hidden-object counter inputs.
+    pub(crate) fn building_hidden_occupancy(
+        &self,
+    ) -> Option<crate::rules::object_type::BuildingHiddenOccupancyProfile> {
+        self.building_hidden_occupancy
+    }
+
+    /// `[AI] AIBaseSpacing=` for a base-reserving building.
+    pub(crate) fn base_reservation_spacing(&self) -> Option<i32> {
+        self.base_reservation_spacing
+    }
+
+    /// `Factory=BuildingType`.
+    pub(crate) fn determines_waypoint_edge(&self) -> bool {
+        self.determines_waypoint_edge
+    }
+
+    /// In `[AI] BuildConst=`.
+    pub(crate) fn build_const_eligible(&self) -> bool {
+        self.build_const_eligible
+    }
+
+    /// The BuildingType registry index, `-1` for any other type.
+    pub(crate) fn base_plan_type_index(&self) -> i32 {
+        self.base_plan_type_index
+    }
+
+    /// `IsBaseDefense=`.
+    pub(crate) fn base_plan_is_defense(&self) -> bool {
+        self.base_plan_is_defense
+    }
+
+    /// `UndeploysInto=` names a type.
+    pub(crate) fn base_plan_has_undeploy_target(&self) -> bool {
+        self.base_plan_has_undeploy_target
+    }
+
+    /// Install a fixture's `foundation`.
+    #[cfg(test)]
+    pub(crate) fn set_foundation_for_test(&mut self, value: String) {
+        self.foundation = value;
+    }
+
+    /// Install a fixture's `building_hidden_occupancy`.
+    #[cfg(test)]
+    pub(crate) fn set_building_hidden_occupancy_for_test(
+        &mut self,
+        value: Option<crate::rules::object_type::BuildingHiddenOccupancyProfile>,
+    ) {
+        self.building_hidden_occupancy = value;
+    }
+
+    /// Install a fixture's `base_reservation_spacing`.
+    #[cfg(test)]
+    pub(crate) fn set_base_reservation_spacing_for_test(&mut self, value: Option<i32>) {
+        self.base_reservation_spacing = value;
+    }
+
+    /// Install a fixture's `determines_waypoint_edge`.
+    #[cfg(test)]
+    pub(crate) fn set_determines_waypoint_edge_for_test(&mut self, value: bool) {
+        self.determines_waypoint_edge = value;
+    }
+
+    /// Install a fixture's `build_const_eligible`.
+    #[cfg(test)]
+    pub(crate) fn set_build_const_eligible_for_test(&mut self, value: bool) {
+        self.build_const_eligible = value;
+    }
+
+    /// Install a fixture's `base_plan_type_index`.
+    #[cfg(test)]
+    pub(crate) fn set_base_plan_type_index_for_test(&mut self, value: i32) {
+        self.base_plan_type_index = value;
+    }
+
+    /// Install a fixture's `base_plan_is_defense`.
+    #[cfg(test)]
+    pub(crate) fn set_base_plan_is_defense_for_test(&mut self, value: bool) {
+        self.base_plan_is_defense = value;
+    }
+
+    /// Install a fixture's `base_plan_has_undeploy_target`.
+    #[cfg(test)]
+    pub(crate) fn set_base_plan_has_undeploy_target_for_test(&mut self, value: bool) {
+        self.base_plan_has_undeploy_target = value;
     }
 }
 

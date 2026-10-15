@@ -1,4 +1,4 @@
-//! Debug visualization overlays — pathgrid walkability, terrain costs, etc.
+//! Debug visualization overlays — pathgrid walkability, land rows, etc.
 //!
 //! Each overlay builds `Vec<SpriteInstance>` quads drawn with the white texture
 //! at low opacity using tint colors. Toggled via hotkeys (F9 = pathgrid).
@@ -8,6 +8,7 @@
 
 use crate::app::AppState;
 use crate::app::presentation::instances::in_view;
+use crate::map::resolved_terrain::ResolvedTerrainCell;
 use crate::map::terrain::{self, TILE_HEIGHT, TILE_WIDTH};
 use crate::render::batch::SpriteInstance;
 use crate::rules::locomotor_type::SpeedType;
@@ -20,30 +21,27 @@ const OVERLAY_ALPHA: f32 = 0.35;
 /// Between terrain (depth ~0.9+) and entities/overlays (depth ~0.0005-0.0007).
 const DEBUG_OVERLAY_DEPTH: f32 = 0.0004;
 
-// -- Terrain cost overlay colors --
+// -- Terrain cost overlay colors (land row, whole percent, read capped at 100) --
 
-/// Terrain cost: blocked (cost=0). Red.
+/// Land row 0: impassable. Red.
 const COST_BLOCKED_TINT: [f32; 3] = [OVERLAY_ALPHA, 0.0, 0.0];
-/// Terrain cost: very rough (cost ~60, e.g. wheel on rough). Orange.
+/// Land row 1–65%. Orange.
 const COST_VERY_ROUGH_TINT: [f32; 3] = [OVERLAY_ALPHA, 0.15, 0.0];
-/// Terrain cost: rough (cost ~75, e.g. track on rough). Dark yellow.
+/// Land row 66–80%. Dark yellow.
 const COST_ROUGH_TINT: [f32; 3] = [OVERLAY_ALPHA, 0.25, 0.0];
-/// Terrain cost: slightly slow (cost ~90, e.g. foot on rough). Yellow.
+/// Land row 81–95%. Yellow.
 const COST_SLOW_TINT: [f32; 3] = [OVERLAY_ALPHA, OVERLAY_ALPHA, 0.0];
-/// Terrain cost: normal passable (cost=100). Green.
+/// Land row 96–100%. Green.
 const COST_NORMAL_TINT: [f32; 3] = [0.0, OVERLAY_ALPHA, 0.0];
-/// Terrain cost: above normal (cost=106+, e.g. INI speed >100%). Cyan.
-const COST_FAST_TINT: [f32; 3] = [0.0, OVERLAY_ALPHA, OVERLAY_ALPHA];
 
-/// Map a terrain cost value to a tint color.
+/// Map a land row to a tint color.
 fn cost_to_tint(cost: u8) -> [f32; 3] {
     match cost {
         0 => COST_BLOCKED_TINT,
         1..=65 => COST_VERY_ROUGH_TINT,
         66..=80 => COST_ROUGH_TINT,
         81..=95 => COST_SLOW_TINT,
-        96..=105 => COST_NORMAL_TINT,
-        _ => COST_FAST_TINT,
+        _ => COST_NORMAL_TINT,
     }
 }
 
@@ -62,17 +60,28 @@ pub(crate) fn resolve_debug_speed_type(state: &AppState) -> SpeedType {
         .and_then(|sim| {
             sim.entities()
                 .values()
-                .find(|e| e.selected)
+                .find(|e| e.selection.is_selected())
                 .and_then(|e| e.locomotor.as_ref())
-                .map(|l| l.speed_type)
+                .map(|l| l.speed_type())
         })
         .unwrap_or(SpeedType::Track)
 }
 
+/// One cell's land row for `speed_type`, the whole-percent speed
+/// `Can_Enter_Cell` reads. A missing row shows as 0: gamemd's table for an
+/// unauthored land type is zero-filled.
+pub(crate) fn land_row(cell: &ResolvedTerrainCell, speed_type: SpeedType) -> u8 {
+    cell.speed_costs
+        .cost_for_speed_type(speed_type)
+        .unwrap_or(0)
+}
+
 /// Build terrain cost overlay instances for all visible cells.
 ///
-/// Each cell gets a colored diamond quad based on the movement cost for the
-/// active SpeedType: red=blocked, orange/yellow=rough, green=normal, cyan=road.
+/// Each cell gets a colored diamond quad based on its land row for the
+/// active SpeedType: red=impassable, orange/yellow=slowed, green=full speed.
+/// The row is the ground's, so a bridge cell is drawn at ground height: a
+/// mover on the deck does not read it.
 pub(crate) fn build_terrain_cost_overlay_instances(
     state: &AppState,
     sw: f32,
@@ -88,22 +97,25 @@ pub(crate) fn build_terrain_cost_overlay_instances(
         return Vec::new();
     };
     let speed_type = resolve_debug_speed_type(state);
-    let Some(cost_grid) = sim.terrain_costs.get(&speed_type) else {
-        log::warn!("Terrain cost overlay: no cost grid for {:?}", speed_type);
+    let Some(terrain) = sim.resolved_terrain.as_ref() else {
+        log::warn!("Terrain cost overlay: no resolved terrain");
         return Vec::new();
     };
+    let row_at = |rx: u16, ry: u16| {
+        terrain
+            .cell(rx, ry)
+            .map_or(0, |cell| land_row(cell, speed_type))
+    };
 
-    let width: u16 = cost_grid.width();
-    let height: u16 = cost_grid.height();
+    let width: u16 = terrain.width();
+    let height: u16 = terrain.height();
 
     // One-shot diagnostic on first call.
     use std::sync::atomic::{AtomicBool, Ordering};
     static LOGGED: AtomicBool = AtomicBool::new(false);
     if !LOGGED.swap(true, Ordering::Relaxed) {
         // Sample a few cells to verify the grid has non-zero data.
-        let sample_costs: Vec<u8> = (0..width.min(20))
-            .map(|x| cost_grid.cost_at(x, height / 2))
-            .collect();
+        let sample_costs: Vec<u8> = (0..width.min(20)).map(|x| row_at(x, height / 2)).collect();
         log::info!(
             "Terrain cost overlay: {:?} grid {}x{}, cam=({:.0},{:.0}), screen=({:.0},{:.0}), sample costs={:?}",
             speed_type,
@@ -123,19 +135,14 @@ pub(crate) fn build_terrain_cost_overlay_instances(
 
     for ry in 0..height {
         for rx in 0..width {
-            // Bridge cells use deck height so dots appear ON the bridge.
-            let z: u8 = state
-                .bridge_height_map()
-                .get(&(rx, ry))
-                .copied()
-                .unwrap_or_else(|| state.height_map().get(&(rx, ry)).copied().unwrap_or(0));
+            let z: u8 = state.height_map().get(&(rx, ry)).copied().unwrap_or(0);
             let (sx, sy) = terrain::iso_to_screen(rx, ry, z);
 
             if !in_view(sx, sy, TILE_WIDTH, TILE_HEIGHT, cam_x, cam_y, sw, sh, 60.0) {
                 continue;
             }
 
-            let cost: u8 = cost_grid.cost_at(rx, ry);
+            let cost: u8 = row_at(rx, ry);
             let tint: [f32; 3] = cost_to_tint(cost);
 
             instances.push(SpriteInstance {
@@ -345,7 +352,7 @@ pub(crate) fn build_path_overlay_instances(
     const PATH_DEPTH: f32 = 0.0002;
 
     for entity in sim.entities().values() {
-        if !entity.selected {
+        if !entity.selection.is_selected() {
             continue;
         }
         if crate::sim::movement::motion_query::is_moving(entity) != Some(true) {

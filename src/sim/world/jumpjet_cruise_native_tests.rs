@@ -243,18 +243,27 @@ fn supplied_world(
     sim.houses.insert(owner, house);
     sim.session.house_order = vec![owner];
     let id = sim
-        .construct_object_limbo_at_height("SHAD", "Americans", 10, 10, 0, 0, rules)
+        .construct_object_limbo_at_height(
+            "SHAD",
+            "Americans",
+            10,
+            10,
+            0,
+            0,
+            rules,
+            crate::sim::world::FrameEffects::default(),
+        )
         .expect("stock SHAD constructor");
     {
         let actor = sim.substrate.entities.get_mut(id).unwrap();
         actor.lifecycle.set_in_limbo_for_test(false);
         actor.health.set_for_test(signed(&state["health"]));
-        actor.on_bridge = state["on_bridge"].as_bool().unwrap();
+        actor.set_on_bridge(state["on_bridge"].as_bool().unwrap());
         // make_fixture supplies zeroed Unit storage, retaining Foot+6B6=0.
         // All initial raw boundaries in jumpjet_states.raw.json.gz confirm
         // this byte; these supplied-world controls do not execute Unit's
         // constructor. Preserve it before Mark links any ground footprint.
-        actor.foot_occupation_enabled = false;
+        actor.set_foot_occupation_enabled(false);
         put_location(&mut actor.position, coordinate(&state["position"]));
         actor.mission.apply_test_fixture(MissionTestFixture {
             current: MissionId::from_raw(signed(&state["mission"])),
@@ -266,27 +275,45 @@ fn supplied_world(
             ai_counter: 0,
             dispatch_timer: MissionDispatchTimer::from_raw(0, 0),
         });
-        actor.navigation.nav_com_aux = state["aux_cell"].as_array().map(|_| {
-            let at = cell(&state["aux_cell"]);
-            NavTargetRef::cell(at.0, at.1)
-        });
-        actor.navigation.path_replay.directions = state["path"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .map(|word| {
-                let word = signed(word);
-                assert!((-1..=8).contains(&word));
-                word as u8
-            })
-            .collect();
+        actor
+            .navigation
+            .set_nav_com_aux(state["aux_cell"].as_array().map(|_| {
+                let at = cell(&state["aux_cell"]);
+                NavTargetRef::cell(at.0, at.1)
+            }));
+        actor.navigation.path_replay.set_directions_for_test(
+            state["path"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|word| {
+                    let word = signed(word);
+                    assert!((-1..=8).contains(&word));
+                    word as u8
+                })
+                .collect(),
+        );
         let reference = cell(&state["reference_cell"]);
-        actor.navigation.path_replay.reference_cell =
-            Some((reference.0 as i16, reference.1 as i16));
-        actor.navigation.path_runtime.movement_timer = native_timer(&state["movement_timer"]);
-        actor.navigation.path_runtime.blocked_timer = native_timer(&state["blocked_timer"]);
-        actor.navigation.path_runtime.path_blocked = state["blocked"].as_bool().unwrap();
-        actor.navigation.path_runtime.retries_left = state["retries"].as_u64().unwrap() as u32;
+        actor
+            .navigation
+            .path_replay
+            .set_reference_cell(Some((reference.0 as i16, reference.1 as i16)));
+        actor
+            .navigation
+            .path_runtime
+            .set_movement_timer_for_test(native_timer(&state["movement_timer"]));
+        actor
+            .navigation
+            .path_runtime
+            .set_blocked_timer_for_test(native_timer(&state["blocked_timer"]));
+        actor
+            .navigation
+            .path_runtime
+            .set_path_blocked(state["blocked"].as_bool().unwrap());
+        actor
+            .navigation
+            .path_runtime
+            .set_retries_left(state["retries"].as_u64().unwrap() as u32);
         actor.body_facing.snap(
             signed(&state["body_facing"]["destination_word"]) as u16,
             sim.session.binary_frame,
@@ -298,7 +325,7 @@ fn supplied_world(
             .jumpjet_runtime_mut()
             .unwrap();
         let mut flight = runtime.flight();
-        flight.facing.snap(
+        flight.facing_mut().snap(
             signed(&state["loco_facing"]["destination_word"]) as u16,
             sim.session.binary_frame,
         );
@@ -323,7 +350,16 @@ fn supplied_world(
     assert_eq!(state["alive"], 1);
     let other = input["taken"].as_bool().unwrap().then(|| {
         let other = sim
-            .construct_object_limbo_at_height("SHAD", "Americans", 12, 10, 0, 0, rules)
+            .construct_object_limbo_at_height(
+                "SHAD",
+                "Americans",
+                12,
+                10,
+                0,
+                0,
+                rules,
+                crate::sim::world::FrameEffects::default(),
+            )
             .expect("foreign supplied SHAD identity");
         {
             let foreign = sim.substrate.entities.get_mut(other).unwrap();
@@ -331,7 +367,7 @@ fn supplied_world(
             foreign
                 .health
                 .set_for_test(signed(&state["other"]["health"]));
-            foreign.on_bridge = state["other"]["on_bridge"].as_bool().unwrap();
+            foreign.set_on_bridge(state["other"]["on_bridge"].as_bool().unwrap());
             put_location(
                 &mut foreign.position,
                 coordinate(&state["other"]["position"]),
@@ -369,19 +405,19 @@ fn assert_motion_boundary(sim: &Simulation, id: u64, control: &Value, boundary: 
         state["destination"],
         "{label}: retained class destination",
     );
-    let nav_cell = match actor.navigation.nav_com {
+    let nav_cell = match actor.navigation.nav_com() {
         Some(NavTargetRef::Cell { rx, ry }) => json!([rx as i16, ry as i16]),
         None => Value::Null,
         unexpected => panic!("{label}: unexpected NavCom {unexpected:?}"),
     };
     assert_eq!(nav_cell, state["nav_cell"], "{label}: live NavCom");
     assert_eq!(
-        timer_fields(actor.navigation.path_runtime.movement_timer),
+        timer_fields(actor.navigation.path_runtime.movement_timer()),
         state["movement_timer"],
         "{label}: accepted movement timer",
     );
     assert_eq!(
-        timer_fields(actor.navigation.path_runtime.blocked_timer),
+        timer_fields(actor.navigation.path_runtime.blocked_timer()),
         state["blocked_timer"],
         "{label}: accepted blocked timer",
     );
@@ -403,7 +439,7 @@ fn assert_motion_boundary(sim: &Simulation, id: u64, control: &Value, boundary: 
         "{label}: landing latch"
     );
     assert_eq!(
-        actor.lifecycle.cell_marked,
+        actor.lifecycle.cell_marked(),
         signed(&state["marked"]) != 0,
         "{label}: marked"
     );
@@ -418,7 +454,7 @@ fn assert_motion_boundary(sim: &Simulation, id: u64, control: &Value, boundary: 
         "{label}: health"
     );
     assert_eq!(
-        actor.on_bridge,
+        actor.on_bridge(),
         state["on_bridge"].as_bool().unwrap(),
         "{label}: OnBridge"
     );
@@ -439,9 +475,9 @@ fn assert_motion_boundary(sim: &Simulation, id: u64, control: &Value, boundary: 
     );
     let path = &actor.navigation.path_replay;
     let backing_words: Vec<i32> = path
-        .directions
+        .directions()
         .iter()
-        .skip(usize::from(path.cursor))
+        .skip(usize::from(path.cursor()))
         .take(4)
         .map(|&word| i32::from(word as i8))
         .collect();
@@ -450,23 +486,23 @@ fn assert_motion_boundary(sim: &Simulation, id: u64, control: &Value, boundary: 
         state["path"],
         "{label}: retained path backing"
     );
-    let reference = path.reference_cell.unwrap_or((0, 0));
+    let reference = path.reference_cell().unwrap_or((0, 0));
     assert_eq!(
         json!([reference.0, reference.1]),
         state["reference_cell"],
         "{label}: reference Cell"
     );
     assert_eq!(
-        actor.navigation.path_runtime.path_blocked,
+        actor.navigation.path_runtime.path_blocked(),
         state["blocked"].as_bool().unwrap(),
         "{label}: blocked"
     );
     assert_eq!(
-        actor.navigation.path_runtime.retries_left,
+        actor.navigation.path_runtime.retries_left(),
         state["retries"].as_u64().unwrap() as u32,
         "{label}: retries"
     );
-    let aux_cell = match actor.navigation.nav_com_aux {
+    let aux_cell = match actor.navigation.nav_com_aux() {
         Some(NavTargetRef::Cell { rx, ry }) => json!([rx as i16, ry as i16]),
         None => Value::Null,
         unknown => panic!("{label}: unexpected Aux {unknown:?}"),
@@ -477,27 +513,27 @@ fn assert_motion_boundary(sim: &Simulation, id: u64, control: &Value, boundary: 
         "{label}: selected native prefix has no NavQueue"
     );
     assert!(
-        actor.navigation.nav_queue.is_empty(),
+        actor.navigation.nav_queue().is_empty(),
         "{label}: no invented NavQueue"
     );
     let flight = runtime.flight();
     assert_eq!(
-        format!("{:016x}", flight.current_speed_bits),
+        format!("{:016x}", flight.current_speed_bits()),
         state["current_speed_bits"].as_str().unwrap(),
         "{label}: current speed"
     );
     assert_eq!(
-        format!("{:016x}", flight.target_speed_bits),
+        format!("{:016x}", flight.target_speed_bits()),
         state["target_speed_bits"].as_str().unwrap(),
         "{label}: target speed"
     );
     assert_eq!(
-        flight.target_height,
+        flight.target_height(),
         signed(&state["target_height"]),
         "{label}: target height"
     );
     assert_eq!(
-        format!("{:016x}", flight.bob_phase_bits),
+        format!("{:016x}", flight.bob_phase_bits()),
         state["bob_phase_bits"].as_str().unwrap(),
         "{label}: bob phase"
     );
@@ -507,7 +543,7 @@ fn assert_motion_boundary(sim: &Simulation, id: u64, control: &Value, boundary: 
         "{label}: body facing"
     );
     assert_eq!(
-        facing_fields(flight.facing),
+        facing_fields(*flight.facing()),
         state["loco_facing"],
         "{label}: locomotor facing"
     );
@@ -576,7 +612,7 @@ fn assert_world_boundary(
             "{label}: foreign health"
         );
         assert_eq!(
-            entity.lifecycle.cell_marked,
+            entity.lifecycle.cell_marked(),
             signed(&native["marked"]) != 0,
             "{label}: foreign marked"
         );
@@ -586,7 +622,7 @@ fn assert_world_boundary(
             "{label}: foreign alive"
         );
         assert_eq!(
-            entity.on_bridge,
+            entity.on_bridge(),
             native["on_bridge"].as_bool().unwrap(),
             "{label}: foreign OnBridge"
         );
@@ -738,10 +774,12 @@ fn execute_step(
         "retained_handler_inputs" => {
             let inputs = &step["supplied_inputs"];
             let entity = sim.substrate.entities.get_mut(actor).unwrap();
-            entity.navigation.nav_com = inputs["nav_cell"].as_array().map(|_| {
-                let at = cell(&inputs["nav_cell"]);
-                NavTargetRef::cell(at.0, at.1)
-            });
+            entity
+                .navigation
+                .set_nav_com(inputs["nav_cell"].as_array().map(|_| {
+                    let at = cell(&inputs["nav_cell"]);
+                    NavTargetRef::cell(at.0, at.1)
+                }));
             entity
                 .attack_target
                 .set_for_test(match inputs["tarcom_owner"].as_str() {
@@ -756,7 +794,7 @@ fn execute_step(
                 .jumpjet_runtime_mut()
                 .unwrap();
             let mut flight = runtime.flight();
-            flight.target_height = signed(&inputs["target_height"]);
+            flight.set_target_height(signed(&inputs["target_height"]));
             *runtime = runtime
                 .clone()
                 .with_phase_for_test(signed(&inputs["phase"]))

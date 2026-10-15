@@ -402,7 +402,7 @@ pub(super) fn minimap_entity_visible(
 ) -> bool {
     let interner = crate::sim::intern::test_interner();
     fog.is_friendly_id(local_owner, owner, &interner)
-        || fog.is_cell_revealed(local_owner, pos.rx, pos.ry)
+        || fog.is_cell_revealed(local_owner, pos.rx(), pos.ry())
 }
 
 /// Default minimap screen rectangle (bottom-left corner with margin).

@@ -106,8 +106,7 @@ impl Simulation {
         // The building is already unmarked, so presence cannot change between
         // cells. Before the first navigation build there is nothing to publish
         // or repair ([`Simulation::publish_recalculated_cells`]).
-        let navigation_installed =
-            self.path_grid.is_some() || self.zone_grid.is_some() || !self.terrain_costs.is_empty();
+        let navigation_installed = self.path_grid.is_some() || self.zone_grid.is_some();
         let blocked = if navigation_installed {
             super::navigation::structure_blocked_among(
                 &self.substrate.entities,

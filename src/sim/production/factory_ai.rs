@@ -148,7 +148,7 @@ fn exit_finished_object(
             let frame = sim.session.binary_frame as i32;
             let delay = rules.general.placement_delay_frames();
             if let Some(entity) = sim.substrate.entities.get_mut(building) {
-                entity.ai_placement_timer = CdTimer::started(frame, delay);
+                entity.ai_placement_timer.restart(frame, delay);
             }
         }
         BuildingExit::Failed => {
@@ -262,6 +262,34 @@ fn placement_wait_over(sim: &Simulation, building: u64) -> bool {
         .entities
         .get(building)
         .is_some_and(|entity| entity.ai_placement_timer.expired(frame))
+}
+
+/// `BuildingClass+0x550..+0x558`, the wait before the building's computer
+/// factory tries its finished object again. The constructor starts it with no
+/// duration (`0x0043B7A7`, `0x0043B7AD`); a placement that must wait restarts
+/// it for `[General] PlacementDelay=` (`0x004501CB..0x004501F7`). Only this
+/// module writes or reads it.
+#[derive(
+    Debug, Clone, Copy, Default, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize,
+)]
+#[serde(transparent)]
+pub(crate) struct AiPlacementTimer {
+    timer: CdTimer,
+}
+
+impl AiPlacementTimer {
+    /// The timer, for the state hash.
+    pub(crate) fn timer(self) -> CdTimer {
+        self.timer
+    }
+
+    fn restart(&mut self, frame: i32, delay: i32) {
+        self.timer = CdTimer::started(frame, delay);
+    }
+
+    fn expired(self, frame: i32) -> bool {
+        self.timer.expired(frame)
+    }
 }
 
 /// `BuildingClass::Detach_All(1) @ 0x0044EBF0`'s factory arm

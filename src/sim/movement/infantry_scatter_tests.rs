@@ -82,7 +82,8 @@ fn player_scatter_event_gates_and_rng_prefix_match_native_gi() {
                 .set_object_alive_for_test(actor["alive"].as_u64().unwrap() != 0);
             man.lifecycle
                 .set_in_limbo_for_test(actor["limbo"].as_u64().unwrap() != 0);
-            man.dock_entered_with = (actor["tether"].as_u64().unwrap() != 0).then_some(9);
+            man.tether
+                .set_for_test((actor["tether"].as_u64().unwrap() != 0).then_some(9));
             let mut loco = LocomotorState::for_test_kind(LocomotorKind::Walk);
             loco.set_walk_destination(
                 (actor["moving"].as_u64().unwrap() != 0).then(|| DriveCoord::cell(6, 5, 0)),
@@ -162,7 +163,16 @@ fn armed_teleport_destination_requires_the_current_cell_inputs() {
     .unwrap();
     let mut sim = Simulation::with_seed(31);
     let id = sim
-        .construct_object_limbo_at_height("CLEG", "Americans", 10, 10, 0, 0, &rules)
+        .construct_object_limbo_at_height(
+            "CLEG",
+            "Americans",
+            10,
+            10,
+            0,
+            0,
+            &rules,
+            crate::sim::world::FrameEffects::default(),
+        )
         .unwrap();
     let actor = sim.substrate.entities.get_mut(id).unwrap();
     actor.lifecycle.set_in_limbo_for_test(false);
@@ -385,7 +395,9 @@ fn damage_gates_match_original_execution() {
                 .set_for_test(Some(crate::sim::combat::TargetKind::Entity(9)));
         }
         if flag("nav", false) {
-            victim.navigation.nav_com = Some(NavTargetRef::cell(9, 9));
+            victim
+                .navigation
+                .set_nav_com(Some(NavTargetRef::cell(9, 9)));
         }
         let owner = victim.owner();
         let type_ref = victim.type_ref();

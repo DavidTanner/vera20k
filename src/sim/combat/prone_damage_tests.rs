@@ -7,7 +7,8 @@ use crate::map::entities::EntityCategory;
 use crate::rules::ini_parser::IniFile;
 use crate::rules::ruleset::RuleSet;
 use crate::rules::warhead_type::WarheadType;
-use crate::sim::game_entity::{GameEntity, InfantryRuntime};
+use crate::sim::game_entity::GameEntity;
+use crate::sim::infantry::InfantryRuntime;
 use serde_json::Value;
 
 fn native() -> Value {
@@ -34,7 +35,7 @@ fn infantry(prone: bool) -> GameEntity {
     let mut entity = GameEntity::test_default(1, "E1", "Americans", 5, 5);
     entity.set_category_for_test(EntityCategory::Infantry);
     let mut runtime = InfantryRuntime::new();
-    runtime.is_prone = prone;
+    runtime.set_is_prone_for_test(prone);
     entity.infantry = Some(runtime);
     entity
 }

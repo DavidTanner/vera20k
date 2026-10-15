@@ -80,7 +80,7 @@ fn far_failure_stops_walk_clears_target_and_queues_guard_for_a_human_house() {
         .unwrap()
         .navigation
         .path_runtime
-        .retries_left;
+        .retries_left();
     order_walk(&mut sim, &rules, id, (15, 15));
     let guard = MissionId::from_known(MissionType::Guard);
     let mut frames = 0;
@@ -107,18 +107,18 @@ fn far_failure_stops_walk_clears_target_and_queues_guard_for_a_human_house() {
     // Process cancellation: destination and NavCom are gone.
     assert!(e.locomotor.as_ref().unwrap().walk_destination().is_none());
     assert_eq!(e.locomotor.as_ref().unwrap().walk_is_moving(), Some(false));
-    assert!(e.navigation.nav_com.is_none());
+    assert!(e.navigation.nav_com().is_none());
     assert!(crate::sim::movement::motion_query::is_moving(&e) != Some(true));
     // 0x4D4149 Assign_Target(NULL).
     assert!(e.attack_target.target().is_none());
     // A Clear current cell answers 0 at 0x51DBAC.
-    assert!(!e.infantry.as_ref().unwrap().cell_entry_blocked);
+    assert!(!e.infantry.as_ref().unwrap().cell_entry_blocked());
     // The failure tail never touches +64C; the oracle far row keeps 10.
-    assert_eq!(e.navigation.path_runtime.retries_left, retries_before);
+    assert_eq!(e.navigation.path_runtime.retries_left(), retries_before);
     // The NULL setter's Set_Destination_Internal tail rewrote +640 to duration 0.
-    assert_eq!(e.navigation.path_runtime.movement_timer.duration(), 0);
-    assert_eq!(e.position.rx, 10);
-    assert_eq!(e.position.ry, 10);
+    assert_eq!(e.navigation.path_runtime.movement_timer().duration(), 0);
+    assert_eq!(e.position.rx(), 10);
+    assert_eq!(e.position.ry(), 10);
 }
 
 #[test]
@@ -142,22 +142,23 @@ fn building_target_redirects_to_a_nearby_cell_and_the_walk_completes_there() {
     // Code 7 with a Building (0x47C520) redirected the Find_Path target to an
     // FNPC cell beside the hut; no failure tail ran.
     assert_ne!(
-        (e.position.rx, e.position.ry),
+        (e.position.rx(), e.position.ry()),
         (10, 10),
         "the engineer walked"
     );
-    assert_ne!((e.position.rx, e.position.ry), (13, 10));
+    assert_ne!((e.position.rx(), e.position.ry()), (13, 10));
     assert!(
-        (i32::from(e.position.rx) - 13).abs() <= 1 && (i32::from(e.position.ry) - 10).abs() <= 1,
+        (i32::from(e.position.rx()) - 13).abs() <= 1
+            && (i32::from(e.position.ry()) - 10).abs() <= 1,
         "ended at {:?}",
-        (e.position.rx, e.position.ry)
+        (e.position.rx(), e.position.ry())
     );
     // Successful stopped-Move arrival also enters Infantry idle:
     //520F8C ->51CBA0(0,1) ->51CD6E/51CD96 queues human Guard.
     // This is separate from the Find_Path failure tail.
     let guard = MissionId::from_known(MissionType::Guard);
     assert!(e.mission.queued() == guard || e.mission.current() == guard);
-    assert!(!e.infantry.as_ref().unwrap().cell_entry_blocked);
+    assert!(!e.infantry.as_ref().unwrap().cell_entry_blocked());
 }
 
 #[test]
@@ -191,7 +192,7 @@ fn obstructed_target_beyond_close_enough_redirects_only_when_the_nearby_cell_is_
     let destination = e.locomotor.as_ref().unwrap().walk_destination().unwrap();
     assert_eq!((destination.x / 256, destination.y / 256), (12, 10));
     assert_eq!(
-        e.navigation.nav_com,
+        e.navigation.nav_com(),
         Some(crate::sim::components::NavTargetRef::Cell { rx: 12, ry: 10 })
     );
     // Within CloseEnough the obstructed target is searched unchanged.
@@ -240,8 +241,8 @@ fn near_failure_returns_before_the_null_setter_and_guard_queue() {
     // The receiver's Stop already cleared the Walk destination; NavCom is
     // retained until the outer Process (oracle near row: nav kept, dest 0).
     assert!(e.locomotor.as_ref().unwrap().walk_destination().is_none());
-    assert!(e.navigation.nav_com.is_some());
-    assert!(!e.infantry.as_ref().unwrap().cell_entry_blocked);
+    assert!(e.navigation.nav_com().is_some());
+    assert!(!e.infantry.as_ref().unwrap().cell_entry_blocked());
 }
 
 /// A Walk destination in the infantryman's own cell reaches Find_Path like
@@ -263,17 +264,17 @@ fn own_cell_destination_fails_and_clears_the_order() {
     let e = sim.substrate.entities.get(id).unwrap();
     assert!(e.locomotor.as_ref().unwrap().walk_destination().is_none());
     assert_eq!(e.locomotor.as_ref().unwrap().walk_is_moving(), Some(false));
-    assert!(e.navigation.nav_com.is_none());
+    assert!(e.navigation.nav_com().is_none());
     assert!(crate::sim::movement::motion_query::is_moving(&e) != Some(true));
     assert_eq!(e.mission.queued(), MissionId::NONE);
     assert_eq!(
         e.mission.current(),
         MissionId::from_known(MissionType::Move)
     );
-    assert_eq!((e.position.rx, e.position.ry), (10, 10));
+    assert_eq!((e.position.rx(), e.position.ry()), (10, 10));
     // The NULL setter's Set_Destination_Internal tail rewrote +640 to
     // duration 0.
-    assert_eq!(e.navigation.path_runtime.movement_timer.duration(), 0);
+    assert_eq!(e.navigation.path_runtime.movement_timer().duration(), 0);
 }
 
 #[test]
@@ -304,7 +305,7 @@ fn receiver_records_an_impassable_current_cell() {
     )
     .unwrap();
     let e = sim.substrate.entities.get(id).unwrap();
-    assert!(e.infantry.as_ref().unwrap().cell_entry_blocked);
+    assert!(e.infantry.as_ref().unwrap().cell_entry_blocked());
     assert!(e.locomotor.as_ref().unwrap().walk_destination().is_none());
     assert_ne!(sim.state_hash(), before);
 }
@@ -384,7 +385,7 @@ fn jumpjet_infantry_damage_scatter_takes_the_infantry_setter() {
     let e = sim.substrate.entities.get(victim).unwrap();
     assert!(e.health.current() < 125);
     assert!(
-        matches!(e.navigation.nav_com, Some(NavTargetRef::Cell { .. })),
+        matches!(e.navigation.nav_com(), Some(NavTargetRef::Cell { .. })),
         "Scatter published the cell NavCom"
     );
     let state = e.locomotor.as_ref().unwrap().jumpjet_runtime().unwrap();
@@ -453,7 +454,7 @@ fn infantry_damage_scatter_reaches_the_ordinary_walk_process() {
         before,
         "no immediate Process for source Scatter"
     );
-    let Some(NavTargetRef::Cell { rx, ry }) = e.navigation.nav_com else {
+    let Some(NavTargetRef::Cell { rx, ry }) = e.navigation.nav_com() else {
         panic!("scatter cell");
     };
     assert_eq!(
@@ -466,12 +467,12 @@ fn infantry_damage_scatter_reaches_the_ordinary_walk_process() {
     );
     assert_eq!(e.locomotor.as_ref().unwrap().step_head(), None);
     assert_eq!(e.mission.queued(), MissionId::from_known(MissionType::Move));
-    assert_eq!(e.infantry.as_ref().unwrap().fear_level, 300);
+    assert_eq!(e.infantry.as_ref().unwrap().fear_level(), 300);
     // Isolate the damage-created destination's ordinary Walk continuation.
     // The independently native-compared5200B0 panic tail can issue another
     // NULL Scatter immediately on arrival while this Fraidycat's fear>50.
     let e = sim.substrate.entities.get_mut(victim).unwrap();
-    e.infantry.as_mut().unwrap().fear_level = 0;
+    e.infantry.as_mut().unwrap().set_fear_level_for_test(0);
     e.attack_target.set_for_test(None);
     // The same production tick host that handles normal orders must consume
     // the damage-created request. The native corpus proves the first FindPath
@@ -495,8 +496,8 @@ fn infantry_damage_scatter_reaches_the_ordinary_walk_process() {
         }
     }
     let e = sim.substrate.entities.get(victim).unwrap();
-    assert_eq!((e.position.rx, e.position.ry), (rx, ry));
-    assert!(e.navigation.nav_com.is_none());
+    assert_eq!((e.position.rx(), e.position.ry()), (rx, ry));
+    assert!(e.navigation.nav_com().is_none());
     assert!(e.locomotor.as_ref().unwrap().walk_destination().is_none());
 }
 
@@ -522,7 +523,7 @@ fn first_limbo_runs_the_infantry_stop_driver() {
     order_walk(&mut sim, &rules, id, (11, 10));
     let _ = sim.techno_limbo_with_rules(id, &rules, Some(&registry));
     let e = sim.substrate.entities.get(id).unwrap();
-    assert!(e.infantry.as_ref().unwrap().cell_entry_blocked);
+    assert!(e.infantry.as_ref().unwrap().cell_entry_blocked());
     let loco = e.locomotor.as_ref().unwrap();
     assert_eq!((loco.walk_destination(), loco.step_head()), (None, None));
     assert_eq!(loco.walk_is_moving(), Some(false));

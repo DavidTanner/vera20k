@@ -30,7 +30,7 @@ pub(super) fn publish_fresh_track_target(
     let Some(loco) = entity.locomotor.as_ref() else {
         return;
     };
-    let speed_type = loco.speed_type;
+    let speed_type = loco.speed_type();
     let below_yellow = crate::sim::pathfinding::terrain_speed::is_at_or_below_condition_yellow(
         entity.health.current(),
         strength,
@@ -64,14 +64,14 @@ fn publish_target_fraction(entity: &mut GameEntity, requested: SimFixed) {
     let Some(loco) = entity.locomotor.as_mut() else {
         return;
     };
-    let Some(family) = TrackFamily::from_kind(loco.kind) else {
+    let Some(family) = TrackFamily::from_kind(loco.active_kind()) else {
         return;
     };
     loco.ensure_installed_track_state();
     let Some(progress) = loco.track_progress(family) else {
         return;
     };
-    let selector = progress.turn_index;
+    let selector = progress.turn_index();
     if selector < 64 {
         loco.store_track_target_fraction(family, requested);
     } else if entity.foot_speed.applied_fraction() != requested {
@@ -140,7 +140,7 @@ pub(super) fn advance(
     let Some(loco) = entity.locomotor.as_ref() else {
         return 0;
     };
-    let kind = loco.kind;
+    let kind = loco.active_kind();
     if !matches!(kind, LocomotorKind::Drive | LocomotorKind::Ship) {
         return 0;
     }
@@ -152,10 +152,10 @@ pub(super) fn advance(
     );
     let family = TrackFamily::from_kind(kind).unwrap();
     let destination = loco.track_destination(family);
-    let selector = loco.track_progress(family).map_or(-1, |p| p.turn_index);
+    let selector = loco.track_progress(family).map_or(-1, |p| p.turn_index());
     let retained_target = loco.track_target_fraction(family);
     let prefix = super::drive_locomotion::TrackSpeedPrefix {
-        accelerates: entity.drive_accelerates,
+        accelerates: entity.mover_facts.drive_accelerates(),
         unit_passive: entity.category() == crate::map::entities::EntityCategory::Unit
             && object.is_some_and(|object| object.passive),
         selector,
@@ -203,7 +203,7 @@ mod tests {
         let loco = entity.locomotor.as_mut().unwrap();
         loco.ensure_installed_track_state();
         let mut progress = loco.track_progress(family).unwrap();
-        progress.turn_index = selector;
+        progress.set_turn_index(selector);
         loco.store_track_progress(family, progress);
         loco.store_track_valid(family, true);
         loco.store_track_target_fraction(family, target);
@@ -212,7 +212,7 @@ mod tests {
 
     fn retained(entity: &GameEntity) -> SimFixed {
         let loco = entity.locomotor.as_ref().unwrap();
-        loco.track_target_fraction(TrackFamily::from_kind(loco.kind).unwrap())
+        loco.track_target_fraction(TrackFamily::from_kind(loco.active_kind()).unwrap())
             .unwrap()
     }
 
@@ -225,7 +225,7 @@ mod tests {
         let object = rules.object("MTNK").unwrap();
         for kind in [LocomotorKind::Drive, LocomotorKind::Ship] {
             let mut mover = entity(kind, 0, SIM_ONE);
-            mover.drive_accelerates = false;
+            mover.mover_facts.set_drive_accelerates_for_test(false);
             assert_eq!(
                 advance(
                     &mut mover,
@@ -262,7 +262,7 @@ mod tests {
         .unwrap();
         for kind in [LocomotorKind::Drive, LocomotorKind::Ship] {
             let mut mover = entity(kind, 0, SIM_ONE);
-            mover.drive_accelerates = false;
+            mover.mover_facts.set_drive_accelerates_for_test(false);
             assert_eq!(
                 advance(
                     &mut mover,
@@ -314,7 +314,9 @@ mod tests {
             )))
             .unwrap();
             let mut entity = entity(kind, selector, fixed(&input["target_bits"]));
-            entity.drive_accelerates = accelerates;
+            entity
+                .mover_facts
+                .set_drive_accelerates_for_test(accelerates);
             entity
                 .foot_speed
                 .set_speed_fraction(fixed(&input["applied_bits"]));
@@ -387,7 +389,7 @@ mod tests {
                 &mut mover.position,
                 [current[0], current[1]],
             );
-            mover.position.exact_z_leptons = Some(current[2]);
+            mover.position.set_exact_z_leptons(Some(current[2]));
             let destination = crate::sim::components::DriveCoord {
                 x: destination[0],
                 y: destination[1],

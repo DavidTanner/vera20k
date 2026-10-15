@@ -86,6 +86,57 @@ pub(crate) const fn turret_rotate_sound_techno(owner: u64) -> Option<u64> {
     }
 }
 
+/// The loop latch, `TechnoClass+0x49C`. It holds the inverse of the last
+/// reached turret-control visit's sample (`+0x4A0`), except when
+/// constructor/Unlimbo/Limbo initialization arms it. It is armed when the next
+/// rotating visit must request a loop. It tracks the rotation edge even when
+/// the cue is absent or inaudible, and Load retains it while reconstructing
+/// the external handle. `TechnoClass::Unlimbo`'s type-derived initialization
+/// arms it (the block that copies type fields to the instance), as do the
+/// constructor (`0x006F30D6`, [`Self::default`]) and the `TechnoClass::Limbo`
+/// sound cleanup (reference/Steam `0x006F6C5B`). Only this module writes it,
+/// for a `Turret=yes` building.
+///
+/// Folded into `world_hash` only while unarmed: the latch retains control
+/// history that no other folded field reproduces. It does not indicate
+/// successful playback. The armed default folds nothing so an object that
+/// never turned keeps its prior hash stream.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(transparent)]
+pub(crate) struct TurretRotateLatch {
+    armed: bool,
+}
+
+impl Default for TurretRotateLatch {
+    /// The constructor arms it (`0x006F30D6`).
+    fn default() -> Self {
+        Self { armed: true }
+    }
+}
+
+impl TurretRotateLatch {
+    /// Armed: the next rotating visit requests the loop.
+    pub(crate) const fn is_armed(self) -> bool {
+        self.armed
+    }
+
+    /// A still visit's re-arm after its release, and Limbo's (`0x006F6C5B`).
+    fn arm(&mut self) {
+        self.armed = true;
+    }
+
+    /// A rotating visit that requested the loop.
+    fn disarm(&mut self) {
+        self.armed = false;
+    }
+
+    /// Install a fixture's latch.
+    #[cfg(test)]
+    pub(crate) fn set_for_test(&mut self, armed: bool) {
+        self.armed = armed;
+    }
+}
+
 impl Simulation {
     /// `BuildingClass::Update`'s sample block (`0x0043FCC7..0x0043FCF9`):
     /// whether this building's own turret facing is rotating at this frame.
@@ -124,7 +175,7 @@ impl Simulation {
     ) {
         let Some((has_turret, armed)) = self.substrate.entities.get(id).and_then(|entity| {
             let object = self.object_type(entity.type_ref(), rules)?;
-            Some((object.has_turret, entity.turret_rotate_latch))
+            Some((object.has_turret, entity.turret_rotate_latch.is_armed()))
         }) else {
             return;
         };
@@ -140,7 +191,7 @@ impl Simulation {
                 });
                 effects.flush_sound(self, Some(rules));
                 if let Some(entity) = self.substrate.entities.get_mut(id) {
-                    entity.turret_rotate_latch = true;
+                    entity.turret_rotate_latch.arm();
                 }
             }
             return;
@@ -178,7 +229,7 @@ impl Simulation {
             effects.flush_sound(self, Some(rules));
         }
         if let Some(entity) = self.substrate.entities.get_mut(id) {
-            entity.turret_rotate_latch = false;
+            entity.turret_rotate_latch.disarm();
         }
     }
 
@@ -201,7 +252,7 @@ impl Simulation {
         });
         effects.flush_sound(self, rules);
         if let Some(entity) = self.substrate.entities.get_mut(id) {
-            entity.turret_rotate_latch = true;
+            entity.turret_rotate_latch.arm();
         }
     }
 
@@ -210,7 +261,7 @@ impl Simulation {
         self.substrate
             .entities
             .get(id)
-            .is_some_and(|entity| !entity.turret_rotate_latch)
+            .is_some_and(|entity| !entity.turret_rotate_latch.is_armed())
     }
 }
 

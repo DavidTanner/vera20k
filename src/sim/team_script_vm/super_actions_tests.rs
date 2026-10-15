@@ -92,7 +92,8 @@ fn rules_for(row: &Value) -> RuleSet {
     for (index, sw) in supers.iter().enumerate() {
         ini += &format!("[SW{index}]\nType={:?}\n", KINDS[int(&sw["kind"]) as usize]);
     }
-    let mut rules = RuleSet::from_ini(&IniFile::from_str(&ini)).expect("fixture rules");
+    let mut rules = RuleSet::from_ini(&crate::sim::arena_fixture::clear_ground_ini(&ini))
+        .expect("fixture rules");
     for (index, sw) in supers.iter().enumerate() {
         let name = format!("SW{index}");
         rules
@@ -177,10 +178,10 @@ fn replay(row: &Value, plant: bool) -> Replay {
     let (x, y) = (int(&centre[0]), int(&centre[1]));
     if x >= 0 && y >= 0 {
         let position = &mut sim.substrate.entities.get_mut(probe).unwrap().position;
-        position.rx = u16::try_from(x / 256).unwrap();
-        position.ry = u16::try_from(y / 256).unwrap();
-        position.sub_x = SimFixed::from_num(x % 256);
-        position.sub_y = SimFixed::from_num(y % 256);
+        position.set_rx(u16::try_from(x / 256).unwrap());
+        position.set_ry(u16::try_from(y / 256).unwrap());
+        position.set_sub_x(SimFixed::from_num(x % 256));
+        position.set_sub_y(SimFixed::from_num(y % 256));
     }
     let plant = plant.then(|| {
         sim.spawn_object_at_height("PLANT", ENEMY, 20, 21, 0, 0, &rules)

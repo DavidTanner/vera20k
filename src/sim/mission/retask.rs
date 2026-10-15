@@ -41,7 +41,7 @@ impl Simulation {
         let Some(entity) = self.substrate.entities.get(id) else {
             return mission;
         };
-        let tethered = entity.dock_entered_with.is_some();
+        let tethered = entity.tether.partner().is_some();
         let foot = matches!(
             entity.category(),
             crate::map::entities::EntityCategory::Unit
@@ -65,7 +65,8 @@ impl Simulation {
         }
         if let Some(entity) = self.substrate.entities.get_mut(id) {
             if break_tether {
-                entity.dock_entered_with = None;
+                // `0x004C7342`.
+                entity.tether.release();
             }
             entity.set_pending_entry(None);
         }
@@ -172,9 +173,9 @@ impl Simulation {
             self.begin_megamission_retask(id, mission, target, destination, rules, frame_effects);
         self.queue_order_mission(id, queued);
         if let Some(entity) = self.substrate.entities.get_mut(id) {
-            entity.suspended_attack_target = None;
+            entity.suspended_attack_target.clear();
             if entity.category() != crate::map::entities::EntityCategory::Structure {
-                entity.navigation.suspended_nav_com = None;
+                entity.navigation.set_suspended_nav_com(None);
             }
         }
         // `0x004C73E1..0x004C73EA`: any queued mission but Attack takes a

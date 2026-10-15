@@ -698,11 +698,15 @@ mod tests {
     fn place(sim: &mut Simulation, id: u64, position: ProjectileCoord, category: EntityCategory) {
         insert_entity(sim, id, category);
         let entity = sim.substrate.entities.get_mut(id).unwrap();
-        entity.position.rx = (position.x / 256) as u16;
-        entity.position.ry = (position.y / 256) as u16;
-        entity.position.sub_x = SimFixed::from_num(position.x % 256);
-        entity.position.sub_y = SimFixed::from_num(position.y % 256);
-        entity.position.exact_z_leptons = Some(position.z);
+        entity.position.set_rx((position.x / 256) as u16);
+        entity.position.set_ry((position.y / 256) as u16);
+        entity
+            .position
+            .set_sub_x(SimFixed::from_num(position.x % 256));
+        entity
+            .position
+            .set_sub_y(SimFixed::from_num(position.y % 256));
+        entity.position.set_exact_z_leptons(Some(position.z));
     }
 
     #[test]
@@ -929,10 +933,14 @@ mod tests {
                 entity.set_type_ref_for_test(type_ref);
                 if category == EntityCategory::Structure {
                     // Construction stamps the type's ART `Foundation=`.
-                    entity.foundation = dimensions.clone();
+                    entity
+                        .type_facts
+                        .set_foundation_for_test(dimensions.clone());
                 }
-                entity.lifecycle.cell_marked = target["marked"].as_bool().unwrap_or(true);
-                entity.on_bridge = target["on_bridge"].as_bool().unwrap_or(false);
+                entity
+                    .lifecycle
+                    .set_cell_marked(target["marked"].as_bool().unwrap_or(true));
+                entity.set_on_bridge(target["on_bridge"].as_bool().unwrap_or(false));
                 // The supplied phase is the installed Rocket's MissionState.
                 if target["rocket"].as_bool().unwrap_or(false)
                     && target["phase"].as_u64().unwrap() != 0
@@ -1039,7 +1047,9 @@ mod tests {
             // Construction stamps the type's foundation on each building.
             for entity in sim.substrate.entities.values_mut() {
                 if entity.category() == EntityCategory::Structure {
-                    entity.foundation = foundation.clone();
+                    entity
+                        .type_facts
+                        .set_foundation_for_test(foundation.clone());
                 }
             }
             let mut world = world(&sim);
@@ -1492,7 +1502,7 @@ mod tests {
                         .get_mut(id)
                         .unwrap()
                         .position
-                        .exact_z_leptons = Some(100);
+                        .set_exact_z_leptons(Some(100));
                 }
                 let firer = sim.substrate.entities.get_mut(source).unwrap();
                 firer.body_facing.snap(0x4000, 0);
@@ -1585,15 +1595,15 @@ mod tests {
                 .get_mut(source)
                 .unwrap()
                 .position
-                .exact_z_leptons = Some(z);
+                .set_exact_z_leptons(Some(z));
             sim.substrate
                 .entities
                 .get_mut(target)
                 .unwrap()
                 .position
-                .exact_z_leptons = Some(z - if voxel { 300 } else { 0 });
-            assert!(sim.substrate.entities.get(source).unwrap().in_playfield);
-            assert!(sim.substrate.entities.get(target).unwrap().in_playfield);
+                .set_exact_z_leptons(Some(z - if voxel { 300 } else { 0 }));
+            assert!(sim.substrate.entities.get(source).unwrap().in_playfield());
+            assert!(sim.substrate.entities.get(target).unwrap().in_playfield());
             let firer = sim.substrate.entities.get_mut(source).unwrap();
             firer.body_facing.snap(0x4000, 0);
             firer
@@ -1622,7 +1632,7 @@ mod tests {
                 runtime.simulation.substrate.entities.get(source).map(|e| (
                     &e.attack_target,
                     e.lifecycle,
-                    e.in_playfield,
+                    e.in_playfield(),
                     e.mission.current()
                 )),
                 runtime.simulation.live_object_order_snapshot()

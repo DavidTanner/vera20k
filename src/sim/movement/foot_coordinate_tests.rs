@@ -23,11 +23,17 @@ fn entity(id: u64, kind: LocomotorKind, current: DriveCoord, head: DriveCoord) -
     } else {
         EntityCategory::Unit
     });
-    e.position.rx = (current.x / 256).clamp(0, i32::from(u16::MAX)) as u16;
-    e.position.ry = (current.y / 256).clamp(0, i32::from(u16::MAX)) as u16;
-    e.position.sub_x = SimFixed::from_num(current.x - i32::from(e.position.rx) * 256);
-    e.position.sub_y = SimFixed::from_num(current.y - i32::from(e.position.ry) * 256);
-    e.position.exact_z_leptons = Some(current.z);
+    e.position
+        .set_rx((current.x / 256).clamp(0, i32::from(u16::MAX)) as u16);
+    e.position
+        .set_ry((current.y / 256).clamp(0, i32::from(u16::MAX)) as u16);
+    e.position.set_sub_x(SimFixed::from_num(
+        current.x - i32::from(e.position.rx()) * 256,
+    ));
+    e.position.set_sub_y(SimFixed::from_num(
+        current.y - i32::from(e.position.ry()) * 256,
+    ));
+    e.position.set_exact_z_leptons(Some(current.z));
     e.locomotor = Some(LocomotorState::for_test_kind(kind));
     match kind {
         LocomotorKind::Drive => {
@@ -127,8 +133,8 @@ fn world_queries_match_all_original_foot_coordinate_rows_and_snapshot() {
         if let Some(family) = family {
             let loco = e.locomotor.as_mut().unwrap();
             if let Some(mut track) = loco.track_progress(family) {
-                track.turn_index = input["turn_index"].as_i64().unwrap() as i32;
-                track.cursor = input["cursor"].as_i64().unwrap() as i32;
+                track.set_turn_index(input["turn_index"].as_i64().unwrap() as i32);
+                track.set_cursor(input["cursor"].as_i64().unwrap() as i32);
                 assert!(loco.store_track_progress(family, track));
             }
         }
@@ -143,11 +149,11 @@ fn world_queries_match_all_original_foot_coordinate_rows_and_snapshot() {
                 vec![],
                 vec![TubeFact::explicit((0, 0), exit, 0, vec![0])],
             ));
-            e.low_bridge_tube_state = Some(LowBridgeTubeMovementState {
-                tube_id: TubeId(0),
-                cursor: 0,
-                target: NULL_COORD,
-            });
+            e.low_bridge_tube_state = Some(LowBridgeTubeMovementState::for_test(
+                TubeId(0),
+                0,
+                NULL_COORD,
+            ));
         }
         sim.substrate.entities.insert(e);
         assert_eq!(
@@ -193,14 +199,14 @@ fn hover_reads_its_location_z_and_at_coord_ignores_tube_exit() {
     assert_eq!(navigation_coordinate(&e, None).unwrap().z, 37);
     // Exact Object Z already includes height; an object without one stands
     // on its coarse level.
-    e.position.exact_z_leptons = None;
-    e.position.z = 1;
+    e.position.set_exact_z_leptons(None);
+    e.position.set_z(1);
     assert_eq!(navigation_coordinate(&e, None).unwrap().z, 104);
-    e.low_bridge_tube_state = Some(LowBridgeTubeMovementState {
-        tube_id: TubeId(0),
-        cursor: 0,
-        target: NULL_COORD,
-    });
+    e.low_bridge_tube_state = Some(LowBridgeTubeMovementState::for_test(
+        TubeId(0),
+        0,
+        NULL_COORD,
+    ));
     let terrain = ResolvedTerrainGrid::from_cells_with_tubes(
         1,
         1,
@@ -240,7 +246,9 @@ fn production_drive_reaim_reads_retained_target_head() {
         DriveCoord::cell(3, 4, 0),
         NULL_COORD,
     );
-    mover.navigation.nav_com = Some(NavTargetRef::Entity { id: 2 });
+    mover
+        .navigation
+        .set_nav_com(Some(NavTargetRef::Entity { id: 2 }));
     assert!(mover.locomotor.as_mut().unwrap().store_track_destination(
         crate::sim::movement::track_process::TrackFamily::Drive,
         Some(DriveCoord::cell(7, 4, 0))
@@ -285,11 +293,11 @@ fn missing_foot_receiver_is_an_error_and_tube_does_not_hide_missing_descriptor()
     let mut e = entity(1, LocomotorKind::Drive, NULL_COORD, NULL_COORD);
     e.locomotor = None;
     assert!(navigation_coordinate(&e, None).is_err());
-    e.low_bridge_tube_state = Some(LowBridgeTubeMovementState {
-        tube_id: TubeId(0),
-        cursor: 0,
-        target: NULL_COORD,
-    });
+    e.low_bridge_tube_state = Some(LowBridgeTubeMovementState::for_test(
+        TubeId(0),
+        0,
+        NULL_COORD,
+    ));
     e.locomotor = None;
     assert!(
         navigation_coordinate(&e, None)

@@ -137,17 +137,17 @@ fn lift(rules: &RuleSet) -> (Simulation, PathGrid, u64, u64) {
     );
     assert!(
         run_until(&mut sim, rules, &grid, 120, |sim| {
-            entity(sim, tank).foot_locomotor_swap_active
+            entity(sim, tank).lift.swap_active()
         }),
         "the beam lifts the tank"
     );
     let held = entity(&sim, tank);
-    assert_eq!(held.locomotor_source, Some(magnetron));
-    assert_eq!(entity(&sim, magnetron).locomotor_target, Some(tank));
+    assert_eq!(held.lift.source(), Some(magnetron));
+    assert_eq!(entity(&sim, magnetron).lift.target(), Some(tank));
     assert_eq!(held.health.current(), health, "the beam deals no damage");
     let locomotor = held.locomotor.as_ref().unwrap();
     assert_eq!(locomotor.active_kind(), LocomotorKind::Jumpjet);
-    assert!(locomotor.piggyback.is_some(), "the Drive is suspended");
+    assert!(locomotor.piggyback().is_some(), "the Drive is suspended");
     (sim, grid, magnetron, tank)
 }
 
@@ -166,24 +166,24 @@ fn retail_magnetron_pulls_a_tank_beside_itself_and_lets_go() {
 
     assert!(
         run_until(&mut sim, &rules, &grid, 600, |sim| {
-            entity(sim, tank).being_manipulated
+            entity(sim, tank).drop_credit.being_manipulated()
         }),
         "the tank arrives and is let go"
     );
     let dropped = entity(&sim, tank);
     assert!(dropped.crash.is_crashing());
-    assert_eq!(dropped.manipulated_by, Some(magnetron));
-    assert_eq!(dropped.warped_by_house, Some(americans));
-    assert_eq!(dropped.locomotor_source, None);
+    assert_eq!(dropped.drop_credit.manipulated_by(), Some(magnetron));
+    assert_eq!(dropped.drop_credit.warped_by_house(), Some(americans));
+    assert_eq!(dropped.lift.source(), None);
     let holder = entity(&sim, magnetron);
-    assert_eq!(holder.locomotor_target, None);
+    assert_eq!(holder.lift.target(), None);
     assert!(
         holder.attack_target.target().is_none(),
         "the release clears its target"
     );
     let offset = (
-        i32::from(dropped.position.rx) - i32::from(holder.position.rx),
-        i32::from(dropped.position.ry) - i32::from(holder.position.ry),
+        i32::from(dropped.position.rx()) - i32::from(holder.position.rx()),
+        i32::from(dropped.position.ry()) - i32::from(holder.position.ry()),
     );
     assert_eq!(
         offset.0.abs().max(offset.1.abs()),
@@ -193,7 +193,7 @@ fn retail_magnetron_pulls_a_tank_beside_itself_and_lets_go() {
 
     assert!(
         run_until(&mut sim, &rules, &grid, 400, |sim| {
-            !entity(sim, tank).foot_locomotor_swap_active
+            !entity(sim, tank).lift.swap_active()
         }),
         "the tank lands and its lift ends"
     );
@@ -220,7 +220,7 @@ fn retail_tank_let_go_over_a_unit_crashes_onto_it() {
     assert!(
         run_until(&mut sim, &rules, &grid, 600, |sim| {
             let held = entity(sim, tank);
-            (held.position.rx, held.position.ry) == (13, 16)
+            (held.position.rx(), held.position.ry()) == (13, 16)
         }),
         "the tank is pulled over the Unit"
     );
@@ -263,35 +263,35 @@ fn retail_tank_let_go_over_clear_ground_lands_and_drives_again() {
             move_away(&mut sim, magnetron);
             assert!(
                 run_until(&mut sim, &rules, &grid, 5, |sim| {
-                    entity(sim, magnetron).locomotor_target.is_none()
+                    entity(sim, magnetron).lift.target().is_none()
                 }),
                 "the move order lets the tank go"
             );
         }
         let dropped = entity(&sim, tank);
-        assert!(dropped.being_manipulated, "death {death}");
-        assert_eq!(dropped.locomotor_source, None, "death {death}");
+        assert!(dropped.drop_credit.being_manipulated(), "death {death}");
+        assert_eq!(dropped.lift.source(), None, "death {death}");
         assert_eq!(
-            dropped.manipulated_by,
+            dropped.drop_credit.manipulated_by(),
             (!death).then_some(magnetron),
             "an expiring Magnetron leaves no credit (death {death})"
         );
 
         assert!(
             run_until(&mut sim, &rules, &grid, 400, |sim| {
-                !entity(sim, tank).foot_locomotor_swap_active
+                !entity(sim, tank).lift.swap_active()
             }),
             "the tank lands and its lift ends (death {death})"
         );
         let landed = entity(&sim, tank);
         assert_eq!(landed.health.current(), health, "death {death}");
-        assert!(!landed.crash.is_crashing() && !landed.being_manipulated);
-        assert!(!landed.lift_may_end);
-        assert_eq!(landed.manipulated_by, None);
-        assert_eq!(landed.warped_by_house, None);
+        assert!(!landed.crash.is_crashing() && !landed.drop_credit.being_manipulated());
+        assert!(!landed.lift.may_end());
+        assert_eq!(landed.drop_credit.manipulated_by(), None);
+        assert_eq!(landed.drop_credit.warped_by_house(), None);
         let locomotor = landed.locomotor.as_ref().unwrap();
         assert_eq!(locomotor.active_kind(), LocomotorKind::Drive);
-        assert!(locomotor.piggyback.is_none());
+        assert!(locomotor.piggyback().is_none());
         let location = crate::sim::movement::ground_pose::position_world_coord(&landed.position);
         assert_eq!(
             (location.x & 0xFF, location.y & 0xFF),
@@ -318,7 +318,7 @@ fn retail_tank_killed_in_the_air_is_uninit_at_once() {
             move_away(&mut sim, magnetron);
             assert!(
                 run_until(&mut sim, &rules, &grid, 5, |sim| {
-                    entity(sim, tank).being_manipulated
+                    entity(sim, tank).drop_credit.being_manipulated()
                 }),
                 "the move order lets the tank go"
             );
@@ -329,7 +329,7 @@ fn retail_tank_killed_in_the_air_is_uninit_at_once() {
             "dropped {dropped}"
         );
         assert_eq!(
-            entity(&sim, magnetron).locomotor_target,
+            entity(&sim, magnetron).lift.target(),
             None,
             "dropped {dropped}"
         );
@@ -360,9 +360,9 @@ fn retail_locomotor_arm_admission() {
             None,
             FrameEffects::default(),
         );
-        assert_eq!(entity(&sim, tank).foot_locomotor_swap_active, lifted);
+        assert_eq!(entity(&sim, tank).lift.swap_active(), lifted);
         assert_eq!(
-            entity(&sim, magnetron).locomotor_target,
+            entity(&sim, magnetron).lift.target(),
             lifted.then_some(tank)
         );
         if lifted {
@@ -391,24 +391,24 @@ fn retail_locomotor_arm_admission() {
     };
     shoot(&mut sim, LocomotorShotTarget::Object(gi));
     shoot(&mut sim, LocomotorShotTarget::Cell);
-    assert!(!entity(&sim, gi).foot_locomotor_swap_active);
-    assert_eq!(entity(&sim, magnetron).locomotor_target, None);
+    assert!(!entity(&sim, gi).lift.swap_active());
+    assert_eq!(entity(&sim, magnetron).lift.target(), None);
 
     shoot(&mut sim, LocomotorShotTarget::Object(first));
-    assert_eq!(entity(&sim, magnetron).locomotor_target, Some(first));
+    assert_eq!(entity(&sim, magnetron).lift.target(), Some(first));
     shoot(&mut sim, LocomotorShotTarget::Object(first));
-    assert_eq!(entity(&sim, first).locomotor_source, Some(magnetron));
+    assert_eq!(entity(&sim, first).lift.source(), Some(magnetron));
 
     shoot(&mut sim, LocomotorShotTarget::Object(second));
-    assert_eq!(entity(&sim, magnetron).locomotor_target, Some(second));
-    assert_eq!(entity(&sim, second).locomotor_source, Some(magnetron));
+    assert_eq!(entity(&sim, magnetron).lift.target(), Some(second));
+    assert_eq!(entity(&sim, second).lift.source(), Some(magnetron));
     let released = entity(&sim, first);
-    assert_eq!(released.locomotor_source, None);
+    assert_eq!(released.lift.source(), None);
     assert!(
-        released.lift_may_end,
+        released.lift.may_end(),
         "a grounded release lets the lift end"
     );
-    assert!(!released.crash.is_crashing() && !released.being_manipulated);
+    assert!(!released.crash.is_crashing() && !released.drop_credit.being_manipulated());
 }
 
 /// The links and the drop's credit are saved, and each one moves the world
@@ -442,16 +442,20 @@ fn lift_links_and_drop_credit_are_saved_and_hashed() {
     type Write = fn(&mut GameEntity, u64, crate::sim::intern::InternedId);
     let writes: [(u64, Write); 6] = [
         (magnetron, |entity, other, _| {
-            entity.locomotor_target = Some(other)
+            entity.lift.set_target_for_test(Some(other))
         }),
         (tank, |entity, other, _| {
-            entity.locomotor_source = Some(other)
+            entity.lift.set_source_for_test(Some(other))
         }),
-        (tank, |entity, _, _| entity.lift_may_end = true),
-        (tank, |entity, _, _| entity.being_manipulated = true),
-        (tank, |entity, other, _| entity.manipulated_by = Some(other)),
+        (tank, |entity, _, _| entity.lift.set_may_end_for_test(true)),
+        (tank, |entity, _, _| {
+            entity.drop_credit.set_being_manipulated_for_test(true)
+        }),
+        (tank, |entity, other, _| {
+            entity.drop_credit.set_manipulated_by_for_test(Some(other))
+        }),
         (tank, |entity, _, house| {
-            entity.warped_by_house = Some(house)
+            entity.drop_credit.set_warped_by_house_for_test(Some(house))
         }),
     ];
     for (id, write) in writes {
@@ -467,9 +471,9 @@ fn lift_links_and_drop_credit_are_saved_and_hashed() {
     loaded.restore_after_snapshot_load().unwrap();
     assert_eq!(loaded.state_hash(), sim.state_hash());
     let held = entity(&loaded, tank);
-    assert_eq!(held.locomotor_source, Some(magnetron));
-    assert!(held.lift_may_end && held.being_manipulated);
-    assert_eq!(held.manipulated_by, Some(magnetron));
-    assert_eq!(held.warped_by_house, Some(house));
-    assert_eq!(entity(&loaded, magnetron).locomotor_target, Some(tank));
+    assert_eq!(held.lift.source(), Some(magnetron));
+    assert!(held.lift.may_end() && held.drop_credit.being_manipulated());
+    assert_eq!(held.drop_credit.manipulated_by(), Some(magnetron));
+    assert_eq!(held.drop_credit.warped_by_house(), Some(house));
+    assert_eq!(entity(&loaded, magnetron).lift.target(), Some(tank));
 }

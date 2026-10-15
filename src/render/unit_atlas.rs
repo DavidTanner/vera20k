@@ -285,7 +285,7 @@ fn world_voxel_models<'a>(
     use crate::map::entities::EntityCategory;
     entities.values().filter_map(move |entity| {
         let type_str = interner.map_or("", |i| i.resolve(entity.type_ref()));
-        if entity.is_voxel {
+        if entity.is_voxel() {
             return Some(if entity.category() == EntityCategory::Aircraft {
                 VoxelModel::Air(type_str)
             } else {

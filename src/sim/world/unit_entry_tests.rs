@@ -117,6 +117,269 @@ fn a_closed_gate_asks_its_own_house_about_the_mover() {
     assert_eq!(classify(&sim), Ok(7));
 }
 
+/// The walk's continuation (`0x0073FC24..0x0073FD43`) on the native controls
+/// in `cell_entry_crush_tail.json`. Each enters at `0x0073FC24` with a crush
+/// latch, a running code and the selected plane's raw byte, over GROUND and
+/// deck lists that vary `Crushable=`, `OmniCrushResistant=`, `OmniCrusher=`,
+/// the Iron Curtain timer (none, running, just expired) and alliance either
+/// way.
+#[test]
+fn unit_post_walk_tail_matches_original_crush_controls() {
+    use crate::map::houses::HouseAllianceMap;
+    use crate::sim::house_diplomacy::HouseAllianceAdmission;
+    use crate::sim::superweapon::invulnerability::{InvulnKind, InvulnerabilityState};
+
+    let corpus: serde_json::Value = serde_json::from_str(crate::test_fixture::text(
+        "tools/spatial_oracle/cell_entry_crush_tail.json",
+    ))
+    .unwrap();
+    let cases = corpus["cases"].as_array().unwrap();
+    assert_eq!(cases.len(), 68);
+    let mut mismatches = Vec::new();
+    for case in cases {
+        let input = &case["input"];
+        let (mut sim, rules, registry) =
+            crate::sim::world::entry_test_fixture::fixture_with_rules(&format!(
+                "[VehicleTypes]\n0=MOVER\n1=VICTIM\n[MOVER]\nSpeedType=Track\nCrusher=yes\n\
+                 OmniCrusher={}\n",
+                if input["omni"].as_bool().unwrap() {
+                    "yes"
+                } else {
+                    "no"
+                }
+            ));
+        sim.session.binary_frame = 100;
+        let nodes = |layer: &str| input[layer].as_array().unwrap().clone();
+        // The oracle's houses: the mover's allies the third, and a
+        // `reverse_allied` target's House allies the mover's one way.
+        let mut alliances =
+            HouseAllianceMap::from([("AMERICANS".to_string(), ["BRITISH".to_string()].into())]);
+        if nodes("ground")
+            .iter()
+            .chain(&nodes("deck"))
+            .any(|node| node["reverse_allied"] == true)
+        {
+            alliances.insert("RUSSIANS".to_string(), ["AMERICANS".to_string()].into());
+        }
+        sim.install_house_alliances(HouseAllianceAdmission::Admitted(alliances), &rules);
+        let mut mover = GameEntity::test_default(90, "MOVER", "Americans", 10, 10);
+        mover.set_owner_for_test(sim.intern("Americans"));
+        mover.set_type_ref_for_test(sim.intern("MOVER"));
+        mover.set_category_for_test(EntityCategory::Unit);
+        sim.substrate.entities.insert(mover);
+        let mut next_id = 91;
+        for (key, layer) in [
+            ("ground", MovementLayer::Ground),
+            ("deck", MovementLayer::Bridge),
+        ] {
+            for node in nodes(key) {
+                let id = if node["self"] == true {
+                    90
+                } else {
+                    let id = next_id;
+                    next_id += 1;
+                    let (name, category) = if node["category"] == "infantry" {
+                        ("ENGINEER", EntityCategory::Infantry)
+                    } else {
+                        ("VICTIM", EntityCategory::Unit)
+                    };
+                    let house = if node["allied"] == true {
+                        "British"
+                    } else {
+                        "Russians"
+                    };
+                    let mut target = GameEntity::test_default(id, name, house, 11, 10);
+                    target.set_owner_for_test(sim.intern(house));
+                    target.set_type_ref_for_test(sim.intern(name));
+                    target.set_category_for_test(category);
+                    target
+                        .crushable_facts
+                        .set_crushable_for_test(node["crushable"] == true);
+                    target
+                        .mover_facts
+                        .set_omni_crush_resistant_for_test(node["resistant"] == true);
+                    // Timer start 90, read at frame 100.
+                    let duration = match node["timer"].as_str().unwrap_or("none") {
+                        "none" => 0,
+                        "expired" => 10,
+                        "active" => 20,
+                        other => panic!("unknown timer {other}"),
+                    };
+                    target.invulnerability = Some(InvulnerabilityState::new(
+                        crate::sim::timer::CdTimer::started(90, duration),
+                        InvulnKind::IronCurtain,
+                    ));
+                    sim.substrate.entities.insert(target);
+                    id
+                };
+                sim.substrate.occupancy.add(
+                    11,
+                    10,
+                    id,
+                    layer,
+                    None,
+                    CellListInsertion::AppendBuilding,
+                );
+            }
+        }
+        let raw = input[if input["bits_layer"] == "ground" {
+            "raw_ground"
+        } else {
+            "raw_deck"
+        }]
+        .as_u64()
+        .unwrap() as u8;
+        let live = EntryReadContext {
+            sim: &sim,
+            rules: &rules,
+            registry: Some(&registry),
+        };
+        let mover = EntryMover::new(
+            &live,
+            90,
+            sim.substrate.entities.get(90).unwrap(),
+            rules.object("MOVER").unwrap(),
+        );
+        let actual = unit_post_walk_tail(
+            &live,
+            &mover,
+            (11, 10),
+            UnitWalk {
+                running_code: input["running_code"].as_u64().unwrap() as u8,
+                crush_latch: true,
+                bits: raw,
+                vehicle_occupied: raw & 0x20 != 0,
+                owner: None,
+            },
+        );
+        let expected = case["result"].as_u64().unwrap() as u8;
+        if actual != expected {
+            mismatches.push(format!(
+                "{}: expected {expected}, actual {actual}",
+                input["name"]
+            ));
+        }
+    }
+    assert!(mismatches.is_empty(), "{}", mismatches.join("\n"));
+}
+
+/// An unarmed `IsTrain=` Unit answers 5 where an unarmed Unit answers 7, both
+/// over an enemy infantryman in the cell's list, which the walk refuses only
+/// for a non-train (`0x0073FB71..0x0073FB90`) and otherwise raises to 5
+/// (`0x0073FBE3`), and over an enemy's raw infantry bit with no object, which
+/// the tail answers after its Crusher test (`0x0073FC91`). No retail type sets
+/// `IsTrain=`.
+#[test]
+fn an_unarmed_train_answers_five_where_an_unarmed_unit_answers_seven() {
+    for (train, expected) in [("no", 7), ("yes", 5)] {
+        for listed in [false, true] {
+            let (mut sim, rules, registry) =
+                crate::sim::world::entry_test_fixture::fixture_with_rules(&format!(
+                    "[VehicleTypes]\n0=MOVER\n[MOVER]\nSpeedType=Track\nIsTrain={train}\n"
+                ));
+            sim.session.binary_frame = 100;
+            let mut mover = GameEntity::test_default(90, "MOVER", "Americans", 10, 10);
+            mover.set_owner_for_test(sim.intern("Americans"));
+            mover.set_type_ref_for_test(sim.intern("MOVER"));
+            mover.set_category_for_test(EntityCategory::Unit);
+            mover.locomotor = Some(LocomotorState::for_test_kind(LocomotorKind::Drive));
+            sim.substrate.entities.insert(mover);
+            sim.mission_assign_exact(90, crate::sim::mission::MissionId::from_raw(5), 100)
+                .unwrap();
+            let enemy = sim.intern("Russians");
+            if listed {
+                let mut infantry = GameEntity::test_default(91, "ENGINEER", "Russians", 11, 10);
+                infantry.set_owner_for_test(enemy);
+                infantry.set_type_ref_for_test(sim.intern("ENGINEER"));
+                infantry.set_category_for_test(EntityCategory::Infantry);
+                sim.substrate.entities.insert(infantry);
+                sim.substrate.occupancy.add(
+                    11,
+                    10,
+                    91,
+                    MovementLayer::Ground,
+                    None,
+                    CellListInsertion::AppendBuilding,
+                );
+            } else {
+                sim.substrate
+                    .raw_cell_occupation
+                    .mark_ground_infantry(11, 10, 0x04, enemy);
+            }
+            let cell = sim
+                .resolved_terrain
+                .as_ref()
+                .unwrap()
+                .native_cell_identity((11, 10));
+            let live = EntryReadContext {
+                sim: &sim,
+                rules: &rules,
+                registry: Some(&registry),
+            };
+            let args = InfantryEntryArgs {
+                direction: -1,
+                height: -1,
+                previous_cell: None,
+            };
+            assert_eq!(
+                classify_entry(&live, CellObjectMember::Entity(90), cell, args),
+                Ok(expected),
+                "IsTrain={train}, listed={listed}"
+            );
+        }
+    }
+}
+
+/// A Unit's walk meets a terrain object through the weapon it would fire at
+/// it (`0x0073FBAC`, `+0x2E4`): 5 for a `Wood=` warhead, else 7. A crusher is
+/// no exception, however the terrain's type spells `Crushable=`.
+#[test]
+fn a_crusher_meets_a_terrain_object_with_its_weapon() {
+    for (mover, expected) in [
+        ("Crusher=yes\n", 7),
+        ("OmniCrusher=yes\n", 7),
+        ("Crusher=yes\nPrimary=SAW\n", 5),
+    ] {
+        let (mut sim, rules, registry) =
+            crate::sim::world::entry_test_fixture::fixture_with_rules(&format!(
+                "[VehicleTypes]\n0=MOVER\n[MOVER]\nSpeedType=Track\n{mover}\
+                 [TerrainTypes]\n0=TREE01\n[TREE01]\nCrushable=yes\n\
+                 [SAW]\nDamage=10\nROF=20\nRange=5\nProjectile=SAWBULLET\nWarhead=CHOP\n\
+                 [SAWBULLET]\nAG=yes\n[CHOP]\nWood=yes\n"
+            ));
+        sim.session.binary_frame = 100;
+        let mut unit = GameEntity::test_default(90, "MOVER", "Americans", 10, 10);
+        unit.set_owner_for_test(sim.intern("Americans"));
+        unit.set_type_ref_for_test(sim.intern("MOVER"));
+        unit.set_category_for_test(EntityCategory::Unit);
+        unit.locomotor = Some(LocomotorState::for_test_kind(LocomotorKind::Drive));
+        sim.substrate.entities.insert(unit);
+        sim.mission_assign_exact(90, crate::sim::mission::MissionId::from_raw(5), 100)
+            .unwrap();
+        sim.production.terrain_object_cells.insert((11, 10), 900);
+        let cell = sim
+            .resolved_terrain
+            .as_ref()
+            .unwrap()
+            .native_cell_identity((11, 10));
+        let live = EntryReadContext {
+            sim: &sim,
+            rules: &rules,
+            registry: Some(&registry),
+        };
+        let args = InfantryEntryArgs {
+            direction: -1,
+            height: -1,
+            previous_cell: None,
+        };
+        assert_eq!(
+            classify_entry(&live, CellObjectMember::Entity(90), cell, args),
+            Ok(expected),
+            "{mover}"
+        );
+    }
+}
+
 fn compare_rows(json: &str, expected_count: usize, repair_projection: bool) {
     let rows: serde_json::Value = serde_json::from_str(json).unwrap();
     let mut mismatches = Vec::new();
@@ -252,7 +515,7 @@ fn compare_rows(json: &str, expected_count: usize, repair_projection: bool) {
         mover.set_owner_for_test(ours);
         mover.set_type_ref_for_test(sim.intern("MOVER"));
         mover.set_category_for_test(EntityCategory::Unit);
-        mover.in_playfield = flag("in_playfield");
+        mover.set_in_playfield(flag("in_playfield"));
         if flag("mission_only") {
             mover.mark_mission_only();
         }
@@ -327,9 +590,13 @@ fn compare_rows(json: &str, expected_count: usize, repair_projection: bool) {
                 } else {
                     EntityCategory::Unit
                 });
-                blocker.crushable = node["crushable"].as_bool().unwrap_or(false);
-                blocker.omni_crush_resistant = node["resistant"].as_bool().unwrap_or(false);
-                blocker.foot_occupation_enabled = node["occupation"].as_bool().unwrap_or(true);
+                blocker
+                    .crushable_facts
+                    .set_crushable_for_test(node["crushable"].as_bool().unwrap_or(false));
+                blocker.mover_facts.set_omni_crush_resistant_for_test(
+                    node["resistant"].as_bool().unwrap_or(false),
+                );
+                blocker.set_foot_occupation_enabled(node["occupation"].as_bool().unwrap_or(true));
                 if !building {
                     blocker.locomotor = Some(LocomotorState::for_test_kind(LocomotorKind::Drive));
                 }
@@ -344,8 +611,8 @@ fn compare_rows(json: &str, expected_count: usize, repair_projection: bool) {
                         };
                         (c.x != 0 || c.y != 0 || c.z != 0).then_some(c)
                     };
-                    blocker.position.sub_x = SimFixed::from_num(128);
-                    blocker.position.sub_y = SimFixed::from_num(128);
+                    blocker.position.set_sub_x(SimFixed::from_num(128));
+                    blocker.position.set_sub_y(SimFixed::from_num(128));
                     let head = state.get("head").and_then(coordinate);
                     match state["family"].as_str().unwrap() {
                         "drive" => {
@@ -383,12 +650,12 @@ fn compare_rows(json: &str, expected_count: usize, repair_projection: bool) {
                         "walk" => {
                             blocker.set_category_for_test(EntityCategory::Infantry);
                             let mut loco = LocomotorState::for_test_kind(LocomotorKind::Walk);
-                            let LocomotorRuntimePayload::Walk(walk) = &mut loco.runtime_payload
+                            let LocomotorRuntimePayload::Walk(walk) = loco.runtime_payload_mut()
                             else {
                                 unreachable!()
                             };
-                            walk.moving = state["moving"].as_bool().unwrap();
-                            walk.head = head;
+                            walk.set_moving(state["moving"].as_bool().unwrap());
+                            walk.set_head(head);
                             blocker.locomotor = Some(loco);
                         }
                         "fly" | "jumpjet" => {
@@ -406,7 +673,9 @@ fn compare_rows(json: &str, expected_count: usize, repair_projection: bool) {
                     }
                 }
                 if node["nav"].as_bool().unwrap_or(false) {
-                    blocker.navigation.nav_com = Some(NavTargetRef::cell(11, 10));
+                    blocker
+                        .navigation
+                        .set_nav_com(Some(NavTargetRef::cell(11, 10)));
                 }
                 if node["turn"].as_bool().unwrap_or(false) {
                     let mut facing = crate::sim::movement::FacingClass::new(0, 5);
@@ -444,9 +713,9 @@ fn compare_rows(json: &str, expected_count: usize, repair_projection: bool) {
                 .get_mut(90)
                 .unwrap()
                 .navigation
-                .nav_com = Some(NavTargetRef::Entity {
-                id: ids[index as usize],
-            });
+                .set_nav_com(Some(NavTargetRef::Entity {
+                    id: ids[index as usize],
+                }));
         }
         for id in ids {
             sim.substrate.occupancy.add(
@@ -557,4 +826,97 @@ fn compare_rows(json: &str, expected_count: usize, repair_projection: bool) {
     }
     assert_eq!(rows.as_array().unwrap().len(), expected_count);
     assert!(mismatches.is_empty(), "{}", mismatches.join("\n"));
+}
+
+fn row_entry_input(
+    branch: VehicleBuildingEntryBranch,
+    candidate_x: u16,
+) -> LiveVehicleBuildingEntry {
+    LiveVehicleBuildingEntry {
+        branch,
+        checked_building_id: 100,
+        candidate_building_id: Some(100),
+        candidate_x,
+        building_origin_x: 10,
+        number_impassable_rows: 1,
+        is_unit_repair: false,
+        is_bunker: false,
+        bunker_occupied: false,
+    }
+}
+
+#[test]
+fn contacted_vehicle_row_skip_opens_east_columns_but_keeps_west() {
+    let contacted = VehicleBuildingEntryBranch::RadioContact {
+        mover_has_contact: true,
+    };
+    assert_eq!(
+        decide_live_vehicle_building_entry(row_entry_input(contacted, 10,)),
+        BuildingOccupantEntryDecision::KeepBlocker
+    );
+    assert_eq!(
+        decide_live_vehicle_building_entry(row_entry_input(contacted, 11,)),
+        BuildingOccupantEntryDecision::SkipBlocker
+    );
+    assert_eq!(
+        decide_live_vehicle_building_entry(row_entry_input(
+            VehicleBuildingEntryBranch::RadioContact {
+                mover_has_contact: false,
+            },
+            11,
+        )),
+        BuildingOccupantEntryDecision::KeepBlocker
+    );
+}
+
+#[test]
+fn empty_vs_occupied_bunker_uses_explicit_runtime_occupant_arg() {
+    let mut empty = row_entry_input(VehicleBuildingEntryBranch::UnitRepairOrBunker, 10);
+    empty.number_impassable_rows = 0;
+    empty.is_bunker = true;
+
+    assert_eq!(
+        decide_live_vehicle_building_entry(empty),
+        BuildingOccupantEntryDecision::SkipBlocker
+    );
+
+    let occupied = LiveVehicleBuildingEntry {
+        bunker_occupied: true,
+        ..empty
+    };
+    assert_eq!(
+        decide_live_vehicle_building_entry(occupied),
+        BuildingOccupantEntryDecision::KeepBlocker
+    );
+}
+
+#[test]
+fn row_helper_requires_same_candidate_building_and_rows_value() {
+    let mut other_building = row_entry_input(VehicleBuildingEntryBranch::UnitRepairOrBunker, 11);
+    other_building.is_unit_repair = true;
+    other_building.candidate_building_id = Some(200);
+    assert_eq!(
+        decide_live_vehicle_building_entry(other_building),
+        BuildingOccupantEntryDecision::KeepBlocker
+    );
+
+    assert_eq!(
+        decide_live_vehicle_building_entry(LiveVehicleBuildingEntry {
+            branch: VehicleBuildingEntryBranch::RadioContact {
+                mover_has_contact: true
+            },
+            ..other_building
+        }),
+        BuildingOccupantEntryDecision::SkipBlocker,
+        "73F5A2 consumes false458A00 as skip even for a different first Building"
+    );
+    let no_rows = LiveVehicleBuildingEntry {
+        candidate_building_id: Some(100),
+        number_impassable_rows: -1,
+        ..other_building
+    };
+    assert_eq!(
+        decide_live_vehicle_building_entry(no_rows),
+        BuildingOccupantEntryDecision::KeepBlocker
+    );
 }

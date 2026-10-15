@@ -44,11 +44,13 @@ fn fixture(row: &Value) -> (Simulation, RuleSet) {
     let set_xyz = |entity: &mut GameEntity, xyz: &Value| {
         let x = xyz[0].as_i64().unwrap() as i32;
         let y = xyz[1].as_i64().unwrap() as i32;
-        entity.position.rx = (x / 256) as u16;
-        entity.position.ry = (y / 256) as u16;
-        entity.position.sub_x = SimFixed::from_num(x % 256);
-        entity.position.sub_y = SimFixed::from_num(y % 256);
-        entity.position.exact_z_leptons = Some(xyz[2].as_i64().unwrap() as i32);
+        entity.position.set_rx((x / 256) as u16);
+        entity.position.set_ry((y / 256) as u16);
+        entity.position.set_sub_x(SimFixed::from_num(x % 256));
+        entity.position.set_sub_y(SimFixed::from_num(y % 256));
+        entity
+            .position
+            .set_exact_z_leptons(Some(xyz[2].as_i64().unwrap() as i32));
     };
     let mut source = GameEntity::test_default(1, "ORCA", "Americans", 10, 10);
     source.set_category_for_test(EntityCategory::Aircraft);
@@ -86,7 +88,9 @@ fn fixture(row: &Value) -> (Simulation, RuleSet) {
                 },
             );
             if building {
-                target.foundation = foundation.name.to_owned();
+                target
+                    .type_facts
+                    .set_foundation_for_test(foundation.name.to_owned());
                 assert_eq!(
                     serde_json::json!([foundation.width, foundation.height]),
                     row["foundation_dimensions"]
@@ -119,7 +123,7 @@ fn assert_native_in_range_result(sim: &Simulation, row: &Value) {
         !aircraft.aircraft_ammo.as_ref().unwrap().release_pending(),
         "the range branch only authorizes the next mission state"
     );
-    assert_eq!(aircraft.aircraft_ammo.as_ref().unwrap().current, 2);
+    assert_eq!(aircraft.aircraft_ammo.as_ref().unwrap().current(), 2);
     assert!(
         crate::sim::movement::motion_query::is_moving(&aircraft) != Some(true),
         "{row}"

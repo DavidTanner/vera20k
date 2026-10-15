@@ -235,7 +235,7 @@ impl Fixture {
             ground_pose::put_location(&mut entity.position, coord(&before["position"]));
             entity.health.set_for_test(int(&before["actual_hp"]));
             entity.estimated_health.reset(int(&before["estimated_hp"]));
-            entity.repairing = before["paid_repair"] == 1;
+            entity.repairing.set_for_test(before["paid_repair"] == 1);
             entity.sample_building_health_for_power();
         }
         sim.set_building_anim_slot(building, 3, true, false, 0, &rules)
@@ -274,7 +274,7 @@ impl Fixture {
                 int(&command["delivered_mission"])
             );
             assert_eq!(
-                entity.navigation.nav_com,
+                entity.navigation.nav_com(),
                 Some(NavTargetRef::Building { id: building })
             );
             install_mission(entity, &route["before_arrivals"][index]["engineer"]);
@@ -297,8 +297,8 @@ impl Fixture {
                 crate::sim::world::FrameEffects::default(),
             );
             let entity = sim.substrate.entities.get_mut(building).unwrap();
-            entity.repairing = before["paid_repair"] == 1;
-            entity.has_been_captured = false;
+            entity.repairing.set_for_test(before["paid_repair"] == 1);
+            entity.has_been_captured.set_for_test(false);
             // The preceding fixture transfer is supplied setup, not this
             // arrival. Consume its identical idle request through the owner.
             entity.apply_queued_building_body(0, &sim.session.game_options);
@@ -390,9 +390,10 @@ impl Fixture {
         // coherent ownership indexes, never after the compared arrival.
         let history = &before["discovery"];
         let discovery = &mut sim.substrate.entities.get_mut(building).unwrap().discovery;
-        discovery.owned_by_current_house = history["owned_by_current_house"] == 1;
-        discovery.discovered_by_current_house = history["discovered_by_current_house"] == 1;
-        discovery.discovered_by_other_house = history["discovered_by_other_house"] == 1;
+        discovery.set_owned_by_current_house_for_test(history["owned_by_current_house"] == 1);
+        discovery
+            .set_discovered_by_current_house_for_test(history["discovered_by_current_house"] == 1);
+        discovery.set_discovered_by_other_house_for_test(history["discovered_by_other_house"] == 1);
         sim.sound_events.clear();
         Self {
             sim,
@@ -423,7 +424,7 @@ impl Fixture {
             "{boundary}: retained HP sample"
         );
         assert_eq!(
-            entity.repairing,
+            entity.repairing.is_on(),
             native["paid_repair"] == 1,
             "{boundary}: paid repair"
         );
@@ -443,17 +444,17 @@ impl Fixture {
         );
         let history = &native["discovery"];
         assert_eq!(
-            entity.discovery.owned_by_current_house,
+            entity.discovery.owned_by_current_house(),
             history["owned_by_current_house"] == 1,
             "{boundary}: native41A owner classification"
         );
         assert_eq!(
-            entity.discovery.discovered_by_current_house,
+            entity.discovery.discovered_by_current_house(),
             history["discovered_by_current_house"] == 1,
             "{boundary}: native41B current-viewer history"
         );
         assert_eq!(
-            entity.discovery.discovered_by_other_house,
+            entity.discovery.discovered_by_other_house(),
             history["discovered_by_other_house"] == 1,
             "{boundary}: native41C other-viewer history"
         );
@@ -631,7 +632,7 @@ impl Fixture {
             "{boundary}: Engineer limbo"
         );
         assert_eq!(
-            entity.lifecycle.cell_marked,
+            entity.lifecycle.cell_marked(),
             expected["marked"] == 1,
             "{boundary}: cell mark"
         );
@@ -662,7 +663,7 @@ impl Fixture {
         );
         if int(&expected["destination"]) == self.native_building {
             assert_eq!(
-                entity.navigation.nav_com,
+                entity.navigation.nav_com(),
                 Some(NavTargetRef::Building { id: self.building }),
                 "{boundary}: retained object NavCom"
             );
@@ -671,7 +672,7 @@ impl Fixture {
             // The shared Scatter goldens cover its cell choice; this joined
             // comparison checks the object-to-cell navigation transition.
             assert!(
-                matches!(entity.navigation.nav_com, Some(NavTargetRef::Cell { .. })),
+                matches!(entity.navigation.nav_com(), Some(NavTargetRef::Cell { .. })),
                 "{boundary}: Scatter replaces object NavCom with Cell"
             );
         }

@@ -85,10 +85,10 @@ pub(crate) fn facing_toward_target(
 ) -> Option<u16> {
     let (trx, try_, tsx, tsy) = crate::sim::combat::resolve_target_coords(target, entities)?;
     Some(facing_toward_lepton(
-        entity.position.rx,
-        entity.position.ry,
-        entity.position.sub_x,
-        entity.position.sub_y,
+        entity.position.rx(),
+        entity.position.ry(),
+        entity.position.sub_x(),
+        entity.position.sub_y(),
         trx,
         try_,
         tsx,
@@ -204,7 +204,7 @@ pub(crate) fn facing_update(
         .target()
         .and_then(|attack| facing_toward_target(entity, &attack, entities));
     if let Some(tgt) = target_facing
-        && !entity.turret_rotation_latch
+        && !entity.turret_rotation_latch.is_set()
     {
         if has_turret {
             if !current_weapon_is_omni_fire(entity, entities, rules, interner) {
@@ -215,7 +215,7 @@ pub(crate) fn facing_update(
             // No NavCom (`+0x5A4`, `0x00736A38`) and the locomotor's Is_Moving
             // (ILocomotion+0x10, `0x00736A5F`) false. A pending order is
             // neither; a locomotor the query does not answer reads as still.
-            && entity.navigation.nav_com.is_none()
+            && entity.navigation.nav_com().is_none()
             && super::motion_query::is_moving(entity) != Some(true)
             && entity.body_facing_current(binary_frame) == tgt
         {
@@ -246,9 +246,9 @@ pub(crate) fn facing_update(
             let dwell = rules.map_or(NATIVE_IDLE_TURRET_DWELL_FALLBACK, |r| {
                 i64::from(r.general.guard_area_targeting_delay)
             }) + NATIVE_IDLE_TURRET_DWELL_BIAS;
-            let dwell_elapsed = i64::from(binary_frame) - entity.last_fire_frame >= dwell;
+            let dwell_elapsed = i64::from(binary_frame) - entity.last_fire_frame.frame() >= dwell;
             // `+0x2E4` — a tank riding a Battle Bunker holds its aim forever.
-            let bunkered = entity.bunker_link.installed_in().is_some();
+            let bunkered = entity.bunker.link().installed_in().is_some();
             if dwell_elapsed && !bunkered {
                 out.turret_destination = Some(match nav_destination_facing(entity, entities) {
                     Some(nav) => nav,
@@ -277,7 +277,7 @@ const NATIVE_IDLE_TURRET_DWELL_BIAS: i64 = 5;
 /// read at `0x00736BA3`) through `DirectionToTarget @ 0x005F3DB0`
 /// (`0x00736BC3`), the helper arm A aims with.
 fn nav_destination_facing(entity: &GameEntity, entities: &EntityStore) -> Option<u16> {
-    let nav_com = entity.navigation.nav_com?;
+    let nav_com = entity.navigation.nav_com()?;
     facing_toward_target(entity, &nav_com.into(), entities)
 }
 

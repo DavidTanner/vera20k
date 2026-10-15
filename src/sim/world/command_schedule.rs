@@ -212,7 +212,7 @@ impl Simulation {
                 .substrate
                 .entities
                 .get(entity_id)
-                .map(|entity| (entity_id, entity.on_bridge)),
+                .map(|entity| (entity_id, entity.on_bridge())),
             _ => None,
         };
         let cmd_owner_str = self.interner.resolve(cmd.owner).to_string();
@@ -226,7 +226,7 @@ impl Simulation {
         let placed_building_owner = self.successful_non_wall_placement_owner(cmd, applied, rules);
         let synchronous_deploy = applied
             && matches!(cmd.payload, Command::DeployMcv { entity_id }
-            if self.substrate.entities.get(entity_id).is_none_or(|e| e.dying));
+            if self.substrate.entities.get(entity_id).is_none_or(|e| e.death.is_dying()));
         let spawned_entity = synchronous_deploy
             || placed_building_owner.is_some()
             || applied && matches!(cmd.payload, Command::PlaceProducedMobile { .. })
@@ -235,7 +235,7 @@ impl Simulation {
                 self.substrate
                     .entities
                     .get(id)
-                    .is_some_and(|entity| entity.on_bridge != before)
+                    .is_some_and(|entity| entity.on_bridge() != before)
             });
         (applied, spawned_entity)
     }
@@ -460,15 +460,15 @@ impl Simulation {
                         command_index,
                         entity_id,
                         coord: [
-                            i32::from(entity.position.rx)
+                            i32::from(entity.position.rx())
                                 .wrapping_mul(256)
-                                .wrapping_add(entity.position.sub_x.to_num::<i32>()),
-                            i32::from(entity.position.ry)
+                                .wrapping_add(entity.position.sub_x().to_num::<i32>()),
+                            i32::from(entity.position.ry())
                                 .wrapping_mul(256)
-                                .wrapping_add(entity.position.sub_y.to_num::<i32>()),
+                                .wrapping_add(entity.position.sub_y().to_num::<i32>()),
                             coord_z,
                         ],
-                        source_cell: (entity.position.rx as i16, entity.position.ry as i16),
+                        source_cell: (entity.position.rx() as i16, entity.position.ry() as i16),
                     });
                 }
                 let clicked_target = (key.1 as i16, key.2 as i16);

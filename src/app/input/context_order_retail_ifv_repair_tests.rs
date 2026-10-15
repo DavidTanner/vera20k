@@ -6,7 +6,7 @@ use crate::app::input::cursor::{capability_cursor_for_hover, cursor_id_for_feedb
 use crate::app::types::{CursorFeedbackKind, CursorId};
 use crate::rules::ruleset::RuleSet;
 use crate::sim::house_state::HouseState;
-use crate::sim::passenger::{PassengerRole, tick_passenger_system};
+use crate::sim::passenger::tick_passenger_system;
 use crate::sim::world::UnitRepairAction;
 use crate::sim::world::{FrameEffects, Simulation};
 
@@ -39,17 +39,24 @@ fn boarded_ifv(rules: &RuleSet, passenger_type: &str) -> (Simulation, u64, u64) 
     tick_passenger_system(&mut sim, rules, None, FrameEffects::default());
     let grid = sim.path_grid_snapshot().unwrap();
     for _ in 0..240 {
-        if matches!(
-            sim.entities().get(engineer).unwrap().passenger_role,
-            PassengerRole::Inside { .. }
-        ) {
+        if sim
+            .entities()
+            .get(engineer)
+            .unwrap()
+            .passenger_role
+            .is_inside_transport()
+        {
             break;
         }
         sim.advance_tick(&[], Some(rules), Some(&grid), None, 67);
     }
     assert!(
-        matches!(sim.entities().get(engineer).unwrap().passenger_role,
-        PassengerRole::Inside { transport_id, .. } if transport_id == ifv)
+        sim.entities()
+            .get(engineer)
+            .unwrap()
+            .passenger_role
+            .inside_transport_id()
+            == Some(ifv)
     );
     let tank = sim.spawn_object("MTNK", OWNER, 17, 16, 64, rules).unwrap();
     sim.entities_mut()
@@ -173,7 +180,11 @@ fn retail_berserk_engineer_ifv_keeps_cursor_but_refuses_click() {
     let rules = &retail.rules;
     let (mut sim, ifv, tank) = repair_ifv(rules);
     let already_sent = repair_click(&sim, rules, ifv, tank);
-    sim.entities_mut().get_mut(ifv).unwrap().berserk.active = true;
+    sim.entities_mut()
+        .get_mut(ifv)
+        .unwrap()
+        .berserk
+        .set_active_for_test(true);
     let native: serde_json::Value = serde_json::from_str(crate::test_fixture::text(
         "tools/spatial_oracle/bunker_attack_action.json",
     ))
@@ -282,8 +293,8 @@ fn retail_far_repair_click_drives_into_range_and_heals_without_ctrl() {
     }
     let current = sim.entities().get(ifv).unwrap().position;
     assert_ne!(
-        (current.rx, current.ry),
-        (start.rx, start.ry),
+        (current.rx(), current.ry()),
+        (start.rx(), start.ry()),
         "the ordered repair must approach a distant ally"
     );
     assert!(
@@ -469,7 +480,9 @@ fn issued_repair_attack_is_not_readmitted_when_health_or_cargo_changes() {
     );
     let (mut sim, ifv, tank) = repair_ifv(rules);
     let command = repair_click(&sim, rules, ifv, tank);
-    use crate::sim::passenger::{DepartureRoute, depart_cargo_head, reveal_unloaded_passenger};
+    use crate::sim::passenger::{
+        DepartureRoute, depart_cargo_head, exit_cell_position, reveal_unloaded_passenger,
+    };
     depart_cargo_head(
         &mut sim,
         rules,
@@ -477,14 +490,15 @@ fn issued_repair_attack_is_not_readmitted_when_health_or_cargo_changes() {
         ifv,
         DepartureRoute::Vehicle,
         |sim, passenger| {
+            let position = exit_cell_position(sim, passenger, 16, 15, 0);
             reveal_unloaded_passenger(
                 sim,
                 rules,
                 ifv,
                 passenger,
-                16,
-                15,
-                0,
+                position,
+                crate::sim::world::PlacementEvidence::MarkSucceeded,
+                None,
                 FrameEffects::default(),
             )
         },
@@ -503,7 +517,7 @@ fn issued_repair_attack_is_not_readmitted_when_health_or_cargo_changes() {
 #[test]
 fn unit_repair_vehicle_class_matches_fire_error_including_undeploy_building() {
     let rules = RuleSet::from_ini_with_fixed_art_for_test(
-        &crate::rules::ini_parser::IniFile::from_str(
+        &crate::sim::arena_fixture::clear_ground_ini(
             "[VehicleTypes]\n0=REPAIRER\n1=TANK\n2=ORGANIC\n\
              [BuildingTypes]\n0=DEPLOYED\n1=ORDINARY\n\
              [REPAIRER]\nStrength=100\nPrimary=Fix\nSpeed=5\n\

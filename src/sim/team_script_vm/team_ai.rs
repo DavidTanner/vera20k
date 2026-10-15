@@ -95,14 +95,13 @@ pub(super) fn center_sample(
     naval_transport: bool,
     placement_scope_active: bool,
 ) -> Option<CenterSample> {
-    (member_is_live_joined(entity, initiated, placement_scope_active) && entity.in_playfield).then(
-        || CenterSample {
+    (member_is_live_joined(entity, initiated, placement_scope_active) && entity.in_playfield())
+        .then(|| CenterSample {
             id: entity.stable_id(),
             xy: crate::sim::movement::ground_pose::position_world_xy(&entity.position),
             doubled,
             naval_transport,
-        },
-    )
+        })
 }
 
 /// `Calc_Center`'s arithmetic (`0x006EB225..0x006EB31B`): the mean XY of
@@ -511,7 +510,7 @@ impl Simulation {
             let area_guarding_target =
                 mission == Some(MissionType::AreaGuard) && entity.attack_target.target().is_some();
             if self.team_member_distance(entity, zone) > stray && !area_guarding_target {
-                if entity.navigation.nav_com.is_some() {
+                if entity.navigation.nav_com().is_some() {
                     continue;
                 }
                 self.team_member_queue_mission(member.id, MissionType::Move, rules);
@@ -662,7 +661,7 @@ impl Simulation {
             self.team_set_member_initiated(team_id, member);
             return false;
         }
-        if entity.navigation.nav_com.is_none() {
+        if entity.navigation.nav_com().is_none() {
             self.team_member_queue_mission(member, MissionType::Move, rules);
             self.team_member_clear_target(member, rules);
             self.team_member_set_destination(member, zone, rules, registry, frame_effects);
@@ -775,7 +774,7 @@ mod tests {
             .get_mut(hornet)
             .expect("aircraft")
             .discovery
-            .owned_by_current_house = true;
+            .set_owned_by_current_house_for_test(true);
         sim.fog = crate::sim::vision::FogState::new(33, 33);
         let centre = TeamTarget::Cell { x: 12, y: 12 };
         assert!(sim.team_member_refuses_cell(hornet, centre, &rules, Some(&registry)));
@@ -796,7 +795,7 @@ mod tests {
         let mut member =
             crate::sim::game_entity::GameEntity::test_default(1, "HOVER", "Americans", 4, 4);
         member.locomotor = Some(LocomotorState::for_test_kind(LocomotorKind::Hover));
-        member.position.exact_z_leptons = Some(120);
+        member.position.set_exact_z_leptons(Some(120));
         sim.substrate.entities.insert(member);
         let member = sim.substrate.entities.get(1).expect("member");
         // The cell target is (4, 4)'s centre at its floor, straight below, so

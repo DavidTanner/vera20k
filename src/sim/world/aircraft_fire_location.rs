@@ -92,7 +92,7 @@ impl Simulation {
                         EntityCategory::Unit | EntityCategory::Infantry | EntityCategory::Aircraft
                     )
                 })
-                .and_then(|e| e.navigation.nav_com),
+                .and_then(|e| e.navigation.nav_com()),
         };
         let reference = destination
             .and_then(|d| self.fire_location_center(d))
@@ -214,7 +214,7 @@ impl Simulation {
             return true;
         }
         let skip = if object.carryall {
-            match entity.navigation.nav_com {
+            match entity.navigation.nav_com() {
                 Some(
                     NavTargetRef::Entity { id }
                     | NavTargetRef::Object { id }
@@ -270,7 +270,7 @@ impl Simulation {
             claims
                 .occupied
                 .insert(((coord.x / 256) as i16, (coord.y / 256) as i16));
-            if let Some(NavTargetRef::Cell { rx, ry }) = other.navigation.nav_com {
+            if let Some(NavTargetRef::Cell { rx, ry }) = other.navigation.nav_com() {
                 match self.resolved_terrain.as_ref() {
                     // Pointer equality must not restamp the shared Dummy.
                     Some(t) => {
