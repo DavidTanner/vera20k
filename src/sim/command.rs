@@ -42,6 +42,20 @@ pub const ABANDON_OPCODE: u8 = 0x10;
 pub const PRIMARY_OPCODE: u8 = 0x11;
 /// Native `EventClass` opcode ABANDON_ALL: cancel every copy of a build.
 pub const ABANDON_ALL_OPCODE: u8 = 0x2e;
+/// Native `EventClass` opcode IDLE: the Stop key's event.
+pub const IDLE_OPCODE: u8 = 0x06;
+/// Native `EventClass` opcode DEPLOY: the deploy key's event.
+pub const DEPLOY_OPCODE: u8 = 0x09;
+/// Native `EventClass` opcode GAMESPEED: a network game's speed change.
+pub const GAMESPEED_OPCODE: u8 = 0x0d;
+/// Native `EventClass` opcode SPECIAL_PLACE: fire a superweapon at a Cell.
+pub const SPECIAL_PLACE_OPCODE: u8 = 0x12;
+/// Native `EventClass` opcode REPAIR: toggle a building's repair.
+pub const REPAIR_OPCODE: u8 = 0x15;
+/// Native `EventClass` opcode SELL: sell a building.
+pub const SELL_OPCODE: u8 = 0x16;
+/// Native `EventClass` opcode ARCHIVE: set an object's ArchiveTarget.
+pub const ARCHIVE_OPCODE: u8 = 0x1e;
 
 const MEGAMISSION_SOURCE_VALUE_OFFSET: usize = 0;
 const MEGAMISSION_SOURCE_KIND_OFFSET: usize = 4;
@@ -355,8 +369,13 @@ impl ExitRecord {
 /// writes the Abstract token at Event+7..11 and leaves the flags and unused
 /// tail untouched. Its signed house check uses the existing null-header owner,
 /// including negative-house/positive-UID and positive-house/negative-UID
-/// controls. The represented events are Scatter (`0x07`, ClickedEvent
-/// `0x006FFE00`) and PRIMARY (`0x11`, Building ClickedAction `0x00443494`).
+/// controls. The represented events are IDLE (`0x06`, the Stop key's
+/// ClickedEvent `0x006FFE00`), Scatter (`0x07`, ClickedEvent), DEPLOY (`0x09`,
+/// the deploy key's ClickedEvent, `0x00730D15`), PRIMARY (`0x11`, Building
+/// ClickedAction `0x00443494`), REPAIR (`0x15`) and SELL (`0x16`), the last
+/// two from the repair and sell clicks (`DisplayClass::BandBox_LeftUp
+/// 0x004AC187`) and SELL also from the undeploy click (Building
+/// Active_Click_With `0x004437F0`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TargetEventRecord {
     pub opcode: u8,
@@ -371,29 +390,166 @@ impl TargetEventRecord {
         if self.house_id < 0 {
             return;
         }
-        let (value, kind) = MegaMissionTarget::Object { id: self.entity_id }
-            .token()
-            .expect("an Abstract token has no Cell conversion");
-        record.payload_mut()[..4].copy_from_slice(&value.to_le_bytes());
-        record.payload_mut()[4] = kind;
+        write_object_token(record.payload_mut(), self.entity_id);
     }
 
     pub fn decode(record: &CommandRecord) -> Option<Self> {
-        if !matches!(record.opcode(), SCATTER_OPCODE | PRIMARY_OPCODE) {
+        if !matches!(
+            record.opcode(),
+            IDLE_OPCODE
+                | SCATTER_OPCODE
+                | DEPLOY_OPCODE
+                | PRIMARY_OPCODE
+                | REPAIR_OPCODE
+                | SELL_OPCODE
+        ) {
             return None;
         }
-        let value = i32::from_le_bytes(record.payload()[..4].try_into().ok()?);
-        let MegaMissionTarget::Object { id } =
-            MegaMissionTarget::from_token(value, record.payload()[4])?
-        else {
-            return None;
-        };
         Some(Self {
             opcode: record.opcode(),
             house_id: record.house_id(),
             frame: record.frame_stamp(),
-            entity_id: id,
+            entity_id: read_object_token(record.payload())?,
         })
+    }
+}
+
+/// ARCHIVE, built by the two-target constructor `0x004C6780`: the object's
+/// Abstract token at Event+7 (kind at +0xB) and its new ArchiveTarget's token
+/// at +0xC (kind at +0x10); no other byte. `EventClass::Execute`
+/// (`0x004C6DAA`) hands the second to the live first object's
+/// `Set_ArchiveTarget` (`0x0070C610`). The represented producer is
+/// `BuildingClass::SetRallyPoint` (`0x00443860`), which names the building
+/// and a Cell and sends from the building's house.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ArchiveRecord {
+    pub house_id: i8,
+    pub frame: i32,
+    pub entity_id: i32,
+    pub target: MegaMissionTarget,
+}
+
+impl ArchiveRecord {
+    pub fn write_into(self, record: &mut CommandRecord) -> Result<(), MegaMissionCellTokenError> {
+        record.set_issue_header(ARCHIVE_OPCODE, i32::from(self.house_id), self.frame);
+        if self.house_id < 0 {
+            return Ok(());
+        }
+        let (value, kind) = self.target.token()?;
+        let payload = record.payload_mut();
+        write_object_token(payload, self.entity_id);
+        payload[5..9].copy_from_slice(&value.to_le_bytes());
+        payload[9] = kind;
+        Ok(())
+    }
+
+    pub fn decode(record: &CommandRecord) -> Option<Self> {
+        if record.opcode() != ARCHIVE_OPCODE {
+            return None;
+        }
+        let payload = record.payload();
+        Some(Self {
+            house_id: record.house_id(),
+            frame: record.frame_stamp(),
+            entity_id: read_object_token(payload)?,
+            target: MegaMissionTarget::from_token(
+                i32::from_le_bytes(payload[5..9].try_into().ok()?),
+                payload[9],
+            )?,
+        })
+    }
+}
+
+/// SPECIAL_PLACE, built by constructor `0x004C6B60`: the superweapon type's
+/// array index at Event+7 and the CellStruct at +0xB (x) and +0xD (y); no
+/// other byte. `EventClass::Execute` (`0x004C78D6`) hands both to
+/// `HouseClass::Fire_SW`. The targeting click (`DisplayClass::BandBox_LeftUp
+/// 0x004AC23A`) names the first type whose `Action=` is the click's
+/// (`SuperWeaponTypeClass::FindFirstOfAction`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SpecialPlaceRecord {
+    pub house_id: i8,
+    pub frame: i32,
+    pub super_weapon_index: i32,
+    pub x: i16,
+    pub y: i16,
+}
+
+impl SpecialPlaceRecord {
+    pub fn write_into(self, record: &mut CommandRecord) {
+        record.set_issue_header(SPECIAL_PLACE_OPCODE, i32::from(self.house_id), self.frame);
+        if self.house_id < 0 {
+            return;
+        }
+        let payload = record.payload_mut();
+        payload[..4].copy_from_slice(&self.super_weapon_index.to_le_bytes());
+        payload[4..6].copy_from_slice(&self.x.to_le_bytes());
+        payload[6..8].copy_from_slice(&self.y.to_le_bytes());
+    }
+
+    pub fn decode(record: &CommandRecord) -> Option<Self> {
+        if record.opcode() != SPECIAL_PLACE_OPCODE {
+            return None;
+        }
+        let payload = record.payload();
+        Some(Self {
+            house_id: record.house_id(),
+            frame: record.frame_stamp(),
+            super_weapon_index: i32::from_le_bytes(payload[..4].try_into().ok()?),
+            x: i16::from_le_bytes(payload[4..6].try_into().ok()?),
+            y: i16::from_le_bytes(payload[6..8].try_into().ok()?),
+        })
+    }
+}
+
+/// A one-dword event built by constructor `0x004C6720`: the value at Event+7;
+/// no other byte. The represented event is GAMESPEED (`0x0D`), which the
+/// in-game Options dialog sends only in a network game
+/// (`OptionsClass::ApplyFromInGameDialog 0x004E1E54`, modes other than 0 and
+/// 5); `EventClass::Execute` stores the dword as the game speed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct IntEventRecord {
+    pub opcode: u8,
+    pub house_id: i8,
+    pub frame: i32,
+    pub value: i32,
+}
+
+impl IntEventRecord {
+    pub fn write_into(self, record: &mut CommandRecord) {
+        record.set_issue_header(self.opcode, i32::from(self.house_id), self.frame);
+        if self.house_id < 0 {
+            return;
+        }
+        record.payload_mut()[..4].copy_from_slice(&self.value.to_le_bytes());
+    }
+
+    pub fn decode(record: &CommandRecord) -> Option<Self> {
+        if record.opcode() != GAMESPEED_OPCODE {
+            return None;
+        }
+        Some(Self {
+            opcode: record.opcode(),
+            house_id: record.house_id(),
+            frame: record.frame_stamp(),
+            value: i32::from_le_bytes(record.payload()[..4].try_into().ok()?),
+        })
+    }
+}
+
+fn write_object_token(payload: &mut [u8], id: i32) {
+    let (value, kind) = MegaMissionTarget::Object { id }
+        .token()
+        .expect("an Abstract token has no Cell conversion");
+    payload[..4].copy_from_slice(&value.to_le_bytes());
+    payload[4] = kind;
+}
+
+fn read_object_token(payload: &[u8]) -> Option<i32> {
+    let value = i32::from_le_bytes(payload[..4].try_into().ok()?);
+    match MegaMissionTarget::from_token(value, payload[4])? {
+        MegaMissionTarget::Object { id } => Some(id),
+        _ => None,
     }
 }
 
@@ -936,7 +1092,8 @@ pub enum Command {
     /// object keeps (`Simulation::object_move_click`): the class setter
     /// (vt+0x480) takes the object.
     MoveToObject { entity_id: u64, target_id: u64 },
-    /// Stop movement/combat intent on one entity.
+    /// IDLE (type 6, `EventClass::Execute 0x004C74CB`): the Stop key's
+    /// event. Stop movement/combat intent on one entity.
     Stop { entity_id: u64 },
     /// Attack an explicit target.
     Attack { attacker_id: u64, target_id: u64 },
@@ -960,11 +1117,16 @@ pub enum Command {
     },
     /// Unit DEPLOY event: convert an MCV or toggle a SimpleDeployer.
     /// The existing wire spelling is retained for saved commands/replays.
+    /// The deploy key sends DEPLOY (type 9) and a self-click MEGAMISSION
+    /// Unload; both decode to it for a Unit whose Unload mission deploys.
     DeployMcv { entity_id: u64 },
     /// Undeploy a structure back into its mobile unit (e.g. ConYard → MCV).
     /// Reads UndeploysInto from rules.ini to determine the spawned unit type.
+    /// Issue sends native's undeploy records instead, ARCHIVE then SELL
+    /// (`Simulation::encode_single_event_records`); no record decodes to it.
     UndeployBuilding { entity_id: u64 },
-    /// Archive a rally cell on each selected factory the command owner owns.
+    /// ARCHIVE (type 30 → `Set_ArchiveTarget @ 0x0070C610`): archive a rally
+    /// cell on each named object. A rally click sends one record per factory.
     SetRally {
         rx: u16,
         ry: u16,
@@ -996,9 +1158,11 @@ pub enum Command {
     /// `HouseClass::Abandon_Production @ 0x004FAA10`: cancel a queued copy, or
     /// every copy, of this type and then the active build of it.
     CancelProductionByType { type_id: InternedId, all: bool },
-    /// Sell a building, refunding a percentage of its cost and despawning it.
+    /// SELL (type 22 → `Sell_Back(-1)`): sell a building, or undeploy one
+    /// with `UndeploysInto=` and an ArchiveTarget.
     SellBuilding { entity_id: u64 },
-    /// Toggle repair mode on a building (spend credits to heal over time).
+    /// REPAIR (type 21 → `ToggleRepair(-1)`): toggle repair mode on a
+    /// building (spend credits to heal over time).
     ToggleRepair { entity_id: u64 },
     /// A miner clicked onto a friendly refinery: the native Enter order
     /// (`UnitClass::What_Action` `0x0073FD50`, `FootClass::ClickedAction`
@@ -1026,7 +1190,9 @@ pub enum Command {
     EnterBunker { unit_id: u64, bunker_id: u64 },
     /// Eject the occupant of a friendly occupied tank bunker. Targets the bunker
     /// (the hidden occupant is not selectable in this slice); the occupant
-    /// reappears on a passable cell SW of the bunker and drives out.
+    /// reappears on a passable cell SW of the bunker and drives out. Native
+    /// empties a bunker when its occupant runs Unload; issue sends the
+    /// occupant's MEGAMISSION Unload, which decodes to this.
     EjectBunker { bunker_id: u64 },
     /// Order a transport or garrison to unload: the Unload mission of its class.
     UnloadPassengers { transport_id: u64 },
@@ -1091,8 +1257,10 @@ pub enum Command {
     /// Execute the local player's native EXIT event and end the active scenario.
     ExitMatch,
     /// Apply an offline in-game Options speed transition before the next logic
-    /// frame. The dialog emits only the stored range 0..=6; live network opcode
-    /// 0x0D keeps its separate EventClass-tail timing when networking is added.
+    /// frame. The dialog emits only the stored range 0..=6. Offline it is not
+    /// an event: native stores the speed at once in modes 0 and 5 and sends
+    /// GAMESPEED (type 13) only in a network game, whose record decodes to
+    /// this command but executes in the EventClass tail.
     SetGameSpeed { speed: u8 },
     /// Strip6A8EB8's mobile PLACE event. House4FB0E0 resolves the category's
     /// current completed head at execution; native carries type_index=-1,
@@ -1583,6 +1751,104 @@ mod tests {
         // The receivers read the naval dword as `!= 0`.
         record.payload_mut()[8..12].copy_from_slice(&2_i32.to_le_bytes());
         assert!(super::PlaceRecord::decode(&record).unwrap().naval);
+    }
+
+    /// Two-target constructor `0x004C6780`: house at +2 (`0x004C67B0`),
+    /// opcode at +0 (`0x004C67BA`), the first token's value at +7 and kind
+    /// at +0xB (`0x004C67BC`, `0x004C67C2`), the second's at +0xC and +0x10
+    /// (`0x004C67CC`, `0x004C67D1`), frame at +3 (`0x004C67DA`); no other
+    /// byte. A negative house writes opcode 0, house -1 and the frame
+    /// (`0x004C67E2..0x004C67EE`).
+    #[test]
+    fn archive_constructor_writes_both_tokens_only() {
+        let typed = super::ArchiveRecord {
+            house_id: 2,
+            frame: 0x0102_0304,
+            entity_id: 0x0a0b_0c0d,
+            target: MegaMissionTarget::Cell { x: 87, y: 50 },
+        };
+        let mut record = CommandRecord::decode_exact(&[0xcc; COMMAND_RECORD_LEN]).unwrap();
+        typed.write_into(&mut record).unwrap();
+        let mut expected = [0xcc; COMMAND_RECORD_LEN];
+        expected[0] = 0x1e;
+        expected[2] = 2;
+        expected[3..7].copy_from_slice(&0x0102_0304_i32.to_le_bytes());
+        expected[7..11].copy_from_slice(&0x0a0b_0c0d_i32.to_le_bytes());
+        expected[11] = ABSTRACT_OBJECT_TARGET_KIND;
+        expected[12..16].copy_from_slice(&50_087_i32.to_le_bytes());
+        expected[16] = super::CELL_TARGET_KIND;
+        assert_eq!(record.as_bytes(), &expected);
+        assert_eq!(super::ArchiveRecord::decode(&record), Some(typed));
+
+        let mut null = CommandRecord::decode_exact(&[0xcc; COMMAND_RECORD_LEN]).unwrap();
+        super::ArchiveRecord {
+            house_id: -1,
+            ..typed
+        }
+        .write_into(&mut null)
+        .unwrap();
+        let mut expected = [0xcc; COMMAND_RECORD_LEN];
+        expected[0] = 0;
+        expected[2] = 0xff;
+        expected[3..7].copy_from_slice(&0x0102_0304_i32.to_le_bytes());
+        assert_eq!(null.as_bytes(), &expected);
+        assert_eq!(super::ArchiveRecord::decode(&null), None);
+    }
+
+    /// SPECIAL_PLACE constructor `0x004C6B60`: house at +2 (`0x004C6B90`),
+    /// opcode at +0, the dword at +7 (`0x004C6B99`), the Cell's x at +0xB and
+    /// y at +0xD (`0x004C6B9F`, `0x004C6BA7`), frame at +3 (`0x004C6BB0`).
+    /// The one-dword constructor `0x004C6720` writes house, opcode, the dword
+    /// at +7 (`0x004C6755`) and the frame (`0x004C675D`). Neither writes
+    /// another byte.
+    #[test]
+    fn special_place_and_one_dword_constructors_write_only_their_fields() {
+        let place = super::SpecialPlaceRecord {
+            house_id: 1,
+            frame: 300,
+            super_weapon_index: 7,
+            x: -2,
+            y: 0x0140,
+        };
+        let mut record = CommandRecord::decode_exact(&[0xcc; COMMAND_RECORD_LEN]).unwrap();
+        place.write_into(&mut record);
+        let mut expected = [0xcc; COMMAND_RECORD_LEN];
+        expected[0] = 0x12;
+        expected[2] = 1;
+        expected[3..7].copy_from_slice(&300_i32.to_le_bytes());
+        expected[7..11].copy_from_slice(&7_i32.to_le_bytes());
+        expected[11..13].copy_from_slice(&(-2_i16).to_le_bytes());
+        expected[13..15].copy_from_slice(&0x0140_i16.to_le_bytes());
+        assert_eq!(record.as_bytes(), &expected);
+        assert_eq!(super::SpecialPlaceRecord::decode(&record), Some(place));
+
+        let speed = super::IntEventRecord {
+            opcode: super::GAMESPEED_OPCODE,
+            house_id: 3,
+            frame: 301,
+            value: 4,
+        };
+        let mut record = CommandRecord::decode_exact(&[0xcc; COMMAND_RECORD_LEN]).unwrap();
+        speed.write_into(&mut record);
+        let mut expected = [0xcc; COMMAND_RECORD_LEN];
+        expected[0] = 0x0d;
+        expected[2] = 3;
+        expected[3..7].copy_from_slice(&301_i32.to_le_bytes());
+        expected[7..11].copy_from_slice(&4_i32.to_le_bytes());
+        assert_eq!(record.as_bytes(), &expected);
+        assert_eq!(super::IntEventRecord::decode(&record), Some(speed));
+
+        let mut null = CommandRecord::decode_exact(&[0xcc; COMMAND_RECORD_LEN]).unwrap();
+        super::SpecialPlaceRecord {
+            house_id: -1,
+            ..place
+        }
+        .write_into(&mut null);
+        let mut expected = [0xcc; COMMAND_RECORD_LEN];
+        expected[0] = 0;
+        expected[2] = 0xff;
+        expected[3..7].copy_from_slice(&300_i32.to_le_bytes());
+        assert_eq!(null.as_bytes(), &expected);
     }
 
     /// `RTTI_To_TypeArray`'s byte table at `0x0048DD24`, indexed by RTTI - 1

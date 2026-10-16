@@ -60,7 +60,8 @@ fn building_orders(
         .into_iter()
         .map(|payload| CommandEnvelope::new(owner, sim.session.tick, payload))
         .map(|envelope| {
-            crate::app::input::commands::roundtrip_ordinary_local_megamission(sim, envelope)
+            crate::app::input::commands::roundtrip_local_order(sim, None, envelope)
+                .pop()
                 .unwrap()
         })
         .collect();

@@ -34,6 +34,8 @@ mod time_warp;
 mod trigger_chrono;
 pub(crate) use sound_boundary::{FrameEffects, SoundBoundary};
 #[cfg(test)]
+pub(crate) mod single_event_record_tests;
+#[cfg(test)]
 mod unit_unlimbo_tests;
 pub(crate) use sinking::SinkingState;
 pub mod edge_cell;

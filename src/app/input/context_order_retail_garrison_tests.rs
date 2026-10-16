@@ -60,8 +60,9 @@ fn queue_ordinary_order(runtime: &mut crate::sim::runtime::SimRuntime, order: Co
     let sim = &runtime.simulation;
     let envelope =
         CommandEnvelope::new(sim.session.current_house.unwrap(), sim.session.tick, order);
-    let envelope =
-        crate::app::input::commands::roundtrip_ordinary_local_megamission(sim, envelope).unwrap();
+    let envelope = crate::app::input::commands::roundtrip_local_order(sim, None, envelope)
+        .pop()
+        .unwrap();
     runtime.simulation.queue_commands(vec![envelope]);
 }
 
@@ -134,11 +135,9 @@ fn retail_gi_group_boards_a_4x4_garrison_from_its_far_side() {
         .into_iter()
         .map(|order| {
             let envelope = CommandEnvelope::new(owner, runtime.simulation.session.tick, order);
-            crate::app::input::commands::roundtrip_ordinary_local_megamission(
-                &runtime.simulation,
-                envelope,
-            )
-            .unwrap()
+            crate::app::input::commands::roundtrip_local_order(&runtime.simulation, None, envelope)
+                .pop()
+                .unwrap()
         })
         .collect();
     runtime.simulation.queue_commands(envelopes);

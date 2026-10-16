@@ -438,12 +438,12 @@ resolved toward native in that PR:
 |---|---|---|
 | 2a MegaMission | Attack, ForceAttack, ForceAttackCell, AttackMove, EnterTransport, EnterBunker, RepairAtDepot, MinerReturn, CaptureBuilding, PlantC4, HarvestCell, UnloadPassengers, ToggleInfantryDeploy | MEGAMISSION `0x04`: Attack 1, AttackMove 29, Enter 7, Capture 8, Harvest 10, Unload 16, Sabotage 17 |
 | 2b Production | QueueProduction, SuspendProduction, CancelProductionByType, PlaceReadyBuilding, PlaceProducedMobile, CycleProducerFocus | PRODUCE `0x0E`, SUSPEND `0x0F`, ABANDON `0x10`, ABANDON_ALL `0x2E`, PLACE `0x0B`, PRIMARY `0x11` (CycleProducerFocus sends its chosen factory's PRIMARY) |
-| 2c Single events | Stop, DeployMcv, SellBuilding, ToggleRepair, LaunchSuperWeapon, SetGameSpeed, SetRally, UndeployBuilding, EjectBunker, and the deploy key's UnloadPassengers and ToggleInfantryDeploy | IDLE `0x06`, DEPLOY `0x09` (the deploy key, `0x00730AF0` -> ClickedEvent `0x006FFE00`), SELL `0x16`, REPAIR `0x15`, SPECIAL_PLACE `0x12`, GAMESPEED `0x0D`, ARCHIVE `0x1E` for rally; UndeployBuilding, EjectBunker and the MCV self-click (Foot action 4 sends Unload16) are *leads* |
+| 2c Single events | Stop, DeployMcv, SellBuilding, ToggleRepair, LaunchSuperWeapon, SetGameSpeed, SetRally, UndeployBuilding, EjectBunker, and the deploy key's UnloadPassengers and ToggleInfantryDeploy | IDLE `0x06`, DEPLOY `0x09` (the deploy key), SELL `0x16`, REPAIR `0x15`, SPECIAL_PLACE `0x12`, GAMESPEED `0x0D` (network games only), ARCHIVE `0x1E` for rally; UndeployBuilding sends ARCHIVE then SELL; the MCV self-click and EjectBunker send MEGAMISSION Unload16 |
 | 2d Local selection | Select | None: native selection is client-local and never an event |
 | 2e Switchover | Every producer, including sim-generated strip PLACE and ABANDON | The queue becomes the only command path; `pending_commands` is deleted |
 
 Each part's mapping is checked against the native producer and `EventClass::Execute`
-before it is ported. Mappings marked *lead* above are not yet established.
+before it is ported.
 
 #### 2a: MegaMission family
 
@@ -474,8 +474,8 @@ queued command is what the bytes decode to:
   EnterBunker or EnterTransport from the live destination, where native's single
   receiver leaves that to the destination's radio answer.
 - Unload decodes to ToggleInfantryDeploy for infantry (`0x0051F6E0`) and to
-  UnloadPassengers for every other class. Only the self-click round-trips this way;
-  the deploy key sends DEPLOY, which stays unencoded until 2c.
+  UnloadPassengers for every other class. 2c adds the Unit's deploy and bunker arms
+  and the deploy key's DEPLOY.
 - A Harvest run onto one Cell gets the group spread, like Move and AttackMove: the run
   key (`0x0064CB0A..0x0064CB60`) has no mission filter.
 
@@ -491,9 +491,9 @@ Residuals:
   cargo. The click already applies the same tests, so a refusal needs the state to
   change between issue and the frame tail. Effect: the order is dropped where native
   would drive to the building and be refused there.
-- Unit Unload also deploys an MCV or Slave Miner (`0x0073D630`), and Building Unload
-  covers a gap generator. The decoder maps those to UnloadPassengers, which refuses
-  them. No VERA producer sends them yet.
+- Building Unload covers a gap generator. The decoder maps it to UnloadPassengers,
+  which refuses it. No VERA producer sends it. (The Unit's MCV and Slave Miner arm
+  decodes since 2c.)
 - Eaten (mission 9, the Grinder click) has no VERA producer and does not decode.
 - Enter receiver selection is made twice: by the click and by `enter_receiver` at
   execution. Both are type-based and resolve in the same order.
@@ -577,6 +577,143 @@ Residuals:
   byte per building and skips limbo buildings when clearing (`0x004481AF`), so a
   primary building in limbo loses it. Trigger: a Construction Yard made primary,
   or a factory toggled while its slot's primary is in limbo.
+
+#### 2c: Single events
+
+Native producers, with the record each sends:
+
+| Command | Producer | Event | Payload |
+|---|---|---|---|
+| Stop | Stop key (`0x00730EA0`, event 6 at `0x00730EE7` -> ClickedEvent `0x006FFE00`) | IDLE `0x06` | The object's token, from the player's house |
+| DeployMcv, ToggleInfantryDeploy, UnloadPassengers (deploy key) | `Selection::IssueDeployCommand` (`0x00730AF0`, `push 9` at `0x00730D10` -> ClickedEvent) | DEPLOY `0x09` | As IDLE |
+| DeployMcv (self-click) | Foot ClickedAction action 4 (`0x004D74E0`) | MEGAMISSION Unload16 | NULL target and destination (the 2a codec) |
+| EjectBunker | None: VERA's click on the bunker. Native empties a tank bunker when the occupant runs Unload (`0x0073D630` -> `EmptyBunker`) | MEGAMISSION Unload16 | The occupant as source, NULL tokens |
+| SellBuilding | Sell click (`DisplayClass::BandBox_LeftUp`, action 0xC, `0x004AC187`) | SELL `0x16` | As IDLE |
+| ToggleRepair | Repair click (action 10, `0x004AC187`) | REPAIR `0x15` | As IDLE |
+| LaunchSuperWeapon | Targeting click (`0x004AC23A`) | SPECIAL_PLACE `0x12` | Superweapon type index, Cell |
+| SetRally | `BuildingClass::SetRallyPoint` (`0x00443860`) per factory | ARCHIVE `0x1E` | The factory's token and the Cell's, from the factory's house |
+| UndeployBuilding | None: VERA's self-click and deploy key. Native undeploys only by the cell click (Building Active_Click_With `0x004436F0`) | ARCHIVE, then SELL (`0x004437F0`) | The building and a Cell, then the building, from its house |
+| SetGameSpeed | In-game Options (`OptionsClass::ApplyFromInGameDialog 0x004E1E54`), network modes only | GAMESPEED `0x0D` | The speed dword |
+
+IDLE, DEPLOY, SELL and REPAIR use the Target constructor `0x004C65E0`. ARCHIVE uses
+the two-target constructor `0x004C6780` (tokens at Event+7 and +0xC, kinds at +0xB and
++0x10). SPECIAL_PLACE uses `0x004C6B60` (dword at +7, Cell at +0xB and +0xD).
+GAMESPEED uses the one-dword constructor `0x004C6720` (+7). None writes another
+byte. `EventClass::Execute` arms (jump table `0x004C8114`):
+
+- IDLE `0x004C74CB`: any live, untethered Techno not in Construction or Selling, no
+  house test.
+- DEPLOY `0x004C76BC`: for every class it refuses an EMP'd, tethered or limbo
+  object, a slope, Construction and Selling, Aircraft (`0x004C7781`) and an object on
+  a WeaponsFactory cell (`0x004C778A..0x004C77DE`). Then it sends OVER_OUT, a NULL
+  destination, a NULL target and `Queue_Mission(Unload)`. The class's Mission_Unload does the rest: Infantry
+  `0x0051F6E0` toggles deploy-fire; Unit `0x0073D630` empties a tank bunker, unloads
+  a transport type, or deploys a `DeploysInto=` or simple-deployer type that is not
+  `Harvester=` or `Weeder=`; Building `0x0044D880` ejects occupants or absorbed
+  passengers and never undeploys.
+- SELL `0x004C6F12`: the object's owner must be the event's house; a building takes
+  `Sell_Back(-1)` (`0x00447110`), and so does a Unit or Aircraft standing on a
+  building.
+- REPAIR `0x004C6ED2`: any live Techno, `ToggleRepair(-1)`, no house test.
+- SPECIAL_PLACE `0x004C78D6`: `HouseClass::Fire_SW(house, index, Cell)`.
+- GAMESPEED `0x004C794B`: stores the dword as the game speed and prints a message
+  for another house's change.
+- ARCHIVE `0x004C6DAA`: any live Techno's `Set_ArchiveTarget`, no house or type test.
+
+Delivered:
+- Record codecs `ArchiveRecord`, `SpecialPlaceRecord` and `IntEventRecord`;
+  `TargetEventRecord` also carries IDLE, DEPLOY, SELL and REPAIR.
+- `Simulation::encode_single_event_records` builds each record as its producer
+  would; `encode_target_event_record` replaces the Scatter and PRIMARY encoders.
+  `encode_megamission_record` also sends the MCV self-click and the bunker eject.
+- `decode_native_command_record` decodes each event. DEPLOY and MEGAMISSION Unload
+  share one receiver choice (`unload_mission_command`), which needs the rules for a
+  Unit: Infantry -> ToggleInfantryDeploy; Unit in a bunker -> EjectBunker; Unit that
+  deploys -> DeployMcv; anything else -> UnloadPassengers. DEPLOY on an Aircraft
+  decodes to nothing. SPECIAL_PLACE decodes only with the rules.
+- Issue round-trips every 2c command. `schedule_command_in_sim` (keys, sidebar,
+  targeting) sends DEPLOY for the deploy family, so 2a's deploy-key exemption is gone.
+  `roundtrip_local_order` (the click route; it replaces
+  `roundtrip_ordinary_local_megamission` and takes the rules) sends the self-click
+  Unload, one ARCHIVE per rally factory, and ARCHIVE then SELL for an undeploy.
+- Receivers moved toward native: Stop and ToggleRepair no longer check the owner, and
+  SetRally archives any live object it names. The click still names only the
+  player's rally factories.
+- UndeployBuilding is issued as ARCHIVE of the building's own Cell (the Cell
+  `SetRallyPoint`'s miss arm archives, `0x00443B17`), then SELL. The existing Selling
+  mission converts an `UndeploysInto=` building that has an ArchiveTarget, so the
+  yard converts on the same frame with no refund, and the unit now drives to that
+  Cell.
+- SetGameSpeed issue is unchanged offline: native stores the speed at once in modes 0
+  and 5 and sends no event. GAMESPEED decodes to SetGameSpeed for network play. Its
+  encoder arm has no offline caller; it is there for network issue in stage 3.
+- A Unit deploys through the existing owners `mcv_deploy::is_mcv` and
+  `unit_simple_deploy::is_simple_deployer`. `is_mcv` now also excludes `Weeder=`, as
+  the refinery arm of `0x0073D630` does.
+
+Residuals:
+- UndeployBuilding and EjectBunker have no native producer. Natively, a self-click
+  on a Construction Yard sends PRIMARY (it is a factory), DEPLOY on a building never
+  undeploys, and a tank bunker's occupant is ejected by its own Unload. Effect: VERA's
+  undeploy sends the cell click's records with the building's own Cell, so the unit
+  drives to the yard's centre Cell, not a clicked Cell. VERA's eject click sends the
+  occupant's Unload.
+- The undeploy records skip the semantic receiver's runtime test
+  (`can_undeploy_building_runtime`: build-up, MCVRedeploy, radio contacts, mind
+  control, human owner). The click checks it at issue, and native's click does no
+  more. Trigger: a yard gains a radio contact or a mind controller between issue and
+  execution. Effect: the SELL converts the yard, or sells it where the semantic order
+  was refused. Rare.
+- VERA archives the building's own Cell for every `UndeploysInto=` building. Native's
+  miss arm does that only for a redeployable Construction Yard. Effect: a Slave Miner
+  refinery's undeploy also sends the Slave Miner to the refinery's centre Cell.
+- The semantic UndeployBuilding receiver, `SellOrder::Undeploy` and
+  `BuildingDown::undeploy_order` still run saved and replayed commands. Issue no
+  longer reaches them. Remove them with `pending_commands` in 2e, once saved-command
+  compatibility is decided.
+- EjectBunker ejects at its receiver. Native ejects at the occupant's Unload visit,
+  then continues into its deploy arms, so a bunkered MCV would also deploy. Trigger:
+  every eject click. Effect: the occupant leaves about one mission visit earlier.
+- DEPLOY's receivers keep their own gates, including 2a's owner gates, instead of
+  the arm's EMP, slope, mission and WeaponsFactory tests. DeployMcv already ports
+  them (`deploy::issue_order`). A DEPLOY whose class does nothing with Unload, such
+  as a plain tank, decodes to UnloadPassengers, which refuses it. Native clears that
+  object's target and destination and queues Unload, so it stops. No VERA producer
+  sends one: the deploy key filters non-deployers. ToggleInfantryDeploy and
+  UnloadPassengers lack the arm's EMP, slope, mission and WeaponsFactory tests, so a
+  GI deploying on a factory Cell is accepted where native refuses it.
+- The MCV self-click's MEGAMISSION decodes to DeployMcv, whose receiver applies
+  DEPLOY's gates. The MEGAMISSION arm (`0x004C71CA`) has none of them. Trigger: an MCV
+  self-click on a WeaponsFactory Cell or a slope. Effect: VERA refuses, where native
+  queues Unload. This predates 2c.
+- The Unit's deploy-fire arm (`DeployFire=` without `IsSimpleDeployer=`) and its
+  refinery-unload arm (`Harvester=`, `Weeder=`) decode to UnloadPassengers, which
+  refuses them. A transport type that is also a simple deployer decodes to the
+  transport arm: an empty one is refused where VERA's deploy key chose DeployMcv.
+  Frequency in retail data is unchecked.
+- Offline, the receiver is chosen at issue, from the state at issue. Natively the
+  class's Unload mission chooses it a frame later. In 2e the decode moves to the
+  record's execution frame.
+- SELL of a Unit or Aircraft standing on a building (sell click action 0xD) decodes
+  to SellBuilding, which refuses a non-structure. An ARCHIVE naming an object, and
+  the sidebar's no-target SPECIAL_PLACE (`SelectClass::Action 0x006AAF3C`, Cell 0,0),
+  have no VERA producer. The object ARCHIVE does not decode.
+- SPECIAL_PLACE names the selected type, where native names the first type whose
+  `Action=` matches the click (`FindFirstOfAction`). Retail actions are unique.
+- GAMESPEED for network play: issue must send the record and not apply the speed
+  locally. Its execution belongs in the EventClass tail; `SetGameSpeed` applies at
+  frame ingress. The decoder accepts only the Options range 0..=6, where native
+  stores any dword, and the other-house message is not ported. 2e or stage 3 must
+  give the decoded event tail timing before network play.
+- In planning mode ClickedEvent hands IDLE and DEPLOY to the planner
+  (`0x00639FD0`). The Stop key refuses in planning mode, as before; the deploy key
+  still issues. This was not changed here.
+- Every arm clears the object's planning tokens. VERA detaches planning only for
+  Stop, Scatter, DeployMcv and MegaMission actors, not for SELL, REPAIR or ARCHIVE,
+  which name buildings.
+
+Nothing here blocks 2d. 2e must handle GAMESPEED's tail timing, decoding at the
+execution frame, and the leftover UndeployBuilding paths.
 
 ### Stage 3: UDP transport and network lockstep
 

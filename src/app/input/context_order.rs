@@ -843,16 +843,15 @@ fn finish_order(
         crate::app::input::planning_mode::queue_orders(state, queued);
         return true;
     }
-    let mut queued = if let Some(sim) = state
-        .match_state
-        .sim_runtime
-        .as_ref()
-        .map(|rt| &rt.simulation)
-    {
+    let mut queued = if let Some(rt) = state.match_state.sim_runtime.as_ref() {
         queued
             .into_iter()
-            .filter_map(|envelope| {
-                crate::app::input::commands::roundtrip_ordinary_local_megamission(sim, envelope)
+            .flat_map(|envelope| {
+                crate::app::input::commands::roundtrip_local_order(
+                    &rt.simulation,
+                    Some(&rt.resources.rules),
+                    envelope,
+                )
             })
             .collect::<Vec<_>>()
     } else {

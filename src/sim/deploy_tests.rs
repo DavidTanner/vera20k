@@ -309,6 +309,101 @@ fn deploy_then_undeploy_returns_the_mcv_to_its_original_cell() {
     );
 }
 
+/// The player's undeploy order is issued as native's undeploy records,
+/// ARCHIVE then SELL (`Simulation::encode_single_event_records`, Building
+/// Active_Click_With `0x004436F0`). Decoded and queued, they convert the yard
+/// on the same frame as the semantic order, with no refund, and the MCV takes
+/// the archived Cell, the yard's own, as its destination (`0x0044A091`).
+#[test]
+fn undeploy_records_convert_the_yard_as_the_semantic_order_does() {
+    let mut rules = make_mcv_rules();
+    rules.set_buildup_control_for_test("GACNST", [0, 29, 1]);
+    let run = |records: bool| {
+        let mut sim = deploy_sim(&rules);
+        sim.session.game_mode_nonzero = true;
+        add_house(&mut sim, "Americans", true);
+        let owner = sim.interner.get("Americans").unwrap();
+        sim.session.house_order = vec![owner];
+        let mcv = sim
+            .spawn_object("AMCV", "Americans", 20, 22, 128, &rules)
+            .expect("spawn MCV");
+        assert!(sim.deploy_mcv(
+            mcv,
+            &rules,
+            None,
+            crate::sim::world::FrameEffects::default()
+        ));
+        sim.flush_pending_delete();
+        tick_n(&mut sim, &rules, 60);
+        let yard = deployed_type(&sim, "GACNST").stable_id();
+        let order = Command::UndeployBuilding { entity_id: yard };
+        let commands = if records {
+            sim.encode_single_event_records(owner, &order, Some(&rules))
+                .unwrap()
+                .into_iter()
+                .map(|record| {
+                    sim.decode_native_command_record(&record, Some(&rules), 0)
+                        .unwrap()
+                        .payload
+                })
+                .collect()
+        } else {
+            vec![order]
+        };
+        // Through the frame's due-command dispatch, whose per-house
+        // insertion order runs ARCHIVE before SELL.
+        let execute_tick = sim.session.tick;
+        sim.queue_commands(commands.iter().cloned().map(|command| {
+            crate::sim::command::CommandEnvelope::new(owner, execute_tick, command)
+        }));
+        let due = sim.take_due_commands();
+        assert_eq!(due.len(), commands.len());
+        sim.advance_tick(&due, Some(&rules), None, None, 22);
+        let credits = sim.houses[&owner].economy.credits();
+        let amcv = sim.interner.get("AMCV").unwrap();
+        for frame in 0..80 {
+            tick_n(&mut sim, &rules, 1);
+            sim.flush_pending_delete();
+            if let Some(unit) = sim
+                .substrate
+                .entities
+                .values()
+                .find(|entity| entity.type_ref() == amcv)
+            {
+                assert!(sim.substrate.entities.get(yard).is_none());
+                assert_eq!(
+                    sim.houses[&owner].economy.credits(),
+                    credits,
+                    "no sale refund"
+                );
+                return (commands, frame, unit.navigation.nav_com());
+            }
+        }
+        panic!("the yard did not convert");
+    };
+    let (semantic, semantic_frame, semantic_destination) = run(false);
+    let (decoded, decoded_frame, decoded_destination) = run(true);
+    assert_eq!(semantic.len(), 1);
+    let [
+        Command::SetRally {
+            rx,
+            ry,
+            producer_ids,
+        },
+        Command::SellBuilding { entity_id },
+    ] = decoded.as_slice()
+    else {
+        panic!("undeploy decodes to ARCHIVE then SELL: {decoded:?}");
+    };
+    assert_eq!(producer_ids.as_slice(), [*entity_id]);
+    assert_eq!(decoded_frame, semantic_frame);
+    assert_eq!(semantic_destination, None);
+    assert_eq!(
+        decoded_destination,
+        Some(crate::sim::components::NavTargetRef::cell(*rx, *ry))
+    );
+}
+
 /// A computer house's MCV deploys into a yard that builds up before it opens:
 /// Construction is queued before its Unlimbo (`0x007396D5`), so neither that
 /// Unlimbo's owner discovery nor the deploy's own (`0x00739848`) opens it,

@@ -834,18 +834,24 @@ pub(super) fn schedule_command_in_sim(
         }
         _ => sim.interner.intern(owner),
     };
-    let envelope = match payload {
+    let decode = |sim: &crate::sim::world::Simulation, record| {
+        SynchronizedCommand::opaque(record).decode_for_simulation(sim, rules, execute_tick)
+    };
+    let envelopes = match payload {
         Command::Scatter { entity_id } => {
-            let record = sim.encode_scatter_record(owner_id, entity_id)?;
-            SynchronizedCommand::opaque(record).decode_for_simulation(sim, None, execute_tick)?
+            let record = sim.encode_target_event_record(
+                owner_id,
+                crate::sim::command::SCATTER_OPCODE,
+                entity_id,
+            )?;
+            vec![decode(sim, record)?]
         }
-        Command::ExitMatch => {
-            let record = sim.encode_exit_record(owner_id)?;
-            SynchronizedCommand::opaque(record).decode_for_simulation(sim, None, execute_tick)?
-        }
+        Command::ExitMatch => vec![decode(sim, sim.encode_exit_record(owner_id)?)?],
         Command::SellWallAtCell { x, y } => {
-            let record = sim.encode_sell_wall_at_cell_record(owner_id, x, y)?;
-            SynchronizedCommand::opaque(record).decode_for_simulation(sim, None, execute_tick)?
+            vec![decode(
+                sim,
+                sim.encode_sell_wall_at_cell_record(owner_id, x, y)?,
+            )?]
         }
         // The production family names types by native array index, so it
         // round-trips only with the match's rules.
@@ -856,25 +862,43 @@ pub(super) fn schedule_command_in_sim(
         | Command::PlaceProducedMobile { .. }
         | Command::CycleProducerFocus { .. }
         | Command::TogglePrimaryFactory { .. }) => {
-            let rules = rules?;
-            let record = sim.encode_production_record(owner_id, &payload, rules)?;
-            SynchronizedCommand::opaque(record).decode_for_simulation(
-                sim,
-                Some(rules),
-                execute_tick,
-            )?
+            let record = sim.encode_production_record(owner_id, &payload, rules?)?;
+            vec![decode(sim, record)?]
         }
-        payload => CommandEnvelope::new(owner_id, execute_tick, payload),
+        // The Stop, deploy, sell and repair keys and clicks and the
+        // superweapon targeting click (`Simulation::encode_single_event_records`).
+        // On this route the deploy family comes from the deploy key
+        // (`Selection::IssueDeployCommand 0x00730AF0`), which sends DEPLOY;
+        // the click route sends the self-click's MEGAMISSION Unload.
+        payload @ (Command::Stop { .. }
+        | Command::DeployMcv { .. }
+        | Command::ToggleInfantryDeploy { .. }
+        | Command::UnloadPassengers { .. }
+        | Command::SellBuilding { .. }
+        | Command::ToggleRepair { .. }
+        | Command::LaunchSuperWeapon { .. }) => sim
+            .encode_single_event_records(owner_id, &payload, rules)?
+            .into_iter()
+            .map(|record| decode(sim, record))
+            .collect::<Option<Vec<_>>>()?,
+        // Offline Options speed is not an event: native sends GAMESPEED only
+        // in a network game (`OptionsClass::ApplyFromInGameDialog
+        // 0x004E1E54`) and otherwise stores the speed at once.
+        payload @ Command::SetGameSpeed { .. } => {
+            vec![CommandEnvelope::new(owner_id, execute_tick, payload)]
+        }
+        payload => roundtrip_local_order(
+            sim,
+            rules,
+            CommandEnvelope::new(owner_id, execute_tick, payload),
+        ),
     };
-    let envelope = match envelope.payload {
-        // On this route Unload's two receivers come only from the deploy key:
-        // Selection::IssueDeployCommand `0x00730AF0` sends ClickedEvent
-        // `0x006FFE00` the DEPLOY event (`push 9` at `0x00730D10`), not the
-        // self-click's MEGAMISSION Unload. Its record belongs to stage 2c.
-        Command::ToggleInfantryDeploy { .. } | Command::UnloadPassengers { .. } => envelope,
-        _ => roundtrip_ordinary_local_megamission(sim, envelope)?,
-    };
-    sim.queue_command(envelope);
+    if envelopes.is_empty() {
+        return None;
+    }
+    for envelope in envelopes {
+        sim.queue_command(envelope);
+    }
     Some(execute_tick)
 }
 
@@ -923,7 +947,9 @@ pub(crate) fn object_move_destination(
         })
 }
 
-/// Make ordinary local MegaMission bytes authoritative at issue time.
+/// Make a local click order's native bytes authoritative at issue time: the
+/// order is queued as what its records decode to, and is dropped when it has
+/// none.
 ///
 /// Active YR routes a cell click through `ClickedAction` (`0x004D7D50`), and an
 /// object click through `0x004D74E0` (Building `0x00443410`), to
@@ -932,18 +958,22 @@ pub(crate) fn object_move_destination(
 /// event carries (Move, Attack, AttackMove, AreaGuard, Enter, Capture,
 /// Sabotage, Harvest, Unload) is queued as its decoded record: an Enter order
 /// becomes `Command::Enter`, an Attack becomes `Command::ForceAttack`, and
-/// Unload becomes the class's receiver. Other semantic commands pass through
-/// until their native record is established.
-pub(crate) fn roundtrip_ordinary_local_megamission(
+/// Unload becomes the class's receiver. A self-click's DeployMcv and VERA's
+/// bunker eject click send the Foot self-click's Unload. A rally click sends
+/// one ARCHIVE per factory, and an undeploy order ARCHIVE and SELL
+/// (`Simulation::encode_single_event_records`). Other semantic commands pass
+/// through until their native record is established.
+pub(crate) fn roundtrip_local_order(
     sim: &crate::sim::world::Simulation,
+    rules: Option<&crate::rules::ruleset::RuleSet>,
     envelope: CommandEnvelope,
-) -> Option<CommandEnvelope> {
+) -> Vec<CommandEnvelope> {
     let CommandEnvelope {
         owner,
         execute_tick,
         payload,
     } = envelope;
-    match payload {
+    let records = match payload {
         Command::Move { .. }
         | Command::MoveToObject { .. }
         | Command::Guard { .. }
@@ -959,12 +989,24 @@ pub(crate) fn roundtrip_ordinary_local_megamission(
         | Command::PlantC4 { .. }
         | Command::HarvestCell { .. }
         | Command::UnloadPassengers { .. }
-        | Command::ToggleInfantryDeploy { .. } => {
-            let record = sim.encode_megamission_record(owner, &payload)?;
-            SynchronizedCommand::opaque(record).decode_for_simulation(sim, None, execute_tick)
-        }
-        payload => Some(CommandEnvelope::new(owner, execute_tick, payload)),
-    }
+        | Command::ToggleInfantryDeploy { .. }
+        | Command::DeployMcv { .. }
+        | Command::EjectBunker { .. } => sim
+            .encode_megamission_record(owner, &payload)
+            .into_iter()
+            .collect(),
+        Command::SetRally { .. } | Command::UndeployBuilding { .. } => sim
+            .encode_single_event_records(owner, &payload, rules)
+            .unwrap_or_default(),
+        payload => return vec![CommandEnvelope::new(owner, execute_tick, payload)],
+    };
+    records
+        .into_iter()
+        .map(|record| {
+            SynchronizedCommand::opaque(record).decode_for_simulation(sim, rules, execute_tick)
+        })
+        .collect::<Option<Vec<_>>>()
+        .unwrap_or_default()
 }
 
 /// Queue one ordinary deterministic command and return its actual execute tick.
@@ -1056,6 +1098,22 @@ mod tests {
         );
         assert_eq!(sim.pending_command_snapshot().len(), 2);
         sim.session.set_input_locked(false);
+        let mut entity = GameEntity::new_at_frame_zero_for_test(
+            11,
+            1,
+            1,
+            0,
+            0,
+            local,
+            Health::new(100),
+            kind,
+            EntityCategory::Unit,
+            0,
+            5,
+            false,
+        );
+        entity.lifecycle.set_in_limbo_for_test(false);
+        sim.substrate.entities.insert(entity);
         assert_eq!(
             schedule_command_in_sim(&mut sim, None, "Local", Command::Stop { entity_id: 11 }),
             Some(0)
@@ -1127,6 +1185,50 @@ mod tests {
             .map(|envelope| envelope.payload)
             .collect();
         assert_eq!(queued, issued);
+    }
+
+    /// The deploy key's family and the undeploy order queue what their
+    /// native records decode to: DEPLOY on an Aircraft decodes to nothing
+    /// (`0x004C7781`), and the undeploy order is ARCHIVE then SELL.
+    #[test]
+    fn single_event_issue_queues_what_its_native_records_decode_to() {
+        use crate::sim::world::single_event_record_tests::{record_world, spawn};
+        let (mut sim, rules, _) = record_world();
+        let gi = spawn(&mut sim, &rules, "GI", 10, 10);
+        let orca = spawn(&mut sim, &rules, "ORCA", 12, 10);
+        let yard = spawn(&mut sim, &rules, "GACNST", 20, 20);
+        let issue = |sim: &mut Simulation, payload| {
+            schedule_command_in_sim(sim, Some(&rules), "Americans", payload)
+        };
+        assert_eq!(
+            issue(&mut sim, Command::ToggleInfantryDeploy { entity_id: gi }),
+            Some(0)
+        );
+        assert_eq!(
+            issue(&mut sim, Command::UnloadPassengers { transport_id: orca }),
+            None
+        );
+        assert_eq!(
+            issue(&mut sim, Command::UndeployBuilding { entity_id: yard }),
+            Some(0)
+        );
+        let queued: Vec<_> = sim
+            .pending_command_snapshot()
+            .into_iter()
+            .map(|envelope| envelope.payload)
+            .collect();
+        let [
+            Command::ToggleInfantryDeploy { entity_id },
+            Command::SetRally { producer_ids, .. },
+            Command::SellBuilding { entity_id: sold },
+        ] = queued.as_slice()
+        else {
+            panic!("{queued:?}");
+        };
+        assert_eq!(
+            (*entity_id, producer_ids.as_slice(), *sold),
+            (gi, &[yard][..], yard)
+        );
     }
 
     #[test]
@@ -1444,7 +1546,10 @@ mod tests {
             &mut sim,
             None,
             "Russians",
-            Command::DeployMcv { entity_id: 99 },
+            Command::Select {
+                entity_ids: vec![99],
+                additive: false,
+            },
         )
         .unwrap();
 
@@ -1458,7 +1563,10 @@ mod tests {
         );
         assert_eq!(
             sim.pending_command_snapshot()[0].payload,
-            Command::DeployMcv { entity_id: 99 }
+            Command::Select {
+                entity_ids: vec![99],
+                additive: false,
+            }
         );
     }
 
@@ -1472,7 +1580,10 @@ mod tests {
             &mut sim,
             None,
             "YuriCountry",
-            Command::DeployMcv { entity_id: 7 },
+            Command::Select {
+                entity_ids: vec![7],
+                additive: false,
+            },
         )
         .unwrap();
 

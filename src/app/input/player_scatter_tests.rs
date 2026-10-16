@@ -6,7 +6,8 @@ use super::queue_scatter_orders;
 use crate::audio::events::GameSoundEvent;
 use crate::rules::{area_guard_tests as native, retail_ini_fixture};
 use crate::sim::command::{
-    Command, CommandRecord, PRIMARY_OPCODE, SCATTER_OPCODE, TargetEventRecord,
+    Command, CommandRecord, DEPLOY_OPCODE, IDLE_OPCODE, PRIMARY_OPCODE, REPAIR_OPCODE,
+    SCATTER_OPCODE, SELL_OPCODE, TargetEventRecord,
 };
 use serde_json::Value;
 
@@ -92,7 +93,14 @@ fn player_scatter_matches_native_selected_order_cue_and_no_voice_rng() {
                 let Command::Scatter { entity_id } = cmd.payload else {
                     panic!("not a Scatter event");
                 };
-                let record = f.sim.encode_scatter_record(cmd.owner, entity_id).unwrap();
+                let record = f
+                    .sim
+                    .encode_target_event_record(
+                        cmd.owner,
+                        crate::sim::command::SCATTER_OPCODE,
+                        entity_id,
+                    )
+                    .unwrap();
                 assert_eq!(
                     TargetEventRecord::decode(&record).unwrap().entity_id as u64,
                     entity_id
@@ -163,21 +171,30 @@ fn player_scatter_constructor_preserves_native_padding_and_house_null_semantics(
         assert_eq!(record, decode("after"), "{}", row["name"]);
         // 0x004C661A stores the event-type argument as the opcode byte and
         // nothing else depends on it, so PRIMARY (Building ClickedAction
-        // `0x00443494`) differs from these rows only there.
-        let mut primary = decode("before");
-        typed(PRIMARY_OPCODE).write_into(&mut primary);
-        let mut expected = decode("after");
-        if expected.house_id() >= 0 {
-            expected.set_issue_header(
-                PRIMARY_OPCODE,
-                i32::from(expected.house_id()),
-                expected.frame_stamp(),
-            );
-        }
-        assert_eq!(primary, expected, "{} as PRIMARY", row["name"]);
-        let decoded = TargetEventRecord::decode(&primary);
-        if primary.house_id() >= 0 {
-            assert_eq!(decoded, Some(typed(PRIMARY_OPCODE)), "{}", row["name"]);
+        // `0x00443494`), IDLE and DEPLOY (ClickedEvent `0x006FFE34`), and
+        // REPAIR and SELL (`0x004AC187`) differ from these rows only there.
+        for opcode in [
+            PRIMARY_OPCODE,
+            IDLE_OPCODE,
+            DEPLOY_OPCODE,
+            REPAIR_OPCODE,
+            SELL_OPCODE,
+        ] {
+            let mut issued = decode("before");
+            typed(opcode).write_into(&mut issued);
+            let mut expected = decode("after");
+            if expected.house_id() >= 0 {
+                expected.set_issue_header(
+                    opcode,
+                    i32::from(expected.house_id()),
+                    expected.frame_stamp(),
+                );
+            }
+            assert_eq!(issued, expected, "{} as {opcode:#x}", row["name"]);
+            let decoded = TargetEventRecord::decode(&issued);
+            if issued.house_id() >= 0 {
+                assert_eq!(decoded, Some(typed(opcode)), "{}", row["name"]);
+            }
         }
     }
 }

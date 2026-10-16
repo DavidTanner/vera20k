@@ -337,7 +337,11 @@ fn two_instance_multiplayer_checksums_match_every_frame_and_catch_a_desync() {
         let mut live_commands = Vec::new();
         if let Some(order) = orders(native_frame) {
             let record = match order {
-                Command::Scatter { entity_id } => raw.encode_scatter_record(local, entity_id),
+                Command::Scatter { entity_id } => raw.encode_target_event_record(
+                    local,
+                    crate::sim::command::SCATTER_OPCODE,
+                    entity_id,
+                ),
                 ref megamission => raw.encode_megamission_record(local, megamission),
             }
             .expect("the scene's orders have native records");

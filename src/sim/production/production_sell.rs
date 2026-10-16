@@ -143,9 +143,11 @@ pub enum SellOrder {
     /// The SELL event's control -1 (`EventClass::Execute 0x004C6F9C`): the
     /// player's sell cursor.
     Player,
-    /// The player's undeploy order: VERA's stand-in for the retail undeploy
-    /// click (`BuildingClass::Active_Click_With 0x004436F0`), whose SELL event
-    /// follows the event that sets the building's ArchiveTarget.
+    /// A saved or replayed `Command::UndeployBuilding`: VERA's former
+    /// stand-in for the retail undeploy click (`BuildingClass::
+    /// Active_Click_With 0x004436F0`), whose SELL event follows the event
+    /// that sets the building's ArchiveTarget. Local issue now sends those
+    /// records.
     Undeploy,
     /// Control 1: the computer's low-credit sale
     /// (`BuildingClass::UpdateRepairAndPower 0x0045080D`).

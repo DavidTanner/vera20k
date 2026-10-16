@@ -5,7 +5,7 @@
 
 use std::collections::BTreeMap;
 
-use crate::app::input::commands::roundtrip_ordinary_local_megamission;
+use crate::app::input::commands::roundtrip_local_order;
 use crate::app::match_runtime::sim_tick::{screen_point_to_world_with_camera, world_point_to_cell};
 use crate::map::terrain::TacticalBridgeCell;
 use crate::sim::command::{Command, CommandEnvelope};
@@ -46,7 +46,8 @@ fn ordinary_move(
     // The active ordinary-click path calls this in context_order::finish_order.
     // It encodes and decodes the native MegaMission record (4C6860), rather than
     // allowing a test-only semantic command to bypass destination serialization.
-    let decoded = roundtrip_ordinary_local_megamission(sim, issued.clone())
+    let decoded = roundtrip_local_order(sim, None, issued.clone())
+        .pop()
         .expect("ordinary Move must survive its native record codec");
     assert_eq!(decoded, issued, "the codec must preserve the clicked cell");
     decoded
@@ -483,7 +484,9 @@ fn shift_walk_cell_input_uses_ordinary_resolver_and_move_record() {
         },
     );
     assert_eq!(
-        roundtrip_ordinary_local_megamission(&sim, issued.clone()).unwrap(),
+        roundtrip_local_order(&sim, None, issued.clone())
+            .pop()
+            .unwrap(),
         ordinary_move(&sim, owner, actor, ordinary)
     );
 }

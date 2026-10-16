@@ -19,9 +19,11 @@ use crate::sim::combat;
 use crate::sim::combat::combat_aoe::CellTargetDetach;
 use crate::sim::combat::combat_aoe::expire_cell_target_references;
 use crate::sim::command::{
-    COMMAND_RECORD_LEN, Command, CommandEnvelope, CommandRecord, ExitRecord, MegaMissionOrder,
-    MegaMissionRecord, MegaMissionTarget, PRIMARY_OPCODE, PlaceRecord, ProductionEvent,
-    ProductionEventRecord, ProductionRtti, SCATTER_OPCODE, SellWallAtCellRecord, TargetEventRecord,
+    ArchiveRecord, COMMAND_RECORD_LEN, Command, CommandEnvelope, CommandRecord, DEPLOY_OPCODE,
+    ExitRecord, GAMESPEED_OPCODE, IDLE_OPCODE, IntEventRecord, MegaMissionOrder, MegaMissionRecord,
+    MegaMissionTarget, PRIMARY_OPCODE, PlaceRecord, ProductionEvent, ProductionEventRecord,
+    ProductionRtti, REPAIR_OPCODE, SCATTER_OPCODE, SELL_OPCODE, SellWallAtCellRecord,
+    SpecialPlaceRecord, TargetEventRecord,
 };
 use crate::sim::mission::MissionType;
 use crate::sim::overlay_grid::{
@@ -117,22 +119,24 @@ impl Simulation {
             .then_some(Command::Scatter { entity_id: id })
     }
 
-    /// ClickedEvent6FFE00 ->4C65E0 stores issuer registration and actor UID
-    /// independently. Ownership is not rechecked by Event7 at execution.
-    pub(crate) fn encode_scatter_record(
+    /// A one-object event (constructor `0x004C65E0`) naming `entity_id` from
+    /// `house`. ClickedEvent `0x006FFE00` sends Scatter, IDLE and DEPLOY from
+    /// the player's house; the repair and sell clicks send REPAIR and SELL
+    /// from it too, and the undeploy click and a factory self-click send SELL
+    /// and PRIMARY from the building's. The issuer registration and the
+    /// object's identity are stored independently.
+    pub(crate) fn encode_target_event_record(
         &self,
-        command_owner: crate::sim::intern::InternedId,
+        house: crate::sim::intern::InternedId,
+        opcode: u8,
         entity_id: u64,
     ) -> Option<CommandRecord> {
-        if !self.houses.contains_key(&command_owner)
-            || self.substrate.entities.get(entity_id).is_none()
-        {
+        if !self.houses.contains_key(&house) || self.substrate.entities.get(entity_id).is_none() {
             return None;
         }
-        let house_id = self.house_record_id(command_owner)?;
         let typed = TargetEventRecord {
-            opcode: SCATTER_OPCODE,
-            house_id,
+            opcode,
+            house_id: self.house_record_id(house)?,
             frame: self.session.binary_frame as i32,
             entity_id: i32::try_from(entity_id).ok()?,
         };
@@ -312,10 +316,12 @@ impl Simulation {
             // Self-click Unload16: Foot action 4 (`0x004D74E0`) sends NULL
             // tokens; Building action 4 (`0x00443410`) passes the clicked
             // building, itself, as the target.
+            // VERA's MCV self-click is the same Foot form.
             Command::UnloadPassengers {
                 transport_id: entity_id,
             }
-            | Command::ToggleInfantryDeploy { entity_id } => {
+            | Command::ToggleInfantryDeploy { entity_id }
+            | Command::DeployMcv { entity_id } => {
                 let actor = self.substrate.entities.get(entity_id)?;
                 let target = if actor.category() == EntityCategory::Structure {
                     MegaMissionTarget::Object {
@@ -325,6 +331,19 @@ impl Simulation {
                     MegaMissionTarget::Null
                 };
                 (entity_id, MegaMissionOrder::Unload { target })
+            }
+            // A tank bunker empties when its occupant runs Unload
+            // (`UnitClass::Mission_Unload 0x0073D630` -> `EmptyBunker`), the
+            // mission the occupant's own self-click (Foot action 4) sends.
+            // VERA's eject click is on the bunker; it sends that Foot form.
+            Command::EjectBunker { bunker_id } => {
+                let occupant = self.substrate.entities.get(bunker_id)?.bunker.occupant()?;
+                (
+                    occupant,
+                    MegaMissionOrder::Unload {
+                        target: MegaMissionTarget::Null,
+                    },
+                )
             }
             _ => return None,
         };
@@ -462,15 +481,118 @@ impl Simulation {
 
     fn encode_primary_record(&self, building_id: u64) -> Option<CommandRecord> {
         let building = self.substrate.entities.get(building_id)?;
-        let mut record = CommandRecord::decode_exact(&[0; COMMAND_RECORD_LEN]).ok()?;
-        TargetEventRecord {
-            opcode: PRIMARY_OPCODE,
-            house_id: self.house_record_id(building.owner())?,
-            frame: self.session.binary_frame as i32,
-            entity_id: i32::try_from(building_id).ok()?,
-        }
-        .write_into(&mut record);
-        Some(record)
+        self.encode_target_event_record(building.owner(), PRIMARY_OPCODE, building_id)
+    }
+
+    /// Build the native records of a locally issued single-event command, as
+    /// its producer would:
+    /// - Stop: the Stop key's IDLE (`0x00730EE7` -> ClickedEvent
+    ///   `0x006FFE00`), from the player's house.
+    /// - DeployMcv, ToggleInfantryDeploy and UnloadPassengers: the deploy key's
+    ///   DEPLOY (`Selection::IssueDeployCommand 0x00730AF0`, `push 9` at
+    ///   `0x00730D10` -> ClickedEvent), from the player's house.
+    /// - SellBuilding and ToggleRepair: the sell and repair clicks' SELL and
+    ///   REPAIR (`DisplayClass::BandBox_LeftUp 0x004AC187`), from the
+    ///   player's house.
+    /// - LaunchSuperWeapon: the targeting click's SPECIAL_PLACE
+    ///   (`0x004AC23A`), naming the type's `[SuperWeaponTypes]` index.
+    /// - SetRally: one ARCHIVE per factory (`BuildingClass::SetRallyPoint
+    ///   0x00443860`), from the factory's house.
+    /// - UndeployBuilding: native undeploys only through the cell click
+    ///   (Building Active_Click_With `0x004436F0`): ARCHIVE, then SELL
+    ///   (`0x004437F0`), both from the building's house; Selling converts an
+    ///   `UndeploysInto=` building that has an ArchiveTarget. VERA's undeploy
+    ///   order has no clicked Cell, so it archives the building's own Cell,
+    ///   the Cell `SetRallyPoint`'s search-miss arm archives (`0x00443B17`,
+    ///   the GetCoords Cell).
+    /// - SetGameSpeed: GAMESPEED (`OptionsClass::ApplyFromInGameDialog
+    ///   0x004E1E54`), which native sends only in a network game.
+    ///
+    /// DEPLOY and SPECIAL_PLACE decode only with `rules`.
+    pub(crate) fn encode_single_event_records(
+        &self,
+        command_owner: crate::sim::intern::InternedId,
+        command: &Command,
+        rules: Option<&RuleSet>,
+    ) -> Option<Vec<CommandRecord>> {
+        let target_event =
+            |opcode, entity_id| self.encode_target_event_record(command_owner, opcode, entity_id);
+        let archive = |building_id: u64, x: i16, y: i16| {
+            let building = self.substrate.entities.get(building_id)?;
+            let mut record = CommandRecord::decode_exact(&[0; COMMAND_RECORD_LEN]).ok()?;
+            ArchiveRecord {
+                house_id: self.house_record_id(building.owner())?,
+                frame: self.session.binary_frame as i32,
+                entity_id: i32::try_from(building_id).ok()?,
+                target: MegaMissionTarget::Cell { x, y },
+            }
+            .write_into(&mut record)
+            .ok()?;
+            Some(record)
+        };
+        Some(match *command {
+            Command::Stop { entity_id } => vec![target_event(IDLE_OPCODE, entity_id)?],
+            Command::DeployMcv { entity_id }
+            | Command::ToggleInfantryDeploy { entity_id }
+            | Command::UnloadPassengers {
+                transport_id: entity_id,
+            } => vec![target_event(DEPLOY_OPCODE, entity_id)?],
+            Command::SellBuilding { entity_id } => vec![target_event(SELL_OPCODE, entity_id)?],
+            Command::ToggleRepair { entity_id } => vec![target_event(REPAIR_OPCODE, entity_id)?],
+            Command::LaunchSuperWeapon {
+                sw_type_id,
+                target_rx,
+                target_ry,
+            } => {
+                if !self.houses.contains_key(&command_owner) {
+                    return None;
+                }
+                let index = rules?.super_weapon_index(self.interner.resolve(sw_type_id))?;
+                let mut record = CommandRecord::decode_exact(&[0; COMMAND_RECORD_LEN]).ok()?;
+                SpecialPlaceRecord {
+                    house_id: self.house_record_id(command_owner)?,
+                    frame: self.session.binary_frame as i32,
+                    super_weapon_index: i32::try_from(index).ok()?,
+                    // A Cell is two signed shorts, which VERA spells as u16.
+                    x: target_rx as i16,
+                    y: target_ry as i16,
+                }
+                .write_into(&mut record);
+                vec![record]
+            }
+            Command::SetRally {
+                rx,
+                ry,
+                ref producer_ids,
+            } => producer_ids
+                .iter()
+                .map(|&id| archive(id, rx as i16, ry as i16))
+                .collect::<Option<Vec<_>>>()?,
+            Command::UndeployBuilding { entity_id } => {
+                let building = self.substrate.entities.get(entity_id)?;
+                let [x, y] = crate::sim::movement::ground_pose::object_center_xy(building);
+                let cell = |lepton| i16::try_from(crate::util::lepton::lepton_to_cell(lepton));
+                vec![
+                    archive(entity_id, cell(x).ok()?, cell(y).ok()?)?,
+                    self.encode_target_event_record(building.owner(), SELL_OPCODE, entity_id)?,
+                ]
+            }
+            Command::SetGameSpeed { speed } => {
+                if !self.houses.contains_key(&command_owner) {
+                    return None;
+                }
+                let mut record = CommandRecord::decode_exact(&[0; COMMAND_RECORD_LEN]).ok()?;
+                IntEventRecord {
+                    opcode: GAMESPEED_OPCODE,
+                    house_id: self.house_record_id(command_owner)?,
+                    frame: self.session.binary_frame as i32,
+                    value: i32::from(speed),
+                }
+                .write_into(&mut record);
+                vec![record]
+            }
+            _ => return None,
+        })
     }
 
     /// Encode the native synchronized record for one locally issued wall sale.
@@ -549,17 +671,81 @@ impl Simulation {
                 return None;
             }
             let entity_id = u64::try_from(typed.entity_id).ok()?;
-            self.substrate.entities.get(entity_id)?;
+            let actor = self.substrate.entities.get(entity_id)?;
             let command = match typed.opcode {
+                IDLE_OPCODE => Command::Stop { entity_id },
                 SCATTER_OPCODE => Command::Scatter { entity_id },
+                // DEPLOY's arm (`0x004C76BC..0x004C7812`) queues Unload for
+                // every class but Aircraft (RTTI 2, `0x004C7781`).
+                DEPLOY_OPCODE => {
+                    if actor.category() == EntityCategory::Aircraft {
+                        return None;
+                    }
+                    self.unload_mission_command(entity_id, rules)?
+                }
                 // `EventClass::Execute`'s PRIMARY arm reads no house: it
                 // toggles any live building (`TogglePrimaryFactory`).
                 PRIMARY_OPCODE => Command::TogglePrimaryFactory {
                     building_id: entity_id,
                 },
+                REPAIR_OPCODE => Command::ToggleRepair { entity_id },
+                SELL_OPCODE => Command::SellBuilding { entity_id },
                 _ => return None,
             };
             return Some(CommandEnvelope::new(owner, execute_tick, command));
+        }
+        if let Some(typed) = ArchiveRecord::decode(record) {
+            let house_index = usize::try_from(typed.house_id).ok()?;
+            let owner = *self.session.house_order.get(house_index)?;
+            if !self.houses.contains_key(&owner) {
+                return None;
+            }
+            let entity_id = u64::try_from(typed.entity_id).ok()?;
+            self.substrate.entities.get(entity_id)?;
+            // Only a Cell is represented: the rally click's.
+            let MegaMissionTarget::Cell { x, y } = typed.target else {
+                return None;
+            };
+            return Some(CommandEnvelope::new(
+                owner,
+                execute_tick,
+                Command::SetRally {
+                    rx: x as u16,
+                    ry: y as u16,
+                    producer_ids: vec![entity_id],
+                },
+            ));
+        }
+        if let Some(typed) = SpecialPlaceRecord::decode(record) {
+            let house_index = usize::try_from(typed.house_id).ok()?;
+            let owner = *self.session.house_order.get(house_index)?;
+            if !self.houses.contains_key(&owner) {
+                return None;
+            }
+            let name = rules?
+                .super_weapon_order
+                .get(usize::try_from(typed.super_weapon_index).ok()?)?;
+            return Some(CommandEnvelope::new(
+                owner,
+                execute_tick,
+                Command::LaunchSuperWeapon {
+                    sw_type_id: self.interner.get(name)?,
+                    target_rx: typed.x as u16,
+                    target_ry: typed.y as u16,
+                },
+            ));
+        }
+        if let Some(typed) = IntEventRecord::decode(record) {
+            let house_index = usize::try_from(typed.house_id).ok()?;
+            let owner = *self.session.house_order.get(house_index)?;
+            // GAMESPEED stores any dword (`0x004C794B`); the represented
+            // speeds are the Options range.
+            let speed = u8::try_from(typed.value)
+                .ok()
+                .filter(|&speed| speed <= crate::sim::game_options::IN_GAME_OPTIONS_MAX_SPEED)?;
+            return self.houses.contains_key(&owner).then(|| {
+                CommandEnvelope::new(owner, execute_tick, Command::SetGameSpeed { speed })
+            });
         }
         if let Some(command) = self.decode_production_record(record, rules) {
             let house_index = usize::try_from(record.house_id()).ok()?;
@@ -646,22 +832,7 @@ impl Simulation {
                     target_rx: u16::try_from(target_x).ok()?,
                     target_ry: u16::try_from(target_y).ok()?,
                 },
-                // Infantry Mission_Unload `0x0051F6E0` runs the deploy-fire
-                // toggle; the represented receiver for every other class
-                // empties its cargo. Unit Mission_Unload `0x0073D630` also
-                // deploys an MCV or Slave Miner, which no VERA producer
-                // sends as this event yet.
-                MegaMissionOrder::Unload { .. } => {
-                    if self.substrate.entities.get(entity_id)?.category()
-                        == EntityCategory::Infantry
-                    {
-                        Command::ToggleInfantryDeploy { entity_id }
-                    } else {
-                        Command::UnloadPassengers {
-                            transport_id: entity_id,
-                        }
-                    }
-                }
+                MegaMissionOrder::Unload { .. } => self.unload_mission_command(entity_id, rules)?,
             };
             return Some(CommandEnvelope::new(owner, execute_tick, command));
         }
@@ -687,6 +858,51 @@ impl Simulation {
                     y: typed.y,
                 },
             )
+        })
+    }
+
+    /// The receiver of the Unload mission (16) that DEPLOY and MEGAMISSION
+    /// Unload queue, chosen from the object as its class's Mission_Unload
+    /// does:
+    /// - Infantry (`0x0051F6E0`): the deploy-fire toggle.
+    /// - Unit (`0x0073D630`): an occupant of a tank bunker empties it
+    ///   (`EmptyBunker`, read as the bunker's eject); then a transport type
+    ///   (`Passengers=` > 0) unloads; then a type that is not `DeployFire=`
+    ///   without `IsSimpleDeployer=`, `Harvester=` or `Weeder=` deploys when it
+    ///   has `DeploysInto=` or is a simple deployer. Anything else is
+    ///   represented by the cargo receiver, which refuses it.
+    /// - Building (`0x0044D880`) and Aircraft (`0x004151E0`): the cargo
+    ///   receiver.
+    ///
+    /// Without `rules` a Unit is the cargo receiver.
+    fn unload_mission_command(&self, entity_id: u64, rules: Option<&RuleSet>) -> Option<Command> {
+        let actor = self.substrate.entities.get(entity_id)?;
+        let unload = Command::UnloadPassengers {
+            transport_id: entity_id,
+        };
+        Some(match actor.category() {
+            EntityCategory::Infantry => Command::ToggleInfantryDeploy { entity_id },
+            EntityCategory::Unit => {
+                if let Some(bunker_id) = actor.bunker.link().installed_in() {
+                    return Some(Command::EjectBunker { bunker_id });
+                }
+                // The deploy-fire arm precedes the deploy arms; those are the
+                // MCV and simple-deployer owners'.
+                let deploys = rules.is_some_and(|rules| {
+                    self.object_type(actor.type_ref(), rules)
+                        .is_some_and(|object| !(object.deploy_fire && !object.is_simple_deployer))
+                        && (crate::sim::mcv_deploy::is_mcv(self, actor, rules)
+                            || crate::sim::unit_simple_deploy::is_simple_deployer(
+                                self, actor, rules,
+                            ))
+                });
+                if deploys {
+                    Command::DeployMcv { entity_id }
+                } else {
+                    unload
+                }
+            }
+            EntityCategory::Structure | EntityCategory::Aircraft => unload,
         })
     }
 
@@ -1155,10 +1371,8 @@ impl Simulation {
                 frame_effects,
             ),
             Command::Stop { entity_id } => {
-                if !self.entity_owned_by_id(command_owner, *entity_id) {
-                    return false;
-                }
-                // Native order admission (actor half).
+                // The IDLE arm (`0x004C74CB`) reads no house. Native order
+                // admission (actor half).
                 if !self.order_actor_admits(*entity_id) {
                     return false;
                 }
@@ -1440,14 +1654,14 @@ impl Simulation {
                 }
                 crate::sim::deploy::issue_order(self, *entity_id, rules, frame_effects)
             }
-            // RESIDUAL: retail undeploys a building only through a cell click
+            // Retail undeploys a building only through a cell click
             // (`0x004436F0`: the rally/ArchiveTarget event 0x1E, then SELL
-            // 0x16 -> `Sell_Back(-1) @ 0x00447110` queuing Selling), and its
-            // What_Action never answers ACTION_SELF for an UndeploysInto
-            // building (`0x00447210`); VERA's app offers the undeploy on a
-            // self-click and starts it here with no destination cell: the
-            // pack-up times as an archive-bearing one, but the unit is not
-            // sent anywhere after the conversion.
+            // 0x16 -> `Sell_Back(-1) @ 0x00447110` queuing Selling), and
+            // local issue now sends those records
+            // (`encode_single_event_records`). This receiver runs only a
+            // saved or replayed UndeployBuilding: it starts the sale with no
+            // destination cell, so the pack-up times as an archive-bearing
+            // one but the unit is not sent anywhere after the conversion.
             Command::UndeployBuilding { entity_id } => {
                 let Some(rules) = rules else { return false };
                 if !self.entity_owned_by_id(command_owner, *entity_id) {
@@ -1483,7 +1697,7 @@ impl Simulation {
                 rx,
                 ry,
                 producer_ids,
-            } => self.set_rally_point_for_producers(command_owner, producer_ids, *rx, *ry, rules),
+            } => self.set_rally_point_for_producers(producer_ids, *rx, *ry),
             // Production events act on the event's own house (the
             // EventClass header's house id); the payload names no owner.
             Command::QueueProduction { type_id } => {
@@ -1594,14 +1808,13 @@ impl Simulation {
                 true
             }
             // `EventClass::Execute 0x004C6ED2..0x004C6F01`: a live target
-            // (`+0x90`) toggles (`ToggleRepair(-1)`).
+            // (`+0x90`) toggles (`ToggleRepair(-1)`); the arm reads no house.
             Command::ToggleRepair { entity_id } => {
-                if !self.entity_owned_by_id(command_owner, *entity_id)
-                    || !self
-                        .substrate
-                        .entities
-                        .get(*entity_id)
-                        .is_some_and(|entity| entity.lifecycle.object_alive())
+                if !self
+                    .substrate
+                    .entities
+                    .get(*entity_id)
+                    .is_some_and(|entity| entity.lifecycle.object_alive())
                 {
                     return false;
                 }
@@ -2333,28 +2546,21 @@ impl Simulation {
     /// The rally click's event 0x1E for each selected factory:
     /// `BuildingClass::SetRallyPoint @ 0x00443860` queues it and
     /// `EventClass::Execute @ 0x004C6DAA` runs `Set_ArchiveTarget @
-    /// 0x0070C610`, so the factory archives the cell (its only store).
+    /// 0x0070C610`, so the factory archives the cell (its only store). The
+    /// arm takes any live object (`+0x90`) and reads no house or type; the
+    /// click names only buildings that take a rally ([`Self::takes_rally_point`])
+    /// and VERA's undeploy order its own building.
     ///
     /// The input owner `factory_rally_cell_input` has already run native
     /// Map56DC20's nearby-passable search separately for each producer. This
     /// synchronized event stores that prepared target without searching again.
-    fn set_rally_point_for_producers(
-        &mut self,
-        command_owner: &str,
-        producer_ids: &[u64],
-        rx: u16,
-        ry: u16,
-        rules: Option<&RuleSet>,
-    ) -> bool {
-        let Some(rules) = rules else {
-            return true;
-        };
-        let mut ids = producer_ids.to_vec();
-        ids.sort_unstable();
-        ids.dedup();
-        for stable_id in ids {
-            if self.takes_rally_point(stable_id, command_owner, rules)
-                && let Some(entity) = self.substrate.entities.get_mut(stable_id)
+    fn set_rally_point_for_producers(&mut self, producer_ids: &[u64], rx: u16, ry: u16) -> bool {
+        for &stable_id in producer_ids {
+            if let Some(entity) = self
+                .substrate
+                .entities
+                .get_mut(stable_id)
+                .filter(|entity| entity.lifecycle.object_alive())
             {
                 entity.set_archive_target(Some(crate::sim::combat::TargetKind::Cell(rx, ry)));
             }
@@ -2365,13 +2571,12 @@ impl Simulation {
         true
     }
 
-    /// Whether a rally order from `owner` reaches this building: `owner`'s
-    /// structure whose type has a rally point. gamemd's cell click
+    /// Whether the rally click names this building: `owner`'s structure
+    /// whose type has a rally point. gamemd's cell click
     /// (`BuildingClass::Active_Click_With 0x004436F0`) calls `SetRallyPoint`
     /// only for a building with `HasRallyPoint` (vt+0x284, `0x00443792`) or
-    /// an `UndeploysInto=` type (`0x0044377E`); the undeploy arm's
-    /// repack-and-move order is not ported. The click and the event share
-    /// this rule so no building the event ignores is announced.
+    /// an `UndeploysInto=` type (`0x0044377E`); VERA's undeploy order sends
+    /// the undeploy arm's records itself (`encode_single_event_records`).
     pub(crate) fn takes_rally_point(&self, stable_id: u64, owner: &str, rules: &RuleSet) -> bool {
         self.substrate
             .entities
@@ -4044,8 +4249,10 @@ mod tests {
         sim.substrate.entities.insert(entity);
     }
 
+    /// ARCHIVE (`0x004C6DAA`) archives the Cell on any live object it names
+    /// and reads no house or type; the rally click chooses the factories.
     #[test]
-    fn set_rally_updates_only_owned_eligible_producers() {
+    fn set_rally_archives_every_named_object() {
         let rules = rally_rules();
         let mut sim = Simulation::new();
         let owner = sim.interner.intern("Americans");
@@ -4071,10 +4278,9 @@ mod tests {
 
         assert!(sim.apply_command("Americans", &command, Some(&rules)));
         let rally = |id| sim.substrate.entities.get(id).unwrap().rally_cell();
-        assert_eq!(rally(2), Some((40, 41)));
-        assert_eq!(rally(3), Some((40, 41)));
-        assert_eq!(rally(4), None);
-        assert_eq!(rally(5), None);
+        for id in [2, 3, 4, 5] {
+            assert_eq!(rally(id), Some((40, 41)), "{id}");
+        }
     }
 
     #[test]

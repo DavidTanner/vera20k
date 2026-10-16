@@ -5827,7 +5827,7 @@ mod tests {
         ))
         .unwrap();
         // Syntax-only supplied producer identity: the ordinary command owner
-        // still validates actual ownership/presence at runtime. No diagnostic
+        // still validates presence at runtime; ARCHIVE reads no house. No diagnostic
         // Archive mutation or caller-specific rally setter is introduced.
         let rally = json!({"issue_after_step": 1159, "owner": "VERA-OBSERVER",
             "payload": {"SetRally": {"rx": 30, "ry": 86, "producer_ids": [17]}}});
