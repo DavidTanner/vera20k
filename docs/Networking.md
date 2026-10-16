@@ -715,6 +715,94 @@ Residuals:
 Nothing here blocks 2d. 2e must handle GAMESPEED's tail timing, decoding at the
 execution frame, and the leftover UndeployBuilding paths.
 
+#### 2d: Local selection
+
+Native: selection is each object's IsSelected byte (`ObjectClass+0x83`) plus the
+current-objects vector. `ObjectClass::Select` (`0x005F4520`) refuses limbo, an
+already selected, unselectable, loaner or warping object and pending placement, clears
+the selection when the first member's house differs in `IsHumanPlayer` from this one's
+or is not human, inserts the object (in front for a positive-damage Primary, else at
+the back) and sets the byte. `ObjectClass::Deselect`
+(`0x005F44A0`) removes it and clears Follow. `TechnoClass::Select` (`0x006FBFA0`) wraps
+it: a nonlocal undiscovered owner is refused, then the object's Tag gets event 0x21
+(33, "selected"), then VoiceSelect. Local input calls Select on the spot: MainTick
+`0x0055D8AB`/`0x0055D8B4` -> Execute (`0x005367F0` -> `0x00732280`) before Logic
+`0x0055DC9E`. No EventClass is built, and the event table has no selection opcode.
+The lock gates the window's key and mouse messages (`0x0054F200`, `0x006930A0`), so
+locked input never reaches Select.
+
+Simulation-side callers of `TechnoClass::Select` only pass a selection on: Building
+`Mission_Selling` (`0x0044A8C9`, undeploy), Unit `ReceiveDamage` (`0x0073835E`, the
+dying transport's passengers and crew), `UnitClass::Deploy` (`0x007399D4`) and the
+parasite's release (`0x0062A3A7`, `0x0062A744`). The receiver and parasite reads test
+`HouseClass::IsHumanPlayer` (`0x0050B6F0`), which in modes 1 to 5 is
+`this == PlayerPtr`, the local house. Every reader found writes only selection, except
+event 33: a Tag on a selected object runs its trigger on the selecting client alone.
+Neither `TechnoClass::Select` nor `TagClass::ProcessTriggerEvent` (`0x006E53A0`) has a
+mode or house gate; `TriggerClass::RegisterEvent` (`0x007264C0`) was not read, so
+"natively a network map with such a trigger desyncs" is a *lead*.
+
+Evidence: the bodies and direct callers above were read in Ghidra; the input order and
+Select admission are executed in `tools/input_oracle/selection_navigation`. Scripts are
+disabled in the shared Ghidra session, so no instruction scan for other `+0x83`
+readers was made: "no other gameplay reader" is a *lead*.
+
+Delivered:
+- `Command::Select` is deleted, with its frame-ingress arm, its receiver and
+  `has_pending_selection_commands`. Frame ingress now carries only SetGameSpeed.
+- Owners, split as natively: the IsSelected byte stays on `GameEntity::selection`,
+  owned by `Simulation`, whose lifecycle writers are unchanged; the ordered vector is
+  `MatchInputState::selection_order` (app). Input commits each mutation at once through
+  `SimRuntime::commit_local_selection`, which binds the match's rules and overlays, to
+  `Simulation::commit_local_selection` (the former snapshot receiver: omitted members
+  are deselected, new ones run Select and event 33 in ledger order). The ledger is then
+  reconciled with the committed bits, and the voices follow. For one new member that
+  is `0x006FBFA0`'s order; before, the voice preceded event 33.
+- `selection_order_pending` is gone: the ledger always reflects committed bits, and
+  Guard, Scatter and every other reader see the committed order.
+- A selection mutation under the input lock is refused before any effect, in place of
+  the old command's refusal. Every key and mouse entry already checks the lock first,
+  so this check is defensive. A map-observation profile Select is refused under the
+  lock, as before.
+- Saves: `SNAPSHOT_VERSION` 368. Older saves are refused by the version gate, as for
+  every bump; the saved local view drops its pending flag. A diagnostic `ReplayLog`
+  holding `Select` no longer parses. Native recordings never carried selection.
+- Map-observation profiles keep their `{"Select": ...}` entries as a profile-only
+  payload that commits at the issue boundary. Receipts drop `selection_pending`;
+  validation still accepts it in older sealed receipts.
+- Selection stays out of the world hash and the sync checksum.
+
+Player-visible: offline play is unchanged except that a selection takes effect when
+the input is handled instead of at the next frame's ingress, so its highlight can
+appear a frame sooner, as natively.
+
+Residuals:
+- Event 33 trigger actions now run between frames. Their Tag outcomes and sounds
+  still leave with the next frame's outputs, but a combat light from a death the
+  action causes is dropped by the frame-start clear of `combat_light_requests`.
+  Trigger: an event-33 Tag whose action kills. Effect: a missing light flash.
+  Retail map usage of event 33 is unchecked.
+- Event 33 outputs raised between frames wait in the simulation's frame outputs. A
+  save made before the next frame drops them, as snapshots drop those buffers, so the
+  restored trigger has sprung without its app effects or sounds; and while frames are
+  paused they wait for the next frame. Trigger: an event-33 Tag, then a save or a
+  pause before the next frame.
+- With several new members, VERA runs every member's Select and event 33, then every
+  voice; native runs Select, event 33 and the voice per object. Effect: Main RNG voice
+  draws reorder against Main draws in event-33 actions, and a member an earlier
+  member's action refuses or removes still gets, or loses, its voice. Trigger: an
+  event-33 Tag on one of several objects selected together.
+- Event 33 effects are local in network play, as natively, and a `ReplayLog` no
+  longer reproduces them, so a replay of a map with such a Tag can mismatch its hash.
+- The simulation's own Selects (crew, parasite, deploy, undeploy) set the byte
+  directly and raise neither event 33 nor VoiceSelect, where native calls
+  `TechnoClass::Select`. Unchanged by 2d.
+- Input reaching selection during the network modal pump now commits there, where it
+  used to wait for an ordinary frame. Native's pump runs no Execute. Unreachable
+  until a LAN or WOL session exists.
+
+2e has no selection work left. The network transport must never carry selection.
+
 ### Stage 3: UDP transport and network lockstep
 
 Scope: `net::protocol` with a `Transport` abstraction over a UDP socket bound to a

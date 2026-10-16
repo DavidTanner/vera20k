@@ -182,7 +182,6 @@ pub(crate) fn current_cursor_feedback_kind(state: &AppState) -> Option<CursorFee
             .map(|rt| &rt.simulation),
         state.rules(),
         &state.match_state.input.selection_order,
-        state.match_state.input.selection_order_pending,
     );
     if selected.is_empty() {
         return None;
@@ -225,7 +224,7 @@ pub(crate) fn current_cursor_feedback_kind(state: &AppState) -> Option<CursorFee
             &selected,
             ActionDistanceTarget::CellCentre(hover_rx, hover_ry),
             state.rules(),
-    );
+        );
         return Some(empty_cell_feedback(
             state,
             sim,
@@ -379,17 +378,17 @@ fn empty_cell_cursor(
         viewer.is_some_and(|viewer| sim.clicked_cell_is_shrouded(viewer, cell) == Ok(true));
     let has_ore = !shrouded
         && match (sim.overlay_grid.as_ref(), registry, rules) {
-        (Some(grid), Some(registry), Some(rules)) if !rules.tiberium_types.is_empty() => {
-            crate::sim::tiberium::tiberium_cell_view(
-                grid,
-                registry,
-                &rules.tiberium_types,
+            (Some(grid), Some(registry), Some(rules)) if !rules.tiberium_types.is_empty() => {
+                crate::sim::tiberium::tiberium_cell_view(
+                    grid,
+                    registry,
+                    &rules.tiberium_types,
                     cell,
-            )
-            .is_some()
-        }
-        _ => false,
-    };
+                )
+                .is_some()
+            }
+            _ => false,
+        };
     if has_ore
         && best_id.is_some_and(|id| sim.entities().get(id).is_some_and(|e| e.miner.is_some()))
     {
@@ -427,7 +426,7 @@ fn what_action_on_cell(
         .entities()
         .get(id)
         .is_none_or(|entity| entity.category() == crate::map::entities::EntityCategory::Structure)
-            {
+    {
         return MoveAction::Move;
     }
     let query = CellActionQuery {
@@ -1346,7 +1345,12 @@ fn apply_cursor_confinement_impl(state: &AppState, verbose: bool) {
             return;
         };
         let hwnd = w.hwnd.get() as *mut c_void;
-        let mut rect: RECT = RECT { left: 0, top: 0, right: 0, bottom: 0 };
+        let mut rect: RECT = RECT {
+            left: 0,
+            top: 0,
+            right: 0,
+            bottom: 0,
+        };
         unsafe {
             // Clip the *client* area, not the whole window: GetWindowRect would
             // include the title bar and the resize border, so the pointer could
@@ -1355,8 +1359,14 @@ fn apply_cursor_confinement_impl(state: &AppState, verbose: bool) {
             // space for ClipCursor. Both are in the same DPI-aware physical
             // pixels, so the rect matches what ClipCursor expects.
             GetClientRect(hwnd, &mut rect);
-            let mut tl = POINT { x: rect.left, y: rect.top };
-            let mut br = POINT { x: rect.right, y: rect.bottom };
+            let mut tl = POINT {
+                x: rect.left,
+                y: rect.top,
+            };
+            let mut br = POINT {
+                x: rect.right,
+                y: rect.bottom,
+            };
             ClientToScreen(hwnd, &mut tl);
             ClientToScreen(hwnd, &mut br);
             // Clip to the *exact* client rectangle — do NOT inset. The game's
@@ -1383,7 +1393,10 @@ fn apply_cursor_confinement_impl(state: &AppState, verbose: bool) {
                 if verbose {
                     log::info!(
                         "cursor confinement: client rect not ready ({},{},{},{}), deferring",
-                        clip.left, clip.top, clip.right, clip.bottom
+                        clip.left,
+                        clip.top,
+                        clip.right,
+                        clip.bottom
                     );
                 }
                 return;
@@ -1391,7 +1404,10 @@ fn apply_cursor_confinement_impl(state: &AppState, verbose: bool) {
             if verbose {
                 log::info!(
                     "cursor confinement: clipping to client ({},{},{},{}) confined={}",
-                    clip.left, clip.top, clip.right, clip.bottom,
+                    clip.left,
+                    clip.top,
+                    clip.right,
+                    clip.bottom,
                     state.platform.cursor_confined
                 );
             }

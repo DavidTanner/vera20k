@@ -87,7 +87,7 @@ fn game_speed_command_sim() -> (Simulation, crate::sim::intern::InternedId) {
 }
 
 #[test]
-fn combatant_selection_ingress_precedes_destroy_and_is_not_replayed_at_tail() {
+fn combatant_local_selection_commits_before_destroy_and_is_never_queued() {
     // Original MainTick55D8AB/55D8B4 -> P5367F0/732280 commits Select
     // before Logic55DC9E. ObjectReceiveDamage5F57AF -> Foot4D9720 ->
     // ObjectDetach5F5280 then Deselect5F44A0 wins in that same frame.
@@ -102,21 +102,8 @@ fn combatant_selection_ingress_precedes_destroy_and_is_not_replayed_at_tail() {
     infantry.lifecycle.set_in_limbo_for_test(false);
     infantry.selection.set_selected_for_test(false);
     sim.substrate.entities.insert(infantry);
-    let commands = [CommandEnvelope::new(
-        owner,
-        1,
-        Command::Select {
-            entity_ids: vec![1],
-            additive: false,
-        },
-    )];
 
-    let ingress_count = sim.apply_due_frame_ingress_commands(
-        &commands,
-        None,
-        1,
-        crate::sim::world::FrameEffects::default(),
-    );
+    commit_selection(&mut sim, &[1], None);
     let selected_before_logic = sim.entities().get(1).unwrap().selection.is_selected();
     sim.substrate
         .entities
@@ -125,9 +112,9 @@ fn combatant_selection_ingress_precedes_destroy_and_is_not_replayed_at_tail() {
         .health
         .set_for_test(0);
     sim.object_destroy_callback(1, UninitContext::default());
-    assert!(!sim.entities().get(1).unwrap().selection.is_selected());
+    let due = sim.take_due_commands();
     let (tail_count, spawned) = sim.apply_due_commands(
-        &commands,
+        &due,
         None,
         1,
         None,
@@ -139,7 +126,11 @@ fn combatant_selection_ingress_precedes_destroy_and_is_not_replayed_at_tail() {
         "an earlier selection must not undo same-frame Destroy/Deselect"
     );
     assert!(selected_before_logic, "local Select commits before Logic");
-    assert_eq!((ingress_count, tail_count, spawned), (1, 0, false));
+    assert_eq!(
+        (tail_count, spawned),
+        (0, false),
+        "selection queues nothing"
+    );
     assert!(sim.entities().get(1).unwrap().is_object_alive());
     assert!(!sim.entities().get(1).unwrap().lifecycle.in_limbo());
     // A distinct later real P remains admitted, as the executed native
@@ -6234,8 +6225,13 @@ fn test_stable_ids_are_assigned() {
     assert_eq!(ids, vec![1, 2]);
 }
 
+/// Commit a local selection through its owner, as input does.
+fn commit_selection(sim: &mut Simulation, stable_ids: &[u64], rules: Option<&RuleSet>) {
+    sim.commit_local_selection(stable_ids, UninitContext::new(rules, None));
+}
+
 #[test]
-fn test_select_command_applies_snapshot_selection() {
+fn local_selection_commit_applies_snapshot_selection() {
     let mut sim: Simulation = Simulation::new();
     sim.spawn_from_map(
         &[
@@ -6245,16 +6241,7 @@ fn test_select_command_applies_snapshot_selection() {
         None,
     );
 
-    let select = cmd_envelope(
-        &sim,
-        "Americans",
-        1,
-        Command::Select {
-            entity_ids: vec![2],
-            additive: false,
-        },
-    );
-    let _ = sim.advance_tick(&[select], None, None, None, 33);
+    commit_selection(&mut sim, &[2], None);
 
     assert!(
         !sim.substrate
@@ -6271,7 +6258,7 @@ fn test_select_command_applies_snapshot_selection() {
 }
 
 #[test]
-fn test_select_command_replaces_previous_selection() {
+fn local_selection_commit_replaces_previous_selection() {
     let mut sim: Simulation = Simulation::new();
     sim.spawn_from_map(
         &[
@@ -6281,27 +6268,9 @@ fn test_select_command_replaces_previous_selection() {
         None,
     );
 
-    let cmd1 = cmd_envelope(
-        &sim,
-        "Americans",
-        1,
-        Command::Select {
-            entity_ids: vec![1],
-            additive: false,
-        },
-    );
-    let _ = sim.advance_tick(&[cmd1], None, None, None, 33);
+    commit_selection(&mut sim, &[1], None);
 
-    let cmd2 = cmd_envelope(
-        &sim,
-        "Americans",
-        2,
-        Command::Select {
-            entity_ids: vec![2],
-            additive: true,
-        },
-    );
-    let _ = sim.advance_tick(&[cmd2], None, None, None, 33);
+    commit_selection(&mut sim, &[2], None);
 
     assert!(
         !sim.substrate
@@ -6318,7 +6287,7 @@ fn test_select_command_replaces_previous_selection() {
 }
 
 #[test]
-fn test_select_command_deduplicates_without_reordering_payload() {
+fn local_selection_commit_deduplicates_without_reordering_payload() {
     let mut sim: Simulation = Simulation::new();
     sim.spawn_from_map(
         &[
@@ -6328,16 +6297,7 @@ fn test_select_command_deduplicates_without_reordering_payload() {
         None,
     );
 
-    let select = cmd_envelope(
-        &sim,
-        "Americans",
-        1,
-        Command::Select {
-            entity_ids: vec![2, 2, 1],
-            additive: false,
-        },
-    );
-    let _ = sim.advance_tick(&[select], None, None, None, 33);
+    commit_selection(&mut sim, &[2, 2, 1], None);
 
     assert!(
         sim.substrate
@@ -6370,7 +6330,7 @@ fn selection_gate_test_rules() -> RuleSet {
 }
 
 #[test]
-fn test_select_command_rejects_selectable_no_type() {
+fn local_selection_commit_rejects_selectable_no_type() {
     let mut sim: Simulation = Simulation::new();
     let rules = selection_gate_test_rules();
     let tank = sim
@@ -6380,16 +6340,7 @@ fn test_select_command_rejects_selectable_no_type() {
         .spawn_object("NOSEL", "Americans", 21, 22, 0, &rules)
         .expect("spawn NOSEL");
 
-    let select = cmd_envelope(
-        &sim,
-        "Americans",
-        1,
-        Command::Select {
-            entity_ids: vec![tank, unselectable],
-            additive: false,
-        },
-    );
-    let _ = sim.advance_tick(&[select], Some(&rules), None, None, 33);
+    commit_selection(&mut sim, &[tank, unselectable], Some(&rules));
 
     assert!(
         sim.substrate
@@ -6430,16 +6381,7 @@ fn item83_final_select_allows_caller_admitted_nonlocal_entity() {
     declare_selection_gate_houses(&mut sim);
 
     // The snapshot a band-box swept across a fight would produce.
-    let select = cmd_envelope(
-        &sim,
-        "Americans",
-        1,
-        Command::Select {
-            entity_ids: vec![mine, theirs],
-            additive: false,
-        },
-    );
-    let _ = sim.advance_tick(&[select], Some(&rules), None, None, 33);
+    commit_selection(&mut sim, &[mine, theirs], Some(&rules));
 
     assert!(
         sim.substrate
@@ -6456,7 +6398,7 @@ fn item83_final_select_allows_caller_admitted_nonlocal_entity() {
 }
 
 #[test]
-fn test_select_command_rejects_limbo_object() {
+fn local_selection_commit_rejects_limbo_object() {
     let mut sim: Simulation = Simulation::new();
     let rules = selection_gate_test_rules();
     // Never revealed onto the map — the state a paradrop passenger sits in while
@@ -6465,16 +6407,7 @@ fn test_select_command_rejects_limbo_object() {
         .spawn_object_limbo_at_height("MTNK", "Americans", 20, 22, 0, 0, &rules)
         .expect("spawn limbo MTNK");
 
-    let select = cmd_envelope(
-        &sim,
-        "Americans",
-        1,
-        Command::Select {
-            entity_ids: vec![cargo],
-            additive: false,
-        },
-    );
-    let _ = sim.advance_tick(&[select], Some(&rules), None, None, 33);
+    commit_selection(&mut sim, &[cargo], Some(&rules));
 
     assert!(
         !sim.substrate
@@ -6509,14 +6442,7 @@ fn item83_fresh_selection_rejects_warp_out_but_keeps_preexisting_selection() {
             .is_selected(),
         "entering warp-out does not retroactively remove an existing selection"
     );
-    assert!(sim.apply_command(
-        "Americans",
-        &Command::Select {
-            entity_ids: vec![tank, wingman],
-            additive: true,
-        },
-        Some(&rules),
-    ));
+    commit_selection(&mut sim, &[tank, wingman], Some(&rules));
     assert!(
         sim.substrate
             .entities
@@ -6534,14 +6460,7 @@ fn item83_fresh_selection_rejects_warp_out_but_keeps_preexisting_selection() {
             .is_selected()
     );
 
-    assert!(sim.apply_command(
-        "Americans",
-        &Command::Select {
-            entity_ids: vec![wingman],
-            additive: false,
-        },
-        Some(&rules),
-    ));
+    commit_selection(&mut sim, &[wingman], Some(&rules));
     assert!(
         !sim.substrate
             .entities
@@ -6576,7 +6495,7 @@ fn test_try_select_object_rejects_an_already_selected_object() {
 }
 
 #[test]
-fn event33_select_command_raises_tags_once_in_payload_order_after_admission() {
+fn event33_local_selection_raises_tags_once_in_ledger_order_after_admission() {
     let mut sim = Simulation::new();
     let rules = selection_gate_test_rules();
     let first = sim
@@ -6589,7 +6508,7 @@ fn event33_select_command_raises_tags_once_in_payload_order_after_admission() {
         .spawn_object("NOSEL", "Americans", 22, 22, 0, &rules)
         .unwrap();
     // Both admitted objects have already passed the graphical input discovery
-    // gate. The command below is the same ordered payload kept in a replay.
+    // gate. The selection below is the ledger input commits, in its order.
     for id in [first, second] {
         sim.substrate
             .entities
@@ -6621,11 +6540,8 @@ fn event33_select_command_raises_tags_once_in_payload_order_after_admission() {
     sim.attach_object_trigger_tag(second, Some("TWO"));
     sim.attach_object_trigger_tag(refused, Some("ONE"));
     let _ = sim.drain_trigger_effects();
-    let command = Command::Select {
-        entity_ids: vec![second, refused, second, first],
-        additive: false,
-    };
-    assert!(sim.apply_command("Americans", &command, Some(&rules)));
+    let selection = [second, refused, second, first];
+    commit_selection(&mut sim, &selection, Some(&rules));
     assert_eq!(
         sim.drain_trigger_effects(),
         vec![
@@ -6646,20 +6562,13 @@ fn event33_select_command_raises_tags_once_in_payload_order_after_admission() {
             .selection
             .is_selected()
     );
-    assert!(sim.apply_command("Americans", &command, Some(&rules)));
+    commit_selection(&mut sim, &selection, Some(&rules));
     assert!(
         sim.drain_trigger_effects().is_empty(),
         "retained members do not run Select again"
     );
-    assert!(sim.apply_command(
-        "Americans",
-        &Command::Select {
-            entity_ids: Vec::new(),
-            additive: false
-        },
-        Some(&rules),
-    ));
-    assert!(sim.apply_command("Americans", &command, Some(&rules)));
+    commit_selection(&mut sim, &[], Some(&rules));
+    commit_selection(&mut sim, &selection, Some(&rules));
     assert_eq!(
         sim.drain_trigger_effects().len(),
         2,
@@ -7370,9 +7279,11 @@ fn move_event_issuer_does_not_replace_actor_owner() {
 
     let _ = sim.advance_tick(&[cmd], None, Some(&grid), None, 33);
     assert!(
-        sim.substrate.entities.get(1).is_some_and(
-            |e| e.navigation.nav_com() == Some(crate::sim::components::NavTargetRef::cell(8, 2))
-        ),
+        sim.substrate
+            .entities
+            .get(1)
+            .is_some_and(|e| e.navigation.nav_com()
+                == Some(crate::sim::components::NavTargetRef::cell(8, 2))),
         "Event4C71CA resolves the actor independently of the issuer"
     );
     assert_eq!(
@@ -11116,18 +11027,12 @@ fn rule_handles_accessor_panics_before_resolution() {
 #[test]
 fn current_rust_frame_call_order_is_preserved() {
     let rules = RuleSet::from_ini(&IniFile::from_str("")).expect("empty rules parse");
-    let mut sim: Simulation = Simulation::new();
-    sim.spawn_from_map(&[make_test_entity("MTNK", EntityCategory::Unit)], None);
-    let select = cmd_envelope(
-        &sim,
-        "Americans",
+    let (mut sim, owner) = game_speed_command_sim();
+    sim.queue_command(CommandEnvelope::new(
+        owner,
         sim.session.tick + 2,
-        Command::Select {
-            entity_ids: vec![1],
-            additive: false,
-        },
-    );
-    sim.queue_command(select);
+        Command::SetGameSpeed { speed: 4 },
+    ));
 
     // Not yet due (dispatch admits execute_tick <= tick + 1): the drain
     // leaves the queue intact, and an empty-command frame carries it forward.
@@ -11163,11 +11068,8 @@ fn current_rust_frame_call_order_is_preserved() {
         .expect("fixture frame must complete");
     assert!(output.tick.frame_committed);
     assert_eq!(sim.session.tick, tick_before + 1);
-    assert!(
-        sim.substrate
-            .entities
-            .get(1)
-            .is_some_and(|e| e.selection.is_selected()),
+    assert_eq!(
+        sim.session.game_options.game_speed, 4,
         "a due command executes in the frame that drained it"
     );
     // Once-per-pass drain: nothing left for a second consumer.
@@ -11182,19 +11084,14 @@ fn current_rust_frame_call_order_is_preserved() {
 /// bound resources, and the due command executes within that same frame.
 #[test]
 fn runtime_frame_call_order_matches_the_app_seam() {
-    let mut sim: Simulation = Simulation::new();
-    sim.spawn_from_map(&[make_test_entity("MTNK", EntityCategory::Unit)], None);
-    let select = cmd_envelope(
-        &sim,
-        "Americans",
+    let (sim, owner) = game_speed_command_sim();
+    let speed = CommandEnvelope::new(
+        owner,
         sim.session.tick + 2,
-        Command::Select {
-            entity_ids: vec![1],
-            additive: false,
-        },
+        Command::SetGameSpeed { speed: 4 },
     );
     let mut runtime = crate::sim::runtime::SimRuntime::from_simulation(sim);
-    runtime.simulation.queue_command(select);
+    runtime.simulation.queue_command(speed);
 
     assert!(runtime.simulation.take_due_commands().is_empty());
     let _ = runtime
@@ -11217,13 +11114,8 @@ fn runtime_frame_call_order_matches_the_app_seam() {
         )
         .expect("fixture frame must complete");
     assert!(output.tick.frame_committed);
-    assert!(
-        runtime
-            .simulation
-            .substrate
-            .entities
-            .get(1)
-            .is_some_and(|e| e.selection.is_selected()),
+    assert_eq!(
+        runtime.simulation.session.game_options.game_speed, 4,
         "a due command executes in the runtime frame that drained it"
     );
     assert!(runtime.simulation.take_due_commands().is_empty());

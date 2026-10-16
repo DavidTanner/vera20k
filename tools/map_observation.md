@@ -828,7 +828,7 @@ including any additional binding that is not the command's first key.
 
 Multiple key gestures with the same `issue_after_step` execute in profile order
 before another simulation step. For example, two `N` rows then an `M` row can
-observe immediate pending selection changes without a command-drain tick between
+observe immediate selection changes without a command-drain tick between
 them. Every gesture releases its key before the next one; OS autorepeat and held
 keys across frames are outside this profile's coverage. The sealed neutral cursor
 and all ordinary idle-input checks still apply. A neutral sidebar location can
@@ -881,9 +881,9 @@ New keyboard captures include these projections. Older sealed receipts may omit
 them; omission supplies no evidence about that state. One scope projection,
 every retained navigation ID (including duplicates), each HUD row and each
 voice request count toward the retained-sample budget.
-Ordered `selected_ids` and
-`selection_pending` continue to report the existing optimistic input selection,
-separately from commands queued for the next simulation step.
+Ordered `selected_ids` reports the input ledger reconciled with the committed
+selection; local selection commits at input and is never a queued command.
+Older sealed receipts also carry `selection_pending`, which validation accepts.
 
 Left-only mouse profiles retain their previous policies and receipt shapes. Keyboard
 and sidebar/tactical gestures may share one profile; all its input observations

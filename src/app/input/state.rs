@@ -91,13 +91,12 @@ impl PreparedSavedLocalView {
                 });
             }
         }
-        let (order, pending) = crate::app::input::dispatch::selection_order_for_world(
+        let order = crate::app::input::dispatch::selection_order_for_world(
             simulation,
             Some(rules),
             saved.selection_order(),
-            saved.selection_order_pending(),
         );
-        if order != saved.selection_order() || pending != saved.selection_order_pending() {
+        if order != saved.selection_order() {
             return Err(SavedLocalViewError::SelectionTimelineMismatch);
         }
         let unknown = |field, name: &str| SavedLocalViewError::UnknownName {
@@ -165,9 +164,8 @@ impl PreparedSavedLocalView {
         // raw but MouseLoad never swizzles it, so no retry survives a load.
         input.building_placement_preview = None;
         input.saved_building_placement = None;
-        let (order, pending, groups, follow) = self.saved.into_local_input();
+        let (order, groups, follow) = self.saved.into_local_input();
         input.selection_order = order;
-        input.selection_order_pending = pending;
         input.control_groups = groups.into();
         input.follow_target = follow;
         // ClearScene685640 and PostLoad6851D2 call734210, which resets the
@@ -223,11 +221,11 @@ pub(crate) struct MatchInputState {
     pub(crate) minimap_dragging: bool,
     /// Selection drag state — tracks mouse drag for box-select.
     pub(crate) selection_state: crate::sim::selection::SelectionState,
-    /// Player-side `g_CurrentObjects` order. Selection commands update this
-    /// immediately; the post-sim reconciliation removes lifecycle departures.
+    /// Player-side `g_CurrentObjects` order, the client-local selection
+    /// ledger. Each selection mutation commits the simulation's IsSelected
+    /// bytes at once and reconciles this; the post-frame reconciliation
+    /// follows lifecycle departures and transfers.
     pub(crate) selection_order: Vec<u64>,
-    /// A queued selection command has not yet reached the simulation tick.
-    pub(crate) selection_order_pending: bool,
     /// Existing selection paths speak by default; held TypeSelect batches
     /// temporarily suppress and restore this latch.
     pub(crate) selection_voice_enabled: bool,
@@ -264,7 +262,6 @@ impl MatchInputState {
             minimap_dragging: false,
             selection_state: crate::sim::selection::SelectionState::new(),
             selection_order: Vec::new(),
-            selection_order_pending: false,
             selection_voice_enabled: true,
             queued_order_mode: crate::app::types::OrderMode::Move,
             control_groups: vec![Vec::new(); CONTROL_GROUP_SLOTS],
@@ -518,19 +515,18 @@ impl MatchInputState {
     }
 
     /// Capture the app-owned portion of a save at the same boundary as its
-    /// Simulation. The existing selection owner decides whether its local
-    /// order is provisional; this does not drain commands or alter selection.
+    /// Simulation. The selection order is reconciled with the committed bits
+    /// being saved; this does not drain commands or alter selection.
     pub(crate) fn capture_saved_local_view(
         &self,
         simulation: &crate::sim::world::Simulation,
         rules: &crate::rules::ruleset::RuleSet,
         sidebar: &crate::ui::sidebar::gadget_flash::SidebarGadgetState,
     ) -> Result<SavedLocalView, SavedLocalViewError> {
-        let (order, pending) = crate::app::input::dispatch::selection_order_for_world(
+        let order = crate::app::input::dispatch::selection_order_for_world(
             simulation,
             Some(rules),
             &self.selection_order,
-            self.selection_order_pending,
         );
         assert_eq!(self.control_groups.len(), CONTROL_GROUP_SLOTS);
         // Native membership lives on each serialized Techno, not in a list
@@ -559,7 +555,6 @@ impl MatchInputState {
         SavedLocalView::new(
             self.view_bookmarks.saved_cells(),
             order,
-            pending,
             groups,
             self.follow_target.filter(alive),
             SavedCursorModes {

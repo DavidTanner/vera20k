@@ -1,7 +1,7 @@
 //! Individual command payload behavior for the Simulation.
 //!
-//! Contains `apply_command()` and its helper methods: selection snapshots,
-//! ownership checks, and friendship queries. `command_schedule` owns queue
+//! Contains `apply_command()` and its helper methods, the local selection
+//! commit, ownership checks, and friendship queries. `command_schedule` owns queue
 //! admission and scheduled batch order.
 //!
 //! Dependency rules: same as sim/ (depends on rules/, map/; never render/ui/audio/net).
@@ -1306,10 +1306,6 @@ impl Simulation {
             Command::PlanningRecord { record } => {
                 self.apply_planning_record(command_owner, record, rules)
             }
-            Command::Select { entity_ids, .. } => self.apply_selection_snapshot(
-                entity_ids,
-                super::UninitContext::new(rules, overlay_registry).with_effects(frame_effects),
-            ),
             Command::Scatter { entity_id } => {
                 // Event7 4C7859..4C78D5: clear planning tokens, then Foot,
                 // alive, on-map and untethered. There is no HP/owner/mission
@@ -2590,20 +2586,30 @@ impl Simulation {
             })
     }
 
-    /// Replace the current selection with exactly the given stable entity IDs.
+    /// Commit the local player's new selection: exactly the given stable
+    /// entity IDs, in the input ledger's order.
+    ///
+    /// Selection is client-local and never an EventClass event. Native input
+    /// (MainTick55D8AB/55D8B4 -> Command Execute5367F0 -> P732280) calls
+    /// `Deselect @ 0x005F44A0` and `TechnoClass::Select @ 0x006FBFA0` on the
+    /// spot, before Logic55DC9E, so the app calls this as input happens rather
+    /// than queueing it; a same-frame Destroy/Deselect then follows it.
+    /// Executed order and cleanup controls:
+    /// tools/input_oracle/selection_navigation.{py,json,meta.json,md}.
     ///
     /// Mirrors gamemd's mutation flow: omitted old members are deselected,
     /// requested old members retain their existing admission, and only genuinely
     /// new members run through `ObjectClass::Select`. This distinction matters
     /// for an already-selected Chrono unit in warp-out: warp blocks a fresh
-    /// selection, but does not retroactively remove an existing one.
-    /// VERA-only: applies the local `Command::Select` snapshot, its source of truth, to
-    /// IsSelected `Object+0x83` through `Deselect @ 0x005F44A0` and `Select @ 0x005F4520`.
-    fn apply_selection_snapshot(
+    /// selection, but does not retroactively remove an existing one. VERA
+    /// derives the edit from the app ledger's complete new set, where native
+    /// makes the individual calls; the resulting IsSelected `Object+0x83` bytes
+    /// and Event33 raises are the same.
+    pub(crate) fn commit_local_selection(
         &mut self,
         stable_ids: &[u64],
         context: super::UninitContext<'_>,
-    ) -> bool {
+    ) {
         let requested: BTreeSet<u64> = stable_ids.iter().copied().collect();
         // Deselect only omitted old members. Requested old members remain set,
         // so the final-admission gates below are never reapplied to them.
@@ -2620,7 +2626,6 @@ impl Simulation {
         for &stable_id in stable_ids {
             self.try_select_object(stable_id, context);
         }
-        true
     }
 
     /// Object5F6C30 (+138), with Foot4DFA50's +6AD guard for mobile objects.
@@ -2659,8 +2664,8 @@ impl Simulation {
         })
     }
 
-    /// Object5F4520's state/type admission, shared by provisional local input
-    /// and committed selection. Membership and pending placement are caller
+    /// Object5F4520's state/type admission, shared by the input ledger's
+    /// resolution and the committed selection. Membership and pending placement are caller
     /// state: input checks its newest ledger/placement, the sim its stored bit.
     /// Original does not read Alive or Health here; search/click callers do.
     pub(crate) fn can_select_object(&self, stable_id: u64, rules: Option<&RuleSet>) -> bool {
@@ -2677,8 +2682,8 @@ impl Simulation {
     /// Commit an input-admitted Techno selection through Object5F4520, then
     /// its successful Techno6FBFD0..6FBFE4 Event33 callback (Steam3e81a617..08600).
     /// The app's picking/navigation owner admits discovery+41B and House50B6F0
-    /// before emitting the ordered Select command. Keep the graphical-client
-    /// B73550 gate there: replaying this command must not depend on a renderer.
+    /// before committing the ordered selection. Keep the graphical-client
+    /// B73550 gate there: the simulation must not depend on a renderer.
     /// Raw lifecycle Select writers use Selection::select and do not raise33.
     pub(crate) fn try_select_object(
         &mut self,

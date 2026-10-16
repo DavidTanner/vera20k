@@ -1075,12 +1075,6 @@ pub enum Command {
     /// PlanMgr637E00/638120 keeps native command records while editing.
     /// The same record travels through transport, replay and snapshot storage.
     PlanningRecord { record: CommandRecord },
-    /// Complete local selection snapshot, committed through ObjectSelect
-    /// admission before live Logic. Kept as a command for replay/persistence.
-    Select {
-        entity_ids: Vec<u64>,
-        additive: bool,
-    },
     /// Move one entity to a target cell: the class setter (vt+0x480) takes
     /// the cell.
     Move {

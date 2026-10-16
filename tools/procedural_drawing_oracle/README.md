@@ -315,7 +315,9 @@ measured frames, optimized Apple M4/Metal; no concurrent native emulation:
 | Recover missing20k armed ledger | 34.5089ms | 4.3806ms |
 | Pending20k selection command | 1.0610ms | 1.0769ms |
 
-The resulting order is checked in full. This
+Since Networking stage 2d, selection commits at input: the pending row's case
+no longer exists, and the timing test no longer measures it. The resulting order
+is checked in full. This
 closes the critic's performance finding; it does not measure whole-match FPS.
 
 ## Measured rendering cost

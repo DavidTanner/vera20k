@@ -23,7 +23,6 @@ use crate::app::types::{CategoryNavigationKind, TypeSelectInputState, TypeSelect
 use crate::map::entities::EntityCategory;
 use crate::rules::{ini_parser::IniFile, ruleset::RuleSet};
 use crate::sim::combat::Health;
-use crate::sim::command::Command;
 use crate::sim::components::DriveCoord;
 use crate::sim::docking::bunker_link::BunkerLink;
 use crate::sim::game_entity::GameEntity;
@@ -457,6 +456,13 @@ fn apply_history_selection(
     }
     input.selection_order = effects.ordered;
     input.follow_target = effects.follow_target;
+    // Commit through the real selection owner, as input does before the
+    // voices. The simulation stores the flags; the one app ledger retains
+    // ObjectSelect's prepend/append order.
+    sim.commit_local_selection(
+        &input.selection_order,
+        crate::sim::world::UninitContext::with_rules(rules),
+    );
     let (requests, draws) = trace_draws(|| {
         effects.successful_adds.iter().filter_map(|&id| {
             sim.selection_voice_request(rules, id, voice_enabled).map(|sound| {
@@ -481,16 +487,6 @@ fn apply_history_selection(
         *step["main_draws"].as_array().unwrap(),
         "{label}: ordered raw Main voice draws"
     );
-    // Exercise the real complete-snapshot receiver. Its simulation stores the
-    // flags; the one app ledger retains ObjectSelect's prepend/append order.
-    assert!(sim.apply_command(
-        "local",
-        &Command::Select {
-            entity_ids: input.selection_order.clone(),
-            additive: !mutation.clear,
-        },
-        Some(rules),
-    ));
     requests
 }
 
@@ -1112,12 +1108,11 @@ fn combatant_native_cleanup_boundaries_reconcile_without_resetting_map_scope() {
         let native_p = history.steps.last().unwrap();
         assert_eq!(native_p["command"], "combatant");
         let cleanup = &native_p["before"];
-        for pending in [false, true] {
-            let label = format!("{} pending={pending}", history.id);
+        {
+            let label = history.id.clone();
             let (mut sim, rules) = fixture(&history.inputs, &history.selected);
             let mut input = crate::app::input::state::MatchInputState::new(Default::default());
             input.selection_order = history.selected.clone();
-            input.selection_order_pending = pending;
             input.type_select = boundary_mode(&history.steps[0]["before"]);
             // Supply the executed native lifecycle boundary, not a second
             // Detach/Conceal implementation. The separate phase regression
@@ -1141,19 +1136,13 @@ fn combatant_native_cleanup_boundaries_reconcile_without_resetting_map_scope() {
                     .selection
                     .set_selected_for_test(boundary["selected"].as_bool().unwrap());
             }
-            // A consumed input can leave a different committed selection
-            // after lifecycle/refusal. Matching selected bits alone must not
-            // keep that provisional ledger alive once its queue is empty.
-            assert!(sim.pending_command_snapshot().is_empty());
+            // Lifecycle can leave a different committed selection than the
+            // ledger; the committed bits decide membership.
             reconcile_selection_order_for_sim(&mut input, &sim, Some(&rules));
             assert_eq!(
                 input.selection_order,
                 boundary_ids(cleanup),
                 "{label}: cleanup membership"
-            );
-            assert!(
-                !input.selection_order_pending,
-                "{label}: consumed transport"
             );
             assert_eq!(
                 input.type_select.selection_scope_view().0,
@@ -1229,64 +1218,36 @@ fn combatant_native_cleanup_boundaries_reconcile_without_resetting_map_scope() {
             compared += 1;
         }
     }
-    assert_eq!(compared, 12);
+    assert_eq!(compared, 6);
 }
 
 #[test]
-fn combatant_pending_transport_uses_selection_queue_and_keeps_native_cleanup_scope() {
-    use crate::sim::command::CommandEnvelope;
+fn combatant_refused_selection_commit_keeps_native_cleanup_scope() {
     let corpus = corpus();
     let history = corpus
         .combatant_cleanup_histories
         .iter()
         .find(|row| row.id == "initialized_object_conceal_then_P")
         .unwrap();
-    for queued_selection in [false, true] {
-        let (mut sim, rules) = fixture(&history.inputs, &[]);
-        let mut input = crate::app::input::state::MatchInputState::new(Default::default());
-        input.type_select = boundary_mode(&history.steps[0]["before"]);
-        input.selection_order = history.selected.clone();
-        input.selection_order_pending = true;
-        let actor = sim.entities_mut().get_mut(20).unwrap();
-        actor.lifecycle.set_in_limbo_for_test(true);
-        let owner = sim.session.current_house.unwrap();
-        let command = if queued_selection {
-            Command::Select {
-                entity_ids: vec![20],
-                additive: false,
-            }
-        } else {
-            Command::Stop { entity_id: 40 }
-        };
-        sim.queue_command(CommandEnvelope::new(owner, 2, command));
-        reconcile_selection_order_for_sim(&mut input, &sim, Some(&rules));
-        assert_eq!(input.selection_order_pending, queued_selection);
-        assert_eq!(
-            input.selection_order,
-            if queued_selection { vec![20] } else { vec![] }
-        );
-        assert_eq!(input.type_select.selection_scope_view().0, "combatant");
-        assert!(input.type_select.across_map);
-        assert_eq!(
-            sim.pending_command_snapshot().len(),
-            1,
-            "reconciliation is read-only on queued work"
-        );
-
-        // Future selection retains the provisional ledger until its existing
-        // queue owner drains it. A refused Select after Conceal then closes
-        // pending state instead of waiting for impossible bit equality.
-        sim.session.tick = 1;
-        let due = sim.take_due_commands();
-        for command in due {
-            let _ = sim.apply_command("local", &command.payload, Some(&rules));
-        }
-        reconcile_selection_order_for_sim(&mut input, &sim, Some(&rules));
-        assert!(!input.selection_order_pending);
-        assert!(input.selection_order.is_empty());
-        assert_eq!(input.type_select.selection_scope_view().0, "combatant");
-        assert!(input.type_select.across_map);
-    }
+    let (mut sim, rules) = fixture(&history.inputs, &[]);
+    let mut input = crate::app::input::state::MatchInputState::new(Default::default());
+    input.type_select = boundary_mode(&history.steps[0]["before"]);
+    input.selection_order = history.selected.clone();
+    let actor = sim.entities_mut().get_mut(20).unwrap();
+    actor.lifecycle.set_in_limbo_for_test(true);
+    // Select5F4520 refuses the concealed actor at commit; the ledger follows
+    // the committed bits instead of keeping the refused member, and the
+    // refusal resets neither mode nor map scope.
+    sim.commit_local_selection(&[20], crate::sim::world::UninitContext::with_rules(&rules));
+    assert!(!sim.entities().get(20).unwrap().selection.is_selected());
+    reconcile_selection_order_for_sim(&mut input, &sim, Some(&rules));
+    assert!(input.selection_order.is_empty());
+    assert_eq!(input.type_select.selection_scope_view().0, "combatant");
+    assert!(input.type_select.across_map);
+    assert!(
+        sim.pending_command_snapshot().is_empty(),
+        "selection queues nothing"
+    );
 }
 
 #[test]
@@ -1523,17 +1484,13 @@ fn combatant_histories_match_native_membership_scope_follow_and_voice_continuati
                 step["center_coord"].is_null(),
                 "{label}: no camera centering"
             );
-            // The app sends this complete ledger to the existing snapshot
-            // receiver, which preserves requested old members and removes
-            // omitted ones regardless of the gesture's additive marker.
-            assert!(sim.apply_command(
-                "local",
-                &Command::Select {
-                    entity_ids: ordered.clone(),
-                    additive: !result.mutation.clear,
-                },
-                Some(&rules)
-            ));
+            // The app commits this complete ledger through the selection
+            // owner, which preserves requested old members and removes
+            // omitted ones whatever the gesture's additive marker.
+            sim.commit_local_selection(
+                &ordered,
+                crate::sim::world::UninitContext::with_rules(&rules),
+            );
             for actor in &history.inputs.actors {
                 assert_eq!(
                     sim.entities()
@@ -1970,7 +1927,6 @@ fn execute_histories_match_selection_follow_modes_placement_and_camera() {
     for row in &corpus.command_histories {
         let (mut sim, rules) = fixture(&row.inputs, &row.selected);
         let mut ordered = row.selected.clone();
-        let mut pending = false;
         let mut follow = row.follow;
         let mut modes = SidebarGadgetState {
             repair_mode_on: row.modes.repair,
@@ -1989,7 +1945,7 @@ fn execute_histories_match_selection_follow_modes_placement_and_camera() {
         for (index, (requested, expected)) in row.directions.iter().zip(&row.steps).enumerate() {
             assert_eq!(requested, &expected.direction);
             modes.disable_selection_modes(row.placement);
-            let current = selected_stable_ids_in_order(Some(&sim), Some(&rules), &ordered, pending);
+            let current = selected_stable_ids_in_order(Some(&sim), Some(&rules), &ordered);
             let candidate = next_object(
                 &sim,
                 Some(&rules),
@@ -2018,7 +1974,11 @@ fn execute_histories_match_selection_follow_modes_placement_and_camera() {
                 );
                 ordered = effects.ordered;
                 follow = effects.follow_target;
-                pending = true;
+                // Each native Execute commits its Select on the spot.
+                sim.commit_local_selection(
+                    &ordered,
+                    crate::sim::world::UninitContext::with_rules(&rules),
+                );
                 type_select.reset_scope();
                 let coords: Vec<_> = ordered
                     .iter()
@@ -2101,51 +2061,22 @@ fn execute_histories_match_selection_follow_modes_placement_and_camera() {
             );
             for actor in &row.inputs.actors {
                 assert_eq!(
-                    ordered.contains(&actor.id),
-                    expected.selected_flags[&actor.id.to_string()],
-                    "{} step {index}: pending bit for {}",
-                    row.id,
-                    actor.id
-                );
-                assert_eq!(
                     sim.entities()
                         .get(actor.id)
                         .unwrap()
                         .selection
                         .is_selected(),
-                    row.selected.contains(&actor.id),
-                    "{} step {index}: sim must remain uncommitted",
-                    row.id
+                    expected.selected_flags[&actor.id.to_string()],
+                    "{} step {index}: committed bit for {}",
+                    row.id,
+                    actor.id
                 );
             }
             compared_steps += 1;
         }
-        // Only after the whole key sequence, commit the final local snapshot
-        // through the production command receiver and its shared Select gate.
-        assert!(sim.apply_command(
-            "local",
-            &Command::Select {
-                entity_ids: ordered.clone(),
-                additive: false
-            },
-            Some(&rules)
-        ));
         let expected = row.steps.last().unwrap();
-        for actor in &row.inputs.actors {
-            assert_eq!(
-                sim.entities()
-                    .get(actor.id)
-                    .unwrap()
-                    .selection
-                    .is_selected(),
-                expected.selected_flags[&actor.id.to_string()],
-                "{}: committed bit for {}",
-                row.id,
-                actor.id
-            );
-        }
         assert_eq!(
-            selected_stable_ids_in_order(Some(&sim), Some(&rules), &ordered, false),
+            selected_stable_ids_in_order(Some(&sim), Some(&rules), &ordered),
             expected.selected,
             "{}: post-commit ledger",
             row.id
@@ -2192,7 +2123,7 @@ fn snapshot_restores_singleton_anchor_and_retained_layer_order_for_next_key() {
         sim.register_live_object(actor.id);
     }
     sim.session.map_name = row.id.clone();
-    let current = selected_stable_ids_in_order(Some(&sim), Some(&rules), &row.selected, false);
+    let current = selected_stable_ids_in_order(Some(&sim), Some(&rules), &row.selected);
     let candidate = next_object(
         &sim,
         Some(&rules),
@@ -2215,14 +2146,10 @@ fn snapshot_restores_singleton_anchor_and_retained_layer_order_for_next_key() {
     assert_eq!(first.ordered, row.steps[0].selected);
     assert_eq!(first.ordered.len(), 1);
     assert_eq!(first.follow_target, row.steps[0].follow);
-    assert!(sim.apply_command(
-        "local",
-        &Command::Select {
-            entity_ids: first.ordered,
-            additive: false,
-        },
-        Some(&rules),
-    ));
+    sim.commit_local_selection(
+        &first.ordered,
+        crate::sim::world::UninitContext::with_rules(&rules),
+    );
 
     let bytes = GameSnapshot::save_validated(&sim, 1, 2, "N/M continuation", 0);
     let mut restored = GameSnapshot::load_validated(&bytes, 1, 2, &row.id)
@@ -2250,10 +2177,10 @@ fn snapshot_restores_singleton_anchor_and_retained_layer_order_for_next_key() {
         );
     }
 
-    // This supplies the empty-cache/nonpending state produced by the app's
+    // This supplies the empty-cache state produced by the app's
     // reset_for_world_replacement. It does not execute that whole AppState
     // wrapper or claim comparison with native save-stream bytes.
-    let current = selected_stable_ids_in_order(Some(&restored), Some(&rules), &[], false);
+    let current = selected_stable_ids_in_order(Some(&restored), Some(&rules), &[]);
     assert_eq!(current, row.steps[0].selected);
     let candidate = next_object(
         &restored,

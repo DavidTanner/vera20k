@@ -651,7 +651,6 @@ pub(super) fn build_ui_instances(state: &AppState, sw: f32, sh: f32) -> UiInstan
             .map(|rt| &rt.simulation),
         state.rules(),
         &state.match_state.input.selection_order,
-        state.match_state.input.selection_order_pending,
     );
     let [factory_rally_first, factory_rally_second] =
         crate::app::presentation::target_lines::build_factory_rally_line_instances(

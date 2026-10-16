@@ -21,9 +21,6 @@ pub(crate) struct SavedLocalView {
     /// Raw signed CellStruct words preserved in the app's u16 bit-pattern form.
     view_bookmarks: [[u16; 2]; 4],
     selection_order: Vec<u64>,
-    /// App projection of the serialized Simulation Select queue. No command
-    /// payload is duplicated here; admission checks the existing queue owner.
-    selection_order_pending: bool,
     control_groups: [Vec<u64>; CONTROL_GROUP_SLOTS],
     follow_target: Option<u64>,
     modes: SavedCursorModes,
@@ -73,7 +70,6 @@ impl SavedLocalView {
     pub(crate) fn new(
         view_bookmarks: [[u16; 2]; 4],
         selection_order: Vec<u64>,
-        selection_order_pending: bool,
         control_groups: [Vec<u64>; CONTROL_GROUP_SLOTS],
         follow_target: Option<u64>,
         modes: SavedCursorModes,
@@ -81,7 +77,6 @@ impl SavedLocalView {
         let saved = Self {
             view_bookmarks,
             selection_order,
-            selection_order_pending,
             control_groups,
             follow_target,
             modes,
@@ -91,7 +86,7 @@ impl SavedLocalView {
     }
 
     /// Also called after deserialization, before any app state is mutated.
-    /// Object references and queued selection are validated against the new
+    /// Object references and the selection order are validated against the new
     /// world by the input owner, after that world's own restore validation.
     pub(crate) fn validate_structure(&self) -> Result<(), SavedLocalViewError> {
         let mut selected = BTreeSet::new();
@@ -117,10 +112,6 @@ impl SavedLocalView {
         &self.selection_order
     }
 
-    pub(crate) fn selection_order_pending(&self) -> bool {
-        self.selection_order_pending
-    }
-
     pub(crate) fn control_groups(&self) -> &[Vec<u64>; CONTROL_GROUP_SLOTS] {
         &self.control_groups
     }
@@ -135,10 +126,9 @@ impl SavedLocalView {
 
     pub(crate) fn into_local_input(
         self,
-    ) -> (Vec<u64>, bool, [Vec<u64>; CONTROL_GROUP_SLOTS], Option<u64>) {
+    ) -> (Vec<u64>, [Vec<u64>; CONTROL_GROUP_SLOTS], Option<u64>) {
         (
             self.selection_order,
-            self.selection_order_pending,
             self.control_groups,
             self.follow_target,
         )

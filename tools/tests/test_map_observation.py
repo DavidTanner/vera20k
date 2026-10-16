@@ -428,8 +428,8 @@ class MapObservationTests(unittest.TestCase):
                          ['observations.frames[2].effects.animations[0].runtime.current_frame'])
 
     @staticmethod
-    def input_observation(selected=(), remaining=0, pending=False, active=None):
-        return {'selected_ids': list(selected), 'selection_pending': pending,
+    def input_observation(selected=(), remaining=0, active=None):
+        return {'selected_ids': list(selected),
                 'target_line_remaining': remaining,
                 'target_line_active': remaining > 0 if active is None else active}
 
@@ -451,11 +451,12 @@ class MapObservationTests(unittest.TestCase):
              'issued_simulation_tick': row['issue_after_step'],
              'issued_binary_frame': row['issue_after_step'], 'gesture': deepcopy(row['gesture']),
              'before': self.input_observation(),
-             'after': self.input_observation([7, 3], 25, True),
+             'after': self.input_observation([7, 3], 25),
              'left_press_captured': True, 'band_box_before_release': row['gesture']['kind'] == 'drag',
              'neutral_input_restored': True,
              'queued_commands': [{'owner': 'VERA-OBSERVER', 'execute_tick': row['issue_after_step'],
-                                  'payload': {'Select': {'entity_ids': [7, 3], 'additive': False}}}]}
+                                  'payload': {'Move': {'entity_id': 7, 'target_rx': 2,
+                                                       'target_ry': 2}}}]}
             for index, row in enumerate(self.profile['gestures'])]
         self.input_frames = {1: self.input_observation([7, 3], 24),
                              2: self.input_observation([7, 3], 23),

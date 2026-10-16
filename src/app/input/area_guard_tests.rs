@@ -13,7 +13,7 @@ use crate::rules::overlay_types::OverlayTypeRegistry;
 use crate::rules::retail_ini_fixture::RetailBattleRules;
 use crate::rules::ruleset::RuleSet;
 use crate::rules::terrain_rules::TerrainRules;
-use crate::sim::command::{Command, CommandEnvelope, CommandRecord, MegaMissionRecord};
+use crate::sim::command::{Command, CommandRecord, MegaMissionRecord};
 use crate::sim::components::DriveCoord;
 use crate::sim::house_state::HouseState;
 use crate::sim::rng::SimRng;
@@ -357,7 +357,7 @@ fn area_guard_ingress_matches_native_order_current_cells_voices_and_rng() {
 }
 
 #[test]
-fn area_guard_uses_pending_selection_array_before_simulation_membership_commits() {
+fn area_guard_uses_the_committed_selection_array_order() {
     let Some(retail) = crate::rules::retail_ini_fixture::retail_battle_rules_for_map("XMP03T4.MAP")
     else {
         return;
@@ -370,39 +370,29 @@ fn area_guard_uses_pending_selection_array_before_simulation_membership_commits(
         .find(|row| row["name"] == "stock_ordered_selection")
         .unwrap();
     let mut f = fixture(&corpus, row, retail);
-    let pending_order: Vec<_> = row["input"]["selection"]
+    let selection_order: Vec<_> = row["input"]["selection"]
         .as_array()
         .unwrap()
         .iter()
         .map(|name| f.ids[name.as_str().unwrap()])
         .collect();
-    let mut sorted = pending_order.clone();
+    let mut sorted = selection_order.clone();
     sorted.sort_unstable();
     assert_ne!(
-        pending_order, sorted,
+        selection_order, sorted,
         "the native witness distinguishes selection and storage order"
     );
-    assert!(
-        f.sim
-            .entities()
-            .values()
-            .all(|actor| !actor.selection.is_selected())
+    // Local selection commits at input, before the Guard key reads it.
+    f.sim.commit_local_selection(
+        &selection_order,
+        crate::sim::world::UninitContext::with_rules(&f.rules),
     );
-    let selected = selected_stable_ids_in_order(Some(&f.sim), Some(&f.rules), &pending_order, true);
-    assert_eq!(selected, pending_order);
-    let owner = f.sim.session.current_house.unwrap();
-    f.sim.queue_command(CommandEnvelope::new(
-        owner,
-        f.sim.session.tick,
-        Command::Select {
-            entity_ids: selected.clone(),
-            additive: false,
-        },
-    ));
+    let selected = selected_stable_ids_in_order(Some(&f.sim), Some(&f.rules), &selection_order);
+    assert_eq!(selected, selection_order);
     queue_area_guard_orders(&mut f.sim, &f.rules, &selected, true);
-    let pending = f.sim.pending_command_snapshot();
-    assert!(matches!(pending[0].payload, Command::Select { .. }));
-    let guard_ids: Vec<_> = pending[1..]
+    let guard_ids: Vec<_> = f
+        .sim
+        .pending_command_snapshot()
         .iter()
         .map(|envelope| match envelope.payload {
             Command::Guard { entity_id, .. } => entity_id,
@@ -417,11 +407,4 @@ fn area_guard_uses_pending_selection_array_before_simulation_membership_commits(
         .map(|bytes| f.native_ids[&(native_record(bytes).source_id as u64)])
         .collect();
     assert_eq!(guard_ids, native_ids);
-    assert!(
-        f.sim
-            .entities()
-            .values()
-            .all(|actor| !actor.selection.is_selected()),
-        "issuing Guard never commits selection"
-    );
 }

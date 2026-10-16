@@ -1546,9 +1546,9 @@ mod tests {
             &mut sim,
             None,
             "Russians",
-            Command::Select {
-                entity_ids: vec![99],
-                additive: false,
+            Command::Enter {
+                entity_id: 99,
+                target_id: 5,
             },
         )
         .unwrap();
@@ -1563,9 +1563,9 @@ mod tests {
         );
         assert_eq!(
             sim.pending_command_snapshot()[0].payload,
-            Command::Select {
-                entity_ids: vec![99],
-                additive: false,
+            Command::Enter {
+                entity_id: 99,
+                target_id: 5,
             }
         );
     }
@@ -1580,9 +1580,9 @@ mod tests {
             &mut sim,
             None,
             "YuriCountry",
-            Command::Select {
-                entity_ids: vec![7],
-                additive: false,
+            Command::Enter {
+                entity_id: 7,
+                target_id: 5,
             },
         )
         .unwrap();

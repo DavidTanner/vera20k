@@ -1649,7 +1649,6 @@ pub(crate) fn center_view_on_selection(state: &mut AppState) {
             .map(|rt| &rt.simulation),
         state.rules(),
         &state.match_state.input.selection_order,
-        state.match_state.input.selection_order_pending,
     );
     let coords: Vec<(i32, i32, i32)> = {
         let Some(sim) = state
@@ -1689,7 +1688,6 @@ pub(crate) fn toggle_follow_target(state: &mut AppState) {
             .map(|rt| &rt.simulation),
         state.rules(),
         &state.match_state.input.selection_order,
-        state.match_state.input.selection_order_pending,
     )
     .first()
     .copied();

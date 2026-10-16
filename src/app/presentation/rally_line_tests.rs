@@ -779,13 +779,12 @@ fn production_rally_workload_timing() {
         })
     };
     let mut results = Vec::new();
-    for (count, mobile, missing, pending) in [
-        (1, false, false, false),
-        (64, false, false, false),
-        (1024, false, false, false),
-        (20_000, true, false, false),
-        (20_000, true, true, false),
-        (20_000, true, false, true),
+    for (count, mobile, missing) in [
+        (1, false, false),
+        (64, false, false),
+        (1024, false, false),
+        (20_000, true, false),
+        (20_000, true, true),
     ] {
         let (mut sim, rules) = simulation_fixture(&rally_native()["producer_cases"][0]);
         let rules = if mobile {
@@ -801,7 +800,7 @@ fn production_rally_workload_timing() {
             template.set_category_for_test(EntityCategory::Unit);
             template.set_type_ref_for_test(sim.interner.intern("MTNK"));
         }
-        template.selection.set_selected_for_test(!pending);
+        template.selection.set_selected_for_test(true);
         let ledger: Vec<_> = (10..10 + count as u64).collect();
         for &id in &ledger {
             let mut entity = template.clone();
@@ -822,7 +821,6 @@ fn production_rally_workload_timing() {
                 Some(&sim),
                 Some(&rules),
                 if missing { &[] } else { &ledger },
-                pending,
             );
             let selection_ms = begin.elapsed().as_secs_f64() * 1000.;
             let actual = build_factory_rally_line_instances(
@@ -854,7 +852,7 @@ fn production_rally_workload_timing() {
         }
         results.push(
             serde_json::json!({ "family":"rally", "selected_count": count, "mobile":mobile,
-            "missing_ledger":missing, "pending_selection":pending, "samples": samples }),
+            "missing_ledger":missing, "samples": samples }),
         );
     }
     for (kind, (count, selected, active)) in [SelectedLineKind::Move, SelectedLineKind::Attack]

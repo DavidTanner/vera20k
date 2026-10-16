@@ -13,7 +13,7 @@ use std::collections::BTreeSet;
 
 #[path = "map_observation/command_bindings.rs"]
 mod command_bindings;
-use command_bindings::{MapScheduledCommand, production_type_names};
+use command_bindings::{MapPayload, MapScheduledCommand, production_type_names};
 
 const PROFILE_V1: &str = "vera20k.map-observation-profile.v1";
 const PROFILE_V2: &str = "vera20k.map-observation-profile.v2";
@@ -563,24 +563,26 @@ impl MapCaptureProfile {
             ensure!(
                 matches!(
                     command.payload,
-                    Command::Select { .. }
-                        | Command::Move { .. }
-                        | Command::Stop { .. }
-                        | Command::Attack { .. }
-                        | Command::ForceAttack { .. }
-                        | Command::Guard { .. }
-                        | Command::DeployMcv { .. }
-                        | Command::SetRally { .. }
-                        | Command::ForceAttackCell { .. }
-                        | Command::QueueProduction { .. }
-                        | Command::PlaceReadyBuilding { .. }
-                        | Command::CaptureBuilding { .. }
-                        | Command::ToggleRepair { .. }
-                        | Command::EnterTransport { .. }
-                        | Command::UnloadPassengers { .. }
-                        | Command::RepairAtDepot { .. }
-                        | Command::SellBuilding { .. }
-                        | Command::LaunchSuperWeapon { .. }
+                    MapPayload::Select { .. }
+                        | MapPayload::Order(
+                            Command::Move { .. }
+                                | Command::Stop { .. }
+                                | Command::Attack { .. }
+                                | Command::ForceAttack { .. }
+                                | Command::Guard { .. }
+                                | Command::DeployMcv { .. }
+                                | Command::SetRally { .. }
+                                | Command::ForceAttackCell { .. }
+                                | Command::QueueProduction { .. }
+                                | Command::PlaceReadyBuilding { .. }
+                                | Command::CaptureBuilding { .. }
+                                | Command::ToggleRepair { .. }
+                                | Command::EnterTransport { .. }
+                                | Command::UnloadPassengers { .. }
+                                | Command::RepairAtDepot { .. }
+                                | Command::SellBuilding { .. }
+                                | Command::LaunchSuperWeapon { .. }
+                        )
                 ),
                 "command is outside the map observation's ordinary order coverage"
             );
@@ -950,7 +952,7 @@ struct MapCommandReceipt {
     issued_simulation_tick: u64,
     envelope_execute_tick: u64,
     owner: String,
-    payload: Command,
+    payload: MapPayload,
     #[serde(skip_serializing_if = "Option::is_none")]
     bindings: Option<std::collections::BTreeMap<String, Value>>,
 }
@@ -970,10 +972,9 @@ struct MapKeyboardBinding {
 
 #[derive(Debug, Serialize)]
 struct MapInputObservation {
-    /// The existing ordered input ledger, including an optimistic selection
-    /// that the next ordinary command drain has not committed yet.
+    /// The existing ordered input ledger, reconciled with the committed
+    /// selection.
     selected_ids: Vec<u64>,
-    selection_pending: bool,
     target_line_remaining: i32,
     target_line_active: bool,
     planning_active: bool,
@@ -1172,9 +1173,7 @@ impl MapInputObservation {
                 Some(sim),
                 state.rules(),
                 &state.match_state.input.selection_order,
-                state.match_state.input.selection_order_pending,
             ),
-            selection_pending: state.match_state.input.selection_order_pending,
             target_line_remaining: lines.remaining_frames(sim.session.binary_frame),
             target_line_active: lines.is_selected_action_active(sim.session.binary_frame),
             planning_active: state.match_state.input.planning.active(),
@@ -2670,19 +2669,42 @@ impl TacticalCaptureSession {
                 sample_count <= MAX_OBSERVATION_SAMPLES,
                 "command bindings exceed observation sample budget"
             );
-            // The sole ordinary input producer owns envelope encoding, stamping
-            // and queuing. This diagnostic does not add the input-delay setting
-            // or bypass ordinary House/actor admission in the next frame.
-            let execute_tick = crate::app::input::commands::try_schedule_command(
-                state,
-                &command.owner,
-                payload.clone(),
-            )
-            .context("ordinary command producer refused scheduled input")?;
-            ensure!(
-                execute_tick == issued_tick,
-                "ordinary producer changed the issue stamp"
-            );
+            let execute_tick = match &payload {
+                // Local selection is no command: commit it now, as input does,
+                // then reconcile the existing ledger with the committed bits.
+                // Locked input never reaches Select, as before.
+                MapPayload::Select { select } => {
+                    ensure!(
+                        !crate::app::input::campaign_input::is_locked(state),
+                        "locked input refused scheduled selection"
+                    );
+                    state
+                        .match_state
+                        .sim_runtime
+                        .as_mut()
+                        .context("command simulation absent")?
+                        .commit_local_selection(&select.entity_ids);
+                    crate::app::input::dispatch::reconcile_selection_order_after_sim(state);
+                    issued_tick
+                }
+                // The sole ordinary input producer owns envelope encoding,
+                // stamping and queuing. This diagnostic does not add the
+                // input-delay setting or bypass ordinary House/actor admission
+                // in the next frame.
+                MapPayload::Order(order) => {
+                    let execute_tick = crate::app::input::commands::try_schedule_command(
+                        state,
+                        &command.owner,
+                        order.clone(),
+                    )
+                    .context("ordinary command producer refused scheduled input")?;
+                    ensure!(
+                        execute_tick == issued_tick,
+                        "ordinary producer changed the issue stamp"
+                    );
+                    execute_tick
+                }
+            };
             let map = self.map_state_mut()?;
             map.sample_count = sample_count;
             map.commands.push(MapCommandReceipt {
@@ -3729,6 +3751,14 @@ impl TacticalCaptureSession {
 mod tests {
     use super::*;
 
+    /// A profile entry's ordinary order; these fixtures schedule no selection.
+    fn order(payload: &MapPayload) -> &Command {
+        let MapPayload::Order(command) = payload else {
+            panic!("profile entry is a local selection, not an order");
+        };
+        command
+    }
+
     fn initialized_map() -> MapObservation {
         MapObservation {
             initial: Some(json!({"tick": 0})),
@@ -4254,7 +4284,6 @@ mod tests {
         observed_scope.retained_navigation = vec![7, 9, 7];
         let input = MapInputObservation {
             selected_ids: vec![7, 9],
-            selection_pending: true,
             target_line_remaining: 0,
             target_line_active: false,
             planning_active: false,
@@ -5132,7 +5161,6 @@ mod tests {
         assert!(map.pending_gesture(&profile, 1).is_err());
         let observed = || MapInputObservation {
             selected_ids: Vec::new(),
-            selection_pending: false,
             target_line_remaining: 0,
             target_line_active: false,
             planning_active: false,
@@ -5311,23 +5339,23 @@ mod tests {
             MapScheduledCommand {
                 issue_after_step: 0,
                 owner: "Computer1".to_owned(),
-                payload: Command::Stop { entity_id: 1 },
+                payload: MapPayload::Order(Command::Stop { entity_id: 1 }),
                 symbolic: None,
             },
             MapScheduledCommand {
                 issue_after_step: 0,
                 owner: "Computer1".to_owned(),
-                payload: Command::DeployMcv { entity_id: 2 },
+                payload: MapPayload::Order(Command::DeployMcv { entity_id: 2 }),
                 symbolic: None,
             },
             MapScheduledCommand {
                 issue_after_step: 2,
                 owner: "Computer1".to_owned(),
-                payload: Command::ForceAttackCell {
+                payload: MapPayload::Order(Command::ForceAttackCell {
                     attacker_id: 3,
                     target_rx: 87,
                     target_ry: 53,
-                },
+                }),
                 symbolic: None,
             },
         ]);
@@ -5488,7 +5516,7 @@ mod tests {
         );
         assert!(profile.commands().iter().all(|command| {
             matches!(
-                command.payload,
+                order(&command.payload),
                 Command::DeployMcv { .. }
                     | Command::QueueProduction { .. }
                     | Command::PlaceReadyBuilding { .. }
@@ -5534,7 +5562,6 @@ mod tests {
         let mut large = frame(2, 2);
         large.input = Some(MapInputObservation {
             selected_ids: (1..=MAX_OBSERVATION_SAMPLES as u64 + 1).collect(),
-            selection_pending: false,
             target_line_remaining: 0,
             target_line_active: false,
             planning_active: false,
@@ -5595,16 +5622,20 @@ mod tests {
             );
         }
         let first_gi = previous.last().unwrap();
-        assert!(matches!(first_gi.payload, Command::QueueProduction { .. }));
+        assert!(matches!(
+            order(&first_gi.payload),
+            Command::QueueProduction { .. }
+        ));
         assert_eq!(
             serde_json::to_value(commands.last().unwrap()).unwrap(),
             serde_json::to_value(first_gi).unwrap(),
             "two equal-step ordinary PRODUCE commands preserve queue insertion order"
         );
         assert!(
-            commands
-                .iter()
-                .all(|command| !matches!(command.payload, Command::SetRally { .. })),
+            commands.iter().all(|command| !matches!(
+                command.payload,
+                MapPayload::Order(Command::SetRally { .. })
+            )),
             "the default route exercises the constructor-empty Archive path"
         );
     }
@@ -5624,7 +5655,7 @@ mod tests {
         };
         assert_eq!(command.issue_after_step, 9010);
         assert!(matches!(
-            command.payload,
+            order(&command.payload),
             Command::LaunchSuperWeapon {
                 target_rx: 41,
                 target_ry: 63,
@@ -5685,18 +5716,18 @@ mod tests {
         );
         assert_eq!(
             attack.resolve(&sim, &rules).unwrap().0,
-            Command::ForceAttack {
+            MapPayload::Order(Command::ForceAttack {
                 attacker_id: 93,
                 target_id: 71
-            }
+            })
         );
         assert_eq!(
             launch.resolve(&sim, &rules).unwrap().0,
-            Command::LaunchSuperWeapon {
+            MapPayload::Order(Command::LaunchSuperWeapon {
                 sw_type_id: sim.interner.get("IronCurtainSpecial").unwrap(),
                 target_rx: 44,
                 target_ry: 54,
-            }
+            })
         );
     }
 
@@ -5774,7 +5805,7 @@ mod tests {
         };
         assert_eq!(command.issue_after_step, 9010);
         assert!(matches!(
-            command.payload,
+            order(&command.payload),
             Command::LaunchSuperWeapon {
                 target_rx: 56,
                 target_ry: 56,
@@ -5799,7 +5830,7 @@ mod tests {
         };
         assert_eq!(command.issue_after_step, 6310);
         assert!(matches!(
-            command.payload,
+            order(&command.payload),
             Command::LaunchSuperWeapon {
                 target_rx: 41,
                 target_ry: 63,

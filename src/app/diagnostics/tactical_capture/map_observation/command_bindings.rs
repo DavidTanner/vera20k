@@ -1,5 +1,6 @@
 //! Profile-only names and actor selectors, resolved at ordinary input issue.
-//! Command serde remains the sole command schema and simulation owns all IDs.
+//! Command serde remains the sole command schema and simulation owns all IDs;
+//! the profile adds only the local selection, which is not a Command.
 
 use crate::rules::ruleset::RuleSet;
 use crate::sim::command::Command;
@@ -16,10 +17,33 @@ const MAX_NAME_BYTES: usize = 256;
 pub(super) struct MapScheduledCommand {
     pub(super) issue_after_step: u32,
     pub(super) owner: String,
-    /// Canonical Command, with zero placeholders only when `symbolic` is set.
+    /// Canonical payload, with zero placeholders only when `symbolic` is set.
     /// A symbolic command must pass through `resolve` before input scheduling.
-    pub(super) payload: Command,
+    pub(super) payload: MapPayload,
     pub(super) symbolic: Option<SymbolicPayload>,
+}
+
+/// One profile entry's payload, spelled `{"Select": {...}}` like an
+/// externally tagged Command. Local selection is client-local and never a
+/// queued Command, so the issue boundary commits it at once through the
+/// simulation's selection owner; every other payload is an ordinary order.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub(super) enum MapPayload {
+    Select {
+        #[serde(rename = "Select")]
+        select: MapSelection,
+    },
+    Order(Command),
+}
+
+/// The complete new selection, in the profile's order. `additive` is the
+/// gesture's marker, recorded but not read: the commit removes omitted members.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct MapSelection {
+    pub(super) entity_ids: Vec<u64>,
+    pub(super) additive: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -82,7 +106,7 @@ impl MapScheduledCommand {
         &self,
         sim: &Simulation,
         rules: &RuleSet,
-    ) -> Result<(Command, Option<BTreeMap<String, Value>>)> {
+    ) -> Result<(MapPayload, Option<BTreeMap<String, Value>>)> {
         let Some(symbolic) = &self.symbolic else {
             return Ok((self.payload.clone(), None));
         };
@@ -193,13 +217,13 @@ fn actor_symbol(value: &Value) -> Result<Symbol<'_>> {
     Ok(Symbol::Actor(selector))
 }
 
-// Symbols decorate only existing Command fields. After substitution the one
-// Command deserializer checks variant identity, argument types and widths;
+// Symbols decorate only existing payload fields. After substitution the one
+// payload deserializer checks variant identity, argument types and widths;
 // canonical equality rejects any extra field it would otherwise discard.
 fn substitute_symbols(
     mut value: Value,
     mut resolve: impl FnMut(&str, Symbol<'_>) -> Result<Value>,
-) -> Result<(Command, usize)> {
+) -> Result<(MapPayload, usize)> {
     let mut count = 0;
     let mut bind = |pointer: &str, symbol: Symbol<'_>| -> Result<Value> {
         count += 1;
@@ -250,12 +274,12 @@ fn substitute_symbols(
             }
         }
     }
-    let command: Command = serde_json::from_value(value.clone())?;
+    let payload: MapPayload = serde_json::from_value(value.clone())?;
     ensure!(
-        value == serde_json::to_value(&command)?,
+        value == serde_json::to_value(&payload)?,
         "command payload has unrecognized or noncanonical fields"
     );
-    Ok((command, count))
+    Ok((payload, count))
 }
 
 #[cfg(test)]
@@ -321,19 +345,19 @@ mod tests {
         );
         assert_eq!(
             first_command,
-            Command::LaunchSuperWeapon {
+            MapPayload::Order(Command::LaunchSuperWeapon {
                 sw_type_id: first.interner.get("IronCurtainSpecial").unwrap(),
                 target_rx: 3,
                 target_ry: 4,
-            }
+            })
         );
         assert_eq!(
             second_command,
-            Command::LaunchSuperWeapon {
+            MapPayload::Order(Command::LaunchSuperWeapon {
                 sw_type_id: second.interner.get("IronCurtainSpecial").unwrap(),
                 target_rx: 3,
                 target_ry: 4,
-            }
+            })
         );
         assert_eq!(
             first_bindings.unwrap()["/LaunchSuperWeapon/sw_type_id"]["category"],
@@ -347,9 +371,9 @@ mod tests {
         let (resolved, bindings) = production.resolve(&second, &rules).unwrap();
         assert_eq!(
             resolved,
-            Command::QueueProduction {
+            MapPayload::Order(Command::QueueProduction {
                 type_id: second.interner.get("MTNK").unwrap(),
-            }
+            })
         );
         assert_eq!(
             bindings.unwrap()["/QueueProduction/type_id"]["category"],
@@ -382,7 +406,7 @@ mod tests {
         add_actor(&mut sim, 17, [10, 11]);
         assert_eq!(
             command.resolve(&sim, &rules).unwrap().0,
-            Command::Stop { entity_id: 17 }
+            MapPayload::Order(Command::Stop { entity_id: 17 })
         );
         add_actor(&mut sim, 28, [12, 13]);
         assert!(
@@ -395,7 +419,7 @@ mod tests {
         let narrowed = scheduled(json!({"Stop": {"entity_id": {
             "type_id": "MTNK", "owner": "Computer1", "cell": [12, 13]}}}));
         let (resolved, bindings) = narrowed.resolve(&sim, &rules).unwrap();
-        assert_eq!(resolved, Command::Stop { entity_id: 28 });
+        assert_eq!(resolved, MapPayload::Order(Command::Stop { entity_id: 28 }));
         assert_eq!(
             bindings.unwrap()["/Stop/entity_id"],
             json!({
@@ -417,7 +441,7 @@ mod tests {
             .set_for_test(0);
         assert_eq!(
             command.resolve(&sim, &rules).unwrap().0,
-            Command::Stop { entity_id: 17 }
+            MapPayload::Order(Command::Stop { entity_id: 17 })
         );
         sim.entities_mut()
             .get_mut(17)
@@ -449,19 +473,21 @@ mod tests {
             (
                 json!({"Select": {"entity_ids": [7, selector.clone()], "additive": true}}),
                 "/Select/entity_ids/1",
-                Command::Select {
-                    entity_ids: vec![7, 17],
-                    additive: true,
+                MapPayload::Select {
+                    select: MapSelection {
+                        entity_ids: vec![7, 17],
+                        additive: true,
+                    },
                 },
             ),
             (
                 json!({"SetRally": {"producer_ids": [selector], "rx": 25, "ry": 26}}),
                 "/SetRally/producer_ids/0",
-                Command::SetRally {
+                MapPayload::Order(Command::SetRally {
                     producer_ids: vec![17],
                     rx: 25,
                     ry: 26,
-                },
+                }),
             ),
         ] {
             let command = scheduled(payload.clone());

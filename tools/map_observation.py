@@ -1626,8 +1626,11 @@ def _local_input_observation(value: Any, label: str) -> int:
 
 def _input_observation(value: Any, label: str, *, local_input: bool = False) -> int:
     row = require_object(value, label)
-    require_exact_keys(row, ('selected_ids', 'selection_pending', 'target_line_remaining',
-                             'target_line_active', *(('planning_active', 'planning_paths') if 'planning_active' in row else ()),
+    # Sealed receipts from before local selection stopped being a queued
+    # command also carry `selection_pending`.
+    require_exact_keys(row, ('selected_ids', 'target_line_remaining', 'target_line_active',
+                             *(('selection_pending',) if 'selection_pending' in row else ()),
+                             *(('planning_active', 'planning_paths') if 'planning_active' in row else ()),
                              *(('local_input',) if local_input else ())), label)
     planning_samples = 0
     if 'planning_active' in row:
@@ -1656,7 +1659,7 @@ def _input_observation(value: Any, label: str, *, local_input: bool = False) -> 
     if len(set(selected)) != len(selected):
         raise ValidationError(f'{label}.selected_ids contains duplicate identities')
     for key in ('selection_pending', 'target_line_active'):
-        if type(row[key]) is not bool:
+        if key in row and type(row[key]) is not bool:
             raise ValidationError(f'{label}.{key} must be boolean')
     remaining = _bounded_int(row['target_line_remaining'], f'{label}.target_line_remaining',
                              -(1 << 31), (1 << 31) - 1)

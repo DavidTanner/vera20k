@@ -1046,7 +1046,9 @@ use crate::sim::world::Simulation;
 // creation order, which affects rounded field subtraction and later damage.
 // 365 -> 366: process scalable Bullet order and retained type cadence values.
 // 366 -> 367: authoritative PlanMgr nodes/tokens and local planning input mode.
-const SNAPSHOT_VERSION: u32 = 367;
+// 367 -> 368: local selection is no longer a command. `Command::Select` leaves
+// the saved queue's variant table and the local view drops its pending flag.
+const SNAPSHOT_VERSION: u32 = 368;
 
 const SNAPSHOT_PRODUCT_MAGIC: [u8; 8] = *b"VERA20K\0";
 const SNAPSHOT_ENVELOPE_VERSION: u32 = 1;
@@ -4528,7 +4530,8 @@ mod tests {
         // 364 -> 365: retained RadSite creation/update order.
         // 365 -> 366: process scalable Bullet order and type cadence.
         // 366 -> 367: synchronized planning nodes, paths and local input mode.
-        assert_eq!(super::SNAPSHOT_VERSION, 367);
+        // 367 -> 368: no saved Select command or pending local selection.
+        assert_eq!(super::SNAPSHOT_VERSION, 368);
     }
 
     #[test]

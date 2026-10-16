@@ -290,7 +290,7 @@ def compare_action(captures, capture_hashes):
         check(actor['physical_leptons'] == native['source'], f'{name}: native source differs')
         check(actor['on_bridge'] == native.get('on_bridge', False), f'{name}: source bridge differs')
         selected = proof['actor_id'] in observed_input['selected_ids']
-        check(not observed_input['selection_pending'] and selected == native['selected'],
+        check(selected == native['selected'],
               f'{name}: native selection differs')
         check((actor['nav'] is None) == native.get('nav_null', False),
               f'{name}: native NavCom presence differs')
@@ -455,7 +455,7 @@ def compare_attack(captures, capture_hashes):
                   inputs['crate_speed_multiplier_f64_bits'] == 4607182418800017408,
                   f'{name}: prepared {label} speed fields differ from the live owners')
         selected = proof['actor_id'] in frame['input']['selected_ids']
-        check(not frame['input']['selection_pending'] and selected == native['selected'],
+        check(selected == native['selected'],
               f'{name}: native selection differs')
         check(native['target_present'] and (source['nav'] is None) == native['nav_null'],
               f'{name}: native order presence differs')
@@ -500,10 +500,15 @@ def compare_attack(captures, capture_hashes):
         expected_profile['gestures'].append(control['profile']['request']['gestures'][-1])
         check(expected_profile == control['profile']['request'], f'{kind}: unexpected control profile')
         last = control['observations']['gesture_input']['receipts'][-1]
-        check(last['band_box_before_release'] and last['queued_commands'] == [{
+        # Selection commits at input and queues nothing; sealed receipts from
+        # before it stopped being a command record the deselect as a queued Select.
+        legacy_deselect = [{
             'execute_tick': last['issued_simulation_tick'], 'owner': expected_profile['launch']['player_name'],
-            'payload': {'Select': {'additive': False, 'entity_ids': []}}}],
-            f'{kind}: control must only deselect through an enemy band')
+            'payload': {'Select': {'additive': False, 'entity_ids': []}}}]
+        check(last['band_box_before_release']
+              and (last['queued_commands'] == legacy_deselect
+                   or (last['queued_commands'] == [] and last['after']['selected_ids'] == [])),
+              f'{kind}: control must only deselect through an enemy band')
         check(active['final'] == control['final'], f'{kind}: gameplay hash/clock changed')
         for key in ('camera', 'internal_extent', 'surface_extent', 'gpu', 'cursor_position'):
             check(active['render'][key] == control['render'][key], f'{kind}: render {key} differs')

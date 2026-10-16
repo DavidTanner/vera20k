@@ -9,7 +9,7 @@
 //!   `Deselect` write.
 //! - `SelectionState` tracks the current drag rectangle (if any) and provides
 //!   methods for selecting entities by screen-space rectangle or single click.
-//! - Selection is player-side state, not part of the deterministic simulation.
+//! - Selection is client-local state, not part of the synchronized simulation.
 //! - Drag-box excludes structures (RA2 convention: only mobile units).
 //!
 //! ## Dependency rules
@@ -22,12 +22,16 @@ use crate::sim::entity_store::EntityStore;
 /// `ObjectClass+0x83`, IsSelected: the object is in the player's current
 /// selection. `ObjectClass::Select @ 0x005F4520` sets it ([`Self::select`]);
 /// `ObjectClass::Deselect @ 0x005F44A0` clears it ([`Self::deselect`]).
-/// `Command::Select` commits it through `apply_selection_snapshot`; Limbo,
-/// Destroy, a Temporal erase, a power-down, a lift, a bunker install and the
-/// crew and parasite paths call Select or Deselect too. VERA keeps the
-/// current-objects vector as the app's selection ledger (input order and
-/// pending commands), which it reconciles with this byte after the frame.
-/// Combat reads it for selected-unit effects.
+/// Local input commits it through `Simulation::commit_local_selection` as
+/// the input happens; Limbo, Destroy, a Temporal erase, a power-down, a lift,
+/// a bunker install and the crew and parasite paths call Select or Deselect
+/// too. VERA keeps the current-objects vector as the app's selection ledger
+/// (input order), which it reconciles with this byte after each commit and
+/// frame. Selection is client-local: no EventClass event carries it, and the
+/// world hash and sync checksum leave it out. Its sim readers only pass the
+/// local player's selection on (the receiver's selected-unit hand-off, the
+/// parasite reselect memo, deploy and undeploy) and test `House50B6F0`, which
+/// is the local player's house in network modes.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(transparent)]
 pub(crate) struct Selection {
@@ -225,7 +229,7 @@ pub enum SelectAction {
 ///
 /// Kept as the sim-side primitive for a wholesale unselect. The band-box path no
 /// longer calls it: the native release replaces the selection through the
-/// selection command instead, and an empty box clears nothing at all.
+/// local selection commit instead, and an empty box clears nothing at all.
 #[cfg(test)]
 pub fn deselect_all(entities: &mut EntityStore) {
     let selected_ids: Vec<u64> = entities

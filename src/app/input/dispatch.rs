@@ -1,5 +1,5 @@
 //! In-game input handling — mouse clicks, hotkeys, sidebar interactions,
-//! control groups, and selection commands.
+//! control groups, and local selection.
 //!
 //! Context-sensitive order resolution (click → command) lives in
 //! `input::context_order`. This file handles raw input dispatch and UI state.
@@ -208,7 +208,6 @@ fn every_selected_object_is_berserk(state: &AppState) -> bool {
         Some(sim),
         state.rules(),
         &state.match_state.input.selection_order,
-        state.match_state.input.selection_order_pending,
     );
     !selection.is_empty() && sim.click_order_receivers(&selection).is_empty()
 }
@@ -393,7 +392,6 @@ pub(crate) fn tactical_mouse(state: &mut AppState, button: MouseButton, btn_stat
                             .map(|rt| &rt.simulation),
                         state.rules(),
                         &state.match_state.input.selection_order,
-                        state.match_state.input.selection_order_pending,
                     );
                     let map_order = map_entity_creation_order(sim.entities());
                     let held_type_select = type_select_held;
@@ -663,7 +661,7 @@ fn right_click_cancel_ladder(state: &mut AppState) {
             .sell_mode_on = false;
         return;
     }
-    queue_selection_snapshot_command(state, Vec::new(), false);
+    commit_selection_snapshot(state, Vec::new(), false);
 }
 
 /// Did the band rectangle cover any drawn object? Screen-space rectangle in, the
@@ -1202,7 +1200,7 @@ fn sidebar_cameo_press(
                 // This existing owner clears immediate selection/follow and
                 // schedules the authoritative membership commit. A clear has
                 // no additions, so its effects do not depend on cursor mode.
-                queue_selection_snapshot_command(state, Vec::new(), false);
+                commit_selection_snapshot(state, Vec::new(), false);
                 let gadgets = &mut state.match_state.match_presentation.sidebar_gadget_state;
                 gadgets.disable_selection_modes(false);
             }
@@ -1558,7 +1556,6 @@ fn execute_type_select_tap(state: &mut AppState) {
                 .map(|rt| &rt.simulation),
             state.rules(),
             &state.match_state.input.selection_order,
-            state.match_state.input.selection_order_pending,
         );
         let fog = (!state.match_state.sandbox_full_visibility).then_some(&sim.fog);
         compute_type_select_tap_with_playfield(
@@ -2020,32 +2017,18 @@ pub(crate) fn is_alt_held(state: &AppState) -> bool {
     state.match_state.input.hotkey_modifiers.alt_key()
 }
 
-/// Read the player-side selection vector in native order. While a selection
-/// command is queued the ledger is already the newest local state; after the
-/// sim tick, reconciliation trusts the committed selected bits and admits any
+/// Read the player-side selection vector in native order. The committed
+/// selected bits decide membership; the ledger keeps its order and admits any
 /// lifecycle-transferred selection that was not issued by input.
 pub(crate) fn selected_stable_ids_in_order(
     sim: Option<&crate::sim::world::Simulation>,
     rules: Option<&crate::rules::ruleset::RuleSet>,
     selection_order: &[u64],
-    selection_order_pending: bool,
 ) -> Vec<u64> {
     let Some(sim) = sim else {
         return Vec::new();
     };
-    let mut ordered = Vec::new();
-    for &id in selection_order {
-        if let Some(entity) = sim.entities().get(id)
-            && (selection_order_pending || entity.selection.is_selected())
-        {
-            ordered.push(id);
-        }
-    }
-    if selection_order_pending {
-        ordered
-    } else {
-        admit_missing_selected_ids(ordered, sim, rules)
-    }
+    selection_order_for_world(sim, rules, selection_order)
 }
 
 /// Selection membership is a transient index, never an iteration authority.
@@ -2080,12 +2063,11 @@ fn selection_membership_committed(sim: &crate::sim::world::Simulation, ordered: 
         && committed_count == ordered.len()
 }
 
-/// Synchronize the app ledger after the due selection commands and lifecycle
-/// removals have committed for this frame.
+/// Synchronize the app ledger after this frame's lifecycle removals and
+/// transfers.
 pub(crate) fn reconcile_selection_order_after_sim(state: &mut AppState) {
     let Some(runtime) = state.match_state.sim_runtime.as_ref() else {
         state.match_state.input.selection_order.clear();
-        state.match_state.input.selection_order_pending = false;
         state.match_state.input.category_navigation = Default::default();
         state.match_state.input.type_select.reset_scope();
         return;
@@ -2107,44 +2089,19 @@ fn reconcile_selection_order_for_sim(
     // Navigation733160 consumes actual pointer expiry through LifecycleOutput,
     // independently of this membership ledger. Alive/Health/Deselect alone
     // do not remove an entry from its retained vector.
-    let (order, pending) = selection_order_for_world(
-        sim,
-        rules,
-        &input.selection_order,
-        input.selection_order_pending,
-    );
-    input.selection_order = order;
-    input.selection_order_pending = pending;
+    input.selection_order = selection_order_for_world(sim, rules, &input.selection_order);
 }
 
-/// Shared reconciliation decision for the live input ledger and a saved
-/// local-view record. The simulation's command queue remains authoritative;
-/// observing a save boundary neither drains nor applies queued commands.
+/// Shared reconciliation for the live input ledger and a saved local-view
+/// record: the committed selected bits decide membership, the ledger the order.
 pub(crate) fn selection_order_for_world(
     sim: &crate::sim::world::Simulation,
     rules: Option<&crate::rules::ruleset::RuleSet>,
     order: &[u64],
-    pending: bool,
-) -> (Vec<u64>, bool) {
-    if pending && sim.has_pending_selection_commands() {
-        return (
-            order
-                .iter()
-                .copied()
-                .filter(|id| {
-                    sim.entities()
-                        .get(*id)
-                        .is_some_and(|entity| entity.lifecycle.object_alive())
-                })
-                .collect(),
-            true,
-        );
-    }
-    // MainTick55D8AB/55D8B4 commits local Select before Logic55DC9E.
-    // A consumed snapshot may have been refused or then deselected by
-    // ObjectDestroy/Conceal. Trust committed bits once the queue is drained,
-    // rather than waiting forever for those bits to equal the provisional
-    // ledger. Deselect5F44A0/expiry733160 do not reset mode or map scope.
+) -> Vec<u64> {
+    // A committed selection may have been refused, or then deselected by its
+    // own Event33 Tag actions or a later ObjectDestroy/Conceal.
+    // Deselect5F44A0/expiry733160 do not reset mode or map scope.
     let reconciled: Vec<u64> = order
         .iter()
         .copied()
@@ -2156,7 +2113,7 @@ pub(crate) fn selection_order_for_world(
         .collect();
     let reconciled = admit_missing_selected_ids(reconciled, sim, rules);
     debug_assert!(selection_membership_committed(sim, &reconciled));
-    (reconciled, false)
+    reconciled
 }
 
 fn apply_selection_mutation(
@@ -2166,6 +2123,11 @@ fn apply_selection_mutation(
     voice_policy: SelectionVoicePolicy,
 ) -> bool {
     if !mutation.clear && mutation.deselect.is_empty() && mutation.select.is_empty() {
+        return false;
+    }
+    // The native lock gates the window's key and mouse messages
+    // (`0x0054F200`, `0x006930A0`), so no locked input reaches Select.
+    if crate::app::input::campaign_input::is_locked(state) {
         return false;
     }
     let Some(sim) = state
@@ -2180,7 +2142,6 @@ fn apply_selection_mutation(
         Some(sim),
         state.rules(),
         &state.match_state.input.selection_order,
-        state.match_state.input.selection_order_pending,
     );
     let SelectionMutationEffects {
         ordered,
@@ -2206,6 +2167,20 @@ fn apply_selection_mutation(
             .type_select
             .note_successful_selection_mutation(false);
     }
+    // Selection is client-local, never an EventClass event: commit it now, as
+    // native input does before Logic, then each new member's voice, as
+    // TechnoSelect6FBFA0 follows Select5F4520 and Event33 with VoiceSelect.
+    let runtime = state
+        .match_state
+        .sim_runtime
+        .as_mut()
+        .expect("selection runtime checked above");
+    runtime.commit_local_selection(&ordered);
+    state.match_state.input.selection_order = selection_order_for_world(
+        &runtime.simulation,
+        Some(&runtime.resources.rules),
+        &ordered,
+    );
     for id in selection_voice_recipients(
         voice_policy,
         state.match_state.input.selection_voice_enabled,
@@ -2213,23 +2188,12 @@ fn apply_selection_mutation(
     ) {
         emit_selection_voice(state, *id);
     }
-    state.match_state.input.selection_order = ordered.clone();
-    state.match_state.input.selection_order_pending = true;
-    let owner: String = preferred_local_owner(state).unwrap_or_else(|| "Americans".to_string());
-    schedule_command(
-        state,
-        &owner,
-        Command::Select {
-            entity_ids: ordered,
-            additive: !mutation.clear,
-        },
-    );
     true
 }
 
-/// Object5F44A0/5F4520 effects on the immediate local selection ledger. This
-/// is also the read-only native-comparison seam; the command receiver commits
-/// the final membership through the same Simulation admission owner.
+/// Object5F44A0/5F4520 effects on the local selection ledger. This is also the
+/// read-only native-comparison seam; `Simulation::commit_local_selection`
+/// commits the final membership through the same admission owner.
 struct SelectionMutationEffects {
     ordered: Vec<u64>,
     successful_adds: Vec<u64>,
@@ -2377,26 +2341,20 @@ mod item83_selection_order_tests {
     }
 
     #[test]
-    fn selection_read_keeps_pending_authority_and_native_recovery_order() {
+    fn selection_read_follows_committed_bits_in_native_recovery_order() {
         let (sim, rules) = mixed_selection_fixture();
-        let read = |prior: &[u64], pending| {
-            selected_stable_ids_in_order(Some(&sim), Some(&rules), prior, pending)
-        };
+        let read = |prior: &[u64]| selected_stable_ids_in_order(Some(&sim), Some(&rules), prior);
         // Missing armed entries prepend in original scan order; missing plain
         // entries append. Removed IDs disappear, as do committed deselections.
-        assert_eq!(read(&[20, 999, 40], false), [30, 10, 20, 50]);
-        assert_eq!(read(&[], false), [30, 10, 20, 50]);
+        assert_eq!(read(&[20, 999, 40]), [30, 10, 20, 50]);
+        assert_eq!(read(&[]), [30, 10, 20, 50]);
         // A complete ledger keeps its existing order regardless of role.
-        assert_eq!(read(&[50, 10, 30, 20], false), [50, 10, 30, 20]);
-        // Before the command commits, old selected bits cannot revive actors
-        // omitted by input, or remove the newly selected actor40.
-        assert_eq!(read(&[20, 999, 40], true), [20, 40]);
-        assert!(read(&[], true).is_empty());
-        assert!(selected_stable_ids_in_order(None, Some(&rules), &[10], false).is_empty());
+        assert_eq!(read(&[50, 10, 30, 20]), [50, 10, 30, 20]);
+        assert!(selected_stable_ids_in_order(None, Some(&rules), &[10]).is_empty());
     }
 
     #[test]
-    fn selection_pending_clears_only_when_committed_membership_matches() {
+    fn selection_ledger_matches_only_the_committed_membership() {
         let (sim, _) = mixed_selection_fixture();
         assert!(selection_membership_committed(&sim, &[50, 10, 30, 20]));
         assert!(!selection_membership_committed(&sim, &[50, 10, 40, 20]));
@@ -2504,7 +2462,7 @@ mod item83_selection_order_tests {
     }
 }
 
-fn queue_selection_snapshot_command(state: &mut AppState, selected_ids: Vec<u64>, additive: bool) {
+fn commit_selection_snapshot(state: &mut AppState, selected_ids: Vec<u64>, additive: bool) {
     apply_selection_mutation(
         state,
         SelectionMutation {
@@ -2530,12 +2488,8 @@ fn queue_stop_for_selected(state: &mut AppState) {
         .sim_runtime
         .as_ref()
         .map(|rt| &rt.simulation);
-    let mut selected_ids = selected_stable_ids_in_order(
-        sim,
-        state.rules(),
-        &state.match_state.input.selection_order,
-        state.match_state.input.selection_order_pending,
-    );
+    let mut selected_ids =
+        selected_stable_ids_in_order(sim, state.rules(), &state.match_state.input.selection_order);
     if let (Some(sim), Some(rules)) = (sim, state.rules()) {
         selected_ids.retain(|&id| {
             sim.techno_player_controllable(id, rules) || sim.techno_is_active(id, rules)
@@ -2558,8 +2512,8 @@ fn queue_stop_for_selected(state: &mut AppState) {
 }
 
 /// GuardObject536D00 and command-bar slot6 both execute730D60 immediately.
-/// The input ledger already contains pending selection order; never sort it
-/// or require that the selected bits have reached the simulation yet.
+/// The input ledger already holds the committed selection order; never sort
+/// it.
 fn queue_guard_for_selected(state: &mut AppState) {
     if state.match_state.input.planning.active() {
         crate::app::input::planning_mode::refuse(
@@ -2576,7 +2530,6 @@ fn queue_guard_for_selected(state: &mut AppState) {
             .map(|rt| &rt.simulation),
         state.rules(),
         &state.match_state.input.selection_order,
-        state.match_state.input.selection_order_pending,
     );
     let Some(runtime) = state.match_state.sim_runtime.as_mut() else {
         return;
@@ -2591,8 +2544,8 @@ fn queue_guard_for_selected(state: &mut AppState) {
     }
 }
 
-/// ScatterCommand536D80 ->730FE0 uses the same pending selection-order
-/// owner as Guard. No per-object voice or selection-voice latch is involved.
+/// ScatterCommand536D80 ->730FE0 uses the same selection-order owner as
+/// Guard. No per-object voice or selection-voice latch is involved.
 fn queue_scatter_for_selected(state: &mut AppState) {
     let selected = selected_stable_ids_in_order(
         state
@@ -2602,7 +2555,6 @@ fn queue_scatter_for_selected(state: &mut AppState) {
             .map(|rt| &rt.simulation),
         state.rules(),
         &state.match_state.input.selection_order,
-        state.match_state.input.selection_order_pending,
     );
     //730FE0 only reaches6FFE00 for a controllable Techno. Use the
     // existing Scatter producer admission; an empty/refused selection
@@ -2742,7 +2694,6 @@ fn queue_deploy_undeploy_for_selected(state: &mut AppState) {
             .map(|rt| &rt.simulation),
         state.rules(),
         &state.match_state.input.selection_order,
-        state.match_state.input.selection_order_pending,
     );
     let Some(sim) = state
         .match_state
@@ -3075,7 +3026,6 @@ fn handle_control_group_command(
             .map(|rt| &rt.simulation),
         state.rules(),
         &state.match_state.input.selection_order,
-        state.match_state.input.selection_order_pending,
     );
     // Only live members count towards "the selection is exactly the group" —
     // membership is derived by scanning live objects, so a dead unit has
@@ -3110,7 +3060,7 @@ fn handle_control_group_command(
             // double-tap centres on a selection that already is the group, so
             // the same centring call covers both.
             if action_override == Some(GroupPressAction::Center) && !live_group.is_empty() {
-                queue_selection_snapshot_command(state, live_group.clone(), false);
+                commit_selection_snapshot(state, live_group.clone(), false);
             }
             center_camera_on_group(state, &live_group);
         }
@@ -3120,14 +3070,14 @@ fn handle_control_group_command(
             }
             let mut final_ids = selected;
             final_ids.extend(live_group);
-            queue_selection_snapshot_command(state, final_ids, true);
+            commit_selection_snapshot(state, final_ids, true);
         }
         GroupPressAction::Recall => {
             // A recall on an empty group still clears the selection: the
             // deselect-all runs before the select loop, unconditionally.
             state.match_state.input.last_control_group_press =
                 Some((group_idx, std::time::Instant::now()));
-            queue_selection_snapshot_command(state, live_group, false);
+            commit_selection_snapshot(state, live_group, false);
             apply_selection_action_line_policy(state, ORDINARY_SELECTION_ACTION_LINE_POLICY);
         }
     }

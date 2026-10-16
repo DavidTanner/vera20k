@@ -68,8 +68,8 @@ hide the mission-only refusal.
 - `command_histories`: original consecutive Execute calls retain the native
   selection array. Each step records selection/selected bits, follow, modes,
   placement, type-selection mode, calls, forwarded coordinate, redraw, queued
-  voices and raw draws. This is the native reference for Rust's pending selection
-  integration; no Rust scheduling assumption is supplied to the fixture.
+  voices and raw draws. This is the native reference for Rust's per-Execute
+  selection commit; no Rust scheduling assumption is supplied to the fixture.
 - `voice_histories`: original708EB0/708D90 over empty/single/multiple numeric
   lists, seeds0/1/1234, both ordinary classes, special list branches and queue
   rejection controls. Each history retains full RNG bytes and the next four
@@ -263,9 +263,12 @@ These are initialized unmarked Unit controls. Alivefalse is an input, rather
 than an executed death writer; absence is supplied post-retirement registry
 membership. No fatal AI, marked-cell removal, whole concrete-class Limbo/UnInit,
 destructor/free/deferred-drain,
-nonempty ancillary cleanup or scenario load is demonstrated. Rust's pending
-selection bookkeeping has no corresponding native flag. Its membership and
-scope reconciliation must be tested separately against these native boundaries.
+nonempty ancillary cleanup or scenario load is demonstrated. Rust's selection
+ledger reconciliation has no corresponding native step (native Deselect edits the
+vector in place). Its membership and scope reconciliation must be tested
+separately against these native boundaries. (The corpus note about Rust pending
+membership predates Networking stage 2d, which removed that flag; regenerating the
+corpus would refresh it.)
 
 Original local keyboard ordering supplies another boundary: MainTick55D360 calls
 GScreenInput4F4320 at55D8AB, then ProcessCommand55DEE0 at55D8B4, before

@@ -92,7 +92,6 @@ pub(super) fn execute_object_navigation(state: &mut AppState, direction: ObjectD
         Some(sim),
         state.rules(),
         &state.match_state.input.selection_order,
-        state.match_state.input.selection_order_pending,
     );
     let Some(id) = next_object(sim, state.rules(), current.first().copied(), direction) else {
         return;
@@ -248,7 +247,6 @@ pub(super) fn execute_combatant_selection(state: &mut AppState) {
             Some(sim),
             Some(rules),
             &state.match_state.input.selection_order,
-            state.match_state.input.selection_order_pending,
         );
         combatant_selection(
             sim,
@@ -274,7 +272,6 @@ pub(super) fn execute_combatant_selection(state: &mut AppState) {
             .map(|rt| &rt.simulation),
         state.rules(),
         &state.match_state.input.selection_order,
-        state.match_state.input.selection_order_pending,
     );
     let outcome = if selected.is_empty() {
         crate::app::types::TypeSelectOutcome::Empty
@@ -371,7 +368,6 @@ impl CategoryNavigation {
 pub(crate) fn reset_for_world_replacement(input: &mut crate::app::input::state::MatchInputState) {
     input.category_navigation.candidates.clear();
     input.selection_order.clear();
-    input.selection_order_pending = false;
 }
 
 /// 5F5DD0 uses inclusive red/yellow thresholds and live type Strength.
@@ -505,7 +501,6 @@ pub(super) fn execute_category_navigation(state: &mut AppState, kind: CategoryNa
             .map(|runtime| &runtime.simulation),
         state.rules(),
         &state.match_state.input.selection_order,
-        state.match_state.input.selection_order_pending,
     );
     let screen = if !state
         .match_state
@@ -552,7 +547,6 @@ pub(super) fn execute_category_navigation(state: &mut AppState, kind: CategoryNa
             .map(|rt| &rt.simulation),
         state.rules(),
         &state.match_state.input.selection_order,
-        state.match_state.input.selection_order_pending,
     );
     let sim = &state.match_state.sim_runtime.as_ref().unwrap().simulation;
     let rules = state.rules().unwrap();
@@ -707,7 +701,6 @@ mod tests {
             false,
         );
         input.selection_order = outgoing;
-        input.selection_order_pending = true;
         input.cursor_coordinates = true;
 
         // ClearScene6853D8..685408 destroys outgoing objects; each destructor
@@ -735,7 +728,6 @@ mod tests {
         assert!(input.type_select.held());
         assert!(input.type_select.owns_key(winit::keyboard::KeyCode::KeyT));
         assert!(input.selection_order.is_empty());
-        assert!(!input.selection_order_pending);
         assert!(input.cursor_coordinates);
 
         // A reused stable ID in the incoming selection cannot resurrect an

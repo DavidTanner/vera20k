@@ -173,6 +173,25 @@ impl SimRuntime {
         self.simulation.acknowledge_radar_terrain_dirty(generation)
     }
 
+    /// Commit the local player's selection with the bound resources, outside
+    /// any frame (`Simulation::commit_local_selection`). It is client-local
+    /// state, never a synchronized command. Sounds and Tag outcomes it raises
+    /// stay in the simulation's frame outputs and leave with the next frame.
+    pub(crate) fn commit_local_selection(&mut self, stable_ids: &[u64]) {
+        self.simulation.commit_local_selection(
+            stable_ids,
+            crate::sim::world::UninitContext::new(
+                Some(&self.resources.rules),
+                Some(&self.resources.overlay_registry),
+            )
+            .with_effects(
+                crate::sim::world::FrameEffects::empty()
+                    .with_rules(Some(&self.resources.rules))
+                    .with_overlay_registry(Some(&self.resources.overlay_registry)),
+            ),
+        );
+    }
+
     /// One Ordinary-lane frame for side binaries (parity-digest, sim-bench):
     /// the same bound-resource transaction as `advance_frame`, with the
     /// crate-private frame output discarded so no internal type goes public.

@@ -7,7 +7,6 @@ use crate::app::types::TargetingMode;
 use crate::map::entities::EntityCategory;
 use crate::rules::{ini_parser::IniFile, ruleset::RuleSet};
 use crate::sim::combat::Health;
-use crate::sim::command::{Command, CommandEnvelope};
 use crate::sim::game_entity::GameEntity;
 use crate::sim::snapshot::saved_local_view::SavedLocalView;
 use crate::sim::world::Simulation;
@@ -99,7 +98,6 @@ fn saved_view_replaces_reused_ids_and_preserves_order_and_raw_bookmarks() {
         let saved = serialized_capture(&source, &sim, &rules);
         let mut outgoing = MatchInputState::new(Default::default());
         outgoing.selection_order = vec![1, 3];
-        outgoing.selection_order_pending = true;
         outgoing.control_groups[4] = vec![1, 2, 3];
         outgoing.follow_target = Some(1);
         outgoing.last_control_group_press = Some((9, std::time::Instant::now()));
@@ -112,7 +110,6 @@ fn saved_view_replaces_reused_ids_and_preserves_order_and_raw_bookmarks() {
         let prepared = PreparedSavedLocalView::new(saved, &sim, &rules).unwrap();
         commit(prepared, &mut outgoing);
         assert_eq!(outgoing.selection_order, [3, 1]);
-        assert!(!outgoing.selection_order_pending);
         assert_eq!(outgoing.control_groups[0], [2, 3]);
         assert_eq!(outgoing.control_groups[9], [1]);
         assert!(outgoing.control_groups[1..9].iter().all(Vec::is_empty));
@@ -132,44 +129,20 @@ fn saved_view_replaces_reused_ids_and_preserves_order_and_raw_bookmarks() {
 }
 
 #[test]
-fn pending_selection_survives_load_until_the_existing_queue_owner_drains_it() {
-    let (mut sim, rules, mut input) = fixture();
+fn saved_selection_order_follows_the_committed_bits() {
+    let (sim, rules, mut input) = fixture();
+    // Selection commits at input, so the save boundary has no queued
+    // selection: a ledger that disagrees with the selected bits is saved
+    // reconciled, and persistence neither applies selection nor invents admission.
     input.selection_order = vec![2, 1];
-    input.selection_order_pending = true;
-    let owner = sim.session.current_house.unwrap();
-    sim.queue_command(CommandEnvelope::new(
-        owner,
-        2,
-        Command::Select {
-            entity_ids: vec![2, 1],
-            additive: false,
-        },
-    ));
-    let queued_before = bincode::serialize(&sim.pending_command_snapshot()).unwrap();
+    assert!(!sim.entities().get(2).unwrap().selection.is_selected());
+    assert!(sim.entities().get(3).unwrap().selection.is_selected());
     let saved = serialized_capture(&input, &sim, &rules);
-    assert_eq!(saved.selection_order(), [2, 1]);
-    assert!(saved.selection_order_pending());
+    assert_eq!(saved.selection_order(), [1, 3]);
     let prepared = PreparedSavedLocalView::new(saved, &sim, &rules).unwrap();
     let mut restored = MatchInputState::new(Default::default());
     commit(prepared, &mut restored);
-    assert_eq!(restored.selection_order, [2, 1]);
-    assert!(restored.selection_order_pending);
-    assert_eq!(
-        bincode::serialize(&sim.pending_command_snapshot()).unwrap(),
-        queued_before
-    );
-    assert!(!sim.entities().get(2).unwrap().selection.is_selected());
-    assert!(sim.entities().get(3).unwrap().selection.is_selected());
-
-    // Model the existing queue receiver draining/refusing this command. The
-    // shared reconciliation closes pending mode against committed flags;
-    // persistence itself neither applies selection nor invents admission.
-    sim.session.tick = 1;
-    assert_eq!(sim.take_due_commands().len(), 1);
-    let saved = serialized_capture(&restored, &sim, &rules);
-    assert!(!saved.selection_order_pending());
-    assert_eq!(saved.selection_order(), [1, 3]);
-    PreparedSavedLocalView::new(saved, &sim, &rules).unwrap();
+    assert_eq!(restored.selection_order, [1, 3]);
 }
 
 #[test]
@@ -181,7 +154,6 @@ fn malformed_local_view_is_rejected_before_the_outgoing_input_changes() {
         ("selection_order", serde_json::json!([3, 3, 1])),
         ("selection_order", serde_json::json!([3, 99])),
         ("selection_order", serde_json::json!([3])),
-        ("selection_order_pending", serde_json::json!(true)),
         ("follow_target", serde_json::json!(99)),
         (
             "control_groups",

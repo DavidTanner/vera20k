@@ -273,7 +273,6 @@ pub(crate) fn connect_at_cursor(state: &mut AppState) -> bool {
             .map(|rt| &rt.simulation),
         state.rules(),
         &state.match_state.input.selection_order,
-        state.match_state.input.selection_order_pending,
     );
     let point = cursor_native_screen(state);
     if let Some(rt) = state.match_state.sim_runtime.as_mut()

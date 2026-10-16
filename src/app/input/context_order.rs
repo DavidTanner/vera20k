@@ -837,7 +837,6 @@ fn finish_order(
                     .map(|rt| &rt.simulation),
                 state.rules(),
                 &state.match_state.input.selection_order,
-                state.match_state.input.selection_order_pending,
             ),
         );
         crate::app::input::planning_mode::queue_orders(state, queued);
@@ -869,7 +868,6 @@ fn finish_order(
                     .map(|rt| &rt.simulation),
                 state.rules(),
                 &state.match_state.input.selection_order,
-                state.match_state.input.selection_order_pending,
             ),
         );
         if let Some(speaker_id) = speaker_id {
@@ -1265,7 +1263,6 @@ pub(crate) fn try_queue_context_order_at_screen_point(
             .map(|rt| &rt.simulation),
         state.rules(),
         &state.match_state.input.selection_order,
-        state.match_state.input.selection_order_pending,
     );
     // `EVA_NewRallyPointEstablished` is spoken by the click handler itself,
     // after the sim borrow below ends.
