@@ -169,8 +169,11 @@ fn set_active(state: &mut AppState, active: bool) {
         && let Some(rt) = state.match_state.sim_runtime.as_mut()
         && let Some(owner) = rt.simulation.session.current_house()
         && let Some(record) = rt.simulation.encode_plan_commit_record(owner)
-        && let Some(envelope) = SynchronizedCommand::opaque(record)
-            .decode_for_simulation(&rt.simulation, rt.simulation.session.tick)
+        && let Some(envelope) = SynchronizedCommand::opaque(record).decode_for_simulation(
+            &rt.simulation,
+            None,
+            rt.simulation.session.tick,
+        )
     {
         rt.simulation.queue_command(envelope);
     }
@@ -204,7 +207,7 @@ fn queue_orders_in_sim(
             continue;
         };
         if let Some(envelope) =
-            SynchronizedCommand::opaque(record).decode_for_simulation(sim, order.execute_tick)
+            SynchronizedCommand::opaque(record).decode_for_simulation(sim, None, order.execute_tick)
         {
             sim.queue_command(envelope);
             added = true;
@@ -280,8 +283,11 @@ pub(crate) fn connect_at_cursor(state: &mut AppState) -> bool {
             if let Some(record) = rt
                 .simulation
                 .encode_plan_connect_record_at_screen(owner, actor, point)
-                && let Some(command) = SynchronizedCommand::opaque(record)
-                    .decode_for_simulation(&rt.simulation, rt.simulation.session.tick)
+                && let Some(command) = SynchronizedCommand::opaque(record).decode_for_simulation(
+                    &rt.simulation,
+                    None,
+                    rt.simulation.session.tick,
+                )
             {
                 rt.simulation.queue_command(command);
             }
@@ -300,8 +306,11 @@ pub(crate) fn delete_at_cursor(state: &mut AppState) {
         && let Some(record) = rt
             .simulation
             .encode_plan_node_delete_record_at_screen(owner, point)
-        && let Some(command) = SynchronizedCommand::opaque(record)
-            .decode_for_simulation(&rt.simulation, rt.simulation.session.tick)
+        && let Some(command) = SynchronizedCommand::opaque(record).decode_for_simulation(
+            &rt.simulation,
+            None,
+            rt.simulation.session.tick,
+        )
     {
         rt.simulation.queue_command(command);
     }
@@ -331,7 +340,7 @@ mod tests {
                     },
                 )
                 .unwrap();
-            let command = sim.decode_native_command_record(&record, 0).unwrap();
+            let command = sim.decode_native_command_record(&record, None, 0).unwrap();
             assert!(sim.apply_command("Local", &command.payload, None));
             let coord = sim.planning_draw_graph(local, None, None).nodes[0].coord;
             let (x, y) = crate::util::lepton::absolute_leptons_to_screen(coord.x, coord.y, coord.z);
@@ -353,13 +362,13 @@ mod tests {
             let connect = sim
                 .encode_plan_connect_record_at_screen(local, 43, point)
                 .unwrap();
-            let command = sim.decode_native_command_record(&connect, 0).unwrap();
+            let command = sim.decode_native_command_record(&connect, None, 0).unwrap();
             assert!(sim.apply_command("Local", &command.payload, None));
             assert_eq!(sim.planning_paths(local).len(), 2);
             let delete = sim
                 .encode_plan_node_delete_record_at_screen(local, point)
                 .unwrap();
-            let command = sim.decode_native_command_record(&delete, 0).unwrap();
+            let command = sim.decode_native_command_record(&delete, None, 0).unwrap();
             assert!(sim.apply_command("Local", &command.payload, None));
             assert!(sim.planning_paths(local).is_empty());
         }

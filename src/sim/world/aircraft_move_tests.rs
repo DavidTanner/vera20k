@@ -51,7 +51,7 @@ fn fly_and_jumpjet_planned_move_legs_progress_through_native_arrival() {
                 )
                 .unwrap();
             let envelope = sim
-                .decode_native_command_record(&record, sim.session.tick)
+                .decode_native_command_record(&record, None, sim.session.tick)
                 .unwrap();
             assert!(sim.apply_command("Americans", &envelope.payload, Some(&rules)));
         }

@@ -2655,7 +2655,9 @@ fn queue_scatter_orders(
         let Some(payload) = sim.scatter_key_command(entity_id, rules) else {
             continue;
         };
-        if crate::app::input::commands::schedule_command_in_sim(sim, &owner, payload).is_none() {
+        if crate::app::input::commands::schedule_command_in_sim(sim, Some(rules), &owner, payload)
+            .is_none()
+        {
             return Vec::new();
         }
     }
@@ -2710,7 +2712,9 @@ fn queue_area_guard_orders(
         ) {
             sounds.push(event);
         }
-        if crate::app::input::commands::schedule_command_in_sim(sim, &owner, payload).is_none() {
+        if crate::app::input::commands::schedule_command_in_sim(sim, Some(rules), &owner, payload)
+            .is_none()
+        {
             // A missing Rust registration or unrepresentable record fails
             // closed. This invariant boundary is not native issuer false;
             // Planning Mode is the separate native false-return route.

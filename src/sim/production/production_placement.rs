@@ -117,34 +117,38 @@ pub fn active_producer_for_owner_category(
     })
 }
 
-pub fn cycle_active_producer_for_owner_category(
-    sim: &mut Simulation,
+/// VERA-only: the sidebar Factory button's choice, the category's factory
+/// after the current primary in stable-id order (the first when none is).
+/// `None` without a factory, or when the choice is already primary (a single
+/// factory): its PRIMARY event would toggle the flag off, which the button
+/// never meant.
+///
+/// Residual: issue chooses from the primary as it stands, so two presses
+/// before the first PRIMARY executes both name the same building and the
+/// second clears it. Trigger: two presses within one issue-to-execution
+/// window (one frame offline, the ahead window in network play). Effect: the
+/// slot has no primary until the next press, and FindFactory falls back to
+/// the last eligible factory.
+pub fn next_producer_focus(
+    sim: &Simulation,
     rules: &RuleSet,
-    owner: &str,
+    owner: InternedId,
     category: ProductionCategory,
-) -> bool {
+) -> Option<u64> {
     let candidates = producer_candidates_for_owner_category(
         &sim.substrate.entities,
         rules,
-        owner,
+        sim.interner.resolve(owner),
         category,
         true,
         &sim.interner,
     );
-    if candidates.is_empty() {
-        return false;
-    }
-
-    let owner_id = sim.interner.intern(owner);
-    let current = sim.production.primary_factory(owner_id, category);
-    let next_sid =
-        match current.and_then(|sid| candidates.iter().position(|candidate| candidate.0 == sid)) {
-            Some(index) => candidates[(index + 1) % candidates.len()].0,
-            None => candidates[0].0,
-        };
-    sim.production
-        .set_primary_factory(owner_id, category, next_sid);
-    true
+    let current = sim.production.primary_factory(owner, category);
+    let next = match current.and_then(|sid| candidates.iter().position(|c| c.0 == sid)) {
+        Some(index) => candidates[(index + 1) % candidates.len()].0,
+        None => candidates.first()?.0,
+    };
+    (current != Some(next)).then_some(next)
 }
 
 /// One HouseClass::Place_Production4FB0E0 owner. A building PLACE uses

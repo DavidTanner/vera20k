@@ -436,8 +436,8 @@ resolved toward native in that PR:
 
 | Part | Commands | Native events |
 |---|---|---|
-| 2a MegaMission (this PR) | Attack, ForceAttack, ForceAttackCell, AttackMove, EnterTransport, EnterBunker, RepairAtDepot, MinerReturn, CaptureBuilding, PlantC4, HarvestCell, UnloadPassengers, ToggleInfantryDeploy | MEGAMISSION `0x04`: Attack 1, AttackMove 29, Enter 7, Capture 8, Harvest 10, Unload 16, Sabotage 17 |
-| 2b Production | QueueProduction, SuspendProduction, CancelProductionByType, PlaceReadyBuilding, PlaceProducedMobile, CycleProducerFocus | PRODUCE `0x0E`, SUSPEND `0x0F`, ABANDON `0x10`, ABANDON_ALL `0x2E`, PLACE `0x0B`, PRIMARY `0x11` (*lead*) |
+| 2a MegaMission | Attack, ForceAttack, ForceAttackCell, AttackMove, EnterTransport, EnterBunker, RepairAtDepot, MinerReturn, CaptureBuilding, PlantC4, HarvestCell, UnloadPassengers, ToggleInfantryDeploy | MEGAMISSION `0x04`: Attack 1, AttackMove 29, Enter 7, Capture 8, Harvest 10, Unload 16, Sabotage 17 |
+| 2b Production | QueueProduction, SuspendProduction, CancelProductionByType, PlaceReadyBuilding, PlaceProducedMobile, CycleProducerFocus | PRODUCE `0x0E`, SUSPEND `0x0F`, ABANDON `0x10`, ABANDON_ALL `0x2E`, PLACE `0x0B`, PRIMARY `0x11` (CycleProducerFocus sends its chosen factory's PRIMARY) |
 | 2c Single events | Stop, DeployMcv, SellBuilding, ToggleRepair, LaunchSuperWeapon, SetGameSpeed, SetRally, UndeployBuilding, EjectBunker, and the deploy key's UnloadPassengers and ToggleInfantryDeploy | IDLE `0x06`, DEPLOY `0x09` (the deploy key, `0x00730AF0` -> ClickedEvent `0x006FFE00`), SELL `0x16`, REPAIR `0x15`, SPECIAL_PLACE `0x12`, GAMESPEED `0x0D`, ARCHIVE `0x1E` for rally; UndeployBuilding, EjectBunker and the MCV self-click (Foot action 4 sends Unload16) are *leads* |
 | 2d Local selection | Select | None: native selection is client-local and never an event |
 | 2e Switchover | Every producer, including sim-generated strip PLACE and ABANDON | The queue becomes the only command path; `pending_commands` is deleted |
@@ -501,6 +501,82 @@ Residuals:
   itself as the target.
 - Enter onto a Cell (Cell action 3) and Sabotage onto a Cell (Cell action 0x10) have
   no VERA producer and do not decode.
+
+#### 2b: Production family
+
+Native producers, with the record each sends:
+
+| Command | Producer | Event | Payload |
+|---|---|---|---|
+| QueueProduction | Cameo left click, `SelectClass::Action` (`0x006AB511`, `0x006AB76E`) | PRODUCE `0x0E` | Strip type RTTI, type index, type `Naval=` |
+| SuspendProduction | Cameo right click on a building cameo (`0x006AB02A`, `0x006AB12B`) | SUSPEND `0x0F` | The cameo's type |
+| CancelProductionByType | Cameo right click (`0x006AB1FF`, `0x006AB231`), ALL with Shift; Strip Recalculate (`0x006AA7E7`, `0x006AA8CD`); a ready building without a builder (`0x006AB349`) | ABANDON `0x10`, ABANDON_ALL `0x2E` | As PRODUCE |
+| PlaceReadyBuilding | Placement click, `DisplayClass::BandBox_LeftUp` (`0x004ABB55`) | PLACE `0x0B` | Placement object's RTTI (Building 6), type index, `Naval=`, Cell |
+| PlaceProducedMobile | Strip AI (`0x006A8EE8`) | PLACE `0x0B` | Completed object's RTTI (1, 2, `0x0F`), type index -1, `Naval=`, the empty Cell |
+| CycleProducerFocus | None: VERA's sidebar Factory button. A factory self-click (Building ClickedAction `0x00443494`) is native's PRIMARY producer | PRIMARY `0x11` | The building's Abstract token, from its house |
+
+Constructor `0x004C6970` writes the RTTI, type index and naval dwords at Event+7,
++0xB and +0xF; `0x004C6AE0` adds the Cell at +0x13 and +0x15; PRIMARY uses the
+Target constructor `0x004C65E0`, as Scatter does. None writes another byte.
+`EventClass::Execute` (`0x004C6CB0`) hands the three dwords to
+`HouseClass::Begin_Production` (`0x004FA350`), `Suspend_Production` (`0x004FA910`),
+`Abandon_Production` (`0x004FAA10`, `bAll` for ABANDON_ALL) and `Place_Production`
+(`0x004FB0E0`), the naval dword as `!= 0`, and PRIMARY's live building to
+`BuildingClass::TogglePrimaryFactory` (`0x00448160`) without a house check. Each
+House receiver accepts the object or the type RTTI of the same TechnoType array
+(`RTTI_To_TypeArray` `0x0048DCD0`, table `0x0048DD24`: Unit 1 or UnitType `0x28`,
+Aircraft 2 or 3, Building 6 or 7, Infantry `0x0F` or `0x10`) and picks its factory
+slot from it, the type's `BuildCat=` and, for a Unit, the naval dword.
+
+Delivered:
+- Record codecs `ProductionEventRecord` and `PlaceRecord`; Scatter's record becomes
+  `TargetEventRecord`, which also carries PRIMARY.
+- `Simulation::encode_production_record` builds each record as its producer would,
+  with type indices from `RuleSet::type_array_index`. Decoding production records
+  needs the rules, so `decode_native_command_record` and `decode_for_simulation`
+  take them.
+- Issue round-trips every production command through its record
+  (`schedule_command_in_sim`), which takes the match's rules.
+- SUSPEND names the type its factory is building and decodes to the slot, the only
+  thing its receiver reads.
+- The Factory button chooses the category's next factory, as before, and sends
+  that building's PRIMARY. It decodes to the new `Command::TogglePrimaryFactory`,
+  a port of `TogglePrimaryFactory`: a primary factory clears its flag, any other
+  becomes its slot's primary and, when its house is the player's, speaks
+  `EVA_PrimaryBuildingSelected` (no section in retail `evamd.ini`, so silent, as
+  natively). The button sends nothing when its choice is already primary (a single
+  factory), because PRIMARY would clear it.
+- The strip's own PLACE and ABANDON events encode through the same encoder.
+  They are still queued as commands; routing them through the queue is 2e.
+
+Residuals:
+- A Unit record whose naval dword disagrees with the type's `Naval=` does not
+  decode: native would use the other factory slot, VERA's receivers take the slot
+  from the type. No producer sends one.
+- PLACE decodes only its producer forms. A building with type index -1, a mobile
+  with a type index, and a mobile with a Cell do not decode. Native would place the
+  slot's object at the Cell, or send a mobile out but abandon its factory
+  (`Abandon_Production`) only when the object's index matches. No producer sends
+  them.
+- SUSPEND names the factory's current product where native names the clicked
+  cameo's type. They differ only for a cameo linked to a rearmed factory; the
+  receiver reads only the slot, so execution is the same and only the bytes differ.
+- A left click on a completed mobile cameo (`0x006AB3FC`: type RTTI, index -1)
+  has no VERA producer; Strip AI places mobiles first. The decoder accepts it.
+- A factory self-click has no VERA producer; only the Factory button sends PRIMARY.
+- The button chooses from the primary as it stands at issue, so two presses
+  before the first PRIMARY executes name the same building and the second clears
+  it. Trigger: two presses in one issue-to-execution window (a frame offline, the
+  ahead window in network play). Effect: the slot has no primary until the next
+  press, and FindFactory falls back to the last eligible factory.
+- Issue now needs the type to resolve to a native array index: a production
+  command naming an unknown type is dropped at issue rather than refused by its
+  receiver, and the queued type id is the rules' own spelling of the name.
+- `TogglePrimaryFactory` does not make a building factory's call to `0x0050DB00`
+  (`0x00448241`, Ghidra's DetermineEdge, a name lead), and VERA keeps one primary per slot where native keeps a
+  byte per building and skips limbo buildings when clearing (`0x004481AF`), so a
+  primary building in limbo loses it. Trigger: a Construction Yard made primary,
+  or a factory toggled while its slot's primary is in limbo.
 
 ### Stage 3: UDP transport and network lockstep
 

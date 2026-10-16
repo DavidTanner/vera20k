@@ -148,7 +148,7 @@ fn fixture() -> (Simulation, RuleSet, InternedId) {
 
 fn apply(sim: &mut Simulation, rules: &RuleSet, record: CommandRecord) {
     let envelope = sim
-        .decode_native_command_record(&record, sim.session.tick)
+        .decode_native_command_record(&record, None, sim.session.tick)
         .unwrap();
     assert!(sim.apply_command("Americans", &envelope.payload, Some(rules)));
 }
@@ -1161,7 +1161,7 @@ fn captured_actor_path_commits_for_current_house_and_preserves_original_issuer()
         );
     let record = sim.encode_plan_commit_record(new_owner).unwrap();
     let envelope = sim
-        .decode_native_command_record(&record, sim.session.tick)
+        .decode_native_command_record(&record, None, sim.session.tick)
         .unwrap();
     assert!(sim.apply_command("Russians", &envelope.payload, Some(&rules)));
     let generated = sim.pending_command_snapshot();
@@ -1747,14 +1747,14 @@ fn retained_highlight_keeps_hidden_node_coordinates_and_full_membership() {
         )
         .unwrap();
     let envelope = sim
-        .decode_native_command_record(&record, sim.session.tick)
+        .decode_native_command_record(&record, None, sim.session.tick)
         .unwrap();
     assert!(sim.apply_command("Russians", &envelope.payload, Some(&rules)));
     // Connect receiver639800 resolves actors without an owner gate. The node
     // remains hidden by its FIRST member while containing a visible actor.
     let connect = sim.encode_plan_connect_record(enemy, 1, (12, 15)).unwrap();
     let envelope = sim
-        .decode_native_command_record(&connect, sim.session.tick)
+        .decode_native_command_record(&connect, None, sim.session.tick)
         .unwrap();
     assert!(sim.apply_command("Russians", &envelope.payload, Some(&rules)));
     let coord = sim.planning_node_coords(0).unwrap();

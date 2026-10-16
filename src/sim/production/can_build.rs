@@ -415,15 +415,8 @@ pub(crate) fn initialize_factory_primary(sim: &mut Simulation, id: u64, rules: &
     let Some(ty) = sim.object_type(building.type_ref(), rules) else {
         return;
     };
-    let Some(factory) = ty.factory else {
+    let Some((factory, category)) = factory_primary_slot(ty) else {
         return;
-    };
-    let category = match factory {
-        FactoryType::InfantryType => super::ProductionCategory::Infantry,
-        FactoryType::UnitType if ty.naval => super::ProductionCategory::Ship,
-        FactoryType::UnitType => super::ProductionCategory::Vehicle,
-        FactoryType::AircraftType => super::ProductionCategory::Aircraft,
-        FactoryType::BuildingType => super::ProductionCategory::Building,
     };
     let owner = building.owner();
     let current = sim.production.primary_factory(owner, category);
@@ -442,6 +435,69 @@ pub(crate) fn initialize_factory_primary(sim: &mut Simulation, id: u64, rules: &
         sim.production.set_primary_factory(owner, category, id);
     }
 }
+
+/// The primary byte's slot: a factory building's `Factory=` (`+0xEB8`) and
+/// `Naval=` (`+0xCCE`), which both primary writers compare.
+fn factory_primary_slot(ty: &ObjectType) -> Option<(FactoryType, super::ProductionCategory)> {
+    let factory = ty.factory?;
+    let category = match factory {
+        FactoryType::InfantryType => super::ProductionCategory::Infantry,
+        FactoryType::UnitType if ty.naval => super::ProductionCategory::Ship,
+        FactoryType::UnitType => super::ProductionCategory::Vehicle,
+        FactoryType::AircraftType => super::ProductionCategory::Aircraft,
+        FactoryType::BuildingType => super::ProductionCategory::Building,
+    };
+    Some((factory, category))
+}
+
+/// `BuildingClass::TogglePrimaryFactory @ 0x00448160` (vtable `+0x4F0`), the
+/// PRIMARY event's receiver (`EventClass::Execute`, live building only). A
+/// primary factory clears its flag (`0x00448182`). Any other factory clears
+/// the flag of its house's buildings of the same slot (`0x004481A3..
+/// 0x004481F4`), becomes primary (`0x0044820B`) and, when its house is the
+/// player's (`HouseClass::IsHumanPlayer` `0x0050B6F0`, called at
+/// `0x00448212`), speaks `EVA_PrimaryBuildingSelected` (`0x00448226`). A
+/// building without `Factory=` is left alone (`0x00448178`). Returns whether
+/// it is a factory.
+///
+/// Residuals: a building factory's call to `0x0050DB00` (`0x00448241`,
+/// Ghidra's `HouseClass::DetermineEdge`, a name lead) is not ported;
+/// [`initialize_factory_primary`] omits it too. The
+/// native byte is per building and the clear skips limbo buildings
+/// (`0x004481AF`); VERA keeps one primary per slot, so a primary building in
+/// limbo loses it. Trigger: a Construction Yard made primary, or a factory
+/// toggled while its slot's primary is in limbo. Frequency: rare.
+pub(crate) fn toggle_primary_factory(sim: &mut Simulation, rules: &RuleSet, id: u64) -> bool {
+    let Some(building) = sim.substrate.entities.get(id) else {
+        return false;
+    };
+    if building.category() != EntityCategory::Structure || building.death.is_dying() {
+        return false;
+    }
+    let owner = building.owner();
+    let Some((_, category)) = sim
+        .object_type(building.type_ref(), rules)
+        .and_then(factory_primary_slot)
+    else {
+        return false;
+    };
+    if sim.production.primary_factory(owner, category) == Some(id) {
+        sim.production.clear_primary_factory(id);
+    } else {
+        sim.production.set_primary_factory(owner, category, id);
+        if sim.house_is_human_player(owner) {
+            sim.sound_events
+                .push(crate::sim::world::SimSoundEvent::HouseEva {
+                    owner,
+                    event: EVA_PRIMARY_BUILDING_SELECTED,
+                });
+        }
+    }
+    true
+}
+
+/// `0x00448226`'s `PlayEVA` section.
+const EVA_PRIMARY_BUILDING_SELECTED: &str = "EVA_PrimaryBuildingSelected";
 
 /// `TechnoTypeClass::Get_Ownable @ 0x00711EC0` (vtable `+0x70` of every
 /// TechnoType class): every house for a `DoubleOwned=` type outside a

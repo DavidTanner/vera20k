@@ -801,6 +801,7 @@ fn pick_building_for_owner(
 
 pub(super) fn schedule_command_in_sim(
     sim: &mut crate::sim::world::Simulation,
+    rules: Option<&crate::rules::ruleset::RuleSet>,
     owner: &str,
     payload: Command,
 ) -> Option<u64> {
@@ -836,15 +837,32 @@ pub(super) fn schedule_command_in_sim(
     let envelope = match payload {
         Command::Scatter { entity_id } => {
             let record = sim.encode_scatter_record(owner_id, entity_id)?;
-            SynchronizedCommand::opaque(record).decode_for_simulation(sim, execute_tick)?
+            SynchronizedCommand::opaque(record).decode_for_simulation(sim, None, execute_tick)?
         }
         Command::ExitMatch => {
             let record = sim.encode_exit_record(owner_id)?;
-            SynchronizedCommand::opaque(record).decode_for_simulation(sim, execute_tick)?
+            SynchronizedCommand::opaque(record).decode_for_simulation(sim, None, execute_tick)?
         }
         Command::SellWallAtCell { x, y } => {
             let record = sim.encode_sell_wall_at_cell_record(owner_id, x, y)?;
-            SynchronizedCommand::opaque(record).decode_for_simulation(sim, execute_tick)?
+            SynchronizedCommand::opaque(record).decode_for_simulation(sim, None, execute_tick)?
+        }
+        // The production family names types by native array index, so it
+        // round-trips only with the match's rules.
+        payload @ (Command::QueueProduction { .. }
+        | Command::SuspendProduction { .. }
+        | Command::CancelProductionByType { .. }
+        | Command::PlaceReadyBuilding { .. }
+        | Command::PlaceProducedMobile { .. }
+        | Command::CycleProducerFocus { .. }
+        | Command::TogglePrimaryFactory { .. }) => {
+            let rules = rules?;
+            let record = sim.encode_production_record(owner_id, &payload, rules)?;
+            SynchronizedCommand::opaque(record).decode_for_simulation(
+                sim,
+                Some(rules),
+                execute_tick,
+            )?
         }
         payload => CommandEnvelope::new(owner_id, execute_tick, payload),
     };
@@ -943,7 +961,7 @@ pub(crate) fn roundtrip_ordinary_local_megamission(
         | Command::UnloadPassengers { .. }
         | Command::ToggleInfantryDeploy { .. } => {
             let record = sim.encode_megamission_record(owner, &payload)?;
-            SynchronizedCommand::opaque(record).decode_for_simulation(sim, execute_tick)
+            SynchronizedCommand::opaque(record).decode_for_simulation(sim, None, execute_tick)
         }
         payload => Some(CommandEnvelope::new(owner, execute_tick, payload)),
     }
@@ -959,12 +977,13 @@ pub(crate) fn try_schedule_command(
     owner: &str,
     payload: Command,
 ) -> Option<u64> {
-    state
-        .match_state
-        .sim_runtime
-        .as_mut()
-        .map(|rt| &mut rt.simulation)
-        .and_then(|sim| schedule_command_in_sim(sim, owner, payload))
+    let rt = state.match_state.sim_runtime.as_mut()?;
+    schedule_command_in_sim(
+        &mut rt.simulation,
+        Some(&rt.resources.rules),
+        owner,
+        payload,
+    )
 }
 
 /// Preserve the existing unit-returning command boundary for ordinary callers.
@@ -1018,27 +1037,96 @@ mod tests {
                 target_ry: 23,
             },
         ] {
-            assert_eq!(schedule_command_in_sim(&mut sim, "Unknown", payload), None);
+            assert_eq!(
+                schedule_command_in_sim(&mut sim, None, "Unknown", payload),
+                None
+            );
         }
         assert!(sim.pending_command_snapshot().is_empty());
         assert_eq!(sim.interner.len(), before_names);
         assert_eq!(sim.state_hash(), before_hash);
 
         assert_eq!(
-            schedule_command_in_sim(&mut sim, "Local", Command::SetGameSpeed { speed: 4 }),
+            schedule_command_in_sim(&mut sim, None, "Local", Command::SetGameSpeed { speed: 4 }),
             Some(0)
         );
         assert_eq!(
-            schedule_command_in_sim(&mut sim, "Local", Command::ExitMatch),
+            schedule_command_in_sim(&mut sim, None, "Local", Command::ExitMatch),
             Some(0)
         );
         assert_eq!(sim.pending_command_snapshot().len(), 2);
         sim.session.set_input_locked(false);
         assert_eq!(
-            schedule_command_in_sim(&mut sim, "Local", Command::Stop { entity_id: 11 }),
+            schedule_command_in_sim(&mut sim, None, "Local", Command::Stop { entity_id: 11 }),
             Some(0)
         );
         assert_eq!(sim.pending_command_snapshot().len(), 3);
+    }
+
+    /// Every production command is queued as what its native record decodes
+    /// to (`Simulation::encode_production_record`), and needs the match's
+    /// rules to resolve the record's type index.
+    #[test]
+    fn production_issue_queues_what_its_native_record_decodes_to() {
+        let rules = crate::rules::ruleset::RuleSet::from_ini(&IniFile::from_str(
+            "[Countries]\n0=Americans\n[InfantryTypes]\n0=E1\n[VehicleTypes]\n\
+             [AircraftTypes]\n[BuildingTypes]\n0=GAPOWR\n\
+             [E1]\nOwner=Americans\n[GAPOWR]\nOwner=Americans\n",
+        ))
+        .unwrap();
+        let mut sim = Simulation::new();
+        sim.intern_rule_type_ids(&rules);
+        let local = sim.interner.intern("Local");
+        sim.houses
+            .insert(local, HouseState::new(local, 0, None, true, 0, 10));
+        sim.session.house_order.push(local);
+        let e1 = sim.interner.get("E1").unwrap();
+        let gapowr = sim.interner.get("GAPOWR").unwrap();
+        let issued = [
+            Command::QueueProduction { type_id: e1 },
+            Command::CancelProductionByType {
+                type_id: e1,
+                all: true,
+            },
+            Command::PlaceReadyBuilding {
+                type_id: gapowr,
+                rx: 12,
+                ry: 34,
+            },
+            Command::PlaceProducedMobile {
+                category: crate::sim::production::ProductionCategory::Infantry,
+            },
+        ];
+        for payload in &issued {
+            assert_eq!(
+                schedule_command_in_sim(&mut sim, None, "Local", payload.clone()),
+                None,
+                "{payload:?} without rules"
+            );
+            assert_eq!(
+                schedule_command_in_sim(&mut sim, Some(&rules), "Local", payload.clone()),
+                Some(0),
+                "{payload:?}"
+            );
+        }
+        // SUSPEND names the factory's build; with none there is no record.
+        assert_eq!(
+            schedule_command_in_sim(
+                &mut sim,
+                Some(&rules),
+                "Local",
+                Command::SuspendProduction {
+                    category: crate::sim::production::ProductionCategory::Infantry,
+                },
+            ),
+            None
+        );
+        let queued: Vec<_> = sim
+            .pending_command_snapshot()
+            .into_iter()
+            .map(|envelope| envelope.payload)
+            .collect();
+        assert_eq!(queued, issued);
     }
 
     #[test]
@@ -1051,7 +1139,7 @@ mod tests {
         let before_hash = sim.state_hash();
 
         assert_eq!(
-            schedule_command_in_sim(&mut sim, "Local", Command::SetGameSpeed { speed: 4 }),
+            schedule_command_in_sim(&mut sim, None, "Local", Command::SetGameSpeed { speed: 4 }),
             Some(0)
         );
         assert_eq!(sim.session.game_options.game_speed, 1);
@@ -1059,7 +1147,7 @@ mod tests {
         assert_eq!(sim.pending_command_snapshot().len(), 1);
 
         assert_eq!(
-            schedule_command_in_sim(&mut sim, "Local", Command::SetGameSpeed { speed: 4 }),
+            schedule_command_in_sim(&mut sim, None, "Local", Command::SetGameSpeed { speed: 4 }),
             Some(0),
             "reopening Options before admission accepts the existing request"
         );
@@ -1069,14 +1157,19 @@ mod tests {
             "duplicate request is elided"
         );
         assert_eq!(
-            schedule_command_in_sim(&mut sim, "Local", Command::SetGameSpeed { speed: 7 }),
+            schedule_command_in_sim(&mut sim, None, "Local", Command::SetGameSpeed { speed: 7 }),
             None,
             "the in-game trackbar cannot emit stored speed 7"
         );
 
         let interned_before_unknown = sim.interner.len();
         assert_eq!(
-            schedule_command_in_sim(&mut sim, "Unknown", Command::SetGameSpeed { speed: 3 }),
+            schedule_command_in_sim(
+                &mut sim,
+                None,
+                "Unknown",
+                Command::SetGameSpeed { speed: 3 }
+            ),
             None
         );
         assert_eq!(sim.interner.len(), interned_before_unknown);
@@ -1093,7 +1186,7 @@ mod tests {
         sim.session.binary_frame = 73;
 
         assert_eq!(
-            schedule_command_in_sim(&mut sim, "Local", Command::ExitMatch),
+            schedule_command_in_sim(&mut sim, None, "Local", Command::ExitMatch),
             Some(41)
         );
         assert_eq!(sim.pending_command_snapshot().len(), 1);
@@ -1157,7 +1250,7 @@ mod tests {
                 .accept_win_result(41, 1, false)
         );
         assert_eq!(
-            schedule_command_in_sim(&mut sim, "Local", Command::ExitMatch),
+            schedule_command_in_sim(&mut sim, None, "Local", Command::ExitMatch),
             Some(41)
         );
 
@@ -1282,6 +1375,7 @@ mod tests {
         assert_eq!(
             schedule_command_in_sim(
                 &mut sim,
+                None,
                 "Local",
                 Command::Move {
                     entity_id: 42,
@@ -1296,6 +1390,7 @@ mod tests {
         assert_eq!(
             schedule_command_in_sim(
                 &mut sim,
+                None,
                 "Local",
                 Command::Move {
                     entity_id: 42,
@@ -1321,6 +1416,7 @@ mod tests {
 
         schedule_command_in_sim(
             &mut sim,
+            None,
             "Local",
             Command::MoveToObject {
                 entity_id: 42,
@@ -1344,9 +1440,13 @@ mod tests {
         sim.session.tick = 41;
         sim.input_delay_ticks = 7;
 
-        let execute_tick =
-            schedule_command_in_sim(&mut sim, "Russians", Command::DeployMcv { entity_id: 99 })
-                .unwrap();
+        let execute_tick = schedule_command_in_sim(
+            &mut sim,
+            None,
+            "Russians",
+            Command::DeployMcv { entity_id: 99 },
+        )
+        .unwrap();
 
         assert_eq!(execute_tick, 41);
         assert_eq!(sim.pending_command_snapshot().len(), 1);
@@ -1368,9 +1468,13 @@ mod tests {
         sim.session.tick = u64::MAX - 1;
         sim.input_delay_ticks = 8;
 
-        let execute_tick =
-            schedule_command_in_sim(&mut sim, "YuriCountry", Command::DeployMcv { entity_id: 7 })
-                .unwrap();
+        let execute_tick = schedule_command_in_sim(
+            &mut sim,
+            None,
+            "YuriCountry",
+            Command::DeployMcv { entity_id: 7 },
+        )
+        .unwrap();
 
         assert_eq!(execute_tick, u64::MAX - 1);
         assert_eq!(sim.pending_command_snapshot()[0].execute_tick, u64::MAX - 1);
@@ -1406,7 +1510,7 @@ mod tests {
         assert_eq!(&issued.payload()[..4], &[0, 0, 1, 0]);
         assert_eq!(
             crate::net::lockstep::SynchronizedCommand::opaque(issued)
-                .decode_for_simulation(&sim, 23)
+                .decode_for_simulation(&sim, None, 23)
                 .unwrap(),
             CommandEnvelope::new(local, 23, Command::SellWallAtCell { x: 0, y: 1 })
         );
@@ -1438,7 +1542,7 @@ mod tests {
                 false,
                 object_under_cursor,
             )?;
-            schedule_command_in_sim(sim, "Local", payload)
+            schedule_command_in_sim(sim, None, "Local", payload)
         }
 
         assert_eq!(attempt(&mut sim, &overlays, (0, 0), false), None);

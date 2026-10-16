@@ -20,7 +20,8 @@ use crate::sim::combat::combat_aoe::CellTargetDetach;
 use crate::sim::combat::combat_aoe::expire_cell_target_references;
 use crate::sim::command::{
     COMMAND_RECORD_LEN, Command, CommandEnvelope, CommandRecord, ExitRecord, MegaMissionOrder,
-    MegaMissionRecord, MegaMissionTarget, ScatterRecord, SellWallAtCellRecord,
+    MegaMissionRecord, MegaMissionTarget, PRIMARY_OPCODE, PlaceRecord, ProductionEvent,
+    ProductionEventRecord, ProductionRtti, SCATTER_OPCODE, SellWallAtCellRecord, TargetEventRecord,
 };
 use crate::sim::mission::MissionType;
 use crate::sim::overlay_grid::{
@@ -30,6 +31,7 @@ use crate::sim::passenger;
 use crate::sim::pathfinding::PathGrid;
 use crate::sim::pathfinding::zone_incremental::ZoneRepairKind;
 use crate::sim::production;
+use crate::sim::production::ProductionCategory;
 
 #[cfg(test)]
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -88,6 +90,25 @@ fn trace_wall_sell_zone_repair_step(
     });
 }
 
+/// The mobile factory slots, with the object RTTI and naval flag Strip AI's
+/// PLACE (`0x006A8EE8`) sends for each: the completed object's `What_Am_I`
+/// (Unit, Aircraft, Infantry) and its type's `Naval=`, which picks a Unit's
+/// slot (`Place_Production @ 0x004FB0E0`). A building is never placed this way.
+const MOBILE_PLACE_SLOTS: [(ProductionCategory, ProductionRtti, bool); 4] = [
+    (
+        ProductionCategory::Infantry,
+        ProductionRtti::Infantry,
+        false,
+    ),
+    (ProductionCategory::Vehicle, ProductionRtti::Unit, false),
+    (ProductionCategory::Ship, ProductionRtti::Unit, true),
+    (
+        ProductionCategory::Aircraft,
+        ProductionRtti::Aircraft,
+        false,
+    ),
+];
+
 impl Simulation {
     /// ScatterSelectedObjects730FE0 admits Techno vt+A0, without Guard's
     /// IsActive test or miner exception. All retained entities are Technos.
@@ -108,13 +129,9 @@ impl Simulation {
         {
             return None;
         }
-        let house_id = self
-            .session
-            .house_order
-            .iter()
-            .position(|&owner| owner == command_owner)
-            .and_then(|index| i8::try_from(index).ok())?;
-        let typed = ScatterRecord {
+        let house_id = self.house_record_id(command_owner)?;
+        let typed = TargetEventRecord {
+            opcode: SCATTER_OPCODE,
             house_id,
             frame: self.session.binary_frame as i32,
             entity_id: i32::try_from(entity_id).ok()?,
@@ -316,12 +333,7 @@ impl Simulation {
         {
             return None;
         }
-        let house_id = self
-            .session
-            .house_order
-            .iter()
-            .position(|&owner| owner == command_owner)
-            .and_then(|index| i8::try_from(index).ok())?;
+        let house_id = self.house_record_id(command_owner)?;
         let typed = MegaMissionRecord {
             house_id,
             frame: self.session.binary_frame as i32,
@@ -330,6 +342,134 @@ impl Simulation {
         };
         let mut record = CommandRecord::decode_exact(&[0; COMMAND_RECORD_LEN]).ok()?;
         typed.write_into(&mut record).ok()?;
+        Some(record)
+    }
+
+    /// The record's house byte: the HouseClass registration index
+    /// (`ArrayIndex`), never an interner id.
+    fn house_record_id(&self, owner: crate::sim::intern::InternedId) -> Option<i8> {
+        self.session
+            .house_order
+            .iter()
+            .position(|&house| house == owner)
+            .and_then(|index| i8::try_from(index).ok())
+    }
+
+    /// Build the native record of a locally issued production command, as
+    /// its producer would:
+    /// - QueueProduction, SuspendProduction and CancelProductionByType: a
+    ///   cameo click (`SelectClass::Action @ 0x006AAD00`) sends PRODUCE,
+    ///   SUSPEND, ABANDON or ABANDON_ALL with the strip's type RTTI, type index
+    ///   and the type's `Naval=` (constructor `0x004C6970`). SUSPEND names the
+    ///   type the factory is building.
+    /// - PlaceReadyBuilding: the placement click (`DisplayClass::BandBox_LeftUp`
+    ///   `0x004ABB55`) sends PLACE with the placement object's RTTI (Building),
+    ///   its type index and Cell (constructor `0x004C6AE0`).
+    /// - PlaceProducedMobile: Strip AI (`0x006A8EE8`) sends PLACE with the
+    ///   completed object's RTTI, type index -1 and the empty Cell.
+    /// - CycleProducerFocus and TogglePrimaryFactory: a factory self-click
+    ///   (`BuildingClass::ClickedAction @ 0x00443494`) sends PRIMARY naming the
+    ///   building, from the building's house (constructor `0x004C65E0`).
+    pub(crate) fn encode_production_record(
+        &self,
+        command_owner: crate::sim::intern::InternedId,
+        command: &Command,
+        rules: &RuleSet,
+    ) -> Option<CommandRecord> {
+        if !self.houses.contains_key(&command_owner) {
+            return None;
+        }
+        let frame = self.session.binary_frame as i32;
+        let house_id = self.house_record_id(command_owner)?;
+        let type_fields = |type_id| {
+            let object = self.object_type(type_id, rules)?;
+            let index = rules.type_array_index(object.category, self.interner.resolve(type_id))?;
+            Some((object, index))
+        };
+        let production = |event, type_id| {
+            let (object, type_index) = type_fields(type_id)?;
+            Some(ProductionEventRecord {
+                event,
+                house_id,
+                frame,
+                rtti: ProductionRtti::type_of(object.category),
+                type_index,
+                naval: object.naval,
+            })
+        };
+        let mut record = CommandRecord::decode_exact(&[0; COMMAND_RECORD_LEN]).ok()?;
+        match *command {
+            Command::QueueProduction { type_id } => {
+                production(ProductionEvent::Produce, type_id)?.write_into(&mut record);
+            }
+            Command::SuspendProduction { category } => {
+                let factory = self.production.factories.view(command_owner, category)?;
+                production(ProductionEvent::Suspend, factory.object?.type_id)?
+                    .write_into(&mut record);
+            }
+            Command::CancelProductionByType { type_id, all } => {
+                let event = if all {
+                    ProductionEvent::AbandonAll
+                } else {
+                    ProductionEvent::Abandon
+                };
+                production(event, type_id)?.write_into(&mut record);
+            }
+            Command::PlaceReadyBuilding { type_id, rx, ry } => {
+                let (object, type_index) = type_fields(type_id)?;
+                if object.category != crate::rules::object_type::ObjectCategory::Building {
+                    return None;
+                }
+                PlaceRecord {
+                    house_id,
+                    frame,
+                    rtti: ProductionRtti::Building,
+                    type_index,
+                    naval: object.naval,
+                    // A Cell is two signed shorts, which VERA spells as u16.
+                    x: rx as i16,
+                    y: ry as i16,
+                }
+                .write_into(&mut record);
+            }
+            Command::PlaceProducedMobile { category } => {
+                let (_, rtti, naval) = MOBILE_PLACE_SLOTS
+                    .into_iter()
+                    .find(|&(slot, ..)| slot == category)?;
+                PlaceRecord {
+                    house_id,
+                    frame,
+                    rtti,
+                    type_index: -1,
+                    naval,
+                    x: 0,
+                    y: 0,
+                }
+                .write_into(&mut record);
+            }
+            Command::CycleProducerFocus { category } => {
+                let building_id =
+                    production::next_producer_focus(self, rules, command_owner, category)?;
+                return self.encode_primary_record(building_id);
+            }
+            Command::TogglePrimaryFactory { building_id } => {
+                return self.encode_primary_record(building_id);
+            }
+            _ => return None,
+        }
+        Some(record)
+    }
+
+    fn encode_primary_record(&self, building_id: u64) -> Option<CommandRecord> {
+        let building = self.substrate.entities.get(building_id)?;
+        let mut record = CommandRecord::decode_exact(&[0; COMMAND_RECORD_LEN]).ok()?;
+        TargetEventRecord {
+            opcode: PRIMARY_OPCODE,
+            house_id: self.house_record_id(building.owner())?,
+            frame: self.session.binary_frame as i32,
+            entity_id: i32::try_from(building_id).ok()?,
+        }
+        .write_into(&mut record);
         Some(record)
     }
 
@@ -344,12 +484,7 @@ impl Simulation {
         if !self.houses.contains_key(&command_owner) {
             return None;
         }
-        let house_id = self
-            .session
-            .house_order
-            .iter()
-            .position(|&owner| owner == command_owner)
-            .and_then(|index| i8::try_from(index).ok())?;
+        let house_id = self.house_record_id(command_owner)?;
         SellWallAtCellRecord {
             house_id,
             frame: self.session.binary_frame,
@@ -369,12 +504,7 @@ impl Simulation {
         if !self.houses.contains_key(&command_owner) {
             return None;
         }
-        let house_id = self
-            .session
-            .house_order
-            .iter()
-            .position(|&owner| owner == command_owner)
-            .and_then(|index| i8::try_from(index).ok())?;
+        let house_id = self.house_record_id(command_owner)?;
         ExitRecord {
             house_id,
             frame: self.session.binary_frame,
@@ -386,9 +516,12 @@ impl Simulation {
     /// Decode one synchronized record after its queue has admitted the stamped
     /// frame. The semantic envelope is only a typed execution view of the raw
     /// bytes; timing/processed-bit ownership remains with the raw queue.
+    /// Production records name types by native array index, so they decode
+    /// only with `rules`.
     pub(crate) fn decode_native_command_record(
         &self,
         record: &CommandRecord,
+        rules: Option<&RuleSet>,
         execute_tick: u64,
     ) -> Option<CommandEnvelope> {
         // PlanMgr637E00/638120 owns the payload and validates live actors.
@@ -409,7 +542,7 @@ impl Simulation {
                 )
             });
         }
-        if let Some(typed) = ScatterRecord::decode(record) {
+        if let Some(typed) = TargetEventRecord::decode(record) {
             let house_index = usize::try_from(typed.house_id).ok()?;
             let owner = *self.session.house_order.get(house_index)?;
             if !self.houses.contains_key(&owner) {
@@ -417,11 +550,24 @@ impl Simulation {
             }
             let entity_id = u64::try_from(typed.entity_id).ok()?;
             self.substrate.entities.get(entity_id)?;
-            return Some(CommandEnvelope::new(
-                owner,
-                execute_tick,
-                Command::Scatter { entity_id },
-            ));
+            let command = match typed.opcode {
+                SCATTER_OPCODE => Command::Scatter { entity_id },
+                // `EventClass::Execute`'s PRIMARY arm reads no house: it
+                // toggles any live building (`TogglePrimaryFactory`).
+                PRIMARY_OPCODE => Command::TogglePrimaryFactory {
+                    building_id: entity_id,
+                },
+                _ => return None,
+            };
+            return Some(CommandEnvelope::new(owner, execute_tick, command));
+        }
+        if let Some(command) = self.decode_production_record(record, rules) {
+            let house_index = usize::try_from(record.house_id()).ok()?;
+            let owner = *self.session.house_order.get(house_index)?;
+            return self
+                .houses
+                .contains_key(&owner)
+                .then(|| CommandEnvelope::new(owner, execute_tick, command));
         }
         if let Some(typed) = MegaMissionRecord::decode(record) {
             let house_index = usize::try_from(typed.house_id).ok()?;
@@ -541,6 +687,76 @@ impl Simulation {
                     y: typed.y,
                 },
             )
+        })
+    }
+
+    /// The represented production records, decoded to the command whose
+    /// receiver runs what the native one does. A receiver picks its factory
+    /// slot from the RTTI, the type's `BuildCat=` and, for a Unit, the naval
+    /// dword (`HouseClass::Begin_Production @ 0x004FA350` and its siblings).
+    /// VERA's receivers take the slot from the type, so a Unit record whose
+    /// naval dword disagrees with the type's `Naval=` is not represented; no
+    /// producer sends one. A PLACE is represented in its two producer forms:
+    /// a building's type and Cell, and a mobile's type index -1 with the empty
+    /// Cell (`0x004FB197..0x004FB1BE` sends (0, 0) and (-1, -1) to the exit).
+    fn decode_production_record(
+        &self,
+        record: &CommandRecord,
+        rules: Option<&RuleSet>,
+    ) -> Option<Command> {
+        use crate::rules::object_type::ObjectCategory;
+        let named_type = |rtti: ProductionRtti, index: i32, naval: bool| {
+            let rules = rules?;
+            let category = rtti.array();
+            let object = rules.type_array_at(category, index)?;
+            if category == ObjectCategory::Vehicle && object.naval != naval {
+                return None;
+            }
+            let name = rules
+                .type_array_ids(category)
+                .get(usize::try_from(index).ok()?)?;
+            Some((self.interner.get(name)?, object))
+        };
+        if let Some(typed) = ProductionEventRecord::decode(record) {
+            let (type_id, object) = named_type(typed.rtti, typed.type_index, typed.naval)?;
+            return Some(match typed.event {
+                ProductionEvent::Produce => Command::QueueProduction { type_id },
+                ProductionEvent::Suspend => Command::SuspendProduction {
+                    category: production::category_for_object(object),
+                },
+                ProductionEvent::Abandon => Command::CancelProductionByType {
+                    type_id,
+                    all: false,
+                },
+                ProductionEvent::AbandonAll => {
+                    Command::CancelProductionByType { type_id, all: true }
+                }
+            });
+        }
+        let typed = PlaceRecord::decode(record)?;
+        if typed.type_index == -1 {
+            if !matches!((typed.x, typed.y), (0, 0) | (-1, -1)) {
+                return None;
+            }
+            let (category, ..) = MOBILE_PLACE_SLOTS.into_iter().find(|&(_, rtti, naval)| {
+                rtti.array() == typed.rtti.array()
+                    && (rtti.array() != ObjectCategory::Vehicle || naval == typed.naval)
+            })?;
+            return Some(Command::PlaceProducedMobile { category });
+        }
+        if typed.rtti.array() != ObjectCategory::Building {
+            return None;
+        }
+        let (type_id, _) = named_type(typed.rtti, typed.type_index, typed.naval)?;
+        // VERA spells a Cell's signed shorts as u16 (CellStruct(-1, -1) is
+        // `u16::MAX`); the casts are each other's inverse. Place_Production
+        // sends the empty Cell and (-1, -1) to the exit path whatever the
+        // type, and so does this command's receiver
+        // (`place_production_with_overlays`).
+        Some(Command::PlaceReadyBuilding {
+            type_id,
+            rx: typed.x as u16,
+            ry: typed.y as u16,
         })
     }
 
@@ -836,7 +1052,8 @@ impl Simulation {
             let Some(typed) = MegaMissionRecord::decode(&ordinary) else {
                 return false;
             };
-            let Some(envelope) = self.decode_native_command_record(&ordinary, self.session.tick)
+            let Some(envelope) =
+                self.decode_native_command_record(&ordinary, rules, self.session.tick)
             else {
                 return false;
             };
@@ -1277,14 +1494,19 @@ impl Simulation {
             Command::SuspendProduction { category } => {
                 production::suspend_production(self, command_owner, *category)
             }
+            // A saved or replayed Factory-button command: issue sends its
+            // chosen building's PRIMARY instead (`encode_production_record`).
             Command::CycleProducerFocus { category } => {
                 let Some(rules) = rules else { return false };
-                production::cycle_active_producer_for_owner_category(
-                    self,
-                    rules,
-                    command_owner,
-                    *category,
-                )
+                let Some(owner) = self.interner.get(command_owner) else {
+                    return false;
+                };
+                production::next_producer_focus(self, rules, owner, *category)
+                    .is_some_and(|id| production::toggle_primary_factory(self, rules, id))
+            }
+            Command::TogglePrimaryFactory { building_id } => {
+                let Some(rules) = rules else { return false };
+                production::toggle_primary_factory(self, rules, *building_id)
             }
             Command::PlaceReadyBuilding { type_id, rx, ry } => {
                 let Some(rules) = rules else { return false };
@@ -2976,7 +3198,9 @@ mod tests {
             },
         ] {
             let record = sim.encode_megamission_record(local, &command).unwrap();
-            let decoded = sim.decode_native_command_record(&record, 900).unwrap();
+            let decoded = sim
+                .decode_native_command_record(&record, None, 900)
+                .unwrap();
             assert_eq!(decoded.owner, local);
             assert_eq!(decoded.execute_tick, 900);
             let expected = match command {
@@ -2994,7 +3218,7 @@ mod tests {
                 let mut planned = record.clone();
                 planned.payload_mut()[22] = flag;
                 assert_eq!(
-                    sim.decode_native_command_record(&planned, 900)
+                    sim.decode_native_command_record(&planned, None, 900)
                         .unwrap()
                         .payload,
                     Command::PlanningRecord { record: planned }
@@ -3004,14 +3228,14 @@ mod tests {
         for opcode in 0x2A..=0x2C {
             let record = CommandRecord::encode(opcode, 0, 77, &[]).unwrap();
             assert_eq!(
-                sim.decode_native_command_record(&record, 900)
+                sim.decode_native_command_record(&record, None, 900)
                     .unwrap()
                     .payload,
                 Command::PlanningRecord { record }
             );
             let invalid_owner = CommandRecord::encode(opcode, -1, 77, &[]).unwrap();
             assert!(
-                sim.decode_native_command_record(&invalid_owner, 900)
+                sim.decode_native_command_record(&invalid_owner, None, 900)
                     .is_none()
             );
         }
@@ -3031,7 +3255,7 @@ mod tests {
         // Event+7..11. Case7 at4C7859 resolves it independently of issuer.
         let record = CommandRecord::encode(7, 0, 77, &[42, 0, 0, 0, 0x34]).unwrap();
         let decoded = sim
-            .decode_native_command_record(&record, 900)
+            .decode_native_command_record(&record, None, 900)
             .expect("EVENT_SCATTER must reach the synchronized command decoder");
         assert_eq!(decoded.owner, local);
         assert_eq!(decoded.execute_tick, 900);
@@ -3060,7 +3284,7 @@ mod tests {
                 },
             )
             .unwrap();
-        let decoded = sim.decode_native_command_record(&record, 1).unwrap();
+        let decoded = sim.decode_native_command_record(&record, None, 1).unwrap();
         assert_eq!(decoded.owner, issuer);
         assert!(sim.apply_command("Issuer", &decoded.payload, Some(&rules)));
         assert_eq!(
@@ -3101,7 +3325,7 @@ mod tests {
         );
         assert_eq!(record.frame_stamp(), 77);
         assert_eq!(
-            sim.decode_native_command_record(&record, 900),
+            sim.decode_native_command_record(&record, None, 900),
             Some(CommandEnvelope::new(
                 local,
                 900,
@@ -3123,7 +3347,7 @@ mod tests {
             .encode_megamission_record(local, &onto_object)
             .expect("an object destination encodes");
         assert_eq!(
-            sim.decode_native_command_record(&record, 900),
+            sim.decode_native_command_record(&record, None, 900),
             Some(CommandEnvelope::new(local, 900, onto_object))
         );
     }
@@ -4550,7 +4774,9 @@ mod tests {
             let record = sim.encode_megamission_record(local, &command).unwrap();
             assert_eq!(record.opcode(), crate::sim::command::MEGAMISSION_OPCODE);
             assert_eq!(record.frame_stamp(), 77);
-            let decoded = sim.decode_native_command_record(&record, 900).unwrap();
+            let decoded = sim
+                .decode_native_command_record(&record, None, 900)
+                .unwrap();
             assert_eq!(decoded.owner, local, "{command:?}");
             assert_eq!(decoded.execute_tick, 900, "{command:?}");
             assert_eq!(decoded.payload, expected, "{command:?}");

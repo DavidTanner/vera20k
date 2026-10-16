@@ -5,9 +5,8 @@ use crate::rules::foundation::foundation_dimensions;
 
 use super::{
     BuildingPlacementError, ProductionCategory, ProductionPlacement, credits_for_owner,
-    cycle_active_producer_for_owner_category, place_production_with_overlays,
-    placement_preview_for_owner_with_overlays, producer_candidates_for_owner_category,
-    publish_production_changes, ready_buildings_for_owner,
+    next_producer_focus, place_production_with_overlays, placement_preview_for_owner_with_overlays,
+    producer_candidates_for_owner_category, publish_production_changes, ready_buildings_for_owner,
 };
 use crate::map::entities::EntityCategory;
 use crate::map::resolved_terrain::{
@@ -3333,39 +3332,45 @@ fn producer_candidates_are_sorted_by_stable_id() {
 }
 
 #[test]
-fn cycle_active_producer_rotates_matching_factories() {
+fn producer_focus_rotates_matching_factories_through_the_primary_toggle() {
     let mut sim = placement_sim();
     let rules = factory_rules();
 
     spawn_structure(&mut sim, &rules, 3, "Americans", "GAWEAP", 10, 10);
     spawn_structure(&mut sim, &rules, 5, "Americans", "GAWEAP", 15, 15);
     spawn_structure(&mut sim, &rules, 9, "Americans", "GAWEAP", 20, 20);
+    let americans = sim.interner.intern("Americans");
 
-    assert!(cycle_active_producer_for_owner_category(
-        &mut sim,
-        &rules,
-        "Americans",
-        ProductionCategory::Vehicle,
-    ));
+    for expected in [3, 5, 9, 3] {
+        let next = next_producer_focus(&sim, &rules, americans, ProductionCategory::Vehicle);
+        assert_eq!(next, Some(expected));
+        assert!(super::toggle_primary_factory(&mut sim, &rules, expected));
+        assert_eq!(
+            sim.production
+                .primary_factory(americans, ProductionCategory::Vehicle),
+            Some(expected)
+        );
+    }
+}
+
+#[test]
+fn producer_focus_never_toggles_a_single_primary_factory_off() {
+    let mut sim = placement_sim();
+    let rules = factory_rules();
+    spawn_structure(&mut sim, &rules, 3, "Americans", "GAWEAP", 10, 10);
+    let americans = sim.interner.intern("Americans");
+    assert!(super::toggle_primary_factory(&mut sim, &rules, 3));
     assert_eq!(
-        sim.production.primary_factory(
-            sim.interner.intern("Americans"),
-            ProductionCategory::Vehicle
-        ),
-        Some(3)
+        next_producer_focus(&sim, &rules, americans, ProductionCategory::Vehicle),
+        None
     );
-    assert!(cycle_active_producer_for_owner_category(
-        &mut sim,
-        &rules,
-        "Americans",
-        ProductionCategory::Vehicle,
-    ));
+    // The PRIMARY receiver itself does toggle a primary factory off
+    // (`BuildingClass::TogglePrimaryFactory @ 0x00448182`).
+    assert!(super::toggle_primary_factory(&mut sim, &rules, 3));
     assert_eq!(
-        sim.production.primary_factory(
-            sim.interner.intern("Americans"),
-            ProductionCategory::Vehicle
-        ),
-        Some(5)
+        sim.production
+            .primary_factory(americans, ProductionCategory::Vehicle),
+        None
     );
 }
 

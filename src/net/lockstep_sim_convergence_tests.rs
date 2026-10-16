@@ -96,7 +96,7 @@ fn gsi_04_07_wall_sell_raw_lockstep_replay_converges_with_semantic_execution() {
         &dispatch_houses,
         |_, _| {},
         |_, command, _| {
-            if let Some(envelope) = command.decode_for_simulation(&raw, raw.session.tick) {
+            if let Some(envelope) = command.decode_for_simulation(&raw, None, raw.session.tick) {
                 due.push(envelope);
             }
         },
@@ -108,7 +108,7 @@ fn gsi_04_07_wall_sell_raw_lockstep_replay_converges_with_semantic_execution() {
         &dispatch_houses,
         |_, _| {},
         |_, command, _| {
-            if let Some(envelope) = command.decode_for_simulation(&raw, raw.session.tick) {
+            if let Some(envelope) = command.decode_for_simulation(&raw, None, raw.session.tick) {
                 due.push(envelope);
             }
         },
@@ -132,14 +132,14 @@ fn gsi_04_07_wall_sell_raw_lockstep_replay_converges_with_semantic_execution() {
     .unwrap();
     assert!(
         crate::net::lockstep::SynchronizedCommand::opaque(invalid_house)
-            .decode_for_simulation(&raw, raw.session.tick)
+            .decode_for_simulation(&raw, None, raw.session.tick)
             .is_none()
     );
     let invalid_opcode =
         crate::sim::command::CommandRecord::encode(0x16, 1, 0, &[1, 0, 1, 0]).unwrap();
     assert!(
         crate::net::lockstep::SynchronizedCommand::opaque(invalid_opcode)
-            .decode_for_simulation(&raw, raw.session.tick)
+            .decode_for_simulation(&raw, None, raw.session.tick)
             .is_none()
     );
 }
@@ -162,7 +162,7 @@ fn gsi_04_07_wall_sell_raw_signed_linear_coordinates_use_canonical_cell() {
         .encode()
         .expect("wall-sale record");
         let envelope = crate::net::lockstep::SynchronizedCommand::opaque(record)
-            .decode_for_simulation(sim, sim.session.tick)
+            .decode_for_simulation(sim, None, sim.session.tick)
             .expect("registered receiver decodes");
         let receiver = sim.interner.resolve(envelope.owner).to_string();
         sim.apply_command_with_overlays(
@@ -375,7 +375,7 @@ fn two_instance_multiplayer_checksums_match_every_frame_and_catch_a_desync() {
             |_, command: &SynchronizedCommand, _| {
                 raw_commands.push(
                     command
-                        .decode_for_simulation(&raw, execute_tick)
+                        .decode_for_simulation(&raw, None, execute_tick)
                         .expect("dispatched record decodes"),
                 )
             },
@@ -394,7 +394,11 @@ fn two_instance_multiplayer_checksums_match_every_frame_and_catch_a_desync() {
     }
     assert_eq!(live.state_hash(), raw.state_hash());
     let moved = &live.substrate.entities.get(actor).unwrap().position;
-    assert_ne!((moved.rx(), moved.ry()), (10, 10), "the Move order executed");
+    assert_ne!(
+        (moved.rx(), moved.ry()),
+        (10, 10),
+        "the Move order executed"
+    );
     assert!(
         live.substrate
             .entities

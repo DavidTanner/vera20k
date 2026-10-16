@@ -63,14 +63,15 @@
 //!   (`EVA_StructureAbandoned`), `InfantryClass::PerCellProcess 0x00519BC9`
 //!   (bridge), `TechnoClass::AI_Update 0x006FA0CB/0x006FA139` (promotion),
 //!   `LightningStorm::Process 0x0053AB11` — landed earlier.
+//! - `BuildingClass::TogglePrimaryFactory 0x00448226` →
+//!   `EVA_PrimaryBuildingSelected` (sim event; retail `evamd.ini` has no such
+//!   section, so it is silent, as natively).
 //!
 //! Reachable in a stock skirmish, prerequisite mechanism missing in VERA
 //! (documented, not produced):
 //! - Hospital `BuildingClass::MissionRepairAndProduce 0x0044B973` →
 //!   `EVA_UnitHealed` (separate hospital servicing mechanism).
 //! - `FootClass::OnSold 0x004D9F94` → `EVA_UnitSold` (no unit selling).
-//! - `0x00448226` (primary-factory setter, `[this+0x3D3]=1` then
-//!   `0x0050B6F0`) → `EVA_PrimaryBuildingSelected` (no primary factory).
 //! - `RadarClass::PlaceBeacon 0x00430D78` (`EVA_BeaconPlaced`), `0x00430F1B`
 //!   (`CreateRadarEvent(0xB)` → `EVA_BeaconDetected`) (no beacons).
 //! - `HouseClass::MakeAlly 0x004F9F35` (`EVA_AllianceRequested` string

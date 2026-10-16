@@ -6,6 +6,7 @@
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+use crate::rules::object_type::ObjectCategory;
 use crate::sim::intern::InternedId;
 use crate::sim::production::ProductionCategory;
 
@@ -29,6 +30,18 @@ pub const EXIT_OPCODE: u8 = 0x13;
 pub const MEGAMISSION_OPCODE: u8 = 0x04;
 /// Native selected-object Scatter event.
 pub const SCATTER_OPCODE: u8 = 0x07;
+/// Native `EventClass` opcode PLACE: place a completed build.
+pub const PLACE_OPCODE: u8 = 0x0b;
+/// Native `EventClass` opcode PRODUCE: start, queue or resume a build.
+pub const PRODUCE_OPCODE: u8 = 0x0e;
+/// Native `EventClass` opcode SUSPEND: put a factory's build on hold.
+pub const SUSPEND_OPCODE: u8 = 0x0f;
+/// Native `EventClass` opcode ABANDON: cancel one copy of a build.
+pub const ABANDON_OPCODE: u8 = 0x10;
+/// Native `EventClass` opcode PRIMARY: toggle a factory's primary flag.
+pub const PRIMARY_OPCODE: u8 = 0x11;
+/// Native `EventClass` opcode ABANDON_ALL: cancel every copy of a build.
+pub const ABANDON_ALL_OPCODE: u8 = 0x2e;
 
 const MEGAMISSION_SOURCE_VALUE_OFFSET: usize = 0;
 const MEGAMISSION_SOURCE_KIND_OFFSET: usize = 4;
@@ -41,6 +54,14 @@ const MEGAMISSION_AUXILIARY_VALUE_OFFSET: usize = 17;
 const MEGAMISSION_AUXILIARY_KIND_OFFSET: usize = 21;
 const MEGAMISSION_PLANNING_OFFSET: usize = 22;
 const MEGAMISSION_OWNED_PAYLOAD_LEN: usize = 23;
+
+const PRODUCTION_RTTI_OFFSET: usize = 0;
+const PRODUCTION_TYPE_INDEX_OFFSET: usize = 4;
+const PRODUCTION_NAVAL_OFFSET: usize = 8;
+const PRODUCTION_OWNED_PAYLOAD_LEN: usize = 12;
+const PLACE_CELL_X_OFFSET: usize = 12;
+const PLACE_CELL_Y_OFFSET: usize = 14;
+const PLACE_OWNED_PAYLOAD_LEN: usize = 16;
 
 const ABSTRACT_OBJECT_TARGET_KIND: u8 = 0x34;
 const CELL_TARGET_KIND: u8 = 0x0b;
@@ -330,20 +351,23 @@ impl ExitRecord {
     }
 }
 
-/// Target event used by Scatter. Original `EventClass` constructor4C65E0
-/// writes the Abstract token at Event+7..11, preserving flags and unused tail.
-/// Its signed house check uses the existing null-header owner, including
-/// negative-house/positive-UID and positive-house/negative-UID controls.
+/// A one-object event built by `EventClass` constructor `0x004C65E0`, which
+/// writes the Abstract token at Event+7..11 and leaves the flags and unused
+/// tail untouched. Its signed house check uses the existing null-header owner,
+/// including negative-house/positive-UID and positive-house/negative-UID
+/// controls. The represented events are Scatter (`0x07`, ClickedEvent
+/// `0x006FFE00`) and PRIMARY (`0x11`, Building ClickedAction `0x00443494`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct ScatterRecord {
+pub struct TargetEventRecord {
+    pub opcode: u8,
     pub house_id: i8,
     pub frame: i32,
     pub entity_id: i32,
 }
 
-impl ScatterRecord {
+impl TargetEventRecord {
     pub fn write_into(self, record: &mut CommandRecord) {
-        record.set_issue_header(SCATTER_OPCODE, i32::from(self.house_id), self.frame);
+        record.set_issue_header(self.opcode, i32::from(self.house_id), self.frame);
         if self.house_id < 0 {
             return;
         }
@@ -355,7 +379,7 @@ impl ScatterRecord {
     }
 
     pub fn decode(record: &CommandRecord) -> Option<Self> {
-        if record.opcode() != SCATTER_OPCODE {
+        if !matches!(record.opcode(), SCATTER_OPCODE | PRIMARY_OPCODE) {
             return None;
         }
         let value = i32::from_le_bytes(record.payload()[..4].try_into().ok()?);
@@ -365,11 +389,236 @@ impl ScatterRecord {
             return None;
         };
         Some(Self {
+            opcode: record.opcode(),
             house_id: record.house_id(),
             frame: record.frame_stamp(),
             entity_id: id,
         })
     }
+}
+
+/// The RTTI a production event names its type by. Each receiver accepts the
+/// object's or the type's value for the same TechnoType array
+/// (`RTTI_To_TypeArray @ 0x0048DCD0`, byte table `0x0048DD24`, and the slot
+/// switches of `HouseClass::Begin_Production @ 0x004FA350`, `Suspend_Production
+/// @ 0x004FA910`, `Abandon_Production @ 0x004FAA10` and `Place_Production @
+/// 0x004FB0E0`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProductionRtti {
+    Unit,
+    Aircraft,
+    AircraftType,
+    Building,
+    BuildingType,
+    Infantry,
+    InfantryType,
+    UnitType,
+}
+
+impl ProductionRtti {
+    pub const fn value(self) -> i32 {
+        match self {
+            Self::Unit => 1,
+            Self::Aircraft => 2,
+            Self::AircraftType => 3,
+            Self::Building => 6,
+            Self::BuildingType => 7,
+            Self::Infantry => 0x0f,
+            Self::InfantryType => 0x10,
+            Self::UnitType => 0x28,
+        }
+    }
+
+    pub const fn from_value(value: i32) -> Option<Self> {
+        Some(match value {
+            1 => Self::Unit,
+            2 => Self::Aircraft,
+            3 => Self::AircraftType,
+            6 => Self::Building,
+            7 => Self::BuildingType,
+            0x0f => Self::Infantry,
+            0x10 => Self::InfantryType,
+            0x28 => Self::UnitType,
+            _ => return None,
+        })
+    }
+
+    /// The strip's type RTTI (`StripClass` entry `+0x5C`), which the cameo
+    /// events send.
+    pub const fn type_of(category: ObjectCategory) -> Self {
+        match category {
+            ObjectCategory::Infantry => Self::InfantryType,
+            ObjectCategory::Vehicle => Self::UnitType,
+            ObjectCategory::Aircraft => Self::AircraftType,
+            ObjectCategory::Building => Self::BuildingType,
+        }
+    }
+
+    /// The object's own RTTI (`What_Am_I`), which the placement events send.
+    pub const fn object_of(category: ObjectCategory) -> Self {
+        match category {
+            ObjectCategory::Infantry => Self::Infantry,
+            ObjectCategory::Vehicle => Self::Unit,
+            ObjectCategory::Aircraft => Self::Aircraft,
+            ObjectCategory::Building => Self::Building,
+        }
+    }
+
+    /// The TechnoType array the type index names.
+    pub const fn array(self) -> ObjectCategory {
+        match self {
+            Self::Unit | Self::UnitType => ObjectCategory::Vehicle,
+            Self::Aircraft | Self::AircraftType => ObjectCategory::Aircraft,
+            Self::Building | Self::BuildingType => ObjectCategory::Building,
+            Self::Infantry | Self::InfantryType => ObjectCategory::Infantry,
+        }
+    }
+}
+
+/// The four events `EventClass` constructor `0x004C6970` builds.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProductionEvent {
+    Produce,
+    Suspend,
+    Abandon,
+    AbandonAll,
+}
+
+impl ProductionEvent {
+    const fn opcode(self) -> u8 {
+        match self {
+            Self::Produce => PRODUCE_OPCODE,
+            Self::Suspend => SUSPEND_OPCODE,
+            Self::Abandon => ABANDON_OPCODE,
+            Self::AbandonAll => ABANDON_ALL_OPCODE,
+        }
+    }
+
+    const fn from_opcode(opcode: u8) -> Option<Self> {
+        Some(match opcode {
+            PRODUCE_OPCODE => Self::Produce,
+            SUSPEND_OPCODE => Self::Suspend,
+            ABANDON_OPCODE => Self::Abandon,
+            ABANDON_ALL_OPCODE => Self::AbandonAll,
+            _ => return None,
+        })
+    }
+}
+
+/// PRODUCE, SUSPEND, ABANDON and ABANDON_ALL. Constructor `0x004C6970`
+/// writes the RTTI dword at Event+7, the type index at +0xB and the naval
+/// dword at +0xF; it leaves the flags and the rest of the payload untouched.
+/// `EventClass::Execute` (`0x004C6CB0`) passes the three to the House
+/// receiver, the naval dword as `!= 0`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ProductionEventRecord {
+    pub event: ProductionEvent,
+    pub house_id: i8,
+    pub frame: i32,
+    pub rtti: ProductionRtti,
+    pub type_index: i32,
+    pub naval: bool,
+}
+
+impl ProductionEventRecord {
+    pub fn write_into(self, record: &mut CommandRecord) {
+        record.set_issue_header(self.event.opcode(), i32::from(self.house_id), self.frame);
+        if self.house_id < 0 {
+            return;
+        }
+        write_production_type(record.payload_mut(), self.rtti, self.type_index, self.naval);
+    }
+
+    pub fn decode(record: &CommandRecord) -> Option<Self> {
+        let event = ProductionEvent::from_opcode(record.opcode())?;
+        let (rtti, type_index, naval) = read_production_type(record.payload())?;
+        Some(Self {
+            event,
+            house_id: record.house_id(),
+            frame: record.frame_stamp(),
+            rtti,
+            type_index,
+            naval,
+        })
+    }
+}
+
+/// PLACE. Constructor `0x004C6AE0` writes the production fields of
+/// `0x004C6970` and the CellStruct at Event+0x13 (x) and +0x15 (y). Native
+/// sends type index -1 and the empty Cell for a mobile (Strip AI
+/// `0x006A8EE8`); a building's placement click (DisplayClass BandBox
+/// `0x004ABB55`) sends the placement object's RTTI and its type index.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PlaceRecord {
+    pub house_id: i8,
+    pub frame: i32,
+    pub rtti: ProductionRtti,
+    pub type_index: i32,
+    pub naval: bool,
+    pub x: i16,
+    pub y: i16,
+}
+
+impl PlaceRecord {
+    pub fn write_into(self, record: &mut CommandRecord) {
+        record.set_issue_header(PLACE_OPCODE, i32::from(self.house_id), self.frame);
+        if self.house_id < 0 {
+            return;
+        }
+        let payload = record.payload_mut();
+        write_production_type(payload, self.rtti, self.type_index, self.naval);
+        payload[PLACE_CELL_X_OFFSET..PLACE_CELL_Y_OFFSET].copy_from_slice(&self.x.to_le_bytes());
+        payload[PLACE_CELL_Y_OFFSET..PLACE_OWNED_PAYLOAD_LEN]
+            .copy_from_slice(&self.y.to_le_bytes());
+    }
+
+    pub fn decode(record: &CommandRecord) -> Option<Self> {
+        if record.opcode() != PLACE_OPCODE {
+            return None;
+        }
+        let payload = record.payload();
+        let (rtti, type_index, naval) = read_production_type(payload)?;
+        Some(Self {
+            house_id: record.house_id(),
+            frame: record.frame_stamp(),
+            rtti,
+            type_index,
+            naval,
+            x: i16::from_le_bytes(
+                payload[PLACE_CELL_X_OFFSET..PLACE_CELL_Y_OFFSET]
+                    .try_into()
+                    .ok()?,
+            ),
+            y: i16::from_le_bytes(
+                payload[PLACE_CELL_Y_OFFSET..PLACE_OWNED_PAYLOAD_LEN]
+                    .try_into()
+                    .ok()?,
+            ),
+        })
+    }
+}
+
+fn write_production_type(payload: &mut [u8], rtti: ProductionRtti, type_index: i32, naval: bool) {
+    payload[PRODUCTION_RTTI_OFFSET..PRODUCTION_TYPE_INDEX_OFFSET]
+        .copy_from_slice(&rtti.value().to_le_bytes());
+    payload[PRODUCTION_TYPE_INDEX_OFFSET..PRODUCTION_NAVAL_OFFSET]
+        .copy_from_slice(&type_index.to_le_bytes());
+    payload[PRODUCTION_NAVAL_OFFSET..PRODUCTION_OWNED_PAYLOAD_LEN]
+        .copy_from_slice(&i32::from(naval).to_le_bytes());
+}
+
+fn read_production_type(payload: &[u8]) -> Option<(ProductionRtti, i32, bool)> {
+    let dword = |offset: usize| {
+        payload[offset..offset + 4]
+            .try_into()
+            .ok()
+            .map(i32::from_le_bytes)
+    };
+    Some((
+        ProductionRtti::from_value(dword(PRODUCTION_RTTI_OFFSET)?)?,
+        dword(PRODUCTION_TYPE_INDEX_OFFSET)?,
+        dword(PRODUCTION_NAVAL_OFFSET)? != 0,
+    ))
 }
 
 /// The represented ordinary orders of native MegaMission opcode `0x04`.
@@ -728,11 +977,16 @@ pub enum Command {
     /// @ 0x004FA350`): start, queue or resume a build of this type.
     QueueProduction { type_id: InternedId },
     /// SUSPEND (type 15 → `HouseClass::Suspend_Production @ 0x004FA910`):
-    /// put the category's running build on hold.
+    /// put the category's running build on hold. The event names the clicked
+    /// cameo's type; the receiver reads only the factory slot it selects,
+    /// which is this category.
     SuspendProduction { category: ProductionCategory },
-    /// Cycle the active producer facility of one category.
+    /// VERA's sidebar Factory button: make the category's next factory
+    /// primary. Native has no cycle; issue sends the chosen building's PRIMARY
+    /// event, which decodes to `TogglePrimaryFactory`.
     CycleProducerFocus { category: ProductionCategory },
-    /// Place one completed building that is waiting for placement.
+    /// PLACE (type 11 → `HouseClass::Place_Production @ 0x004FB0E0`) with a
+    /// building's type and placement Cell.
     PlaceReadyBuilding {
         type_id: InternedId,
         rx: u16,
@@ -854,6 +1108,10 @@ pub enum Command {
     /// EnterBunker or EnterTransport) from the live destination. Appended to
     /// preserve saved indices.
     Enter { entity_id: u64, target_id: u64 },
+    /// PRIMARY (type 17 → `BuildingClass::TogglePrimaryFactory @
+    /// 0x00448160`, vtable `+0x4F0`): toggle this factory's primary flag.
+    /// Appended to preserve saved indices.
+    TogglePrimaryFactory { building_id: u64 },
 }
 
 impl Command {
@@ -1244,6 +1502,124 @@ mod tests {
             assert_eq!(&bytes[19..23], &destination.0.to_le_bytes(), "{order:?}");
             assert_eq!(bytes[23], destination.1, "{order:?}");
             assert_eq!(MegaMissionRecord::decode(&record), Some(typed), "{order:?}");
+        }
+    }
+
+    /// Constructor `0x004C6970`: house byte at +2 (`0x004C69A4`), opcode at
+    /// +0 (`0x004C69AB`), RTTI, type index and naval dwords at +7, +0xB and
+    /// +0xF (`0x004C69AD..0x004C69B3`), frame at +3 (`0x004C69BE`); no other
+    /// byte. A negative house writes only opcode 0, house -1 and the frame
+    /// (`0x004C69C6..0x004C69D2`).
+    #[test]
+    fn production_event_constructor_writes_only_its_fields() {
+        let events = [
+            (super::ProductionEvent::Produce, 0x0e),
+            (super::ProductionEvent::Suspend, 0x0f),
+            (super::ProductionEvent::Abandon, 0x10),
+            (super::ProductionEvent::AbandonAll, 0x2e),
+        ];
+        for (event, opcode) in events {
+            let typed = super::ProductionEventRecord {
+                event,
+                house_id: 3,
+                frame: 0x0102_0304,
+                rtti: super::ProductionRtti::UnitType,
+                type_index: 0x0a0b,
+                naval: true,
+            };
+            let mut record = CommandRecord::decode_exact(&[0xcc; COMMAND_RECORD_LEN]).unwrap();
+            typed.write_into(&mut record);
+            let mut expected = [0xcc; COMMAND_RECORD_LEN];
+            expected[0] = opcode;
+            expected[2] = 3;
+            expected[3..7].copy_from_slice(&0x0102_0304_i32.to_le_bytes());
+            expected[7..11].copy_from_slice(&0x28_i32.to_le_bytes());
+            expected[11..15].copy_from_slice(&0x0a0b_i32.to_le_bytes());
+            expected[15..19].copy_from_slice(&1_i32.to_le_bytes());
+            assert_eq!(record.as_bytes(), &expected, "{event:?}");
+            assert_eq!(super::ProductionEventRecord::decode(&record), Some(typed));
+
+            let mut null = CommandRecord::decode_exact(&[0xcc; COMMAND_RECORD_LEN]).unwrap();
+            super::ProductionEventRecord {
+                house_id: -1,
+                ..typed
+            }
+            .write_into(&mut null);
+            let mut expected = [0xcc; COMMAND_RECORD_LEN];
+            expected[0] = 0;
+            expected[2] = 0xff;
+            expected[3..7].copy_from_slice(&0x0102_0304_i32.to_le_bytes());
+            assert_eq!(null.as_bytes(), &expected, "{event:?} null issuer");
+            assert_eq!(super::ProductionEventRecord::decode(&null), None);
+        }
+    }
+
+    /// Constructor `0x004C6AE0`: the production fields, then the CellStruct
+    /// at +0x13 and +0x15 (`0x004C6B2A..0x004C6B35`).
+    #[test]
+    fn place_constructor_writes_the_cell_after_the_production_fields() {
+        let typed = super::PlaceRecord {
+            house_id: 1,
+            frame: 268,
+            rtti: super::ProductionRtti::Building,
+            type_index: 5,
+            naval: false,
+            x: -1,
+            y: 0x0123,
+        };
+        let mut record = CommandRecord::decode_exact(&[0xcc; COMMAND_RECORD_LEN]).unwrap();
+        typed.write_into(&mut record);
+        let mut expected = [0xcc; COMMAND_RECORD_LEN];
+        expected[0] = 0x0b;
+        expected[2] = 1;
+        expected[3..7].copy_from_slice(&268_i32.to_le_bytes());
+        expected[7..11].copy_from_slice(&6_i32.to_le_bytes());
+        expected[11..15].copy_from_slice(&5_i32.to_le_bytes());
+        expected[15..19].copy_from_slice(&0_i32.to_le_bytes());
+        expected[19..21].copy_from_slice(&(-1_i16).to_le_bytes());
+        expected[21..23].copy_from_slice(&0x0123_i16.to_le_bytes());
+        assert_eq!(record.as_bytes(), &expected);
+        assert_eq!(super::PlaceRecord::decode(&record), Some(typed));
+        // The receivers read the naval dword as `!= 0`.
+        record.payload_mut()[8..12].copy_from_slice(&2_i32.to_le_bytes());
+        assert!(super::PlaceRecord::decode(&record).unwrap().naval);
+    }
+
+    /// `RTTI_To_TypeArray`'s byte table at `0x0048DD24`, indexed by RTTI - 1
+    /// (retail bytes): 0 Unit array, 1 Aircraft, 2 Building, 3 Infantry,
+    /// 4 none. The production RTTIs are exactly its non-4 entries.
+    #[test]
+    fn production_rtti_matches_the_native_type_array_table() {
+        use crate::rules::object_type::ObjectCategory;
+        const TABLE: [u8; 40] = [
+            0, 1, 1, 4, 4, 2, 2, 4, 4, 4, 4, 4, 4, 4, 3, 3, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
+            4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 0,
+        ];
+        for value in -1..=0x40 {
+            let native = usize::try_from(value - 1)
+                .ok()
+                .and_then(|index| TABLE.get(index))
+                .and_then(|kind| match kind {
+                    0 => Some(ObjectCategory::Vehicle),
+                    1 => Some(ObjectCategory::Aircraft),
+                    2 => Some(ObjectCategory::Building),
+                    3 => Some(ObjectCategory::Infantry),
+                    _ => None,
+                });
+            let rtti = super::ProductionRtti::from_value(value);
+            assert_eq!(rtti.map(super::ProductionRtti::array), native, "{value}");
+            if let Some(rtti) = rtti {
+                assert_eq!(rtti.value(), value);
+            }
+        }
+        for category in [
+            ObjectCategory::Infantry,
+            ObjectCategory::Vehicle,
+            ObjectCategory::Aircraft,
+            ObjectCategory::Building,
+        ] {
+            assert_eq!(super::ProductionRtti::type_of(category).array(), category);
+            assert_eq!(super::ProductionRtti::object_of(category).array(), category);
         }
     }
 

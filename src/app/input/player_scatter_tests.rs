@@ -5,7 +5,9 @@
 use super::queue_scatter_orders;
 use crate::audio::events::GameSoundEvent;
 use crate::rules::{area_guard_tests as native, retail_ini_fixture};
-use crate::sim::command::{Command, CommandRecord, ScatterRecord};
+use crate::sim::command::{
+    Command, CommandRecord, PRIMARY_OPCODE, SCATTER_OPCODE, TargetEventRecord,
+};
 use serde_json::Value;
 
 fn corpus() -> Value {
@@ -92,7 +94,7 @@ fn player_scatter_matches_native_selected_order_cue_and_no_voice_rng() {
                 };
                 let record = f.sim.encode_scatter_record(cmd.owner, entity_id).unwrap();
                 assert_eq!(
-                    ScatterRecord::decode(&record).unwrap().entity_id as u64,
+                    TargetEventRecord::decode(&record).unwrap().entity_id as u64,
                     entity_id
                 );
                 entity_id
@@ -150,13 +152,32 @@ fn player_scatter_constructor_preserves_native_padding_and_house_null_semantics(
                 .collect();
             CommandRecord::decode_exact(&bytes).unwrap()
         };
-        let mut record = decode("before");
-        ScatterRecord {
+        let typed = |opcode| TargetEventRecord {
+            opcode,
             house_id: row["args"][0].as_u64().unwrap() as i8,
             frame: row["frame"].as_u64().unwrap() as i32,
             entity_id: row["args"][2].as_u64().unwrap() as i32,
-        }
-        .write_into(&mut record);
+        };
+        let mut record = decode("before");
+        typed(SCATTER_OPCODE).write_into(&mut record);
         assert_eq!(record, decode("after"), "{}", row["name"]);
+        // 0x004C661A stores the event-type argument as the opcode byte and
+        // nothing else depends on it, so PRIMARY (Building ClickedAction
+        // `0x00443494`) differs from these rows only there.
+        let mut primary = decode("before");
+        typed(PRIMARY_OPCODE).write_into(&mut primary);
+        let mut expected = decode("after");
+        if expected.house_id() >= 0 {
+            expected.set_issue_header(
+                PRIMARY_OPCODE,
+                i32::from(expected.house_id()),
+                expected.frame_stamp(),
+            );
+        }
+        assert_eq!(primary, expected, "{} as PRIMARY", row["name"]);
+        let decoded = TargetEventRecord::decode(&primary);
+        if primary.house_id() >= 0 {
+            assert_eq!(decoded, Some(typed(PRIMARY_OPCODE)), "{}", row["name"]);
+        }
     }
 }

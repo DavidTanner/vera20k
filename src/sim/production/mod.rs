@@ -44,7 +44,7 @@ pub(crate) use self::factory_lifecycle::{
 pub use self::production_economy::is_harvester_type;
 pub(crate) use self::production_placement::place_production_with_overlays;
 pub use self::production_placement::{
-    active_producer_for_owner_category, cycle_active_producer_for_owner_category,
+    active_producer_for_owner_category, next_producer_focus,
     placement_preview_for_owner_with_overlays,
 };
 #[cfg(test)]
@@ -82,6 +82,7 @@ pub use self::production_types::*;
 // imported private submodules directly).
 pub(crate) use self::can_build::{
     CanBuild, can_build, find_factory, initialize_factory_primary, object_find_factory,
+    toggle_primary_factory,
 };
 pub(crate) use self::factory_ai::{
     AiPlacementTimer, detach_all as detach_building_factory, factory_ai,
@@ -115,6 +116,10 @@ mod placement_tests;
 #[cfg(test)]
 #[path = "production_replay_tests.rs"]
 mod replay_tests;
+
+#[cfg(test)]
+#[path = "production_record_tests.rs"]
+mod record_tests;
 
 #[cfg(test)]
 #[path = "factory_lifecycle_tests.rs"]

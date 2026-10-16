@@ -307,9 +307,10 @@ impl SynchronizedCommand {
     pub(crate) fn decode_for_simulation(
         &self,
         sim: &crate::sim::world::Simulation,
+        rules: Option<&crate::rules::ruleset::RuleSet>,
         execute_tick: u64,
     ) -> Option<crate::sim::command::CommandEnvelope> {
-        sim.decode_native_command_record(&self.record, execute_tick)
+        sim.decode_native_command_record(&self.record, rules, execute_tick)
     }
 
     #[cfg(test)]
