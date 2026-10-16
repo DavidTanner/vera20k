@@ -108,14 +108,13 @@ struct GroundSortView<'a> {
     particles: &'a crate::sim::particles::ParticleSystemStore,
     terrain: &'a std::collections::BTreeMap<u64, crate::sim::terrain_object::TerrainObjectState>,
     interner: &'a crate::sim::intern::StringInterner,
-    type_handles: &'a crate::sim::type_handle_table::TypeHandleTable,
     rules: Option<&'a RuleSet>,
 }
 
 /// Each read says what it may keep: the key of an entity, an unattached anim
 /// or a terrain object until the object is forgotten (a Building's key also
-/// reads the rules and the type handle table, which the read context
-/// covers), an attached anim's own term (its owner's is kept per owner), and
+/// reads the rules, which the read context covers), an attached anim's own
+/// term (its owner's is kept per owner), and
 /// nothing for particle systems, whose AI moves them without a touch log.
 impl GroundSortKeys for GroundSortView<'_> {
     fn read(&self, id: u64) -> (i32, KeptSortKey) {
@@ -124,10 +123,8 @@ impl GroundSortKeys for GroundSortView<'_> {
             // and Ground insert evaluates this; the handle hop never allocates.
             let object = (entity.category() == EntityCategory::Structure)
                 .then(|| {
-                    self.rules.and_then(|rules| {
-                        self.type_handles
-                            .object(self.interner, entity.type_ref(), rules)
-                    })
+                    self.rules
+                        .and_then(|rules| self.interner.object_type(entity.type_ref(), rules))
                 })
                 .flatten();
             let key = entity_sort_key(entity, object);
@@ -172,12 +169,7 @@ impl GroundSortKeys for GroundSortView<'_> {
 }
 
 impl Simulation {
-    pub(crate) fn submit_object_display(
-        &mut self,
-        id: u64,
-        layer: DisplayLayer,
-        rules: Option<&RuleSet>,
-    ) {
+    pub fn submit_object_display(&mut self, id: u64, layer: DisplayLayer, rules: Option<&RuleSet>) {
         if layer == DisplayLayer::GROUND {
             self.forget_changed_ground_keys(rules);
         }
@@ -187,7 +179,6 @@ impl Simulation {
             particles: &self.substrate.particle_systems,
             terrain: &self.production.terrain_objects,
             interner: &self.interner,
-            type_handles: &self.type_handles,
             rules,
         };
         self.substrate.display.submit(id, Some(layer), &view);
@@ -195,18 +186,19 @@ impl Simulation {
 
     /// Forget the kept Ground keys whose inputs the entity and anim stores
     /// handed out mutably since the last Ground scan, and all of them when
-    /// the rules or the type handle table differ from what they were read
-    /// under.
+    /// the rules differ from those they were read under.
     fn forget_changed_ground_keys(&mut self, rules: Option<&RuleSet>) {
         let context = ReadContext {
-            rules: rules.map(|rules| std::ptr::from_ref(rules) as usize),
-            type_handles: self.type_handles.build_serial(),
+            rules: rules.map(RuleSet::serial),
         };
         let entities = self
             .substrate
             .entities
             .take_touched(crate::sim::entity_store::TouchReader::GroundKeys);
-        let anims = self.substrate.anims.take_touched();
+        let anims = self
+            .substrate
+            .anims
+            .take_touched(crate::sim::anim_class::AnimTouchReader::GroundKeys);
         self.substrate
             .display
             .forget_changed_ground_keys(context, [entities, anims]);
@@ -245,8 +237,8 @@ impl Simulation {
 
     /// Resubmit `id`'s display from its current state, as a native
     /// resubmission site does.
-    #[cfg(test)]
-    pub(crate) fn resubmit_entity_display_for_test(&mut self, id: u64) {
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn resubmit_entity_display_for_test(&mut self, id: u64) {
         self.submit_entity_display(id, None, None);
     }
 
@@ -282,7 +274,6 @@ impl Simulation {
             particles: &self.substrate.particle_systems,
             terrain: &self.production.terrain_objects,
             interner: &self.interner,
-            type_handles: &self.type_handles,
             rules,
         };
         self.substrate.display.sort_ground_pass(&view);
@@ -533,7 +524,6 @@ mod tests {
                 particles: &sim.substrate.particle_systems,
                 terrain: &sim.production.terrain_objects,
                 interner: &sim.interner,
-                type_handles: &sim.type_handles,
                 rules,
             }
             .read(id)

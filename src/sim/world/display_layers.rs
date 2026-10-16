@@ -8,21 +8,21 @@
 //! derived too. Native comparisons: crate_ground_membership.json.
 
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 
 use super::ground_keys::{GroundKeys, GroundSortKeys, ReadContext};
 use crate::sim::touch_log::Touched;
+use crate::util::lookup_hash::LookupMap;
 
 /// Native layer index; -1 (no display) is represented by `None`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct DisplayLayer(u8);
+pub struct DisplayLayer(u8);
 
 impl DisplayLayer {
-    pub(crate) const SURFACE: Self = Self(1);
-    pub(crate) const GROUND: Self = Self(2);
-    pub(crate) const AIR: Self = Self(3);
-    pub(crate) const TOP: Self = Self(4);
+    pub const SURFACE: Self = Self(1);
+    pub const GROUND: Self = Self(2);
+    pub const AIR: Self = Self(3);
+    pub const TOP: Self = Self(4);
 
     /// Base Object5F4260 after its virtual IsInAir query. Class-specific
     /// locomotor/height overrides stay with their callers.
@@ -44,35 +44,35 @@ impl DisplayLayer {
         }
     }
 
-    pub(crate) fn from_index(index: u8) -> Option<Self> {
+    pub fn from_index(index: u8) -> Option<Self> {
         (index < 5).then_some(Self(index))
     }
 
     /// The native layer number vt+0x78 returns.
-    pub(crate) fn index(self) -> u8 {
+    pub fn index(self) -> u8 {
         self.0
     }
 }
 
 #[derive(Debug, Default, Clone)]
-pub(crate) struct DisplayLayers {
+pub struct DisplayLayers {
     layers: [Vec<u64>; 5],
     /// Rebuilt from the vectors on deserialize; updated only by submit/remove.
-    registered: HashMap<u64, DisplayLayer>,
+    registered: LookupMap<u64, DisplayLayer>,
     /// What the Ground members' key reads kept, in lockstep with Ground.
     ground_keys: GroundKeys,
 }
 
 impl DisplayLayers {
-    pub(crate) fn members(&self, layer: DisplayLayer) -> &[u64] {
+    pub fn members(&self, layer: DisplayLayer) -> &[u64] {
         &self.layers[usize::from(layer.0)]
     }
 
-    pub(crate) fn layer_of(&self, id: u64) -> Option<DisplayLayer> {
+    pub fn layer_of(&self, id: u64) -> Option<DisplayLayer> {
         self.registered.get(&id).copied()
     }
 
-    pub(crate) fn ordered_ids(&self) -> impl Iterator<Item = &u64> {
+    pub fn ordered_ids(&self) -> impl Iterator<Item = &u64> {
         self.layers.iter().flatten()
     }
 
@@ -80,7 +80,7 @@ impl DisplayLayers {
     /// selected layer. Ground551A90 inserts before the first strictly greater
     /// key; equal keys stay ahead of a newly submitted object. Other layers
     /// append (5519B0). Allocation failure leaves the object unregistered.
-    pub(crate) fn submit(
+    pub fn submit(
         &mut self,
         id: u64,
         layer: Option<DisplayLayer>,
@@ -101,9 +101,7 @@ impl DisplayLayers {
             // Compare5F6220 reads new, then existing. GetYSort is pure, so
             // the new object's key is read once for the whole scan.
             let (new_key, kept) = keys.read(id);
-            let index = (0..members.len())
-                .find(|&index| self.ground_keys.key(index, members[index], keys) > new_key)
-                .unwrap_or(members.len());
+            let index = self.ground_keys.first_greater(members, new_key, keys);
             self.ground_keys.insert(index, id, new_key, kept);
             index
         } else {
@@ -121,7 +119,7 @@ impl DisplayLayers {
     /// Display4A9770: first-match stable erase in the cached layer, then scan
     /// all layers if that lookup fails. The normal owner cannot produce a
     /// stale cache; the fallback also has an original-executable witness.
-    pub(crate) fn remove(&mut self, id: u64) -> bool {
+    pub fn remove(&mut self, id: u64) -> bool {
         let Some(layer) = self.registered.remove(&id) else {
             return false;
         };
@@ -157,7 +155,7 @@ impl DisplayLayers {
 
     /// Layer551A30, called at MainTick55DBC8 before Logic55DC9E: one
     /// left-to-right adjacent pass, not a stable full sort.
-    pub(crate) fn sort_ground_pass(&mut self, keys: &impl GroundSortKeys) {
+    pub fn sort_ground_pass(&mut self, keys: &impl GroundSortKeys) {
         let members = &mut self.layers[usize::from(DisplayLayer::GROUND.0)];
         let Some(&first) = members.first() else {
             return;
@@ -177,7 +175,7 @@ impl DisplayLayers {
     }
 
     /// Whether the kept Ground keys move in lockstep with the Ground members.
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     pub(crate) fn ground_keys_aligned(&self) -> bool {
         self.ground_keys
             .aligned_with(&self.layers[usize::from(DisplayLayer::GROUND.0)])
@@ -197,7 +195,7 @@ impl Serialize for DisplayLayers {
 impl<'de> Deserialize<'de> for DisplayLayers {
     fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let layers = <[Vec<u64>; 5]>::deserialize(deserializer)?;
-        let mut registered = HashMap::new();
+        let mut registered = LookupMap::default();
         for (layer, members) in layers.iter().enumerate() {
             for &id in members {
                 if id == 0 || registered.insert(id, DisplayLayer(layer as u8)).is_some() {

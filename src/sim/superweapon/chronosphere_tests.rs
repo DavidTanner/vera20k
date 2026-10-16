@@ -24,7 +24,7 @@ use crate::sim::intern::InternedId;
 use crate::sim::superweapon::cell_receiver_tests::test_terrain_cell;
 use crate::sim::world::{SimSoundEvent, Simulation};
 
-pub(crate) const SOURCE: (u16, u16) = (21, 21);
+pub const SOURCE: (u16, u16) = (21, 21);
 const TARGET: (u16, u16) = (40, 40);
 
 fn retail_rules() -> Option<RuleSet> {
@@ -40,9 +40,7 @@ fn retail_rules() -> Option<RuleSet> {
 /// Retail rules with `anims`' SHP frame counts bound: the lib suite loads no
 /// SHP.
 pub(crate) fn retail_rules_binding(anims: &[(&str, i32)]) -> Option<RuleSet> {
-    let (rules_ini, art_ini) = crate::rules::retail_ini_fixture::retail_rules_and_art()?;
-    let mut rules = RuleSet::from_ini_with_fixed_art_for_test(&rules_ini, &art_ini).unwrap();
-    rules.install_art_data(crate::rules::art_data::ArtRegistry::from_ini(&art_ini));
+    let mut rules = crate::rules::retail_ini_fixture::retail_unlayered_rules_with_art()?;
     for &(name, frames) in anims {
         rules.bind_anim_frame_count_for_test(name, frames);
     }
@@ -50,7 +48,7 @@ pub(crate) fn retail_rules_binding(anims: &[(&str, i32)]) -> Option<RuleSet> {
 }
 
 /// Retail rules and a flat 64x64 map ([`world_with`]).
-pub(crate) fn retail_world() -> Option<(RuleSet, Simulation, InternedId)> {
+pub fn retail_world() -> Option<(RuleSet, Simulation, InternedId)> {
     Some(world_with(retail_rules()?, 64, &[]))
 }
 
@@ -140,13 +138,13 @@ fn spawn(sim: &mut Simulation, rules: &RuleSet, kind: &str, owner: &str, at: (u1
         .unwrap_or_else(|| panic!("{kind} stands at {at:?}"))
 }
 
-pub(crate) fn step(sim: &mut Simulation, rules: &RuleSet) {
+pub fn step(sim: &mut Simulation, rules: &RuleSet) {
     let commands = sim.take_due_commands();
     sim.advance_tick(&commands, Some(rules), None, None, 33);
 }
 
 /// A charged Chronosphere for `owner`: its recharge timer has run out.
-pub(crate) fn charge_chronosphere(sim: &mut Simulation, owner: InternedId) -> InternedId {
+pub fn charge_chronosphere(sim: &mut Simulation, owner: InternedId) -> InternedId {
     charge_super(sim, owner, "ChronoSphereSpecial")
 }
 
@@ -240,13 +238,7 @@ pub(crate) fn charge_super(sim: &mut Simulation, owner: InternedId, name: &str) 
 }
 
 /// One click as its SPECIAL_PLACE event, run at the next frame's tail.
-pub(crate) fn click(
-    sim: &mut Simulation,
-    rules: &RuleSet,
-    owner: InternedId,
-    name: &str,
-    at: (u16, u16),
-) {
+pub fn click(sim: &mut Simulation, rules: &RuleSet, owner: InternedId, name: &str, at: (u16, u16)) {
     let sw_type_id = sim.interner.intern(name);
     sim.queue_command(CommandEnvelope::new(
         owner,

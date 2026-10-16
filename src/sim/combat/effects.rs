@@ -132,17 +132,17 @@ pub(crate) struct DeathEffects {
     pub(crate) immediate_uninit_ids: Vec<u64>,
     pub(crate) structure_destroyed: bool,
     pub(crate) explosion_effects: Vec<ExplosionEffect>,
-    /// `VoxelAnimClass` debris planned by the death block for admission at the
-    /// world consequence boundary. The live receiver has allocator access;
-    /// deferred admission preserves the existing allocation and Logic order.
+    /// Already-constructed, identified `VoxelAnimClass` pieces retained only
+    /// by callback-disabled damage fixtures. Live Bullet and Techno constructors
+    /// register synchronously; delivering these packets never allocates IDs.
     pub(crate) voxel_debris: Vec<crate::sim::voxel_anim::VoxelDebrisSpawn>,
     pub(crate) combat_light_requests: Vec<CombatLightRequest>,
     /// Receipt of synchronous Apply_area_damage bridge callbacks. Gameplay
     /// already ran before the detonation's animation and cluster successor.
     pub(crate) bridge_state_changed: bool,
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     pub(crate) wall_mutations: Vec<WallMutation>,
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     pub(crate) cell_target_detaches: Vec<combat_aoe::CellTargetDetach>,
     pub(crate) tiberium_reduction_requests: Vec<TiberiumReductionRequest>,
     pub(crate) death_sounds: Vec<(String, u16, u16)>,
@@ -152,11 +152,11 @@ pub(crate) struct DeathEffects {
     /// `Death_Announcement` inputs from this tick's damage kills; the world
     /// applies the human-owner gate and the radar type-7 dedupe.
     pub(crate) unit_lost_events: Vec<UnitLostEvent>,
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     pub(crate) receiver_stage_trace: Vec<ReceiverStageTrace>,
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum ReceiverStageTrace {
     HouseThreat { target_id: u64, delta: i32 },
@@ -164,7 +164,7 @@ pub(crate) enum ReceiverStageTrace {
     ShouldRetaliate { target_id: u64 },
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 pub(super) fn tiberium_reduction_amount(
     base_damage: i32,
     affect_resource: bool,
@@ -188,10 +188,10 @@ impl DeathEffects {
         self.combat_light_requests
             .append(&mut other.combat_light_requests);
         self.bridge_state_changed |= other.bridge_state_changed;
-        #[cfg(test)]
+        #[cfg(any(test, feature = "test-support"))]
         self.wall_mutations.append(&mut other.wall_mutations);
 
-        #[cfg(test)]
+        #[cfg(any(test, feature = "test-support"))]
         self.cell_target_detaches
             .append(&mut other.cell_target_detaches);
         self.tiberium_reduction_requests
@@ -203,7 +203,7 @@ impl DeathEffects {
         self.under_attack_events
             .append(&mut other.under_attack_events);
         self.unit_lost_events.append(&mut other.unit_lost_events);
-        #[cfg(test)]
+        #[cfg(any(test, feature = "test-support"))]
         self.receiver_stage_trace
             .append(&mut other.receiver_stage_trace);
     }

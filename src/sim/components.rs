@@ -23,8 +23,8 @@ pub use crate::sim::movement::navcom::NavigationState;
 // MissionCom, MissionLeaf and the private GameEntity body own retained
 // construction and sale state.
 pub(crate) use crate::sim::building_construction::BuildingDown;
-#[cfg(test)]
-pub(crate) use crate::sim::building_construction::BuildingUp;
+#[cfg(any(test, feature = "test-support"))]
+pub use crate::sim::building_construction::BuildingUp;
 
 /// Native-like navigation target reference.
 ///
@@ -116,7 +116,7 @@ impl FootPathRuntime {
     }
 
     /// `Foot+0x6B7`, the blockage latch.
-    pub(crate) const fn path_blocked(&self) -> bool {
+    pub const fn path_blocked(&self) -> bool {
         self.path_blocked
     }
 
@@ -141,13 +141,13 @@ impl FootPathRuntime {
     }
 
     /// A fixture's movement timer.
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     pub(crate) fn set_movement_timer_for_test(&mut self, timer: crate::sim::timer::CdTimer) {
         self.movement_timer = timer;
     }
 
     /// A fixture's blockage timer.
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     pub(crate) fn set_blocked_timer_for_test(&mut self, timer: crate::sim::timer::CdTimer) {
         self.blocked_timer = timer;
     }
@@ -164,7 +164,7 @@ impl FootPathRuntime {
     }
 
     /// Supply native retained inputs without inventing a gameplay arming edge.
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     pub(crate) fn set_scold_latch_for_test(&mut self, raw: u8) {
         self.scold_latch = raw;
     }
@@ -263,13 +263,13 @@ impl FootPathQueue {
     }
 
     /// A fixture's direction words.
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     pub(crate) fn set_directions_for_test(&mut self, directions: Vec<u8>) {
         self.directions = directions;
     }
 
     /// A fixture's queue.
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     pub(crate) fn for_test(
         directions: Vec<u8>,
         cursor: u16,
@@ -318,12 +318,12 @@ impl FootPathQueue {
     ///
     /// A tube word (8) names no adjacent cell and ends the walk, as in
     /// [`Self::walk_words`]. Diagnostics and tests.
-    pub(crate) fn remaining_cells_from(&self, head: (i16, i16)) -> Vec<(i16, i16)> {
+    pub fn remaining_cells_from(&self, head: (i16, i16)) -> Vec<(i16, i16)> {
         Self::walk_words(head, self.remaining_directions())
     }
 
     /// The reference cell followed by the unpaid cells walked from it.
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     pub(crate) fn route_cells(&self) -> Vec<(u16, u16)> {
         self.reference_cell
             .into_iter()
@@ -335,7 +335,7 @@ impl FootPathQueue {
     /// `start` followed by the cells every word (consumed or not) steps
     /// through from it: the route one Find_Path installed from `start`, while
     /// the queue still holds that install's words.
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     pub(crate) fn installed_cells(&self, start: (u16, u16)) -> Vec<(u16, u16)> {
         std::iter::once((start.0 as i16, start.1 as i16))
             .chain(Self::walk_words(
@@ -347,7 +347,7 @@ impl FootPathQueue {
     }
 
     /// Native queue emptiness tests the unconsumed head, not retained history.
-    pub(crate) fn remaining_directions(&self) -> &[u8] {
+    pub fn remaining_directions(&self) -> &[u8] {
         let suffix = &self.directions[usize::from(self.cursor).min(self.directions.len())..];
         &suffix[..suffix
             .iter()
@@ -401,12 +401,12 @@ impl Default for FootSpeedState {
 }
 
 impl FootSpeedState {
-    pub(crate) fn crate_multiplier(&self) -> crate::util::native_x87::NativeF64Bits {
+    pub fn crate_multiplier(&self) -> crate::util::native_x87::NativeF64Bits {
         self.crate_multiplier
     }
 
     /// Foot `+0x578`, the applied speed fraction.
-    pub(crate) fn applied_fraction(&self) -> SimFixed {
+    pub fn applied_fraction(&self) -> SimFixed {
         self.applied_fraction
     }
 
@@ -457,7 +457,7 @@ impl FootSpeedState {
     /// at least 0.1 + 1/(10C), outside that window for any C up to 6553, and
     /// above 0.8 for any C up to 13107; k/C exactly 0.1 or 0.8 divides with
     /// truncation to just below it, as native reads it.
-    pub(crate) fn set_speed_fraction_native_bits(&mut self, bits: u64) {
+    pub fn set_speed_fraction_native_bits(&mut self, bits: u64) {
         use crate::util::native_x87::NativeF64Bits;
         let stored = Self::stored_speed_fraction(NativeF64Bits::from_bits(bits)).bits();
         self.applied_fraction = if stored == NativeF64Bits::ONE.bits() {
@@ -497,7 +497,7 @@ impl FootSpeedState {
 
     /// Cell48303A..483072: an already-modified Foot never stacks this effect.
     /// Class/radius eligibility belongs to the pickup effect caller.
-    pub(crate) fn accept_speed_crate(
+    pub fn accept_speed_crate(
         &mut self,
         multiplier: crate::util::native_x87::NativeF64Bits,
     ) -> bool {
@@ -525,29 +525,6 @@ pub struct DriveOccupationFootprint {
     pub rx: u16,
     pub ry: u16,
     pub layer: MovementLayer,
-}
-
-/// Which part of a multi-part voxel model an entity/atlas entry represents.
-///
-/// Non-turret units use `Composite` (body+turret+barrel baked together).
-/// Turret units store Body/Turret/Barrel separately so the turret can
-/// be drawn at a different facing than the body at render time.
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize,
-)]
-pub enum VxlLayer {
-    /// All parts composited into one sprite (for units without independent turret).
-    Composite,
-    /// Body only (hull/chassis).
-    Body,
-    /// Turret only ({IMAGE}TUR.VXL).
-    Turret,
-    /// Barrel only ({IMAGE}BARL.VXL).
-    Barrel,
-    /// Ground shadow of the main voxel: each section's occupied (x, y) columns
-    /// flattened onto z = 0 and shifted by the shadow light vector, always at
-    /// motion frame 0. See `render::vxl_raster::render_vxl_shadow`.
-    Shadow,
 }
 
 /// Constructor row for a generic AnimClass-like runtime spawn.
@@ -585,6 +562,10 @@ pub struct AnimClassSpawnDescriptor {
     pub terrain_attached: bool,
     /// Instance draw-state bytes supplied by the native producer.
     pub draw_runtime: crate::sim::anim_class::AnimDrawRuntime,
+    /// The object the producer attaches the new Anim to right after the
+    /// constructor (`AnimClass::SetOwnerObject @ 0x00424B50`), if any.
+    #[serde(default)]
+    pub owner: Option<u64>,
 }
 
 impl AnimClassSpawnDescriptor {
@@ -611,6 +592,7 @@ impl AnimClassSpawnDescriptor {
             use_cell_drawer: false,
             terrain_attached: false,
             draw_runtime: crate::sim::anim_class::AnimDrawRuntime::default(),
+            owner: None,
         }
     }
 }

@@ -153,7 +153,7 @@ pub(crate) fn attack_action(
     let Some(actor) = sim.entities().get(actor_id) else {
         return AttackAction::None;
     };
-    let Some(kind) = rules.object(sim.interner.resolve(actor.type_ref())) else {
+    let Some(kind) = sim.interner.object_type(actor.type_ref(), rules) else {
         return AttackAction::None;
     };
     let human = sim.house_is_human_player(actor.owner());
@@ -260,7 +260,7 @@ pub(crate) fn attack_action(
             && sim
                 .entities()
                 .get(id)
-                .and_then(|target| rules.object(sim.interner.resolve(target.type_ref())))
+                .and_then(|target| sim.interner.object_type(target.type_ref(), rules))
                 .is_some_and(|target| target.immune)
         {
             // Object447512..447527; the Cell wrapper has no such target.
@@ -292,7 +292,7 @@ pub(crate) fn armed_action(
     overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
 ) -> Option<AttackAction> {
     let actor = sim.entities().get(actor_id)?;
-    let object = rules.object(sim.interner.resolve(actor.type_ref()))?;
+    let object = sim.interner.object_type(actor.type_ref(), rules)?;
     let armed = match target {
         TargetKind::Cell(..) => crate::sim::combat::combat_weapon::current_weapon(
             actor,
@@ -346,7 +346,7 @@ pub(crate) fn resolved_unit_in_range(
     let Some(actor) = sim.entities().get(actor_id) else {
         return false;
     };
-    let Some(object) = rules.object(sim.interner.resolve(actor.type_ref())) else {
+    let Some(object) = sim.interner.object_type(actor.type_ref(), rules) else {
         return false;
     };
     let Some((index, _)) = crate::sim::combat::combat_weapon::select_weapon_against_in_query(
@@ -784,7 +784,7 @@ fn emit_entity_order_voice(state: &mut AppState, speaker_id: u64, voice_field: &
     let Some(entity) = sim.entities().get(speaker_id) else {
         return;
     };
-    let Some(obj) = rules.object(sim.interner.resolve(entity.type_ref())) else {
+    let Some(obj) = sim.interner.object_type(entity.type_ref(), rules) else {
         return;
     };
     let Some(id) = crate::sim::world::Simulation::queue_voice_request(
@@ -1192,8 +1192,9 @@ fn berserk_selection_click(
         EntityCategory::Unit => hover.is_none(),
         EntityCategory::Infantry => {
             hover.is_none()
-                && rules
-                    .object(sim.interner.resolve(best.type_ref()))
+                && sim
+                    .interner
+                    .object_type(best.type_ref(), rules)
                     .is_some_and(|object| object.jumpjet)
         }
         EntityCategory::Structure => false,
@@ -1672,9 +1673,7 @@ pub(crate) fn try_queue_context_order_at_screen_point(
                             .entities()
                             .get(id)
                             .and_then(|entity| {
-                                resources
-                                    .rules
-                                    .object(sim.interner.resolve(entity.type_ref()))
+                                sim.interner.object_type(entity.type_ref(), &resources.rules)
                             })
                             .is_some_and(
                                 crate::app::match_runtime::eva_producers::rally_point_announces,
@@ -1813,7 +1812,7 @@ pub(crate) fn try_queue_context_order_at_screen_point(
                     }
                     let rules = Some(&resources.rules)?;
                     let building = sim.entities().get(target.stable_id)?;
-                    let obj = rules.object(sim.interner.resolve(building.type_ref()))?;
+                    let obj = sim.interner.object_type(building.type_ref(), rules)?;
                     if !obj.can_c4 || obj.invisible_in_game {
                         return None;
                     }
@@ -1835,7 +1834,7 @@ pub(crate) fn try_queue_context_order_at_screen_point(
                             sim.entities().get(sid).is_some_and(|e| {
                                 e.category() == EntityCategory::Infantry
                                     && Some(&resources.rules)
-                                        .and_then(|r| r.object(sim.interner.resolve(e.type_ref())))
+                                        .and_then(|r| sim.interner.object_type(e.type_ref(), r))
                                         .is_some_and(|o| o.c4)
                             })
                         })
@@ -1868,7 +1867,7 @@ pub(crate) fn try_queue_context_order_at_screen_point(
                     }
                     let rules = Some(&resources.rules)?;
                     let building = sim.entities().get(target.stable_id)?;
-                    let obj = rules.object(sim.interner.resolve(building.type_ref()))?;
+                    let obj = sim.interner.object_type(building.type_ref(), rules)?;
                     obj.unit_repair.then_some(target.stable_id)
                 });
                 if let Some(depot_id) = depot_target {
@@ -1878,9 +1877,9 @@ pub(crate) fn try_queue_context_order_at_screen_point(
                         .filter(|&sid| {
                             sim.entities().get(sid).is_some_and(|e| {
                                 e.category() == EntityCategory::Unit
-                                    && resources
-                                        .rules
-                                        .object(sim.interner.resolve(e.type_ref()))
+                                    && sim
+                                        .interner
+                                        .object_type(e.type_ref(), &resources.rules)
                                         .is_some_and(|obj| e.health.current() < obj.strength)
                                     && !e.is_deployed()
                             })
@@ -2192,7 +2191,7 @@ fn self_click_command(
         .entities()
         .get(target.stable_id)
         .filter(|entity| entity.owner() == local_owner)?;
-    let obj = rules.object(sim.interner.resolve(entity.type_ref()));
+    let obj = sim.interner.object_type(entity.type_ref(), rules);
     if let Some(command) = super::transport_orders::unload_command(entity, obj, Some(local_owner)) {
         return Some(command);
     }
@@ -2244,7 +2243,7 @@ fn transport_entry_orders(
         .entities()
         .get(transport_id)
         .filter(|target| target.category() == EntityCategory::Structure)
-        .and_then(|target| rules.object(sim.interner.resolve(target.type_ref())))
+        .and_then(|target| sim.interner.object_type(target.type_ref(), rules))
         .is_some_and(|object| object.can_be_occupied);
     selected
         .iter()
@@ -2287,8 +2286,9 @@ fn engineer_capture_orders(
             return true;
         };
         if actor.category() != EntityCategory::Infantry
-            || !rules
-                .object(sim.interner.resolve(actor.type_ref()))
+            || !sim
+                .interner
+                .object_type(actor.type_ref(), rules)
                 .is_some_and(|o| o.engineer)
         {
             return true;
@@ -2380,8 +2380,9 @@ fn disarm_bomb_engineers(
             id != target
                 && sim.entities().get(id).is_some_and(|e| {
                     e.category() == EntityCategory::Infantry
-                        && rules
-                            .object(sim.interner.resolve(e.type_ref()))
+                        && sim
+                            .interner
+                            .object_type(e.type_ref(), rules)
                             .is_some_and(|o| o.engineer)
                 })
         })
@@ -2471,7 +2472,7 @@ fn friendly_bomb_ivans(
     overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
 ) -> Vec<u64> {
     let bombable = sim.entities().get(target).is_some_and(|entity| {
-        let obj = rules.object(sim.interner.resolve(entity.type_ref()));
+        let obj = sim.interner.object_type(entity.type_ref(), rules);
         !ivan_bomb_refused(entity, obj) && obj.is_some_and(|o| o.passengers == 0)
     });
     if !bombable {
@@ -2483,8 +2484,8 @@ fn friendly_bomb_ivans(
         .filter(|&id| {
             (id != target || selection_count > 1)
                 && sim.entities().get(id).is_some_and(|e| {
-                    rules
-                        .object(sim.interner.resolve(e.type_ref()))
+                    sim.interner
+                        .object_type(e.type_ref(), rules)
                         .is_some_and(|o| o.ivan && o.attack_cursor_on_friendlies)
                 })
                 && attack_action(
@@ -2542,14 +2543,11 @@ fn ivan_cannot_bomb(
     let is_ivan = sim
         .entities()
         .get(actor_id)
-        .and_then(|e| rules.object(sim.interner.resolve(e.type_ref())))
+        .and_then(|e| sim.interner.object_type(e.type_ref(), rules))
         .is_some_and(|o| o.ivan);
     is_ivan
         && sim.entities().get(target_id).is_some_and(|target| {
-            ivan_bomb_refused(
-                target,
-                rules.object(sim.interner.resolve(target.type_ref())),
-            )
+            ivan_bomb_refused(target, sim.interner.object_type(target.type_ref(), rules))
         })
 }
 
@@ -2584,13 +2582,13 @@ fn shot_is_illegal(
         .entities()
         .get(actor_id)
         .filter(|actor| actor.category() == EntityCategory::Infantry)
-        .and_then(|actor| rules.object(sim.interner.resolve(actor.type_ref())))
+        .and_then(|actor| sim.interner.object_type(actor.type_ref(), rules))
         .filter(|infantry| infantry.infiltrate)
         .zip(
             sim.entities()
                 .get(target_id)
                 .filter(|object| object.category() == EntityCategory::Structure)
-                .and_then(|object| rules.object(sim.interner.resolve(object.type_ref()))),
+                .and_then(|object| sim.interner.object_type(object.type_ref(), rules)),
         )
         .is_some_and(|(infantry, building)| {
             (if infantry.agent {
@@ -2600,10 +2598,9 @@ fn shot_is_illegal(
             }) || (infantry.c4 && building.can_c4)
         });
     !infiltrate_arm
-        && sim
-            .effective_shared_cell_dummy()
-            .detached(|| sim.selected_weapon_fire_error(rules, actor_id, *target, overlay_registry))
-            == crate::sim::combat::fire_error::FireError::Illegal
+        && sim.effective_shared_cell_dummy().detached(|| {
+            sim.selected_weapon_fire_error(rules, actor_id, *target, true, overlay_registry)
+        }) == crate::sim::combat::fire_error::FireError::Illegal
 }
 
 fn selected_rally_producer_ids(

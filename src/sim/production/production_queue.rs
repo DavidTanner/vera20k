@@ -28,7 +28,7 @@ pub fn credits_for_owner(sim: &Simulation, owner: &str) -> i32 {
 
 /// `owner`'s house, created as a human house holding [`STARTING_CREDITS`]
 /// when the test never made one.
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 pub(in crate::sim) fn house_for_test<'a>(
     sim: &'a mut Simulation,
     owner: &str,
@@ -172,8 +172,8 @@ pub fn publish_production_changes(sim: &mut Simulation, rules: &RuleSet) {
 /// Exercise the next frame's prefix publication and its event tail in focused owner tests,
 /// without running unrelated world AI. The ordinary production runtime uses
 /// publish_production_changes plus the world's existing scheduled tail.
-#[cfg(test)]
-pub(crate) fn dispatch_production_changes_for_tests(
+#[cfg(any(test, feature = "test-support"))]
+pub fn dispatch_production_changes_for_tests(
     sim: &mut Simulation,
     rules: &RuleSet,
     overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
@@ -483,8 +483,8 @@ fn exit_land(
         .expect("the producer remains live");
     let coord = crate::sim::movement::building_exit_coordinate(
         crate::sim::movement::ground_pose::position_world_coord(&producer.position),
-        rules
-            .object(sim.interner.resolve(producer.type_ref()))
+        sim.interner
+            .object_type(producer.type_ref(), rules)
             .expect("the producer has a type"),
         || {
             crate::sim::movement::ground_pose::object_get_coords(
@@ -647,7 +647,8 @@ fn exit_cloning_vat_copies(
     let clones = sim
         .object_type(producer.type_ref(), rules)
         .is_some_and(|producer_type| {
-            producer_type.factory == Some(crate::rules::object_type::FactoryType::InfantryType)
+            producer_type.factory_type()
+                == Some(crate::rules::object_type::FactoryType::InfantryType)
                 && !producer_type.cloning
         });
     if !clones {
@@ -810,7 +811,7 @@ impl ExitProducer {
                 .get(&house)
                 .is_some_and(|house| !house.is_controlled_by_human(sim.session.game_mode_nonzero)),
             hospital: object.is_some_and(|object| object.hospital),
-            factory: object.is_some_and(|object| object.factory.is_some()),
+            factory: object.is_some_and(|object| object.has_factory()),
         })
     }
 }

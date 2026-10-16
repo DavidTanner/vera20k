@@ -10,7 +10,7 @@ use crate::sim::projectile::{ProjectileCoord, ProjectileTarget};
 use crate::sim::world::{LifecycleOutput, Simulation};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct LaserBirth {
+pub struct LaserBirth {
     pub frame: i32,
     pub from: ProjectileCoord,
     pub to: ProjectileCoord,
@@ -23,7 +23,7 @@ pub(crate) struct LaserBirth {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum LaserColor {
+pub enum LaserColor {
     /// House+56FC is resolved once at construction by the existing client
     /// color owner. Capture the owner now, never look up the firer later.
     House(InternedId),
@@ -52,7 +52,7 @@ pub(crate) fn fired(
     let Some(source) = world.substrate.entities.get(source_id) else {
         return;
     };
-    let Some(obj) = rules.object(world.interner.resolve(source.type_ref())) else {
+    let Some(obj) = world.interner.object_type(source.type_ref(), rules) else {
         return;
     };
     // FireAt6FF4CC gates on the fired weapon above, but its building arm
@@ -127,7 +127,7 @@ pub(crate) fn create<'w>(
         if let Some(from) = from.filter(|coord| *coord != ProjectileCoord::new(0, 0, 0)) {
             (from, 0)
         } else {
-            let object = rules.object(world.interner.resolve(source.type_ref()))?;
+            let object = world.interner.object_type(source.type_ref(), rules)?;
             let from = super::fire_coord::fire_coordinate(
                 world,
                 rules,
@@ -193,7 +193,7 @@ pub(crate) fn support(
     let Some(source) = world.substrate.entities.get(source_id) else {
         return;
     };
-    let Some(obj) = rules.object(world.interner.resolve(source.type_ref())) else {
+    let Some(obj) = world.interner.object_type(source.type_ref(), rules) else {
         return;
     };
     let from = super::fire_coord::fire_coordinate(

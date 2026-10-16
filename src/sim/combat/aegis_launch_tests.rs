@@ -60,6 +60,18 @@ impl AegisScene {
                 )
                 .is_ok()
         );
+        // These launch/burst controls retain an explicit Attack target. Guard
+        // DistributedFire's history/null setter is exercised by the joined
+        // world::aegis_distributed_fire_tests production frame fixture.
+        world
+            .mission_assign_exact(
+                aegis,
+                crate::sim::mission::MissionId::from_known(
+                    crate::sim::mission::MissionType::Attack,
+                ),
+                world.session.binary_frame,
+            )
+            .unwrap();
         Some(Self {
             world,
             rules,
@@ -429,11 +441,7 @@ fn retail_normal_and_elite_aegis_unit_fire_enrolls_each_returned_bullet() {
         // No Trailer means no cadence IDIV or Anim allocation at the header;
         // the separate retained line trail remains the existing visual owner.
         let bullet = ids[0];
-        let head = scene
-            .world
-            .projectiles
-            .begin_ai_visit(bullet, |_| false)
-            .unwrap();
+        let head = scene.world.projectiles.begin_ai_visit(bullet).unwrap();
         assert!(scene.world.projectiles.trailer(&head, kind, 3).is_none());
     }
 }

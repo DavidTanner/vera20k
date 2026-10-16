@@ -470,6 +470,25 @@ def execute(case):
     u.mem_write(SCRATCH+0x4F000, dwords(HOUSE))
     u.mem_write(HOUSE+0x34, dwords(HOUSE_TYPE))
     u.mem_write(HOUSE_TYPE+0xB4, dwords(0,0))
+    house_funds = case.get('house_funds')
+    observe_object_cleanup = case.get('observe_object_cleanup',False)
+    if house_funds is not None:
+        # Supplied empty-storage House priors, not a House constructor or a
+        # silo-initialization result. The actual IHouse money getter executes.
+        u.mem_write(HOUSE,dwords(0x7EA8A0))
+        assert u32(u,0x7EA8A0+0x28)==0x4FB9B0
+        u.mem_write(HOUSE+0x24,dwords(0x7EA834))
+        u.mem_write(HOUSE+0x38,dwords(0x7EB6D4,SCRATCH+0x4E000,128,1,0,10))
+        u.mem_write(HOUSE+0x2FC,bytes(16))
+        u.mem_write(HOUSE+0x30C,dwords(house_funds))
+        u.mem_write(HOUSE_TYPE+0x148,struct.pack('<f',1.0))
+        from tools.spatial_oracle.house_tag_raise import RAISE_CELL
+        u.mem_write(RAISE_CELL,dwords(0))
+        for pointer in (0x886B88,0xABE890):
+            f.call(0x65C6D0,pointer,[case.get('seed',31)])
+    if observe_object_cleanup and house_funds is None:
+        for pointer in (0x886B88,0xABE890):
+            f.call(0x65C6D0,pointer,[case.get('seed',31)])
     if case.get('active_cleanup',False):
         u.mem_write(HOUSE+0x27C,dwords(case.get('allow_win_count',3)))
         u.mem_write(HOUSE+0x298,dwords(-1,0x11223344,99))
@@ -499,6 +518,7 @@ def execute(case):
     allocations, actions_run, draws, calls, tags, objects = [], [], [], [], [], []
     dispatches, trigger_handles, destruct_order = [], [], []
     allocated, freed, allocation_types, frees = set(), set(), {}, []
+    object_frees, cleanup_calls, cleanup_observations = [], [], []
     pointer_probe=RET_MAGIC+0x100
     u.mem_write(0x7E115C,dwords(pointer_probe))
     def ticket(pointer):
@@ -508,6 +528,11 @@ def execute(case):
         raise AssertionError(('unknown pending identity',hex(pointer)))
     def observe(_u, pc, _size, _data):
         nonlocal cursor
+        if observe_object_cleanup and pc in (0x5F3B80,0x5F6DC0,0x5F5B50,0x725C70,
+                                             0x6E5230,0x6E4F60,0x726950,0x65C780,0x65C7E0):
+            receiver=u.reg_read(UC_X86_REG_ECX)
+            cleanup_calls.append(dict(pc=f'0x{pc:08X}',
+                object=objects.index(receiver) if receiver in objects else None))
         if pc==pointer_probe:
             # Original CRT typeid probes its real TypeDescriptor through this
             # Windows import. Validate memory before supplying OS success.
@@ -537,6 +562,10 @@ def execute(case):
             sp=u.reg_read(UC_X86_REG_ESP)
             pointer=u32(u,sp+4)
             assert pointer in allocated and pointer not in freed, (hex(pointer),hex(u32(u,sp)),allocated,freed)
+            if observe_object_cleanup and pointer in objects:
+                attachment=u32(u,pointer+0x34)
+                object_frees.append(dict(object=objects.index(pointer),
+                    tag_at_free=tags.index(attachment) if attachment else None))
             freed.add(pointer)
             frees.append(allocation_types[pointer])
             u.reg_write(UC_X86_REG_ESP,sp+4)
@@ -561,8 +590,28 @@ def execute(case):
               (0x6DD8B0,0x6E45D0),(0x689670,0x689A90)]
     if case.get('mixed_deferred_queue',False):
         ranges.extend(((0x5F3B80,0x5F3E00),(0x5F6690,0x5F66A0),(0x5F6DC0,0x5F6DF0)))
+    if house_funds is not None:
+        from tools.spatial_oracle.house_tag_raise import RAISE_BEGIN, RAISE_END
+        ranges.extend(((RAISE_BEGIN,RAISE_END),(0x684D47,0x684EC1),
+                       (0x4F5F99,0x4F5FB1),(0x4FB9B0,0x4FBB50),
+                       (0x4F6990,0x4F69CA),(0x4F9790,0x4F99D0),
+                       (0x6C9600,0x6C964F),(0x7C5F00,0x7C5F38)))
     code = [bytes(u.mem_read(a,b-a)) for a,b in ranges]
+    if house_funds is not None:
+        # Execute the genuine House constructor's listener append. This lets
+        # the original PointerExpired remove a deleted Tag from House+38.
+        u.reg_write(UC_X86_REG_EBP,HOUSE)
+        u.reg_write(UC_X86_REG_ESP,f.sp)
+        run_checked(u,0x4F5F99,0x4F5FB1)
+        assert u.reg_read(UC_X86_REG_ESP)==f.sp
+        rng_before={pointer:bytes(u.mem_read(pointer,0x3F4))
+                    for pointer in (SCENARIO+0x218,0x886B88,0xABE890)}
     history = []
+    if observe_object_cleanup:
+        from types import SimpleNamespace
+        from tools.input_oracle.campaign_start import CampaignReader
+        cleanup_rng_view=SimpleNamespace(u=u,scenario=SCENARIO)
+        cleanup_rng_before=CampaignReader.rng_state(cleanup_rng_view)
     def snapshot(returned):
         tag_states = []
         for tag in tags:
@@ -591,6 +640,16 @@ def execute(case):
             state.update(pending_tickets=[ticket(pointer) for pointer in pending],
                          destruct_order=list(destruct_order),
                          object_alive=[None if obj in freed else u.mem_read(obj+0x90,1)[0] for obj in objects])
+        if observe_object_cleanup:
+            # The free recorder retains the allocation bytes. Unlike the
+            # historical object_tags view, this observes +34 even after free;
+            # a host-filtered None must not be mistaken for a native clear.
+            observed=dict(object_tag_words=[tags.index(u32(u,obj+0x34))
+                if u32(u,obj+0x34) else None for obj in objects],
+                object_frees=list(object_frees),native_cleanup_calls=list(cleanup_calls))
+            assert CampaignReader.rng_state(cleanup_rng_view)==cleanup_rng_before
+            observed['three_full_rng_states_compared_equal']=True
+            cleanup_observations.append(observed)
         if case.get('polling',False):
             base=REGISTRIES['logic_tags']
             state.update(dispatches=list(dispatches),
@@ -600,6 +659,10 @@ def execute(case):
             state.update(logic_cursor=i32(u,0xA83CDC),map_cursor=i32(u,0xA83DBC),
                          allow_win_count=i32(u,HOUSE+0x27C),
                          allow_win_timer=[i32(u,HOUSE+off) for off in (0x298,0x2A0)])
+        if house_funds is not None:
+            state['funds']=dict(wallet=i32(u,HOUSE+0x30C),spent=i32(u,HOUSE+0x2DC),
+                                house_tag_count=i32(u,HOUSE+0x48),
+                                logic_tag_count=i32(u,REGISTRIES['logic_tags']+16))
         return state
     for op in case.get('operations',[['shared'],['dispatch',0,13],['dispatch',0,13]]):
         kind, *args = op
@@ -619,6 +682,25 @@ def execute(case):
             returned = tags.index(tag)
         elif kind=='frame':
             u.mem_write(0xA8ED84,dwords(args[0]))
+        elif kind=='classify_house_tags':
+            # Supplied TagType identities, original Fill classification and
+            # registration. No hand-authored House/Logic membership list.
+            assert house_funds is not None and len(args)<=128
+            array=SCRATCH+0x4E800
+            u.mem_write(array,dwords(*(TAG_TYPES[n] for n in args)))
+            u.mem_write(0xB0E780+4,dwords(array,128,1,len(args),10))
+            u.reg_write(UC_X86_REG_ESP,f.sp)
+            run_checked(u,0x684D47,0x684EC1)
+            assert u.reg_read(UC_X86_REG_ESP)==f.sp
+        elif kind in ('spend_money','add_credits'):
+            assert house_funds is not None and len(args)==1
+            f.call(0x4F9790 if kind=='spend_money' else 0x4F9950,HOUSE,args)
+        elif kind=='house_poll':
+            assert house_funds is not None
+            u.reg_write(UC_X86_REG_ESP,f.sp)
+            u.reg_write(UC_X86_REG_ESI,HOUSE)
+            run_checked(u,RAISE_BEGIN,RAISE_END)
+            assert u.reg_read(UC_X86_REG_ESP)==f.sp
         elif kind=='attach_cell':
             f.call(0x485250,cell(args[1],args[2]),[tags[args[0]]])
         elif kind=='object':
@@ -666,6 +748,11 @@ def execute(case):
             f.call(0x726720,trigger,[])
         elif kind=='drain':
             f.call(0x725C70,0,[])
+        elif kind=='dispose_object':
+            # Constructor-complete base Object scalar disposal, not a live
+            # Techno death or an invented Tag release before the destructor.
+            assert observe_object_cleanup and case.get('mixed_deferred_queue',False)
+            f.call(0x5F6DC0,objects[args[0]],[1])
         elif kind=='register_logic':
             base=REGISTRIES['logic_tags']
             assert len(args)<=128
@@ -692,8 +779,20 @@ def execute(case):
         history.append(snapshot(returned))
     u.hook_del(hook)
     assert code == [bytes(u.mem_read(a,b-a)) for a,b in ranges]
-    return dict(input=case,history=history,allocations=allocations,calls=calls,
-                next_random=f.call(0x65C780,SCENARIO+0x218,[]))
+    result=dict(input=case,history=history,allocations=allocations,calls=calls)
+    if observe_object_cleanup:
+        result.update(full_rng_before=cleanup_rng_before,
+            full_rng_after_history=CampaignReader.rng_state(cleanup_rng_view),
+            object_tag_raw_history=cleanup_observations,object_frees=list(object_frees))
+    if house_funds is not None:
+        rng_after={pointer:bytes(u.mem_read(pointer,0x3F4)) for pointer in rng_before}
+        assert rng_after==rng_before
+        assert not draws
+        result.update(rng_before={hex(p):hashlib.sha256(v).hexdigest() for p,v in rng_before.items()},
+                      rng_after_history={hex(p):hashlib.sha256(v).hexdigest() for p,v in rng_after.items()})
+    # This terminal continuation probe is deliberately outside saved history.
+    result['next_random']=f.call(0x65C780,SCENARIO+0x218,[])
+    return result
 
 
 def inputs():
@@ -900,13 +999,14 @@ class PowerEventControls:
              (0x502D30,0x502D60),(0x4FCE30,0x4FCE73),(0x6F9DB0,0x6F9DC7),
              (0x7264C0,0x7265BD),(0x71FA30,0x71FA34)]
 
-    def __init__(self):
+    def __init__(self,reader_inputs=None,extra_calls=()):
         from tools.native_oracle import NATIVE_FPCW
         from tools.spatial_oracle.trigger_type_flags import FlagsFixture
         from tools.spatial_oracle.infantry_deploy_rules import HEAP, CURSOR, PTD
         from tools.spatial_oracle.engineer_repair_admission import INF_VTABLE
         from unicorn.x86_const import UC_X86_REG_FPCW
         self.fixture = FlagsFixture()
+        self.extra_calls=extra_calls
         self.u = u = self.fixture.u
         self.arena = HEAP
         self.event, self.persist, self.timer = HEAP+0x70000, HEAP+0x70100, HEAP+0x70110
@@ -939,9 +1039,11 @@ class PowerEventControls:
         self.original = [bytes(u.mem_read(a,b-a)) for a,b in self.SPANS]
         self.calls, self.admission_calls, self.predicates, self.registers = [], [], [], []
         u.hook_add(UC_HOOK_CODE,self.observe)
-        self.readers = {raw:self.read_event(raw) for raw in (
+        defaults=(
             '1,32,0,402','1,32,0,7','1,57,0,7','1,58,0,0','1,58,0,7',
-            '1,58,0,999','1,30,0,0','1,1,0,0','1,1,0,7','1,1,0,-1')}
+            '1,58,0,999','1,30,0,0','1,1,0,0','1,1,0,7','1,1,0,-1')
+        self.readers = {raw:self.read_event(raw) for raw in
+                        (defaults if reader_inputs is None else reader_inputs)}
 
     def integer(self,address):
         return struct.unpack('<i',self.u.mem_read(address,4))[0]
@@ -954,7 +1056,7 @@ class PowerEventControls:
         return row['conditions'][0]
 
     def observe(self,vm,pc,size,data):
-        if pc in (0x49FAE0,0x49FB60,0x502D30,0x4FCE30,0x6F9DB0,0x6F9DC0,0x65C780,0x65C7E0):
+        if pc in (0x49FAE0,0x49FB60,0x502D30,0x4FCE30,0x6F9DB0,0x6F9DC0,0x65C780,0x65C7E0)+self.extra_calls:
             sp = vm.reg_read(UC_X86_REG_ESP)
             self.calls.append(dict(pc=f'0x{pc:08X}',ecx=vm.reg_read(UC_X86_REG_ECX),
                 arg0=struct.unpack('<I',vm.mem_read(sp+4,4))[0]))
@@ -966,14 +1068,14 @@ class PowerEventControls:
     def predicate(self,name,raw,house_index=0,raised=8,actor_index=None,
                   scenario_init=False,counts=(0,0,0),
                   power=((100,200),(300,200),(0,200)),order=(0,1,2),
-                  destruction_counts=None,source_index=None):
+                  destruction_counts=None,source_index=None,initial_persistence=0):
         # Preserve historical key scenario_init; it denotes A8ED6B, NOT the
         # A8E7AC placement scope. See this selected mode's metadata.
         if raw not in self.readers:
             self.readers[raw] = self.read_event(raw)
         u,p = self.u,self.readers[raw]
         u.mem_write(self.event+0x2C,dwords(p['kind']));u.mem_write(self.event+0x34,dwords(p['value']))
-        u.mem_write(self.event+0x54,dwords(0xABCD1234));u.mem_write(self.persist,b'\0')
+        u.mem_write(self.event+0x54,dwords(0xABCD1234));u.mem_write(self.persist,bytes([initial_persistence]))
         u.mem_write(self.house_array,dwords(*(self.houses[i] for i in order)))
         u.mem_write(0xA8ED6B,bytes([scenario_init]))
         for counter,value in zip(self.counters,counts):
@@ -1114,6 +1216,64 @@ def destroyed_house_event_metadata():
         substitutions=['Existing oracle platform/CRT/TLS transport only; no selected gameplay getter or predicate is replaced.'],
         entry_points={'event_constructor':0x71E6A0,'event_counted_read':0x7274DC,
             'has_occurred':0x71E940,'country_house':0x502D30,'counter_total':0x49FB60})
+
+
+def generate_building_loss_events():
+    """Event10 uses the selected Country's signed tracked-building scalar."""
+    from tools.native_oracle import image_sha256, NATIVE_FPCW
+    m=PowerEventControls()
+    m.SPANS=[*m.SPANS,(0x71F950,0x71FA40)]
+    m.original.append(bytes(m.u.mem_read(0x71F950,0xF0)))
+    controls=[]
+
+    def probe(name,buildings,value=0,house=0,actor=None,raised=99,
+              order=(0,1,2),buildup=False,persistence=0):
+        before=list(struct.unpack('<iii',m.u.mem_read(m.timer,12)))
+        m.predicate(name,f'1,10,0,{value}',house_index=house,actor_index=actor,
+                    raised=raised,order=order,scenario_init=buildup,
+                    destruction_counts=tuple((count,0,0,0) for count in buildings),
+                    initial_persistence=persistence)
+        row=m.predicates[-1]
+        after=list(struct.unpack('<iii',m.u.mem_read(m.timer,12)))
+        assert after==before and row['persistence']==persistence
+        assert row['event54']==struct.unpack('<i',dwords(0xABCD1234))[0]
+        controls.append(dict(name=name,value=value,tracked_buildings=list(buildings),
+            house_order=list(order),incoming_house=house,actor_owner=actor,raised=raised,
+            scenario_init=buildup,initial_persistence=persistence,result=row['result'],
+            persistence=row['persistence'],event54=row['event54'],
+            timer_before=before,timer_after=after))
+
+    for count in (-2147483648,-1,0,1,2147483647):
+        probe(f'tracked_buildings_{count}',(count,5,7),raised=8)
+    for order in ((0,1,2),(2,1,0)):
+        probe(f'first_country_order_{order}',(0,0,7),house=1,actor=1,order=order)
+    for value in (-1,999):
+        probe(f'no_country_{value}',(7,5,9),value=value)
+    for incoming in (0,None):
+        for buildup in (False,True):
+            probe(f'input_house_{incoming}_bypass_{buildup}',(0,5,7),
+                  house=incoming,buildup=buildup)
+    probe('retained_persistence_one',(0,5,7),house=1,raised=8,persistence=1)
+    classification=dict(state_a=m.fixture.call(0x71F950,[],ecx=m.event)&255,
+                        state_b=m.fixture.call(0x71F9C0,[],ecx=m.event)&255)
+    m.assert_unchanged()
+    return dict(schema_version=1,native_sha256=image_sha256(),native_fpcw=f'0x{NATIVE_FPCW:X}',
+                country_indices=[0,7,0],controls=controls,classification=classification,
+                code_unchanged=True,zero_rng_calls=True)
+
+
+def building_loss_event_metadata():
+    return provenance(
+        scope='Fourteen original HasOccurred10 controls and two StateA/StateB calls. Covers the tracked-building predicate and first-Country resolution, not a complete House destruction or campaign mechanism.',
+        assumptions=[
+            'Reuse PowerEventControls/FlagsFixture native image, cached counted TEvent reader and minimal three-House arena. Country bindings0/7/0, registered order, signed House+2F0 tracked-building counts and actor/incoming House identities are supplied priors. No House or Building constructor, tracking writer, Limbo, UnInit or destructor runs here.',
+            'Original HasOccurred71E940 executes Country lookup502D30 with Event+34 and Event10 branch71F115..71F12E. It tests the first matched House tracked+2F0 <=0 signed; absent Country returns true. The declared INT_MIN/-1/0/1/INT_MAX and reversed duplicate-Country controls distinguish signed scalar and registration-order semantics.',
+            'Wrong raised99, distinct actor/incoming House1, null incoming House and both A8ED6B values are executed. Event+54 starts0xABCD1234 and persistence starts0 or1; both and the supplied timer remain unchanged. StateA71F950 returns0 and StateB71F9C0 returns1. Existing observers see neither RNG draw entry; this predicate has no timer write or detach.',
+            'The corpus deliberately omits unrelated power reader rows and active/per-type counters. Existing house_tracking.py evidence owns Add/RemoveTracking behavior; existing house_tag_raise.py and tag_lifecycle.py evidence own polling, registration and cleanup. These scalar controls do not extend their declared coverage or certify a whole ALL04 rescue sequence.'],
+        substitutions=['Existing FlagsFixture allocator/CRT/TLS transports and explicit House/actor storage priors only. Original counted TEvent reader, predicate, Country lookup and StateA/StateB instructions run unchanged; no selected gameplay return is supplied.'],
+        entry_points={'event_constructor':0x71E6A0,'event_counted_read':0x7274DC,
+            'has_occurred':0x71E940,'country_house':0x502D30,'building_compare':0x71F115,
+            'state_a':0x71F950,'state_b':0x71F9C0})
 
 
 def generate_damage_source_events():
@@ -1362,10 +1522,1368 @@ def line_event_metadata():
             'packed_map_lookup':0x5657A0,'map_coords':0x41BEA0,'tag_callout':0x6E53A0})
 
 
+def funds_event_history(kind,repeat,with_elapsed=False):
+    """Compose existing original Fill, Logic, House and lifecycle owners."""
+    if with_elapsed:
+        initial,threshold=1501,1500
+        steps=[(0,None),(3744,['spend_money',1]),(3750,None),(3752,None),
+               (7504,['add_credits',1]),(7512,['spend_money',1])]
+    elif kind==52:
+        initial,threshold=70000,10000
+        steps=[(0,None),(7,['spend_money',60000]),(8,None),
+               (16,['add_credits',1]),(24,['spend_money',1]),(32,None)]
+    else:
+        initial,threshold=9999,10000
+        steps=[(0,None),(7,['add_credits',1]),(8,None),
+               (16,['spend_money',1]),(24,['add_credits',1]),(32,None)]
+    operations=[['shared'],['classify_house_tags',0]]
+    row_indices=[]
+    for frame,mutation in steps:
+        operations.append(['frame',frame])
+        if mutation:operations.append(mutation)
+        if with_elapsed:operations.append(['poll'])
+        operations.append(['house_poll'])
+        row_indices.append(len(operations)-1)
+    if repeat==0:
+        operations.extend([['drain'],['frame',40],['house_poll']])
+    case=dict(name=f'funds{kind}_repeat{repeat}'+('_elapsed13' if with_elapsed else ''),
+              repeat=repeat,frame=0,game_mode=0,lifecycle=True,active_cleanup=True,
+              live_flags=[1,1],house_funds=initial,
+              triggers=[dict(events=[[kind,threshold]]+([[13,250]] if with_elapsed else []),
+                             actions=[[28,7]])],operations=operations)
+    receipt=execute(case)
+    rows=[]
+    for (frame,mutation),index in zip(steps,row_indices):
+        state=receipt['history'][index]
+        tag=state['tags'][0]
+        trigger=tag['triggers'][0]
+        rows.append(dict(frame=frame,mutation=mutation,actions=len(state['actions']),
+            **state['funds'],tag_pending=tag['pending'],trigger_pending=trigger['pending'],
+            timer_start=trigger['start'],timer_duration=trigger['duration'],
+            completed=trigger['completed'],pending_count=state['pending_count']))
+    final=receipt['history'][-1]
+    cleanup=dict(**final['funds'],pending_count=final['pending_count'],
+                 free_order=final['frees'],tags_remaining=sum(t is not None for t in final['tags']))
+    return dict(name=case['name'],kind=kind,repeat=repeat,initial=initial,threshold=threshold,
+                with_elapsed=with_elapsed,steps=rows,cleanup=cleanup,
+                rng_before=receipt['rng_before'],rng_after_history=receipt['rng_after_history'])
+
+
+def generate_funds_events():
+    """Signed funds predicates and five original production-caller histories."""
+    from tools.native_oracle import image_sha256, NATIVE_FPCW
+    m=PowerEventControls(reader_inputs=(),extra_calls=(0x4F6990,0x6C9600,0x7C5F00))
+    u=m.u
+    for house,typ in zip(m.houses,m.types):
+        u.mem_write(house+0x24,dwords(0x7EA834))
+        u.mem_write(typ+0x148,struct.pack('<f',1.0))
+    # The existing FlagsFixture owns this arena/transport. Supply one Scenario
+    # state for three genuine original RNG constructors; no draw is simulated.
+    scenario=m.arena+0xB0000
+    u.mem_write(0xA8B230,dwords(scenario))
+    streams=(scenario+0x218,0x886B88,0xABE890)
+    for pointer in streams:m.fixture.call(0x65C6D0,[31],ecx=pointer)
+    rng_before={p:bytes(u.mem_read(p,0x3F4)) for p in streams}
+    spans=[(0x4F6990,0x4F69CA),(0x6C9600,0x6C964F),(0x7C5F00,0x7C5F38),
+           (0x71F950,0x71FA40)]
+    code=[bytes(u.mem_read(a,b-a)) for a,b in spans]
+    predicates,classifiers=[],[]
+
+    def probe(name,kind,balance,threshold,house=0,raised=13,buildup=False,persistence=0):
+        for pointer in m.houses:u.mem_write(pointer+0x30C,dwords(0))
+        if house is not None:u.mem_write(m.houses[house]+0x30C,dwords(balance))
+        before=list(struct.unpack('<iii',u.mem_read(m.timer,12)))
+        m.predicate(name,f'1,{kind},0,{threshold}',house_index=house,raised=raised,
+                    actor_index=2,scenario_init=buildup,initial_persistence=persistence)
+        row=m.predicates[-1]
+        after=list(struct.unpack('<iii',u.mem_read(m.timer,12)))
+        assert after==before and row['persistence']==persistence
+        assert row['event54']==struct.unpack('<i',dwords(0xABCD1234))[0]
+        predicates.append(dict(name=name,kind=kind,balance=balance,threshold=threshold,
+            incoming_house=house,raised=raised,scenario_init=buildup,
+            initial_persistence=persistence,result=row['result'],persistence=row['persistence'],
+            event54=row['event54'],timer_before=before,timer_after=after,
+            calls=[call['pc'] for call in row['calls']]))
+
+    pairs=[(699,700),(700,700),(701,700),(-51,-50),(-50,-50),(-49,-50),(0,0),
+           (2147483647,-1),(-2147483648,0),(-2147483648,2147483647),
+           (2147483647,-2147483648)]
+    for kind in (12,52):
+        for index,(balance,threshold) in enumerate(pairs):
+            probe(f'funds{kind}_signed{index}',kind,balance,threshold)
+        for flag in (False,True):
+            probe(f'funds{kind}_wrong_raise_buildup{int(flag)}',kind,700,700,
+                  raised=99,buildup=flag)
+        probe(f'funds{kind}_null_house',kind,0,0,house=None)
+        probe(f'funds{kind}_retained_persistence',kind,10000,10000,persistence=1)
+        probe(f'funds{kind}_incoming_not_country',kind,8,7,house=1)
+        u.mem_write(m.event+0x2C,dwords(kind))
+        classifiers.append(dict(kind=kind,
+            state_a=m.fixture.call(0x71F950,[],ecx=m.event)&255,
+            state_b=m.fixture.call(0x71F9C0,[],ecx=m.event)&255))
+    m.assert_unchanged()
+    assert code==[bytes(u.mem_read(a,b-a)) for a,b in spans]
+    rng_after={p:bytes(u.mem_read(p,0x3F4)) for p in streams}
+    assert rng_before==rng_after
+    histories=[funds_event_history(kind,repeat) for kind in (12,52) for repeat in (0,2)]
+    histories.append(funds_event_history(52,2,with_elapsed=True))
+    return dict(schema_version=1,native_sha256=image_sha256(),native_fpcw=f'0x{NATIVE_FPCW:X}',
+        predicate_controls=predicates,classifiers=classifiers,histories=histories,
+        code_unchanged=True,
+        predicate_rng_before={hex(p):hashlib.sha256(v).hexdigest() for p,v in rng_before.items()},
+        predicate_rng_after={hex(p):hashlib.sha256(v).hexdigest() for p,v in rng_after.items()})
+
+
+def funds_event_metadata():
+    return provenance(
+        scope='32 original funds12/52 predicate controls, four StateA/StateB calls, four pure House-poll histories and one mixed funds52/elapsed13 Logic-before-House history. Not whole economy, world, campaign or nonempty-silo parity.',
+        assumptions=[
+            'PowerEventControls and execute reuse their existing native-image/platform owners. The selected scalar mode omits unrelated preloaded power readers; actual counted TEvent Read, HasOccurred71E940, AvailableMoney4F6990, Storage6C9600 and ftol7C5F00 execute unchanged.',
+            'Minimal House+2FC storage is zero and HouseType IncomeMult is1.0; signed wallet+30C is the supplied balance. Each scalar control clears all wallets then sets only its selected incoming House. Country bindings0/7/0 and a distinct Country0 actor distinguish wallet identity from threshold and actor. Neither nonempty storage nor FillSilos initialization is claimed.',
+            'Histories supply one resolved TagType/TriggerType/event/action chain and run real Tag/Trigger constructors. Original Fill684D47..684EC1 registers the actual Tag in House and, for mixed13, Logic vectors. Original House constructor listener append4F5F99..4F5FB1 and actual primary vtable PointerExpired4FB9B0 admit native Tag detach notifications. No complete House or physical map construction is claimed.',
+            'Original AddCredits4F9950/SpendMoney4F9790 cross thresholds. House4F8F87..4F8FBE executes original Tag6E53A0/Register7264C0/predicate/Spring/Action28 SetGlobal7. Pure events are nonlatching and repeat2 refires at each still-true eighth-frame poll. Repeat0 queues Trigger and zero-ref Tag and immediately removes House membership through the original notification path. Later real725C70 frees trigger then tag and clears the pending queue; a final House poll sees no tag.',
+            'The mixed native event order52/1500 then13/250 models the ALL04 counted-reader linked order. Original Logic55AFB0..55B205 runs before the selected House slice; intervening world/House AI is excluded. It fires at non-eighth frame3750 and rearms the original elapsed timer; later successful7512 rearms again. This is a composed caller comparison, not a complete-frame schedule.',
+            'Three genuine RNG constructors seed31. Complete0x3F4-byte Scenario/Main/Map states are compared unchanged across predicates and each history. The reused execute owner draws one terminal Scenario continuation only after the recorded history; it is outside these equality checks. Funds predicates write no timer, Event+54, persistence or detach. RegisterEvent may call ResetTimers on repeat2; actual timers and deferred pending/free order remain recorded.',
+            'Event12/52 thresholds are literal signed INI values, with inclusive >=/<=. Both accept unrelated raised kind and A8ED6B true, and null incoming House succeeds. Boundaries include INT_MIN/MAX, equality, negatives, persistence initially1 and a nonzero incoming House whose Country matches the threshold; retained Event+54 sentinel and timer remain unchanged.'],
+        substitutions=['Existing allocator/CRT/TLS and validated Windows pointer-probe transports only. Minimal storage, vector capacities and resolved definition priors are declared. No selected gameplay predicate, money getter/mutation, Tag action, classification, poll or cleanup body is replaced.'],
+        entry_points={'has_occurred':0x71E940,'funds12_compare':0x71EF01,'funds52_compare':0x71EF20,
+            'available_money':0x4F6990,'storage_total':0x6C9600,'ftol':0x7C5F00,
+            'state_a':0x71F950,'state_b':0x71F9C0,'classify':0x684D47,
+            'house_tag_listener':0x4F5F99,'house_poll':0x4F8F87,'logic_poll':0x55AFB0,
+            'add_credits':0x4F9950,'spend_money':0x4F9790,'register_event':0x7264C0,
+            'action_execute':0x6DD8B0,'deferred_drain':0x725C70,'house_pointer_expired':0x4FB9B0})
+
+
+def generate_loss_threshold_events():
+    """Original15/16 compare the incoming House's signed loss counters."""
+    from tools.native_oracle import image_sha256, NATIVE_FPCW
+    from tools.sidebar_oracle.stock import mix, mix_hash
+    from tools.rules_oracle.bridge_child_sound import sections
+    m=PowerEventControls(reader_inputs=())
+    m.SPANS=[*m.SPANS,(0x71F950,0x71FA40)]
+    m.original.append(bytes(m.u.mem_read(0x71F950,0xF0)))
+    controls,classifiers=[],[]
+
+    def probe(kind,name,value,counters,house=0,raised=8,buildup=False,persistence=0):
+        for pointer,(buildings,units) in zip(m.houses,counters):
+            m.u.mem_write(pointer+0x5488,dwords(buildings))
+            m.u.mem_write(pointer+0x5434,dwords(units))
+        before=list(struct.unpack('<iii',m.u.mem_read(m.timer,12)))
+        m.predicate(f'loss{kind}_{name}',f'1,{kind},0,{value}',house_index=house,
+                    raised=raised,scenario_init=buildup,initial_persistence=persistence)
+        row=m.predicates[-1]
+        after=list(struct.unpack('<iii',m.u.mem_read(m.timer,12)))
+        assert before==after and row['persistence']==persistence
+        assert row['event54']==struct.unpack('<i',dwords(0xABCD1234))[0]
+        controls.append(dict(name=row['name'],kind=kind,value=value,loss_counters=counters,
+            incoming_house=house,raised=raised,scenario_init=buildup,
+            initial_persistence=persistence,result=row['result'],persistence=row['persistence'],
+            event54=row['event54'],timer_before=before,timer_after=after))
+
+    for kind in (15,16):
+        probe(kind,'all_houses_zero_losses_threshold0',0,((0,0),(0,0),(0,0)))
+        for count,value in ((0,0),(0,1),(5,6),(6,6),(7,6),(-1,-1),(-1,0),
+                            (-2147483648,0),(2147483647,-1),(-2147483648,-2147483648)):
+            pair=(count,1000) if kind==15 else (1000,count)
+            probe(kind,f'counter{count}_threshold{value}',value,(pair,(100,100),(0,0)))
+        pair=(6,1000) if kind==15 else (1000,6)
+        probe(kind,'threshold_is_not_country',7,(pair,(100,100),(0,0)))
+        probe(kind,'incoming_house1',6,((0,0),(6,6),(0,0)),house=1)
+        probe(kind,'null_incoming',2147483647,((0,0),(0,0),(0,0)),house=None,raised=99)
+        for buildup in (False,True):
+            probe(kind,f'wrong_raise_bypass{buildup}',6,((6,6),(0,0),(0,0)),
+                  raised=99,buildup=buildup)
+        probe(kind,'retained_persistence_one',6,((6,6),(0,0),(0,0)),persistence=1)
+        classifiers.append(dict(kind=kind,state_a=m.fixture.call(0x71F950,[],ecx=m.event)&255,
+                                state_b=m.fixture.call(0x71F9C0,[],ecx=m.event)&255))
+    m.assert_unchanged()
+
+    # Reuse the retail MIX and lexical cache owners. Only the counted TEvent
+    # reader is executed here; Team/TaskForce/Script sections remain raw data.
+    archive=(Path(os.environ['RA2_DIR'])/'mapsmd03.mix').read_bytes()
+    raw_map=mix(archive)[mix_hash('ALL04DMD.MAP')]
+    definitions=sections(raw_map)
+    routes=[]
+    for trigger_id,tag_id,team_id in (('093B41CC','093B571C','0997621C'),
+                                      ('093B522C','093B50BC','08D1D32C')):
+        team=definitions[team_id]
+        task_force_id,script_id=team['TaskForce'],team['Script']
+        raw=definitions['Events'][trigger_id]
+        routes.append(dict(map='ALL04DMD.MAP',map_sha256=hashlib.sha256(raw_map).hexdigest(),
+            archive='mapsmd03.mix',archive_sha256=hashlib.sha256(archive).hexdigest(),
+            trigger_id=trigger_id,trigger=definitions['Triggers'][trigger_id],
+            tag_id=tag_id,tag=definitions['Tags'][tag_id],raw_event=raw,native_read=m.read_event(raw),
+            actions=definitions['Actions'][trigger_id],team_id=team_id,team=team,
+            task_force_id=task_force_id,task_force=definitions[task_force_id],
+            script_id=script_id,script=definitions[script_id]))
+    return dict(schema_version=1,native_sha256=image_sha256(),native_fpcw=f'0x{NATIVE_FPCW:X}',
+                country_indices=[0,7,0],controls=controls,classification=classifiers,
+                retail_routes=routes,code_unchanged=True,zero_rng_calls=True)
+
+
+def loss_threshold_event_metadata():
+    return provenance(
+        scope='Thirty-four original HasOccurred15/16 controls, four StateA/StateB calls and two original counted Event reads from actual retail ALL04. Loss counters are supplied priors; not RecordKill, House lifecycle, reinforcement execution or whole-campaign parity.',
+        assumptions=[
+            'Reuse PowerEventControls/FlagsFixture and its existing counted TEvent reader. Three original-layout Houses have Country bindings0/7/0. House+5488 Building losses and+5434 other-object losses are supplied signed bit patterns; the other counter is1000 in boundary controls to distinguish the selected field.',
+            'Original HasOccurred71E940 executes15 at71F03F and16 at71F058. Both compare their incoming House counter >= Event+34 signed. Controls cover equality, negatives, INT_MIN/MAX, incoming House1, absent incoming House, wrong raised99 and both A8ED6B values. A separate Country7 House has larger losses when threshold7 must still fail for incoming House0.',
+            'Event+54 sentinel0xABCD1234, supplied timer and initial persistence0/1 remain unchanged. StateA71F950 returns0 and StateB71F9C0 returns1. The existing native observer asserts no65C780/65C7E0 draw entry. No trigger timer write or detach belongs to these predicates; shared RegisterEvent/Tag repeat/reset/cleanup are outside this scalar execution.',
+            'Existing retail MIX extraction supplies the actual mapsmd03.mix member ALL04DMD.MAP; hashes identify archive and member bytes. Existing lexical sections supply Events cache strings, then original ReadString/count/constructor/Read71F4E0/strtok/atoi parse each selected record. Original physical file loading and complete INI layer ordering are not emulated.',
+            'The two retained routes are retail Americans easy own-loss reinforcements: Event16/6 on093B41CC and Event15/4 on093B522C. Trigger, Tag, action, Team, TaskForce and Script sections are included as raw retail data for production-reader integration. Their references and ground reinforcement execution are not native-executed here; the counted Event reader outputs alone establish the parsed event kinds/values.',
+            'Counter initialization and writers remain the existing MatchStatistics/RecordKill owners. Existing engineer_capture_accounting evidence covers its declared NULL callback/capture controls on its recorded binary. This new corpus does not execute RecordKill, sale, sinking, capture, House construction, loss wrapping or death timing, and adds no new lifecycle claim.'],
+        substitutions=['Existing FlagsFixture allocator/CRT/TLS transports and explicit House loss-counter priors only. Original HasOccurred/Country lookup/StateA/StateB and counted Event reader instructions run unchanged; no selected gameplay return is supplied.'],
+        entry_points={'event_constructor':0x71E6A0,'event_counted_read':0x7274DC,
+            'has_occurred':0x71E940,'building_loss_compare':0x71F03F,'unit_loss_compare':0x71F058,
+            'country_house':0x502D30,'state_a':0x71F950,'state_b':0x71F9C0})
+
+
+
+
+def naval_land_retail_inputs():
+    """Existing Country/type reader owners, with selected ALL05 retail bytes."""
+    from tools.input_oracle.campaign_start import CampaignReader, prepare_house_rules, assets_root
+    from tools.sidebar_oracle.stock import mix, mix_hash
+    from tools.rules_oracle.bridge_child_sound import sections
+    from tools.spatial_oracle.building_body_rules import INI
+    root=Path(os.environ['RA2_DIR'])
+    raw_map=mix((root/'mapsmd03.mix').read_bytes())[mix_hash('ALL05UMD.MAP')]
+    raw_rules=Path('ini/rulesmd.ini').read_bytes()
+    physical_map,physical_rules=sections(raw_map),sections(raw_rules)
+    # The inherited owner eagerly reads its asset directory. This selected
+    # prefix needs no assets; require an empty directory rather than silently
+    # reading a whole retail installation or introducing supplied image data.
+    assets=assets_root()
+    if not assets.is_dir() or next(assets.iterdir(),None) is not None:
+        raise ValueError('Set VERA20K_CAMPAIGN_START_ASSETS to an empty directory for --naval-land-events')
+    m=CampaignReader();m.invoke(0x6832C0,m.scenario)
+    rules=prepare_house_rules(m,physical_rules)
+    registries=[]
+    for label,values in (('RULESMD.INI',physical_rules),('ALL05UMD.MAP',physical_map)):
+        m.ordered_ini({'Countries':values.get('Countries',{})})
+        m.u.reg_write(UC_X86_REG_ESI,INI);m.u.reg_write(UC_X86_REG_EDI,rules)
+        m.region(0x668C8B,0x668CDB)
+        registries.append(dict(layer=label,entries=[dict(index=i,
+            name=m.string(m.read32(m.read32(0xA83C9C)+i*4)+0x24))
+            for i in range(m.read32(0xA83CA8))]))
+    # This is the shared base TechnoType constructor and field-block boundary
+    # used by ifv_select_anim, not a full UnitType or Rules Process replay.
+    m.u.mem_write(0xA8EB00,dwords(0x7EB6D4,m.alloc(4096),1024,1,0,10))
+    typ=m.alloc(0xE00);m.invoke(0x710AF0,typ,(m.cstring('BSUB'),))
+    def fields():
+        return dict(naval=m.u.mem_read(typ+0xCCE,1)[0],
+                    passengers=struct.unpack('<i',m.u.mem_read(typ+0x5E0,4))[0])
+    readers=[dict(layer='TechnoType_constructor710AF0',fields=fields())]
+    for label,values in (('RULESMD.INI',physical_rules),('ALL05UMD.MAP',physical_map)):
+        body=values.get('BSUB',{})
+        m.ordered_ini({'BSUB':body})
+        for begin,end in ((0x714A63,0x714A7D),(0x714B35,0x714B56)):
+            m.u.reg_write(UC_X86_REG_EBP,typ);m.u.reg_write(UC_X86_REG_EBX,typ+0x24)
+            m.u.reg_write(UC_X86_REG_EDI,INI);m.region(begin,end)
+        readers.append(dict(layer=label,section_present='BSUB' in values,
+                            naval_key=body.get('Naval'),passengers_key=body.get('Passengers'),
+                            fields=fields()))
+    m.check_code()
+    identity,tag_id='0E5FA1BC','0E5FB56C'
+    raw=physical_map['Events'][identity]
+    return dict(map='ALL05UMD.MAP',map_sha256=hashlib.sha256(raw_map).hexdigest(),
+        rules_sha256=hashlib.sha256(raw_rules).hexdigest(),trigger_id=identity,
+        raw_event=raw,native_read=PowerEventControls.read_event(raw),
+        trigger=physical_map['Triggers'][identity],tag_id=tag_id,tag=physical_map['Tags'][tag_id],
+        actions=physical_map['Actions'][identity],selected_house_name='BadGuy2 House',
+        selected_house=physical_map['BadGuy2 House'],initial_bsub_entry_id='38',
+        initial_bsub_entry=physical_map['Units']['38'],authored_health=184,
+        country_registries=registries,type_field_readers=readers)
+
+
+def generate_naval_land_events():
+    """Signed tracked-count predicates; keep the existing tracking oracle owner."""
+    from tools.native_oracle import image_sha256, NATIVE_FPCW, first_difference
+    from tools.spatial_oracle import house_tracking
+    m=PowerEventControls(reader_inputs=())
+    m.SPANS=[*m.SPANS,(0x71F950,0x71FA40)]
+    m.original.append(bytes(m.u.mem_read(0x71F950,0xF0)))
+    controls,classifiers=[],[]
+
+    def probe(kind,name,counts,value=0,house=1,actor=1,raised=8,
+              order=(0,1,2),buildup=False,persistence=0):
+        for pointer,(vehicles,navy,infantry) in zip(m.houses,counts):
+            m.u.mem_write(pointer+0x2E8,dwords(vehicles,navy,0,infantry))
+        before=list(struct.unpack('<iii',m.u.mem_read(m.timer,12)))
+        m.predicate(f'naval_land{kind}_{name}',f'1,{kind},0,{value}',
+                    house_index=house,actor_index=actor,raised=raised,order=order,
+                    scenario_init=buildup,initial_persistence=persistence)
+        row=m.predicates[-1]
+        after=list(struct.unpack('<iii',m.u.mem_read(m.timer,12)))
+        assert after==before and row['persistence']==persistence
+        assert row['event54']==struct.unpack('<i',dwords(0xABCD1234))[0]
+        controls.append(dict(name=row['name'],kind=kind,value=value,tracked_counts=counts,
+            house_order=order,incoming_house=house,actor_owner=actor,raised=raised,
+            scenario_init=buildup,initial_persistence=persistence,result=row['result'],
+            persistence=row['persistence'],event54=row['event54'],timer_before=before,timer_after=after))
+
+    for navy in (-2147483648,-1,0,1,2147483647):
+        probe(55,f'navy{navy}',((3,navy,9),(7,7,7),(4,2,0)))
+    for index,selected in enumerate(((0,0,0),(1,0,0),(0,0,1),(5,5,0),(6,5,0),(4,5,0),
+                                     (0,0,-1),(0,0,-2147483648),(0,0,2147483647),
+                                     (-2147483648,1,0),(2147483647,-1,0),
+                                     (-2147483648,2147483647,0),(2147483647,-2147483648,0),
+                                     (-1,0,0))):
+        probe(56,f'signed_sub_infantry{index}',(selected,(7,7,7),(4,2,0)))
+    for kind in (55,56):
+        probe(kind,'all_houses_zero',((0,0,0),)*3,house=0,actor=None)
+        for order in ((0,1,2),(2,1,0)):
+            probe(kind,f'first_country_order{order}',((0,0,0),(7,7,7),(4,2,0)),order=order)
+        for value in (-1,999):
+            probe(kind,f'absent_country{value}',((2,1,1),)*3,value=value)
+        probe(kind,'country7',((7,7,7),(0,0,0),(7,7,7)),value=7,house=0,actor=2)
+        probe(kind,'null_incoming_selected_positive',((2,1,0),(0,0,0),(4,2,0)),house=None)
+        for buildup in (False,True):
+            probe(kind,f'wrong_raise_buildup{int(buildup)}',((0,0,0),(7,7,7),(4,2,0)),
+                  raised=99,buildup=buildup)
+        probe(kind,'retained_persistence_one',((0,0,0),(7,7,7),(4,2,0)),persistence=1)
+        classifiers.append(dict(kind=kind,state_a=m.fixture.call(0x71F950,[],ecx=m.event)&255,
+                                state_b=m.fixture.call(0x71F9C0,[],ecx=m.event)&255))
+    m.assert_unchanged()
+    # Re-execute the sole tracking producer, compare its existing complete
+    # corpus, and record actual replay identity separately from old provenance.
+    actual=house_tracking.generate()
+    saved_path=Path(house_tracking.__file__).with_suffix('.json')
+    saved=json.loads(saved_path.read_text(encoding='utf-8'))
+    difference=first_difference(saved,actual)
+    assert difference is None,difference
+    digest=hashlib.sha256(json.dumps(actual,sort_keys=True,separators=(',',':'),
+                                   allow_nan=False).encode('utf-8')).hexdigest()
+    old_meta=json.loads(saved_path.with_suffix('.meta.json').read_text(encoding='utf-8'))
+    replay=dict(cases=len(actual),payload_matches_saved=True,payload_sha256=digest,
+                saved_provenance_native_sha256=old_meta['native_sha256'],
+                replayed_native_sha256=image_sha256())
+    return dict(schema_version=1,native_sha256=image_sha256(),native_fpcw=f'0x{NATIVE_FPCW:X}',
+                country_indices=[0,7,0],controls=controls,classification=classifiers,
+                tracking_replay=replay,retail=naval_land_retail_inputs(),
+                code_unchanged=True,zero_predicate_rng_calls=True)
+
+
+def naval_land_event_metadata():
+    result=provenance(
+        scope='39 original HasOccurred55/56 predicates, four StateA/StateB calls, replay of the existing36 tracking controls, selected retail ALL05 Event/Country and BSUB Naval/Passengers readers. Not full House/object construction, resource search, reinforcement execution or campaign parity.',
+        assumptions=[
+            'Reuse PowerEventControls/FlagsFixture original image, counted TEvent reader and minimal three-House arena with Country bindings0/7/0. Supplied tracked+2E8/+2EC/+2F4 priors are vehicles/navy/infantry. Original Country502D30 and HasOccurred71E940 execute; incoming House, actor, raised kind and A8ED6B do not select these predicates\' House.',
+            '55 at71F159 tests signed navy<=0.56 at71F16F subtracts navy from vehicles with32-bit wrapping, TEST/JG, then independently tests tracked infantry<=0. INT_MIN/MAX, overflow, independent infantry signs, first duplicate Country order, absent Country, null incoming House, unrelated actor/raised flag and initial persistence0/1 are executed. Event+54 and timer remain unchanged; StateA/B are0/1 and existing observers assert no predicate65C780/65C7E0 entry. No own timer write or detach belongs to these leaves.',
+            'house_tracking.generate is the existing sole Add/Remove fixture. Its complete36-case replay on the actual selected image must match every saved payload field. The old sidecar names the other supported1cdd image: actual replay identity and matching canonical payload hash are separate fields here, not a rewrite of that older provenance. Existing supplied virtuals, per-type Counter and owned-type sinks remain; this is not a concrete constructor/destructor lifecycle replay.',
+            'Original tracking increases/decreases+2EC only in Unit RTTI1, after Insignificant/DontScore admission, when Naval+CCE is nonzero AND signed Passengers+5E0 is exactly0. Naval transports with any nonzero capacity remain vehicles without navy contribution. Production integration must retain the existing tracking construction, ChangeOwner and actual final-deletion owners rather than active count, factory/naval statistics or a map scan.',
+            'Actual mapsmd03.mix member ALL05UMD.MAP and extracted retail ini/rulesmd.ini bytes are SHA-identified. Lexical cached entries feed original counted TEvent and Country registration668C8B..668CDB; rules followed by map registration yields Country17 BadGuy2. The retained BadGuy2 House BSUB Units entry is raw data; authored health184 is not executed actual HP. Trigger0E5FA1BC starts enabled and one-shot;53/21/53 activates existing black-eagle support consumers. Later AIProduction74 and whole-level behavior are outside this evidence.',
+            'Existing CampaignReader and shared TechnoType710AF0 constructor establish Naval=false/Passengers0. Original field blocks714A63..714A7D and714B35..714B56 execute on physical RULESMD BSUB then the absent map section: Naval=yes ->1, absent Passengers retains0; the map retains1/0. Readers pass current fields as defaults, exact-case keys, ReadBool5295F0/ReadInt5276D0 without clamps. The absent-section row deliberately executes selected readers; it does not claim whole ReadINI section admission, full UnitType construction, all Rules Process passes, physical loading or exhaustive LANGRULE/scenario-INI absence. Campaign has no mode layer in this selected input.',
+            'CampaignReader is supplied an existing empty asset directory through VERA20K_CAMPAIGN_START_ASSETS; its inherited constructor preloads that directory, and these selected Country/type controls request no asset files. Registries have declared spare capacity. No original Tag/House polling/action execution is added here; the Rust production regressions and existing lifecycle evidence own their separate coverage.'],
+        substitutions=['Existing FlagsFixture/CampaignReader allocator/CRT/TLS/INI-cache transports and explicit scalar/vector/House priors; existing house_tracking virtual/per-type sinks retain their published boundary. No selected event, Country lookup, field reader or tracking-body return is replaced.'],
+        entry_points={'has_occurred':0x71E940,'navy_predicate':0x71F159,'land_predicate':0x71F16F,
+            'country_house':0x502D30,'state_a':0x71F950,'state_b':0x71F9C0,
+            'add_tracking':0x4FF700,'remove_tracking':0x4FF550,'country_registration':0x668C8B,
+            'techno_type_constructor':0x710AF0,'naval_reader':0x714A63,'passengers_reader':0x714B35})
+    result['environment']={'RA2_DIR':'retail installation containing gamemd.exe and mapsmd03.mix',
+        'VERA20K_CAMPAIGN_START_ASSETS':'existing empty directory; selected Country/type prefix needs no assets',
+        'checkout_prerequisite':'ini/rulesmd.ini is the selected extracted retail RULESMD'}
+    return result
+
+
+def naval_land_event_source_paths():
+    paths=power_event_source_paths()
+    paths.update(tracking=Path(__file__).with_name('house_tracking.py'),
+                 country_reader=Path(__file__).parents[1]/'input_oracle'/'campaign_start.py',
+                 retail_mix=Path(__file__).parents[1]/'sidebar_oracle'/'stock.py',
+                 retail_lexical=Path(__file__).parents[1]/'rules_oracle'/'bridge_child_sound.py')
+    return paths
+
+
+
+
+def no_factories_predicates():
+    """Event17 on explicit tracked-count/list priors, using the shared VM."""
+    from types import SimpleNamespace
+    from tools.input_oracle.campaign_start import CampaignReader
+    m=PowerEventControls(reader_inputs=())
+    u=m.u
+    for start,end in ((0x71F950,0x71FA40),(0x65C6D0,0x65C88D)):
+        m.SPANS=[*m.SPANS,(start,end)]
+        m.original.append(bytes(u.mem_read(start,end-start)))
+    scenario=m.arena+0xB0000
+    u.mem_write(0xA8B230,dwords(scenario))
+    for pointer in (scenario+0x218,0x886B88,0xABE890):
+        m.fixture.call(0x65C6D0,[31],ecx=pointer)
+    rng_view=SimpleNamespace(u=u,scenario=scenario)
+    before_rng=CampaignReader.rng_state(rng_view)
+
+    def building(factory,*,limbo=False,health=100,ai_alive=True):
+        return dict(factory_rtti=factory,limbo=limbo,health=health,ai_alive=ai_alive)
+
+    def house(tracked,*buildings,count=None):
+        return dict(tracked_buildings=tracked,buildings=list(buildings),
+                    list_count=len(buildings) if count is None else count)
+
+    empty=house(0)
+    cases=[
+        dict(name='all_houses_zero_tracked_empty_lists',houses=(empty,empty,empty)),
+        dict(name='active_factory_incoming_not_event_country',
+             houses=(house(1,building(16)),empty,empty),value=7),
+        dict(name='limbo_factory_does_not_block',
+             houses=(house(1,building(16,limbo=True)),empty,empty)),
+        dict(name='null_and_no_factory_do_not_block',
+             houses=(house(2,None,building(0)),empty,empty)),
+        dict(name='zero_tracked_skips_present_factory',
+             houses=(house(0,building(16)),empty,empty)),
+        dict(name='negative_tracked_skips_present_factory',
+             houses=(house(-1,building(16)),empty,empty)),
+        dict(name='negative_factory_and_zero_health_still_block',
+             houses=(house(1,building(-1,health=0,ai_alive=False)),empty,empty)),
+        dict(name='incoming_not_country_actor_raised_or_buildup',
+             houses=(house(1,building(16)),house(1,building(0)),empty),
+             incoming=1,raised=99,actor=0,buildup=True,persistence=1),
+        dict(name='null_incoming_generic_success',
+             houses=(house(1,building(16)),empty,empty),incoming=None),
+        dict(name='positive_tracked_empty_list',houses=(house(1),empty,empty)),
+        dict(name='negative_vector_count',
+             houses=(house(1,building(16),count=-1),empty,empty)),
+        dict(name='normal_factory_health0',
+             houses=(house(1,building(16,health=0)),empty,empty)),
+        dict(name='normal_factory_ai_alive_false',
+             houses=(house(1,building(16,ai_alive=False)),empty,empty)),
+        dict(name='normal_factory_health_negative',
+             houses=(house(1,building(16,health=-1)),empty,empty)),
+        dict(name='intmin_tracked_with_factory',
+             houses=(house(-2147483648,building(16)),empty,empty)),
+        dict(name='intmax_tracked_with_factory',
+             houses=(house(2147483647,building(16)),empty,empty)),
+        dict(name='last_list_entry_factory',houses=(house(3,building(0),
+             building(16,limbo=True),building(16)),empty,empty)),
+        dict(name='object_class_unit_is_nonzero_factory',
+             houses=(house(1,building(1)),empty,empty),raised=99),
+        dict(name='object_class_infantry_is_nonzero_factory',
+             houses=(house(1,building(15)),empty,empty)),
+    ]
+    controls=[]
+    for case in cases:
+        ordinal=0
+        for index,(pointer,prior) in enumerate(zip(m.houses,case['houses'])):
+            items=m.arena+0xC0000+index*0x1000
+            pointers=[]
+            for item in prior['buildings']:
+                if item is None:
+                    pointers.append(0)
+                    continue
+                obj=m.arena+0xD0000+ordinal*0x1000
+                typ=m.arena+0xE0000+ordinal*0x1000
+                ordinal+=1
+                assert ordinal<16
+                u.mem_write(obj,bytes(0x600));u.mem_write(typ,bytes(0x1000))
+                u.mem_write(obj+0x81,bytes([item['limbo']]))
+                u.mem_write(obj+0x6C,dwords(item['health']))
+                u.mem_write(obj+0x90,bytes([item['ai_alive']]))
+                u.mem_write(obj+0x520,dwords(typ))
+                u.mem_write(typ+0xEB8,dwords(item['factory_rtti']))
+                pointers.append(obj)
+            if pointers:u.mem_write(items,dwords(*pointers))
+            u.mem_write(pointer+0x6C,dwords(items))
+            u.mem_write(pointer+0x78,dwords(prior['list_count']))
+            u.mem_write(pointer+0x2F0,dwords(prior['tracked_buildings']))
+        timer_before=list(struct.unpack('<iii',u.mem_read(m.timer,12)))
+        persistence=case.get('persistence',0)
+        m.predicate(case['name'],f"1,17,0,{case.get('value',0)}",
+            house_index=case.get('incoming',0),raised=case.get('raised',8),
+            actor_index=case.get('actor'),scenario_init=case.get('buildup',False),
+            initial_persistence=persistence)
+        row=m.predicates[-1]
+        timer_after=list(struct.unpack('<iii',u.mem_read(m.timer,12)))
+        assert timer_after==timer_before and row['persistence']==persistence
+        assert row['event54']==struct.unpack('<i',dwords(0xABCD1234))[0]
+        controls.append(dict(name=case['name'],kind=17,value=case.get('value',0),
+            house_priors=case['houses'],house_order=[0,1,2],
+            incoming_house=case.get('incoming',0),actor_owner=case.get('actor'),
+            raised=case.get('raised',8),scenario_init=case.get('buildup',False),
+            initial_persistence=persistence,result=row['result'],persistence=row['persistence'],
+            event54=row['event54'],timer_before=timer_before,timer_after=timer_after,
+            calls=[call['pc'] for call in row['calls']]))
+    classification=dict(kind=17,state_a=m.fixture.call(0x71F950,[],ecx=m.event)&255,
+                        state_b=m.fixture.call(0x71F9C0,[],ecx=m.event)&255)
+    m.assert_unchanged()
+    after_rng=CampaignReader.rng_state(rng_view)
+    assert before_rng==after_rng
+    return dict(country_indices=[0,7,0],controls=controls,classification=classification,
+        reader_rows=m.readers,constructor_defaults=m.constructor_defaults,code_unchanged=True,
+        rng_before={k:hashlib.sha256(bytes.fromhex(v)).hexdigest() for k,v in before_rng.items()},
+        rng_after={k:hashlib.sha256(bytes.fromhex(v)).hexdigest() for k,v in after_rng.items()})
+
+
+def no_factories_action9_controls():
+    """Original dispatcher/FindHouse owner; only declared House storage grows."""
+    from types import SimpleNamespace
+    from unicorn import UC_HOOK_MEM_WRITE
+    from tools.input_oracle.campaign_start import CampaignReader
+    from tools.spatial_oracle.trigger_action_values import AllChangeHouseFixture, ACTION, SCENARIO
+    f=AllChangeHouseFixture()
+    u=f.u
+    f.houses=[f.allocate(0x17000) for _ in range(3)]
+    for pointer,typ,country in zip(f.houses,f.house_types,(19,7,19)):
+        u.mem_write(pointer,bytes(0x17000))
+        u.mem_write(pointer+0x34,dwords(typ));u.mem_write(typ+0xB8,dwords(country))
+    f.ranges.append((0x6E45E0,0x6E462B))
+    f.original.append(bytes(u.mem_read(0x6E45E0,0x4B)))
+    writes=[]
+
+    def observe_write(vm,_access,address,size,value,_data):
+        for index,pointer in enumerate(f.houses):
+            if pointer<=address<pointer+0x17000:
+                writes.append(dict(house=index,offset=hex(address-pointer),size=size,
+                                   value=value,pc=hex(vm.reg_read(UC_X86_REG_EIP))))
+
+    u.hook_add(UC_HOOK_MEM_WRITE,observe_write)
+    cases=[dict(name='retail_country19_first',selector=19),
+        dict(name='duplicate_country_reversed',selector=19,order=(2,1,0)),
+        dict(name='country7_not_incoming_or_trigger_house',selector=7),
+        dict(name='retained_trigger_house_8997',selector=0x2325),
+        dict(name='retained_trigger_house_null',selector=0x2325,trigger_owner=None),
+        dict(name='null_live_trigger_valid_country',selector=19,null_trigger=True),
+        dict(name='missing_country999',selector=999),dict(name='minus_one',selector=-1),
+        dict(name='player_at_first_slot',selector=4475),
+        dict(name='player_at_unmapped_slot',selector=4475,slots=(-1,)*8),
+        dict(name='null_incoming_valid_country',selector=19,incoming=None),
+        dict(name='already_mode4_still_writes',selector=19,modes=(4,3,5))]
+    rows=[]
+    rng_view=SimpleNamespace(u=u,scenario=SCENARIO)
+    for case in cases:
+        f.selectors,f.rng_calls=[],[]
+        order=case.get('order',(0,1,2))
+        u.mem_write(f.house_array,dwords(*(f.houses[i] for i in order)))
+        slots=case.get('slots',(1,0,-1,-1,-1,-1,-1,-1))
+        u.mem_write(SCENARIO+0x1180,dwords(*slots))
+        u.mem_write(f.live,bytes(0x48))
+        owner=case.get('trigger_owner',2)
+        u.mem_write(f.live+0x2C,dwords(f.houses[owner] if owner is not None else 0))
+        for i,pointer in enumerate(f.houses):
+            u.mem_write(pointer+0x249,b'\x01');u.mem_write(pointer+0x24C,dwords(5))
+            u.mem_write(pointer+0x250,dwords(case.get('modes',(-7,3,5))[i]))
+            u.mem_write(pointer+0x5634,dwords(41+i,777+i,108+i))
+        read=f.read_action(f"9,0,{case['selector']},0,0,0,0,A")
+        before=[bytes(u.mem_read(p,0x17000)) for p in f.houses]
+        rng_before=CampaignReader.rng_state(rng_view)
+        writes.clear()
+        incoming=case.get('incoming',1)
+        result=f.call(0x6DD8B0,[f.houses[incoming] if incoming is not None else 0,
+            0,0 if case.get('null_trigger') else f.live,0],ecx=ACTION)&255
+        measured_writes=list(writes)
+        after=[bytes(u.mem_read(p,0x17000)) for p in f.houses]
+        rng_after=CampaignReader.rng_state(rng_view)
+        assert rng_before==rng_after and not f.rng_calls
+        assert all(w['offset']=='0x250' and w['size']==4 and w['value']==4
+                   for w in measured_writes)
+        changed=[[j for j,(a,b) in enumerate(zip(left,right)) if a!=b]
+                 for left,right in zip(before,after)]
+        assert all(all(0x250<=offset<0x254 for offset in offsets) for offsets in changed)
+        rows.append(dict(name=case['name'],selector=case['selector'],native_read=read,
+            country_indices=[19,7,19],house_order=order,player_at_slots=slots,
+            incoming_house=incoming,trigger_owner=owner,live_trigger=not case.get('null_trigger',False),
+            result=result,selector_calls=list(f.selectors),mode_writes=measured_writes,
+            modes_before=[struct.unpack_from('<i',raw,0x250)[0] for raw in before],
+            modes_after=[struct.unpack_from('<i',raw,0x250)[0] for raw in after],
+            strategy_timers_before=[list(struct.unpack_from('<iii',raw,0x5634)) for raw in before],
+            strategy_timers_after=[list(struct.unpack_from('<iii',raw,0x5634)) for raw in after],
+            changed_house_byte_offsets=changed,
+            rng_before={k:hashlib.sha256(bytes.fromhex(v)).hexdigest() for k,v in rng_before.items()},
+            rng_after={k:hashlib.sha256(bytes.fromhex(v)).hexdigest() for k,v in rng_after.items()}))
+    f.check_code()
+    return dict(controls=rows,code_unchanged=True,all_three_rng_states_unchanged=True)
+
+
+def no_factories_factory_readers(raw_rules,raw_map):
+    """Read the original RTTI table and the existing BuildingType field owner."""
+    from tools.spatial_oracle.engineer_bridge_cursor_caller import HutTypeReader, READER_INI, READER_SP
+    from tools.rules_oracle.bridge_child_sound import sections
+    m=HutTypeReader()
+    u=m.u
+    table=[dict(name=m.string(m.read32(address)),value=m.read32(address+4))
+           for address in range(0x816EE0,0x817130,8)]
+    types={name:m.construct(name) for name in ('GAPILE','GAPILL')}
+    defaults={name:m.read32(pointer+0xEB8) for name,pointer in types.items()}
+    reads,rows=[],[]
+
+    def observe(vm,pc,_size,_data):
+        sp=vm.reg_read(UC_X86_REG_ESP)
+        if pc==0x474FF0:
+            reads.append(dict(entry=hex(pc),section=m.string(m.read32(sp+4)),
+                key=m.string(m.read32(sp+8)),default=m.read32(sp+12)))
+        elif pc==0x528A10:
+            reads.append(dict(entry=hex(pc),section=m.string(m.read32(sp+4)),
+                key=m.string(m.read32(sp+8)),default_string=m.string(m.read32(sp+12)),
+                capacity=m.read32(sp+20)))
+        elif pc==0x40DCE0:
+            reads.append(dict(entry=hex(pc),enum_input=m.string(vm.reg_read(UC_X86_REG_ECX))))
+
+    u.hook_add(UC_HOOK_CODE,observe)
+
+    def field(name,label,values,prior=None):
+        typ=types[name]
+        if prior is not None:u.mem_write(typ+0xEB8,dwords(prior))
+        before=m.read32(typ+0xEB8)
+        m.make_ini(values)
+        first=len(reads)
+        u.mem_write(READER_SP,dwords(RET_MAGIC))
+        for register,value in ((UC_X86_REG_ESP,READER_SP),(UC_X86_REG_EBP,typ),
+            (UC_X86_REG_EBX,typ+0x24),(UC_X86_REG_ESI,READER_INI),(UC_X86_REG_EDI,typ+0x1F8)):
+            u.reg_write(register,value)
+        run_checked(u,0x46051A,0x46054B,count=200000,required_addresses=(0x474FF0,0x40DCE0))
+        assert u.reg_read(UC_X86_REG_ESP)==READER_SP-16
+        rows.append(dict(type=name,name=label,supplied_prior=prior,raw_cache=values,
+            before=before,after=m.read32(typ+0xEB8),actual_read_calls=reads[first:]))
+
+    for name in types:
+        for label,values in (('RULESMD.INI',sections(raw_rules)),('SOV02SMD.MAP',sections(raw_map))):
+            # Only this exact-key field block runs; unrelated Type fields are
+            # intentionally not admitted as a whole ReadINI claim.
+            cache={name:{'Factory':values[name]['Factory']}} if 'Factory' in values.get(name,{}) else {}
+            field(name,label,cache)
+    for label,cache,prior in (
+        ('absent_retains_prior',{},16),
+        ('wrong_case_key',{'GAPILE':{'factory':'UnitType'}},16),
+        ('wrong_case_section',{'gapile':{'Factory':'UnitType'}},16),
+        ('case_insensitive_enum',{'GAPILE':{'Factory':'iNfAnTrYtYpE'}},0),
+        ('object_class_unit',{'GAPILE':{'Factory':'Unit'}},0),
+        ('absent_retains_object_class_unit',{},None),
+        ('object_class_infantry',{'GAPILE':{'Factory':'Infantry'}},0),
+        ('absent_retains_object_class_infantry',{},None),
+        ('unknown_enum',{'GAPILE':{'Factory':'NoSuchClass'}},16),
+        ('explicit_none',{'GAPILE':{'Factory':'<none>'}},16),
+        ('stored_empty_value',{'GAPILE':{'Factory':''}},16),
+        ('enum_spaces',{'GAPILE':{'Factory':' InfantryType '}},0),
+        ('enum_over_32bytes',{'GAPILE':{'Factory':'InfantryType'+'x'*35}},16)):
+        field('GAPILE',label,cache,prior)
+    m.unchanged()
+    def dispatch_table(selector_address,jump_address,default):
+        # These are the actual paired executable tables, not another RTTI
+        # parser or a reimplementation of the selected native switch.
+        selectors=bytes(u.mem_read(selector_address,40))
+        jumps=list(struct.unpack('<5I',u.mem_read(jump_address,20)))
+        return dict(selector_bytes_hex=selectors.hex(),jump_targets=jumps,
+            aliases=[dict(rtti=index+1,entry=jumps[selector]) for index,selector in enumerate(selectors)
+                     if jumps[selector]!=default],default_entry=default)
+
+    # Preserve Suggest's existing schema/output while sharing its data reader
+    # with the separate accounting consumers. None executes a production AI.
+    suggest=dispatch_table(0x4FBE0C,0x4FBDF8,0x4FBDF3)
+    counters=[]
+    slot_names={0x5378:'aircraft',0x537C:'infantry',0x5380:'vehicle',
+                0x5384:'building',0x5388:'naval'}
+    for name,entry,selector,jump,default,leas in (
+        ('increment',0x4FFA50,0x4FFAF0,0x4FFADC,0x4FFAD6,
+         ((0x4FFAB2,0x4FFAAA),(0x4FFABA,0x4FFABA),(0x4FFACA,0x4FFACA),(0x4FFAC2,0x4FFAC2))),
+        ('recount',0x4FF980,0x4FFA20,0x4FFA0C,0x4FFA06,
+         ((0x4FF9E2,0x4FF9DA),(0x4FF9EA,0x4FF9EA),(0x4FF9FA,0x4FF9FA),(0x4FF9F2,0x4FF9F2))),
+        ('get_count',0x500910,0x50097C,0x500968,0x500960,
+         ((0x500939,0x500931),(0x500941,0x500941),(0x500951,0x500951),(0x500949,0x500949)))):
+        counter=dispatch_table(selector,jump,default)
+        assert counter['jump_targets'][-1]==default
+        leaves={}
+        for target,pair in zip(counter['jump_targets'],leas):
+            offsets=[]
+            for pc in pair:
+                instruction=bytes(u.mem_read(pc,6))
+                # LEA EAX,[EDI/ECX+disp32]: the original House counter field.
+                assert instruction[:2] in (b'\x8D\x87',b'\x8D\x81')
+                offsets.append(struct.unpack('<I',instruction[2:])[0])
+            assert all(offset in slot_names for offset in offsets)
+            leaves[target]=dict(slot_offsets_by_naval=offsets,
+                role=slot_names[offsets[0]] if offsets[0]==offsets[1] else 'vehicle_or_naval')
+        for alias in counter['aliases']:
+            alias.update(leaves[alias['entry']])
+        counters.append(dict(name=name,entry=entry,selector_address=selector,jump_address=jump,
+            **counter,jump_bytes_hex=bytes(u.mem_read(jump,20)).hex(),
+            slot_lea_instructions=[dict(address=pc,hex=bytes(u.mem_read(pc,6)).hex())
+                for pc in sorted({pc for pair in leas for pc in pair})]))
+    return dict(rtti_name_table=table,constructor_defaults=defaults,controls=rows,
+                suggest_dispatch=suggest,counter_dispatch=counters,code_unchanged=True)
+
+
+def no_factories_retail_readers(raw_rules,raw_map):
+    """Country/Trigger binding and selected action reads, never a world load."""
+    from tools.input_oracle.campaign_start import CampaignReader, prepare_house_rules
+    from tools.rules_oracle.bridge_child_sound import sections
+    from tools.spatial_oracle.building_body_rules import INI, SP
+    from tools.spatial_oracle.trigger_action_values import ActionFixture, ACTION
+    from tools.spatial_oracle.trigger_type_flags import FlagsFixture
+    rules,values=sections(raw_rules),sections(raw_map)
+    m=CampaignReader()
+    m.invoke(0x6832C0,m.scenario)
+    rules_pointer=prepare_house_rules(m,rules)
+    m.seed_streams(31)
+    rng_before=m.rng_state()
+    registrations=[]
+    for layer,entries in (('RULESMD.INI',rules),('SOV02SMD.MAP',values)):
+        m.ordered_ini({'Countries':entries.get('Countries',{})})
+        m.u.reg_write(UC_X86_REG_ESI,INI);m.u.reg_write(UC_X86_REG_EDI,rules_pointer)
+        m.region(0x668C8B,0x668CDB)
+        registrations.append(dict(layer=layer,raw_countries=entries.get('Countries',{}),
+            entries=[dict(index=i,name=m.string(m.read32(m.read32(0xA83C9C)+i*4)+0x24))
+                     for i in range(m.read32(0xA83CA8))]))
+    country_pointers=[m.read32(m.read32(0xA83C9C)+i*4) for i in range(m.read32(0xA83CA8))]
+    m.ordered_ini({'German1 House':values['German1 House']})
+    house_country=m.invoke(0x475540,INI,(m.cstring('German1 House'),m.cstring('Country'),0xFFFFFFFF))
+    action_reader=ActionFixture()
+    trigger_ids=('043B06CC','043A9BBC')
+    for identity in trigger_ids:
+        name=action_reader.allocate(len(identity)+1)
+        action_reader.u.mem_write(name,identity.encode('ascii')+b'\0')
+        action_reader.call(0x726C80,[name],ecx=action_reader.allocate(0xB4))
+    routes=[]
+    flags=FlagsFixture()
+    for identity in trigger_ids:
+        raw_trigger=values['Triggers'][identity]
+        trigger=m.alloc(0xB4)
+        m.u.mem_write(trigger,bytes(0xB4))
+        m.u.mem_write(trigger+0x24,identity.encode('ascii')+b'\0')
+        m.u.mem_write(trigger+0xA4,dwords(country_pointers[0]))
+        m.ordered_ini({'Triggers':{identity:raw_trigger}})
+        read_start=len(m.trigger_read_events)
+        m.u.mem_write(SP,dwords(RET_MAGIC,INI));m.u.reg_write(UC_X86_REG_ECX,trigger)
+        m.region(0x727240,0x7272D1,required=(0x5117D0,0x7272CB))
+        owner_index=country_pointers.index(m.read32(trigger+0xA4))
+        raw_action=values['Actions'][identity]
+        assert raw_action.startswith('1,')
+        action=action_reader.read_action(raw_action[2:],ini_capacity=512)
+        reference=action_reader.read32(ACTION+0x50)
+        routes.append(dict(trigger_id=identity,trigger=raw_trigger,
+            native_owner_country=owner_index,country_read_calls=m.trigger_read_events[read_start:],
+            native_flags=flags.execute(raw_trigger,[1,1,1,1,0]),
+            raw_event=values['Events'][identity],native_event=PowerEventControls.read_event(values['Events'][identity]),
+            raw_actions=raw_action,native_action=action,
+            native_action_trigger_reference=action_reader.string(reference+0x24) if reference else None,
+            tags={tag:body for tag,body in values['Tags'].items() if body.endswith(','+identity)}))
+    m.check_code();action_reader.check_code()
+    assert rng_before==m.rng_state()
+    return dict(map='SOV02SMD.MAP',rulesmd_sha256=hashlib.sha256(raw_rules).hexdigest(),
+        map_sha256=hashlib.sha256(raw_map).hexdigest(),country_registration=registrations,
+        house_name='German1 House',house=values['German1 House'],native_house_country=house_country,
+        initial_structures={key:body for key,body in values['Structures'].items()
+                            if body.split(',')[0]=='German1 House'},
+        initial_infantry={key:body for key,body in values['Infantry'].items()
+                         if body.split(',')[0]=='German1 House'},
+        raw_rules_iq=rules['IQ'],raw_map_iq=values.get('IQ'),routes=routes,
+        code_unchanged=True,country_trigger_rng_unchanged=True)
+
+
+def no_factories_strategy_controls():
+    """Compose the existing Strategy/Update/Sale/Hunt owners, not a new AI VM."""
+    import inspect
+    from tools import ai_strategy_oracle as strategy
+    from tools import superweapon_oracle as sw
+    saved=json.loads(Path(strategy.__file__).with_suffix('.json').read_text(encoding='utf-8'))
+    saved_meta=json.loads(Path(strategy.__file__).with_suffix('.meta.json').read_text(encoding='utf-8'))
+    comparisons=[]
+
+    def replay(section,fn,row):
+        actual=fn(**{key:row[key] for key in inspect.signature(fn).parameters if key in row})
+        assert actual==row
+        comparisons.append(dict(section=section,matched_all_fields=True,actual=actual))
+
+    replay('strategy',strategy.strategy_row,next(r for r in saved['strategy']
+           if r['label']=='urgency_plain_only_mode4_game0'))
+    replay('schedule',strategy.schedule_row,next(r for r in saved['schedule']
+           if r['start']==100 and r['delay']==108 and r['frame']==208))
+    replay('fire_sale',strategy.fire_sale_row,next(r for r in saved['fire_sale']
+           if r['label']=='sells_each_live_building'))
+    replay('all_to_hunt',strategy.all_to_hunt_row,next(r for r in saved['all_to_hunt']
+           if r['label']=='mixed_computer'))
+    actual=strategy.strategy_row('campaign_mode4_original_rng',game_mode=0,mode=4,
+        iq=5,iq_superweapons=4,buildings=(strategy.PLAIN,strategy.PLAIN),
+        peers=[strategy.peer() for _ in range(4)],native_rng_seed=31)
+    delay=actual['delay']
+    assert actual['native_rng']['before']['main']==actual['native_rng']['after']['main']
+    assert actual['native_rng']['before']['mapgen']==actual['native_rng']['after']['mapgen']
+    timers=[strategy.schedule_row(start=1000,delay=delay,frame=frame,game_mode=0,answer=delay)
+            for frame in (1000+delay-1,1000+delay,1000+delay+1)]
+    ordinary_hunt=strategy.all_to_hunt_row('ordinary_foot_no_garrison',technos=[
+        strategy.techno(),strategy.techno(team=True),strategy.techno(owner=False),
+        strategy.techno(down=False),strategy.techno(limbo=True)])
+    saved_sw=json.loads(Path(sw.__file__).with_suffix('.json').read_text(encoding='utf-8'))
+    replay('uncharged_superweapons',sw.try_fire_row,next(row for row in saved_sw['ai_try_fire']
+           if row['kinds'] and not any(charged for kind,charged in row['kinds'])))
+    return dict(existing_payload_replays=comparisons,
+        retained_strategy_sidecar_native_sha256=saved_meta['native_sha256'],
+        genuine_rng_strategy=actual,update_cadence_cases_are_independent=True,
+        update_cadence_from_native_delay=timers,ordinary_foot_hunt=ordinary_hunt)
+
+
+def generate_no_factories_events():
+    from tools.native_oracle import image_sha256, NATIVE_FPCW
+    from tools.sidebar_oracle.stock import mix, mix_hash
+    archive=(Path(os.environ['RA2_DIR'])/'mapsmd03.mix').read_bytes()
+    raw_map=mix(archive)[mix_hash('SOV02SMD.MAP')]
+    raw_rules=Path('ini/rulesmd.ini').read_bytes()
+    return dict(schema_version=1,native_sha256=image_sha256(),native_fpcw=f'0x{NATIVE_FPCW:X}',
+        predicates=no_factories_predicates(),action9=no_factories_action9_controls(),
+        factory=no_factories_factory_readers(raw_rules,raw_map),
+        retail=dict(archive='mapsmd03.mix',archive_sha256=hashlib.sha256(archive).hexdigest(),
+                    **no_factories_retail_readers(raw_rules,raw_map)),
+        strategy=no_factories_strategy_controls())
+
+
+def no_factories_event_metadata():
+    result=provenance(
+        scope='19 original Event17 predicate controls, 12 complete Action9 dispatch controls, 74 native Factory RTTI names, 17 original Factory field reads, three original Factory accounting dispatch tables and selected SOV02 Country/Trigger/action bindings; existing Strategy/Update/Sale/Hunt payload replays plus one genuine-RNG mode4 control. Independent bounded owners, not a complete native SOV02 or House lifecycle execution.',
+        assumptions=[
+            'PowerEventControls/FlagsFixture owns Event17 execution. Supplied House Country0/7/0, signed tracked+2F0 and Building vector+68 priors are independent. Original17 scans the incoming House, succeeds for NULL or signed tracked<=0, skips null/limbo list entries and rejects any nonzero Factory raw RTTI. Health and AI-alive priors do not gate it. Negative vector count is an abnormal supplied boundary, not a normal Rust Vec state.',
+            'HasOccurred71E940/StateA71F950/StateB71F9C0 execute unchanged. Event+54 sentinel0xABCD1234, persistence initially0/1 and supplied timer remain unchanged; wrong raised kind and A8ED6B true are included. Three full original seed31 RNG states are compared unchanged. The selected predicate contains no timer or detach producer; no tracking writer, House/Building constructor, Unlimbo/UnInit or list teardown is newly certified.',
+            'AllChangeHouseFixture reuses ActionFixture and the original6E45E0 House selector. Twelve controls run real TAction constructor/record read/dispatch with Country19/7/19 order, retained Trigger House8997, Player@4475 slots, missing/NULL targets and an already-mode4 target. Full supplied House byte comparisons and actual write observations permit only mode+250=4; strategy timers remain unchanged and all three full RNG states are identical. No Tag firing or immediate sale/Hunt occurs in this Action9 boundary.',
+            'Factory table816EE0..817130 is actual executable data, not a host enum algorithm. Whole original BuildingType45DD90 constructors produce default0; selected46051A..46054B passes exact section/key Factory and current raw RTTI through ReadFactory474FF0, ReadString32 and40DCE0. Enum names are case-insensitive; raw Unit1/Infantry15 must stay distinct from UnitType40/InfantryType16. Suggest_New_Object4FBD80 two-level selector4FBE0C/jump4FBDF8 bytes preserve the eight native object/type aliases as static data, not an executed producer chain. Cached empty values are not a physical empty-line admission claim. Only the retained RULESMD and selected map field passes execute, not whole ReadINI, supplemental language/mode/campaign layer closure or asset loading.',
+            'Factory accounting dispatch data is read from this same original-image owner: Increment4FFA50 selector4FFAF0/jump4FFADC, Recount4FF980 selector4FFA20/jump4FFA0C and GetFactoryCount500910 selector50097C/jump500968. Their eight raw class aliases1/40,2/3,6/7,15/16 and default target are preserved with actual LEA instruction bytes and House field offsets for Naval=false/true. The shared table extractor also owns the retained Suggest table; there is no second VM, RTTI parser or counter algorithm. These are original byte/control-flow goldens for class-to-slot dispatch only; no new execution of count increments/decrements, wrapping, destruction timing or primary grouping is claimed.',
+            'Existing MIX/lexical transports supply actual SOV02SMD.MAP and retained retail ini/rulesmd.ini. CampaignReader executes Countries668C8B..668CDB in Rules/map order, House Country475540 and Trigger727240..7272D1 binding. Germany1 becomes Country19; German1 House is its actual House label. Original counted Event and Action record readers bind17/0 -> Action53 target043A9BBC ->13/45 ->Action9 Country19. Tags and authored Structures/Infantry remain raw retail data; authored health256 is not actual HP. No live native Tag enable/House poll or whole map load is executed here.',
+            'Existing Strategy owner is reused, not copied. Four selected old Strategy/Update/Sale/Hunt payloads and one uncharged-Superweapon payload are compared field-for-field; their historical sidecars are retained, not reidentified or called a successful old CLI check. Existing recorded SellBack, Team removal, QueueMission, release/virtual and Superweapon boundaries remain intact.',
+            'The new strategy_row native_rng_seed=31 control executes unchanged Strategy4FD500 and genuine original RandomRanged/Seed; three full states, actual raw-word stores and ranged result are retained. Campaign mode4 uses supplied plain-building/peer/money priors, IQ5 and IQ-SuperWeapons4; TryFireSW/FireSale/Hunt remain recorded dependency boundaries. The three Update controls each start a fresh VM with start1000 and the native-returned delay; they are independent boundary probes, not a sequential timer history. Ordinary Foot Hunt is bounded to supplied nongarrison objects. No actual sale destruction, garrison release, full AI/world schedule or total-frame RNG equivalence is certified.'],
+        substitutions=['Existing VM/image/heap/CRT/TLS/cached-INI transports only for Event/Action/Factory/Country readers; no selected predicate or Action9 return is supplied. Strategy dependency callbacks and the existing Update Strategy return remain recorded supplied seams; genuine-RNG mode replaces only the old answer-injection interface, never original RNG instructions or returns.'],
+        entry_points=dict(has_occurred=0x71E940,no_factories=0x71EF3F,state_a=0x71F950,
+            state_b=0x71F9C0,action_dispatch=0x6DD8B0,action9=0x6DEAD6,
+            action9_mode_write=0x6DEAFF,find_house=0x6E45E0,building_type_constructor=0x45DD90,
+            factory_field=0x46051A,read_factory=0x474FF0,abstract_type_from_name=0x40DCE0,
+            increment_factory_count=0x4FFA50,recount_factory=0x4FF980,get_factory_count=0x500910,
+            country_registration=0x668C8B,house_country=0x475540,trigger_country=0x727240,
+            strategy=0x4FD500,strategy_update=0x4F8FBE,fire_sale=0x5013A0,
+            all_to_hunt=0x501400,random_seed=0x65C6D0,random_ranged=0x65C7E0))
+    result['environment']={
+        'RA2_DIR':'retail installation containing mapsmd03.mix and a supported original gamemd.exe',
+        'VERA20K_CAMPAIGN_START_ASSETS':'an existing EMPTY directory for CampaignReader transport; do not point it at the game installation',
+        'checkout_prerequisite':'ini/rulesmd.ini is the retained retail RULESMD winner',
+        'python':'Python with the repository native-oracle dependencies; local execution used Python3.13'}
+    result['reused_evidence']={
+        'house_tracking':'tools/spatial_oracle/house_tracking.json and its recorded fixture/coverage; not replayed or extended by this mode',
+        'building_lists':'existing House/base ownership and native Unlimbo/PointerExpired/ChangeOwner instruction evidence; not a new lifecycle execution',
+        'strategy':'tools/ai_strategy_oracle.json; selected payloads replayed, original sidecar retained',
+        'rng':'tools/rmg_oracle/gen_rng_vectors.py original Seed/Ranged constants and raw-store observation boundary'}
+    return result
+
+
+def no_factories_event_source_paths():
+    root=Path(__file__).parents[1]
+    return power_event_source_paths() | {
+        'action_owner':Path(__file__).with_name('trigger_action_values.py'),
+        'factory_reader':Path(__file__).with_name('engineer_bridge_cursor_caller.py'),
+        'campaign_reader':root/'input_oracle/campaign_start.py',
+        'strategy_owner':root/'ai_strategy_oracle.py',
+        'strategy_transport':root/'ai_base_building_oracle.py',
+        'superweapon_owner':root/'superweapon_oracle.py',
+        'rng_owner':root/'rmg_oracle/gen_rng_vectors.py',
+        'mix_transport':root/'sidebar_oracle/stock.py'}
+
+
+
+
+def build_type_record_controls():
+    """Whole Record_Last_Built on the existing reader/Counter/observer owners."""
+    from types import SimpleNamespace
+    from tools.input_oracle.campaign_start import CampaignReader
+    from tools.spatial_oracle.engineer_capture_accounting import AccountingObservation
+    from tools.spatial_oracle.building_body_rules import INI
+    from tools.sidebar_oracle.stock import mix, mix_hash
+    from tools.rules_oracle.bridge_child_sound import sections
+    from tools.native_oracle import image_bytes, image_sha256
+    from tools.native_inspect import selected_ranges, decode_ranges, instruction_row
+    m=CampaignReader();u=m.u
+    m.invoke(0x6832C0,m.scenario)
+    rules=m.alloc(0x2000);u.mem_write(0x8871E0,dwords(rules));m.invoke(0x665650,rules)
+    m.seed_streams(31)
+    country=m.alloc(0x300);m.invoke(0x5113F0,country,(m.cstring('Control'),))
+    house=m.alloc(0x17000);before=m.rng_state();mark=len(m.native_events)
+    m.invoke(0x4F54A0,house,(country,))
+    slots={'building':0x26C,'infantry':0x270,'vehicle':0x274,'aircraft':0x278}
+    constructor=dict(entry='0x004F54A0',
+        input=dict(rng_seed=31,country_ctor_name='Control',rules_constructor=True),
+        last_built={name:struct.unpack('<i',u.mem_read(house+offset,4))[0]
+                    for name,offset in slots.items()},
+        rng_full_before=before,rng_full_after=m.rng_state(),
+        native_events=list(m.native_events[mark:]))
+    # Read only the actual stock prefix needed for ALL07's literal index7.
+    # Keep Reader.invoke's original2M limit; no complete catalog is attempted.
+    raw_rules=(Path('ini')/'rulesmd.ini').read_bytes()
+    physical=sections(raw_rules)
+    first_eight=dict(list(physical['BuildingTypes'].items())[:8])
+    assert len(first_eight)==8
+    u.mem_write(0xA83C68,dwords(0x7EB6D4,m.alloc(64*4),64,1,0,10))
+    prefix_before_count=m.read32(0xA83C78)
+    m.ordered_ini({'BuildingTypes':first_eight});m.invoke(0x672660,rules,(INI,))
+    array,count=m.read32(0xA83C6C),m.read32(0xA83C78)
+    registered=[dict(index=i,name=m.string(m.read32(array+4*i)+0x24),
+        stored_index=m.read32(m.read32(array+4*i)+0xDF8)) for i in range(count)]
+    assert count==8
+    prefix=dict(entry='0x00672660',prior_count=prefix_before_count,
+        physical_rules_sha256=hashlib.sha256(raw_rules).hexdigest(),
+        physical_prefix=first_eight,registered=registered)
+    raw_archive=(Path(os.environ['RA2_DIR'])/'mapsmd03.mix').read_bytes()
+    raw_map=mix(raw_archive)[mix_hash('ALL07SMD.MAP')]
+    values=sections(raw_map);identity,tag_id='0C028AFC','0C029C8C'
+    from tools.spatial_oracle.trigger_event_records import execute as read_events
+    retail=dict(map='ALL07SMD.MAP',map_sha256=hashlib.sha256(raw_map).hexdigest(),
+        archive='mapsmd03.mix',archive_sha256=hashlib.sha256(raw_archive).hexdigest(),
+        trigger_id=identity,trigger=values['Triggers'][identity],
+        tag_id=tag_id,tag=values['Tags'][tag_id],raw_event=values['Events'][identity],
+        native_event=read_events(values['Events'][identity]),actions=values['Actions'][identity],
+        selected_index7=registered[7],map_building_types=values.get('BuildingTypes',{}),
+        langrule_present=(Path('ini')/'langrule.ini').exists())
+    # Use real stock prefixes for all selected classes. Standalone MTNK/ORCA
+    # constructors would assign fixture-local0, unlike their retail indices.
+    # APACHE is the native AircraftTypes first entry but has no physical section
+    # (and no Rust ObjectType); the first7 native entries reach PDPLANE/index6.
+    # Concrete actors below remain supplied layout priors, not constructors.
+    types={'building':m.read32(array+7*4)}
+    stock_type_prefixes={}
+    for category,entry,section,registry,prefix_count in (
+        ('vehicle',0x672360,'VehicleTypes',0xA83CE0,1),
+        ('infantry',0x672280,'InfantryTypes',0xA8E348,1),
+        ('aircraft',0x6723D0,'AircraftTypes',0xA8B218,7)):
+        u.mem_write(registry,dwords(0x7EB6D4,m.alloc(64*4),64,1,0,10))
+        physical_prefix=dict(list(physical[section].items())[:prefix_count])
+        assert len(physical_prefix)==prefix_count
+        prior_count=m.read32(registry+16)
+        m.ordered_ini({section:physical_prefix});m.invoke(entry,rules,(INI,))
+        actual_array,count=m.read32(registry+4),m.read32(registry+16)
+        assert count==prefix_count
+        actual=[]
+        for index in range(count):
+            pointer=m.read32(actual_array+index*4)
+            actual.append(dict(index=index,name=m.string(pointer+0x24),
+                array_index=m.invoke(m.read32(m.read32(pointer)+0x40),pointer),
+                stored_index=m.read32(pointer+0xDF8)))
+        types[category]=m.read32(actual_array+(count-1)*4)
+        assert actual[-1]['name'] in physical
+        stock_type_prefixes[category]=dict(entry=f'0x{entry:08X}',section=section,
+            prior_count=prior_count,physical_prefix=physical_prefix,registered=actual,
+            selected_index=actual[-1]['array_index'],selected_name=actual[-1]['name'])
+    type_defaults={category:dict(name=m.string(p+0x24),vtable=f'0x{m.read32(p):08X}',
+        array_index=m.invoke(m.read32(m.read32(p)+0x40),p),
+        dont_score=u.mem_read(p+0xC9F,1)[0],
+        create_sound=struct.unpack('<i',u.mem_read(p+0x534,4))[0]) for category,p in types.items()}
+    assert all(0<=row['array_index']<8 for row in type_defaults.values())
+    sound_defaults={hex(offset):struct.unpack('<i',u.mem_read(rules+offset,4))[0]
+                    for offset in (0x178,0x17C,0x180)}
+    for offset in (0x178,0x17C,0x180):u.mem_write(rules+offset,dwords(-1))
+    for pointer in types.values():u.mem_write(pointer+0x534,dwords(-1))
+    counter_offsets={'building':0x55A0,'vehicle':0x55B4,'infantry':0x55C8,'aircraft':0x55DC}
+    counter_slots={category:m.alloc(8*4) for category in counter_offsets}
+    actors,virtuals={},{}
+    image=image_bytes()
+    for category,vtable,type_offset in (
+        ('building',0x7E3EBC,0x520),('vehicle',0x7F5C70,0x6C4),
+        ('infantry',0x7EB058,0x6C0),('aircraft',0x7E22A4,0x6C4)):
+        actor=m.alloc(0x1000);u.mem_write(actor,bytes(0x1000))
+        u.mem_write(actor,dwords(vtable));u.mem_write(actor+type_offset,dwords(types[category]))
+        u.mem_write(actor+0x21C,dwords(house));actors[category]=actor
+        targets={label:m.read32(vtable+offset) for label,offset in (('what_am_i',0x2C),('get_type',0x84))}
+        targets['type_array_index']=m.read32(m.read32(types[category])+0x40)
+        assert m.invoke(targets['get_type'],actor)==types[category]
+        virtuals[category]=dict(vtable=f'0x{vtable:08X}',supplied_type_offset=hex(type_offset),
+            original_what_am_i=m.invoke(targets['what_am_i'],actor),
+            entries={label:hex(pc) for label,pc in targets.items()},
+            code=[dict(entry=hex(pc),**decode_ranges(selected_ranges(image,pc,24,code_only=False),
+                  lambda ins:[instruction_row(ins)])) for pc in targets.values()])
+    # Adapt only the reader's buffer/check API to the single accounting observer.
+    # No copied native writer, Counter, allocator, RNG or callee-result seam.
+    def unchanged():
+        m.check_code()
+        return True
+    observed,draws,advances,events=[],[],[],[]
+    facade=SimpleNamespace(u=u,read32=m.read32,rng=m.rng_state,
+        trace=observed,events=events,draws=draws,advances=advances,pending=[],code_unchanged=unchanged)
+    watched_pcs=(0x4FB6B0,0x49FA00,0x7509E0,0x7258D0,0x65C780,0x65C7E0,0x661C10)
+    def observe(_u,pc,size,data):
+        if pc in watched_pcs:
+            row=dict(pc=f'0x{pc:08X}',receiver=u.reg_read(UC_X86_REG_ECX))
+            observed.append(row)
+            if pc in (0x65C780,0x65C7E0,0x661C10):draws.append(row)
+            if pc==0x65C780:advances.append(row)
+            if pc==0x7258D0:events.append(row)
+    hook=u.hook_add(UC_HOOK_CODE,observe)
+    def state():
+        return dict(last_built={category:struct.unpack('<i',u.mem_read(house+offset,4))[0]
+                               for category,offset in slots.items()},
+            built_counters={category:dict(total=m.read32(house+offset+0x10),
+                items=list(struct.unpack('<8I',u.mem_read(counter_slots[category],32))))
+                for category,offset in counter_offsets.items()},
+            notification246=u.mem_read(house+0x246,1)[0],recheck1fc=u.mem_read(house+0x1FC,1)[0],
+            notification_timer=list(struct.unpack('<3i',u.mem_read(house+0x57A4,12))))
+    controls=[]
+    for category in ('building','vehicle','infantry','aircraft'):
+        for dont_score in (False,True):
+            for offset in slots.values():u.mem_write(house+offset,dwords(-1))
+            for label,offset in counter_offsets.items():
+                u.mem_write(house+offset+4,dwords(counter_slots[label],8))
+                u.mem_write(house+offset+0x10,dwords(0));u.mem_write(counter_slots[label],bytes(32))
+            u.mem_write(house+0x246,b'\0');u.mem_write(house+0x1FC,b'\0')
+            u.mem_write(house+0x57A4,dwords(29,17,90))
+            u.mem_write(types[category]+0xC9F,bytes([dont_score]));m.seed_streams(31)
+            before=state();observation=AccountingObservation(facade,{'owner':house})
+            for offset in (*slots.values(),0x57A4,0x57A8,0x57AC):observation.watched[house+offset]='owner'
+            mark=len(observed)
+            m.invoke(0x4FB6B0,house,(actors[category],))
+            after=state()
+            required=(0x4FB6B0,) if dont_score else (0x4FB6B0,0x49FA00,0x49FA47,0x49FA50)
+            receipt=observation.finish(required)
+            assert receipt['rng_before']==receipt['rng_after'] and not receipt['native_draws']
+            assert after['notification_timer']==before['notification_timer']
+            assert not any(row['pc'] in ('0x007509E0','0x007258D0') for row in observed[mark:])
+            controls.append(dict(category=category,dont_score=dont_score,
+                native_type_index=type_defaults[category]['array_index'],before=before,after=after,
+                observation=receipt))
+    u.hook_del(hook);m.check_code()
+    record=dict(native_sha256=image_sha256(),prefix=prefix,stock_type_prefixes=stock_type_prefixes,
+        type_constructor_defaults=type_defaults,
+        rules_constructor_create_sound_defaults=sound_defaults,virtuals=virtuals,controls=controls)
+    return constructor,record,retail
+
+
+def generate_build_type_events():
+    """19..22: native last-built predicates, writers and delayed latch consumer."""
+    from types import SimpleNamespace
+    from tools.native_oracle import image_bytes, image_sha256, file_span, NATIVE_FPCW
+    from tools.input_oracle.campaign_start import CampaignReader
+    from tools.spatial_oracle.trigger_action_values import discovery_building_override
+    m=PowerEventControls(reader_inputs=(),extra_calls=(0x7258D0,))
+    m.SPANS=list(m.SPANS)
+    for start,end in ((0x71F950,0x71FA40),(0x65C6D0,0x65C88D)):
+        m.SPANS.append((start,end));m.original.append(bytes(m.u.mem_read(start,end-start)))
+    scenario=m.arena+0xC0000
+    m.u.mem_write(0xA8B230,dwords(scenario))
+    for pointer in (scenario+0x218,0x886B88,0xABE890):
+        m.fixture.call(0x65C6D0,[31],ecx=pointer)
+    view=SimpleNamespace(u=m.u,scenario=scenario)
+    before=CampaignReader.rng_state(view)
+    controls=[]
+    slots={'building':0x26C,'infantry':0x270,'vehicle':0x274,'aircraft':0x278}
+    for kind,offset in ((19,0x26C),(20,0x274),(21,0x270),(22,0x278)):
+        for name,value,last,house,raised,flag,persistence in (
+            ('match',7,7,0,8,False,0),('miss',7,8,0,8,False,0),
+            ('negative_match',-1,-1,0,8,False,0),
+            ('match_wrong_raise_editor',7,7,0,99,True,0),
+            ('incoming_house1_not_first_country',7,7,1,99,False,0),
+            ('null_incoming',7,8,None,99,True,0),
+            ('miss_retained_one',7,8,0,8,False,1)):
+            for pointer in m.houses:m.u.mem_write(pointer+0x26C,dwords(101,102,103,104))
+            if house is not None:m.u.mem_write(m.houses[house]+offset,dwords(last))
+            priors=[{category:m.integer(pointer+field) for category,field in slots.items()}
+                    for pointer in m.houses]
+            timer_before=list(struct.unpack('<3i',m.u.mem_read(m.timer,12)))
+            m.predicate(f'event{kind}_{name}',f'1,{kind},0,{value}',house_index=house,
+                actor_index=2,raised=raised,scenario_init=flag,initial_persistence=persistence)
+            row=m.predicates[-1]
+            timer_after=list(struct.unpack('<3i',m.u.mem_read(m.timer,12)))
+            assert timer_before==timer_after
+            assert row['event54']==struct.unpack('<i',dwords(0xABCD1234))[0]
+            assert not any(call['pc']=='0x007258D0' for call in row['calls'])
+            controls.append(dict(name=row['name'],kind=kind,value=value,last_built=priors,
+                incoming_house=house,actor_owner=2,raised=raised,scenario_init=flag,
+                initial_persistence=persistence,result=row['result'],persistence=row['persistence'],
+                event54=row['event54'],timer_before=timer_before,timer_after=timer_after,
+                calls=row['calls']))
+    classifiers=[]
+    for kind in (19,20,21,22):
+        m.u.mem_write(m.event+0x2C,dwords(kind))
+        classifiers.append(dict(kind=kind,state_a=m.fixture.call(0x71F950,[],ecx=m.event)&255,
+            state_b=m.fixture.call(0x71F9C0,[],ecx=m.event)&255))
+    after=CampaignReader.rng_state(view)
+    assert before==after
+    predicate_rng=dict(full_seed31=before,full_after=after,unchanged=True)
+    # INI ALL07 order13,19 becomes this19,13 push-front list. Reuse the
+    # existing Register owner; changing House state cannot undo its latch.
+    raw='1,13,0,10';m.readers[raw]=m.read_event(raw)
+    m.setup_admission(['1,19,0,7',raw],frame=0,timer_start=0,timer_duration=150)
+    m.u.hook_add(UC_HOOK_CODE,m.observe_admission)
+    for frame,value,name in ((0,7,'build_matches_before_timer'),
+                              (149,8,'type_changed_elapsed149'),(150,8,'type_changed_elapsed150')):
+        m.u.mem_write(m.houses[0]+0x26C,dwords(value));m.u.mem_write(0xA8ED84,dwords(frame))
+        m.register_admission(name,8,repeat=False)
+        m.registers[-1].update(frame=frame,last_built_value=value)
+    assert CampaignReader.rng_state(view)==before
+    assert not any(call['pc']=='0x007258D0' for row in m.registers for call in row['calls'])
+    m.assert_unchanged()
+    constructor,record,retail=build_type_record_controls()
+    discovery=discovery_building_override()
+    discovery['writer_bytes']=dict(start='0x0044D5D0',end_exclusive='0x0044D621',
+        hex=file_span(image_bytes(),0x44D5D0,0x51)[1].hex())
+    return dict(schema_version=1,native_sha256=image_sha256(),native_fpcw=f'0x{NATIVE_FPCW:X}',
+        country_indices=[0,7,0],controls=controls,classification=classifiers,
+        predicate_rng=predicate_rng,register_history=m.registers,
+        constructor=constructor,discovery=discovery,record_last_built=record,retail=retail,
+        code_unchanged=True)
+
+
+def build_type_event_metadata():
+    result=provenance(
+        scope='28 original HasOccurred19..22 controls, eight StateA/StateB calls, three original Register latch steps, real House/Type constructors, existing Building discovery replay, eight whole Record_Last_Built calls and actual ALL07 binding through the first8 stock BuildingTypes entries. Not entire production/placement, full type registry, audio, complete House/Logic/Spring/EVA or campaign parity.',
+        assumptions=[
+            'PowerEventControls/FlagsFixture owns the unchanged HasOccurred/reader/Register VM. Three supplied Houses have Country0/7/0, independent last-built priors and actor2.19/20/21/22 read incoming House+26C/+274/+270/+278, not Event.value Country; null incoming succeeds without persistence mutation. Signed bit-pattern equality, negative-1, mismatch, wrong raised99/A8ED6B, distinct incoming House and initial persistence0/1 execute. Event+54 and timer remain unchanged; successful nonnull matches set persistence1.',
+            'Original StateA71F950 andStateB71F9C0 execute for each of four kinds: four rows/eight calls. Their1/1 result makes successful19 eligible for existing Register completion bits even on a nonrepeating Tag. Actual19/7 then13/10 Register history at0/149/150 records completion1 before the elapsed condition succeeds; changing last-built7 to8 does not undo the latch. Timer[0,0,150] stays unchanged. The existing House8-frame Tag classification/poll owner is not reimplemented or full-world executed here.',
+            'Three native65C6D0 constructors seed31; full0x3F4-byte Scenario/Main/MapGen before/after hex is saved for predicates/classifiers and every Record control. Predicate/Register instructions draw no observed RNG or detach. Full House4F54A0 initialization is separate and DOES consume Scenario RNG; constructor before/after and actual events are retained, not claimed zero-draw.',
+            'CampaignReader executes existing Scenario6832C0, Rules665650, Country5113F0 and House4F54A0 constructors. Four last-built slots initialize-1. Physical RULESMD first8 BuildingTypes cache entries feed real ReadBuildingTypes672660/constructors under the original2M cap and spare vector capacity. Actual index7 and TypeDF8 are GAWEAP/7. Whole cold/reset catalog, ReadTypeData/ART, discovery-appended types and full physical INI layers remain excluded. Real ALL07 map/archive hashes, Trigger0C028AFC, Tag0C029C8C, counted Events and raw Action21 EVA string bind this ordinary route; Spring/EVA execution remains a Rust production consumer check.',
+            'Record inputs use real stock prefixes: GAWEAP/index7 from first8 BuildingTypes, AMCV/index0 from first VehicleTypes via672360, E1/index0 from first InfantryTypes via672280, and PDPLANE/index6 from first7 AircraftTypes via6723D0. Original list readers/constructors/ArrayIndex getters execute and save every registration. Aircraft first entry APACHE has no physical object section; selecting PDPLANE retains its real prefix index instead of treating it as0. This corrects the earlier standalone MTNK/ORCA fixture-local0 inputs; new results are a changed input set, not claimed identical prior controls. Actual instance vtables, type-pointer offsets and owner layouts remain supplied priors, not full Actor constructors/Unlimbo/tracking/PLACE. Original WhatAmI/GetTechnoType/TypeArrayIndex virtuals execute. Original House4FB6B0 executes for each DontScore0/1 through existing AccountingObservation. Last-built writes occur for both flags; built Counter49FA00 is skipped only by DontScore. Capacity8, zero-item/total Counter priors exclude allocation/growth.',
+            'Type CreateSound and Rules+178/+17C/+180 are explicitly-1; actual constructor defaults are retained separately. No native sound/detach entry occurs in these eight Record bodies, and supplied notification timer[29,17,90] stays unchanged while246/1FC set1. Future House90-frame rearm, audible output/audio RNG and full TechTree effects are outside these scalar calls.',
+            'Existing trigger_action_values.discovery_building_override runs actual44D5D0 after shared6F4960 admission, with synthetic TypeDF8=73, priorHouse26C=99 and an already-openedBuilding6E4=1 Grand_Opening fast return. Init2 owner entry preserves99, first current-player discovery atinit0 writes73/246, repeat discovery retains it; exact44D5D0..44D621 bytes are saved. This helper retains its existing three-stream SHA observations, not a new full-state replay claim for that subgraph. Current-player/owner/placement priors, sparse map and existing supplied unrelated calls retain that owner\'s boundaries; no complete first opening, arbitrary discovery or whole-world lifecycle claim.',
+            'Record_Last_Built4FB6B0 and Building44D601 are distinct native writers of the same House slot. Production must use one private House state owner, not count-derived last type, presentation visibility or a new direct build-event dispatcher. No existing reader/VM/Counter/allocator/RNG algorithm is duplicated.'],
+        substitutions=['Inherited FlagsFixture/CampaignReader/DiscoveryFixture CRT, heap, TLS, platform and cached-INI transports. Explicit House/Actor/vector/counter/timer/type/mission priors retain stated limits. No HasOccurred, Register, last-built writer, Counter increment, virtual type getter or selected RNG return is substituted. Existing discovery helper retains its declared presentation/first-opening seams.'],
+        entry_points=dict(has_occurred=0x71E940,building_predicate=0x71EFEB,
+            vehicle_predicate=0x71F003,infantry_predicate=0x71F01D,aircraft_predicate=0x71F037,
+            state_a=0x71F950,state_b=0x71F9C0,register=0x7264C0,
+            house_constructor=0x4F54A0,record_last_built=0x4FB6B0,counter_increment=0x49FA00,
+            building_discovery=0x44D5D0,discovery_last_built_store=0x44D601,
+            building_types_reader=0x672660,vehicle_types_reader=0x672360,
+            infantry_types_reader=0x672280,aircraft_types_reader=0x6723D0,
+            random_seed=0x65C6D0))
+    result['environment']=dict(RA2_DIR='retail installation containing gamemd.exe and mapsmd03.mix',
+        VERA20K_CAMPAIGN_START_ASSETS='existing empty directory; selected constructor/list controls request no assets',
+        checkout_prerequisite='ini/rulesmd.ini is the extracted retail RULESMD')
+    return result
+
+
+def build_type_event_source_paths():
+    from tools.spatial_oracle.trigger_action_values import SOURCE_PATHS
+    paths=source_paths()|power_event_source_paths()
+    paths.update({f'discovery_{name}':path for name,path in SOURCE_PATHS.items()})
+    paths.update(accounting=Path(__file__).with_name('engineer_capture_accounting.py'),
+        native_inspection=Path(__file__).parents[1]/'native_inspect.py',
+        retail_mix=Path(__file__).parents[1]/'sidebar_oracle'/'stock.py',
+        retail_lexical=Path(__file__).parents[1]/'rules_oracle'/'bridge_child_sound.py')
+    return paths
+
+
+
+
+def damage_event_bytes():
+    """Pinned original bodies/calls, not a whole-world reachability claim."""
+    from tools.native_oracle import image_bytes,file_span
+    from tools.native_inspect import selected_ranges,decode_ranges,instruction_row
+    image=image_bytes();blocks={}
+    for start,end in ((0x5F5390,0x5F584D),(0x71E940,0x71F216),(0x71F950,0x71FA40),
+                      (0x701DF8,0x701F94),(0x711EB0,0x711EB7),(0x45ED50,0x45EDCF)):
+        raw=file_span(image,start,end-start)[1]
+        blocks[f'{start:08X}..{end:08X}']=dict(hex=raw.hex(),sha256=hashlib.sha256(raw).hexdigest())
+    callers=[]
+    for name,site,target in (
+        ('building_to_techno',0x442425,0x701900),('unit_to_foot',0x737D52,0x4D7330),
+        ('infantry_to_foot',0x518042,0x4D7330),('aircraft_to_foot',0x4165EC,0x4D7330),
+        ('foot_to_techno',0x4D742C,0x701900),('techno_to_object',0x701DF8,0x5F5390)):
+        instruction=decode_ranges(selected_ranges(image,site,5,code_only=False),
+                                  lambda ins:[instruction_row(ins)])['matches']
+        assert len(instruction)==1 and instruction[0]['mnemonic']=='call'
+        assert int(instruction[0]['operands'],16)==target
+        callers.append(dict(name=name,site=f'0x{site:08X}',target=f'0x{target:08X}',
+                            instruction=instruction[0]))
+    vtables={}
+    for category,vt in (('building',0x7E3EBC),('unit',0x7F5C70),
+                        ('infantry',0x7EB058),('aircraft',0x7E22A4)):
+        raw=file_span(image,vt+0x16C,4)[1]
+        vtables[category]=dict(vtable=f'0x{vt:08X}',slot='0x16C',hex=raw.hex(),
+                               entry=f'0x{int.from_bytes(raw,"little"):08X}')
+    # Post-Object701E12 obtains the live Type for virtual GetCost(+AC),
+    # while701E32/38 independently obtain its current Strength. These are
+    # static bytes/dispatch evidence, not a new anger-arithmetic execution.
+    type_cost_getters={}
+    for category,vt in (('building',0x7E4570),('unit',0x7F6218),
+                        ('infantry',0x7EB610),('aircraft',0x7E2868)):
+        raw=file_span(image,vt+0xAC,4)[1]
+        type_cost_getters[category]=dict(vtable=f'0x{vt:08X}',slot='0xAC',hex=raw.hex(),
+            entry=f'0x{int.from_bytes(raw,"little"):08X}')
+    return dict(blocks=blocks,callers=callers,concrete_receivers=vtables,
+                type_cost_getters=type_cost_getters)
+
+
+def damage_event_retail_routes():
+    """Actual selected map bindings through existing MIX/cache/counted reader."""
+    from tools.sidebar_oracle.stock import mix,mix_hash
+    from tools.rules_oracle.bridge_child_sound import sections
+    from tools.spatial_oracle.trigger_event_records import execute as read_events
+    archive=(Path(os.environ['RA2_DIR'])/'mapsmd03.mix').read_bytes();members=mix(archive)
+    routes=[]
+    for name,identity in (('ALL05UMD.MAP','077835AC'),('ALL06UMD.MAP','077B8E1C')):
+        raw=members[mix_hash(name)];values=sections(raw)
+        # Include both directions of the authored linked-list references.
+        # Tag48BC38C reaches43 through08F91C4C, not a direct Event43 Tag.
+        linked={identity};previous=set()
+        while linked!=previous:
+            previous=set(linked)
+            for key,definition in values['Triggers'].items():
+                successor=definition.split(',')[1]
+                if key in linked and successor in values['Triggers']:linked.add(successor)
+                if successor in linked:linked.add(key)
+        triggers={key:dict(trigger=values['Triggers'][key],raw_event=values['Events'][key],
+            native_event=read_events(values['Events'][key]),actions=values['Actions'][key])
+            for key in sorted(linked)}
+        tags={key:definition for key,definition in values['Tags'].items()
+              if any(trigger in definition.split(',') for trigger in linked)}
+        structures={key:definition for key,definition in values['Structures'].items()
+                    if any(tag in definition.split(',') for tag in tags)}
+        row=dict(map=name,map_sha256=hashlib.sha256(raw).hexdigest(),
+            archive='mapsmd03.mix',archive_sha256=hashlib.sha256(archive).hexdigest(),
+            trigger_id=identity,trigger=values['Triggers'][identity],
+            raw_event=values['Events'][identity],native_event=read_events(values['Events'][identity]),
+            actions=values['Actions'][identity],linked_triggers=triggers,tags=tags,structures=structures)
+        if name=='ALL05UMD.MAP':
+            team_id='0771D13C';team=values[team_id]
+            row.update(team_id=team_id,team=team,task_force_id=team['TaskForce'],
+                task_force=values[team['TaskForce']],script_id=team['Script'],script=values[team['Script']])
+        routes.append(row)
+    return routes
+
+
+def damage_event_object_destruction_controls():
+    """Base Object disposal boundary; original bytes decide Tag retention."""
+    setup=[['shared'],['object'],['attach_object',0,0]]
+    cases=[dict(name='base_object_last_tag_reference',operations=setup+
+        [['object_alive',0,0],['supply_pending',[['object',0]]],['drain'],['drain']]),
+        dict(name='base_objects_share_tag',operations=[['shared'],['object'],['object'],
+            ['attach_object',0,0],['attach_object',1,0],['object_alive',0,0],
+            ['supply_pending',[['object',0]]],['drain'],['object_alive',1,0],
+            ['supply_pending',[['object',1]]],['drain'],['drain']]),
+        dict(name='constructor_complete_tagged_scalar_disposal',operations=setup+
+            [['dispose_object',0],['drain'],['drain']])]
+    rows=[];rng=None
+    for case in cases:
+        row=execute(dict(case,mixed_deferred_queue=True,lifecycle=True,repeat=2,
+            observe_object_cleanup=True))
+        before=row.pop('full_rng_before');after=row.pop('full_rng_after_history')
+        assert before==after
+        if rng is None:rng=before
+        assert before==rng
+        row.update(rng_before_ref='object_destruction_rng.full_seed31',
+            rng_after_ref='object_destruction_rng.full_seed31')
+        rows.append(row)
+    return rows,dict(full_seed31=rng,full_after=rng,unchanged=True)
+
+
+def generate_damage_events():
+    """Combined38..43 evidence; reuse receiver, reader and Register owners."""
+    from types import SimpleNamespace
+    from tools.native_oracle import image_sha256,NATIVE_FPCW
+    from tools.input_oracle.campaign_start import CampaignReader
+    from tools.spatial_oracle.object_health import (damage_event_receiver_controls,
+                                                  damage_event_techno_anger_controls)
+    receiver,mutations,receiver_rng=damage_event_receiver_controls()
+    anger,anger_rng=damage_event_techno_anger_controls()
+    assert anger_rng==receiver_rng
+    destruction,destruction_rng=damage_event_object_destruction_controls()
+    m=PowerEventControls(reader_inputs=(),extra_calls=(0x7258D0,0x6E4F60))
+    m.SPANS=[*m.SPANS,(0x71F950,0x71FA40),(0x65C6D0,0x65C88D)]
+    m.original.extend(bytes(m.u.mem_read(start,end-start)) for start,end in m.SPANS[-2:])
+    scenario=m.arena+0xC0000;m.u.mem_write(0xA8B230,dwords(scenario))
+    for ptr in (scenario+0x218,0x886B88,0xABE890):m.fixture.call(0x65C6D0,[31],ecx=ptr)
+    rng_view=SimpleNamespace(u=m.u,scenario=scenario);before=CampaignReader.rng_state(rng_view)
+    controls=[];classification=[]
+    for kind in range(38,44):
+        raw=f'1,{kind},0,2147483647'
+        for name,raised,flag,persistence,house,actor,source in (
+            ('matching',kind,False,0,0,None,None),('wrong_raise',8,False,0,0,1,1),
+            ('bypass',kind,True,0,0,1,1),('null_house',kind,False,0,None,None,None),
+            ('initial1_wrong_raise',8,False,1,None,None,None)):
+            timer_before=list(struct.unpack('<3i',m.u.mem_read(m.timer,12)))
+            # The shared predicate supplies this same sentinel at entry;
+            # retain its actual prior field value alongside the output.
+            m.u.mem_write(m.event+0x54,dwords(0xABCD1234));event54_before=m.integer(m.event+0x54)
+            m.predicate(f'{kind}_{name}',raw,house_index=house,raised=raised,
+                actor_index=actor,source_index=source,scenario_init=flag,initial_persistence=persistence)
+            native=m.predicates[-1];timer_after=list(struct.unpack('<3i',m.u.mem_read(m.timer,12)))
+            assert timer_before==timer_after and native['persistence']==persistence
+            assert native['event54']==struct.unpack('<i',dwords(0xABCD1234))[0]
+            assert CampaignReader.rng_state(rng_view)==before
+            assert not any(row['pc'] in ('0x007258D0','0x006E4F60') for row in native['calls'])
+            controls.append(dict(name=native['name'],kind=kind,value=native['read']['value'],
+                raw=raw,read=native['read'],incoming_house=house,actor_owner=actor,source_owner=source,
+                raised=raised,scenario_init=flag,initial_persistence=persistence,
+                result=native['result'],persistence=native['persistence'],
+                event54_before=event54_before,event54=native['event54'],
+                timer_before=timer_before,timer_after=timer_after,calls=native['calls']))
+        m.u.mem_write(m.event+0x2C,dwords(kind))
+        classification.append(dict(kind=kind,state_a=m.fixture.call(0x71F950,[],ecx=m.event)&255,
+                                   state_b=m.fixture.call(0x71F9C0,[],ecx=m.event)&255))
+    m.u.hook_add(UC_HOOK_CODE,m.observe_admission)
+    raw='1,38,0,0';m.readers[raw]=m.read_event(raw)
+    m.setup_admission([raw],timer_start=90,timer_duration=75)
+    for name,raised in (('first',38),('later_wrong',8),('same_again',38)):
+        m.register_admission(name,raised)
+        assert CampaignReader.rng_state(rng_view)==before
+    m.assert_unchanged()
+    assert not any(call['pc'] in ('0x007258D0','0x006E4F60')
+                   for row in m.registers for call in row['calls'])
+    return dict(schema_version=1,native_sha256=image_sha256(),native_fpcw=f'0x{NATIVE_FPCW:X}',
+        receiver_controls=receiver,mutation_controls=mutations,receiver_rng=receiver_rng,
+        techno_anger_controls=anger,
+        object_destruction_controls=destruction,object_destruction_rng=destruction_rng,
+        controls=controls,classification=classification,register_history=m.registers,
+        predicate_rng=dict(full_seed31=before,full_after=CampaignReader.rng_state(rng_view),unchanged=True),
+        retail_routes=damage_event_retail_routes(),bytes=damage_event_bytes(),code_unchanged=True)
+
+
+def damage_event_metadata():
+    from tools.spatial_oracle.object_health import OBJ,TYPE,SOURCE,TAG,DamageEventsObservation
+    result=provenance(
+        scope='Original Object damage Tag38..43:18 ordinary and23 declared callee-mutation receiver controls;eight post-Object Techno anger arithmetic fragments;three base Object destruction/Tag-retention histories;30 HasOccurred,12 StateA/B calls,three single-event Register steps and actual ALL05/ALL06 bindings. No real damage Tag/action chain, full Techno/concrete receiver, production Team or whole-campaign parity.',
+        assumptions=[
+            'The existing object_health.Fixture owns whole unchanged Object5F5390, signed HP/packet and masked PC53/chop arithmetic, copied Unit/Building RTTI/type getters, Changed/Kill/Destroy and Tag6E53A0 recording sinks. Receiver controls supply Strength/HP, ConditionRed=.25, Alive, source/tag storage, ignoreDefenses1/preventEscape1, distance0 and null warhead/sourceHouse. The packet is separate, not aliased Health. No armor/kernel, concrete receiver or supplied callee body is certified.',
+            'All23 mutation rows preserve their names, explicit return-PC/write inputs, original ordered callee returns and live/saved HP observations. Host writes after actual Tag/Kill return and before resumed original instructions provide HP/Alive/attachment/Strength priors. They do not execute a real Tag action, RecordKill, Destroy or detach algorithm; existing kill_clear_alive/destroy_clear_alive sinks retain their prior definitions. Original WhatAmI/type getters and receiver instructions are not supplied.',
+            'Three original65C6D0 seed31 states are saved in receiver_rng.full_seed31 and full_after; each of41 receiver rows compares all full states before/after to the shared reference, without repeating6KiB per row. Receiver source pointer0 meansNULL and the published SOURCE address means the supplied source object; it is not a House projection. Observed65C780/65C7E0/7258D0/6E4F60 entries are absent in these Object bodies; inherited callback sinks have no such work. This is not a zero-RNG/timer/detach claim for real actions or complete death.',
+            'PowerEventControls/FlagsFixture and the original counted reader execute six kinds with matching/wrong raises, A8ED6B true, null incoming House/actor/source, arbitrary valueINT_MAX and initial persistence0/1. The historical scenario_init key denotes A8ED6B, not placement A8E7AC. Each timer12bytes, Event54 sentinel and persistence stay unchanged, and each full3-stream state is checked. GetStateA/GetStateB execute six rows/twelve calls; both return1. The separate three Register single-event controls do not demonstrate partial multi-event latching; completed stays0 and timer[90,0,75] stays unchanged.',
+            'Static original bytes pin whole Object/HasOccurred/classifiers, four real receiver vtable entries and six direct class/base callers. They establish shared instruction routes and boundaries, not exhaustive reachability or execution of all four concrete receivers. Body arithmetic/ordering claims rely on the saved native outputs, not Ghidra annotations or handwritten expected values.',
+            'Additional static bytes701DF8..701F94 pin the post-Object consumer:701E12 obtains current Type for GetCost,701E23 reads source Owner,701E32/38 re-read Type/Strength,701E4A calls Type vtable+AC,701E61 reads victim Owner and701E68 immediately calls existing UpdateAngerNodes504790. This precedes result4 CausesDelayKill/PostMortem and result5 early return; sourceHouse alone does not replace the Attacker pointer gate. Type vtable+AC data and complete getter bytes pin ordinary TechnoType711EB0 and BuildingType45ED50 (existing type_cost/building_actual_cost authority). Those byte rows are static control-flow evidence; the separate techno_anger_controls below execute the ordinary cost arithmetic. No real House update, PostMortem timer, audio/Uncloak or whole-Techno execution is claimed, and all earlier receiver/predicate numeric controls remain unchanged.',
+            'Separately,eight techno_anger_controls execute actual701DFD..701E68 through existing Object Fixture: EAX Object result, ESI receiver, EBX independent packet, stack+D4 source pointer, source/victim Owner pointers and UnitType fields are supplied fragment priors. Actual Unit vt+84 getters, Type vt+AC GetCost711EB0 and originalMath::ftol7C5F00 execute; Python supplies no arithmetic output. Stop at real504790 entry before its House body, recording actual ECX, stackdelta/sourceHouse, returnPC and packet. Rows cover ordinary51/100/700, liveStrength110, negativeheal, zero packet/Strength, nonintegral and wide signed dwords under0E7F. Full three-stream states compare to shared receiver_rng before/after each row. Supplied radar/reveal timers atObject+174/+1E0 remain unchanged; sticky x87 status is observed, not claimed unchanged. These fragments establish the arithmetic/call arguments only, not actual Tag mutation->wholeTechno->House execution, alternate Building GetCost calculation, all numeric inputs, PostMortem/audio or full world. Existing ai_strategy_oracle owns separate504790 node-update execution.',
+            'Three object_destruction_controls reuse the single execute lifecycle owner: original Object5F3900 constructor and Attach5F5B50, supplied Object+90/pending queue for two full725C70 histories and actual5F6DC0 scalar disposal for a constructor-complete object. Actual full Object5F3B80 destructor does not clearObject+34 or decrementTag+2C. Tag refs remain1 for one attachment and2 after two shared objects are freed; no Tag/Trigger ticket or release is invented. Original allocator/free imports retain bytes for observation: object_tag_words and tag_at_free report actual+34 including after release, while legacy object_tags filters freed objects toNone. These rows are a base-Object boundary, not full Techno/Building destruction, native death or a mandate to retain dead Rust index entries. Repeat2 Tag definitions and original Trigger timers are observed; no damage action or Tag event is executed. Full three-stream seed31 states compare at every saved step through shared CampaignReader.rng_state, and the terminal next_random probe remains outside history/RNG-after. No general zero-timer/detach claim extends past these executed bodies.',
+            'Retail mapsmd03.mix bytes and member hashes identify ALL05UMD and ALL06UMD. Existing MIX/lexical cache owners supply actual Trigger/Tag/Structures/actions and ALL05 Team/TaskForce/Script; original counted Event reader executes every retained linked Trigger event. Raw reference extraction is not full native Trigger/Team/Structure construction, scenario admission, Rules/ART layers or physical loader execution. ALL05 first-damage41 creates the existing defensive Team, it does not necessarily create fresh soldiers. ALL06 repeating Parliament Tag enters43 through its linked chain and invokes54/32/53/112, a real nested-damage risk whose world execution is outside this corpus.'],
+        substitutions=['Inherited Object Fixture Tag/Changed/Kill/Destroy callout sinks; named controlled field mutations at genuine call-return seams. Existing FlagsFixture CRT/TLS/allocation and supplied House/actor/trigger priors. No selected original predicate, classification, Register, receiver, type getter or RNG return is replaced.'],
+        entry_points=dict(object_receive=0x5F5390,tag_callout=0x6E53A0,has_occurred=0x71E940,
+            state_a=0x71F950,state_b=0x71F9C0,register=0x7264C0,random_seed=0x65C6D0,
+            tag_before_kill_guard=0x5F5752,exact_zero=0x5F5765,
+            post_object_anger=0x701E68,update_anger_nodes=0x504790,
+            techno_type_get_cost=0x711EB0,building_type_get_cost=0x45ED50))
+    result['receiver_supplied_addresses']=dict(object=f'0x{OBJ:08X}',type=f'0x{TYPE:08X}',
+        source=f'0x{SOURCE:08X}',tag=f'0x{TAG:08X}',source_null=0)
+    result['tag_return_pcs']={f'0x{pc:08X}':kind for pc,kind in DamageEventsObservation.TAG_RETURNS.items()}
+    result['environment']=dict(RA2_DIR='retail installation containing gamemd.exe and mapsmd03.mix',
+        interpreter='Python compatible with installed Unicorn; local replay uses Python3.13',
+        asset_directory='No CampaignReader VM is constructed or eager asset directory loaded by this mode')
+    return result
+
+
+def damage_event_source_paths():
+    paths=power_event_source_paths()
+    paths.update(object_health=Path(__file__).with_name('object_health.py'),
+        rng_state_reader=Path(__file__).parents[1]/'input_oracle'/'campaign_start.py',
+        native_inspection=Path(__file__).parents[1]/'native_inspect.py',
+        retail_mix=Path(__file__).parents[1]/'sidebar_oracle'/'stock.py',
+        retail_lexical=Path(__file__).parents[1]/'rules_oracle'/'bridge_child_sound.py')
+    return paths
+
+
 if __name__=='__main__':
     import sys
     args=sys.argv[1:]
-    if '--damage-source-events' in args:
+    if '--damage-events' in args:
+        args.remove('--damage-events')
+        finish_vectors(generate_damage_events,Path(__file__).with_name('trigger_damage_events.json'),
+                       provenance=damage_event_metadata,source_paths=damage_event_source_paths(),argv=args)
+    elif '--build-type-events' in args:
+        args.remove('--build-type-events')
+        finish_vectors(generate_build_type_events,Path(__file__).with_name('trigger_build_type_events.json'),
+                       provenance=build_type_event_metadata,source_paths=build_type_event_source_paths(),argv=args)
+    elif '--no-factories-events' in args:
+        args.remove('--no-factories-events')
+        finish_vectors(generate_no_factories_events,Path(__file__).with_name('trigger_no_factories_events.json'),
+                       provenance=no_factories_event_metadata,source_paths=no_factories_event_source_paths(),argv=args)
+    elif '--naval-land-events' in args:
+        args.remove('--naval-land-events')
+        finish_vectors(generate_naval_land_events,Path(__file__).with_name('trigger_naval_land_events.json'),
+                       provenance=naval_land_event_metadata,source_paths=naval_land_event_source_paths(),argv=args)
+    elif '--loss-threshold-events' in args:
+        args.remove('--loss-threshold-events')
+        finish_vectors(generate_loss_threshold_events,Path(__file__).with_name('trigger_loss_threshold_events.json'),
+                       provenance=loss_threshold_event_metadata,source_paths=power_event_source_paths(),argv=args)
+    elif '--funds-events' in args:
+        args.remove('--funds-events')
+        finish_vectors(generate_funds_events,Path(__file__).with_name('trigger_funds_events.json'),
+                       provenance=funds_event_metadata,source_paths=power_event_source_paths(),argv=args)
+    elif '--building-loss-events' in args:
+        args.remove('--building-loss-events')
+        finish_vectors(generate_building_loss_events,Path(__file__).with_name('trigger_building_loss_events.json'),
+                       provenance=building_loss_event_metadata,source_paths=power_event_source_paths(),argv=args)
+    elif '--damage-source-events' in args:
         args.remove('--damage-source-events')
         finish_vectors(generate_damage_source_events,Path(__file__).with_name('trigger_damage_source_events.json'),
                        provenance=damage_source_event_metadata,source_paths=power_event_source_paths(),argv=args)

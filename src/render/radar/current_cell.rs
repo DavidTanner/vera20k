@@ -19,8 +19,8 @@ use super::helpers::{
 
 /// Read-only live CellClass authority for one retained-radar reconstruction.
 ///
-/// An outer `Option` at the projection call distinguishes an initial
-/// map/presentation fallback from an installed simulation authority. Missing
+/// An outer `Option` at the projection call distinguishes the explicit
+/// no-runtime map/presentation fallback from an installed simulation authority. Missing
 /// components inside an installed authority fail absent instead of reviving
 /// stale presentation entries.
 #[derive(Clone, Copy)]

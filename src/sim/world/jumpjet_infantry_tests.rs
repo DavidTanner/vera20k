@@ -50,7 +50,7 @@ pub(super) fn retail_dustbowl_rocketeer()
         .filter(|path| !path.trim().is_empty())
         .map(std::path::PathBuf::from)
         .unwrap_or_else(|| {
-            crate::util::config::GameConfig::load()
+            crate::test_fixture::game_config()
                 .expect("set RA2_DIR or provide config.toml for this ignored test")
                 .paths
                 .ra2_dir
@@ -121,6 +121,7 @@ pub(super) fn retail_dustbowl_rocketeer()
                     plant_type,
                     (px as i16, py as i16),
                     Some(owner_id),
+                    None,
                 )
                 .then(|| sim.spawn_object(plant, owner, px, py, 0, &resources.rules))
                 .flatten()
@@ -1501,11 +1502,9 @@ fn the_mission_destination_setter_reorders_a_moving_rocketeer() {
 /// dormant.
 #[test]
 fn retail_jumpjet_infantry_all_hover_attack() {
-    let Some((ini, art)) = crate::rules::retail_ini_fixture::retail_rules_and_art() else {
+    let Some(rules) = crate::rules::retail_ini_fixture::retail_unlayered_rules() else {
         return;
     };
-    let rules = crate::rules::ruleset::RuleSet::from_ini_with_fixed_art_for_test(&ini, &art)
-        .expect("retail rules");
     let jumpjets: Vec<&str> = rules
         .infantry_ids
         .iter()

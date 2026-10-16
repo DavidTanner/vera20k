@@ -1927,7 +1927,7 @@ fn gsi_08_04_a_two_step_re_aim_is_refused_for_the_whole_arc_not_only_its_first_f
 /// shot, hull turns, and FacingClass interpolation — turret current and
 /// desired facing and the `+0x6AF` latch, frame for frame, through VERA's
 /// `facing_update` and `apply_unit_facing`. Rows exercising arms VERA does not
-/// model on this path (OmniFire, TurretLocked, TurretSpins, a simple deployer,
+/// model on this path (OmniFire, TurretLocked, a simple deployer,
 /// a Battle Bunker, Magnetron, a NavCom, no weapon) are left out, as are
 /// targets off the map (negative world coordinates), which VERA's cell
 /// positions cannot hold.
@@ -1957,6 +1957,7 @@ fn turret_cadence_matches_the_original() {
     for row in &rows {
         let input = &row["input"];
         let int = |key: &str| input[key].as_i64().unwrap_or(0);
+        let turret_spins = int("turret_spins") != 0;
         let weapon = &input["weapon"];
         let navcom_events = input["events"]
             .as_array()
@@ -1966,14 +1967,13 @@ fn turret_cadence_matches_the_original() {
         if weapon["present"] != 1
             || weapon["omni_fire"] != 0
             || weapon["turret_locked"] != 0
-            || int("turret_spins") != 0
             || int("simple_deployer") != 0
             || int("deployed") != 0
             || int("bunkered") != 0
             || int("magnetron") != 0
             || !input["navcom_coord"].is_null()
             || navcom_events
-            || int("hull_rot") != int("turret_rot")
+            || (int("hull_rot") != int("turret_rot") && !turret_spins)
             || off_map(input)
         {
             continue;
@@ -1983,10 +1983,12 @@ fn turret_cadence_matches_the_original() {
             "[General]\nGuardAreaTargetingDelay={}\n\
              [VehicleTypes]\n0=MTNK\n[InfantryTypes]\n[BuildingTypes]\n0=GAPILE\n[AircraftTypes]\n\
              [MTNK]\nStrength=300\nArmor=heavy\nSpeed=6\nPrimary=105mm\nROT={rot}\nTurret=yes\n\
+             TurretSpins={}\n\
              [GAPILE]\nStrength=300\nArmor=heavy\n\
              [105mm]\nDamage=65\nROF=50\nRange=6\nWarhead=AP\n\
              [AP]\nVerses=100%,100%,100%,100%,100%,100%,100%,100%,100%,0%,0%\n",
-            int("delay")
+            int("delay"),
+            if turret_spins { "yes" } else { "no" }
         )))
         .unwrap();
         let coord = |value: &serde_json::Value| {
@@ -2095,11 +2097,55 @@ fn turret_cadence_matches_the_original() {
                 ));
                 break;
             }
+            if turret_spins {
+                let actual_raw = serde_json::json!([
+                    barrel.current(frame),
+                    barrel.destination(),
+                    barrel.start_word(),
+                    barrel.timer_start_frame().unwrap_or(0),
+                    barrel.timer_duration(),
+                    barrel.rot_per_frame(),
+                ]);
+                assert_eq!(
+                    actual_raw, native["turret"],
+                    "{} frame {frame}: full turret facing state",
+                    input["name"]
+                );
+            }
         }
         compared += 1;
     }
     assert!(compared >= 40, "only {compared} rows compared");
     assert!(issues.is_empty(), "{}", issues.join("\n"));
+}
+
+#[test]
+fn retail_flying_disk_turret_spins_through_live_advance_tick_without_a_target() {
+    let Some(retail) = crate::rules::retail_ini_fixture::retail_battle_rules_for_map("XMP03T4.MAP")
+    else {
+        return;
+    };
+    let mut sim = Simulation::new();
+    let mut disk = GameEntity::test_default(1, "DISK", "YuriCountry", 5, 5);
+    disk.body_facing = FacingClass::new(0, 100);
+    disk.barrel_facing = Some(FacingClass::new(0xF800, 100));
+    disk.turret_rotation_latch.set_for_test(true);
+    sim.substrate.entities.insert(disk);
+    assert!(matches!(
+        sim.reveal(1),
+        crate::sim::world::RevealOutcome::Revealed { .. }
+    ));
+    use_test_interner(&mut sim);
+
+    for destination in [0x0000, 0x0800, 0x1000, 0x1800] {
+        sim.advance_tick(&[], Some(&retail.rules), None, None, 67);
+        let disk = sim.substrate.entities.get(1).unwrap();
+        assert_eq!(
+            disk.barrel_facing.as_ref().unwrap().destination(),
+            destination
+        );
+        assert!(disk.turret_rotation_latch.is_set());
+    }
 }
 
 /// A `Turret=yes` infantryman keeps the turret facing (`+0x3A0`) it holds.

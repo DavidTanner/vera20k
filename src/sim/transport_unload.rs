@@ -725,21 +725,14 @@ pub(crate) fn building_mission_unload_absorber(
                     )
                 });
                 if let Some(coordinate) = coordinate {
-                    let (rx, ry, sub_x, sub_y, _) = crate::sim::anim_class::AnimWorldCoord {
-                        x: coordinate.x,
-                        y: coordinate.y,
-                        z: coordinate.z,
-                    }
-                    .to_cell_sub_z();
-                    sim.sound_events.push(SimSoundEvent::VocAt {
-                        sound_id: sound.clone(),
-                        audible_to: None,
-                        rx,
-                        ry,
-                        sub_x,
-                        sub_y,
-                        world_z_leptons: coordinate.z,
-                    });
+                    sim.sound_events.push(SimSoundEvent::voc_at_world_coord(
+                        sound.clone(),
+                        crate::sim::anim_class::AnimWorldCoord {
+                            x: coordinate.x,
+                            y: coordinate.y,
+                            z: coordinate.z,
+                        },
+                    ));
                 }
             }
             sim.clear_human_absorber_seek_on_unload(passenger_id);

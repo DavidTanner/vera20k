@@ -19,7 +19,7 @@ use crate::map::entities::EntityCategory;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::entity_store::EntityStore;
 use crate::sim::intern::InternedId;
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 use crate::sim::mission::MissionType;
 use crate::sim::timer::CdTimer;
 use crate::sim::world::Simulation;
@@ -85,7 +85,7 @@ impl Drain {
     }
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 impl Drain {
     pub(crate) fn set_target_for_test(&mut self, target: Option<u64>) {
         self.target = target;
@@ -109,7 +109,7 @@ fn produce_cash_fires(timer: CdTimer, frame: u32) -> bool {
 
 /// [`Economy::add_credits`](crate::sim::economy::Economy::add_credits) on
 /// `owner`'s wallet (`HouseClass::Add_Credits @ 0x004F9950`).
-pub(crate) fn add_credits(sim: &mut Simulation, owner: InternedId, amount: i32) {
+pub fn add_credits(sim: &mut Simulation, owner: InternedId, amount: i32) {
     if let Some(house) = sim.houses.get_mut(&owner) {
         house.economy.add_credits(amount);
     }
@@ -158,7 +158,7 @@ pub(crate) fn produce_cash_on_owner_change(
     if entity.category() != EntityCategory::Structure {
         return;
     }
-    let Some(obj) = rules.object(sim.interner.resolve(entity.type_ref())) else {
+    let Some(obj) = sim.interner.object_type(entity.type_ref(), rules) else {
         return;
     };
     let old_passive = sim
@@ -217,7 +217,7 @@ pub(crate) fn produce_cash_step(sim: &mut Simulation, stable_id: u64, rules: &Ru
         return;
     }
     let owner = entity.owner();
-    let Some(obj) = rules.object(sim.interner.resolve(entity.type_ref())) else {
+    let Some(obj) = sim.interner.object_type(entity.type_ref(), rules) else {
         return;
     };
     let amount = obj.produce_cash_amount;
@@ -404,8 +404,9 @@ pub(crate) fn drain_common_step(sim: &mut Simulation, stable_id: u64, rules: &Ru
     let type_ref = entity.type_ref();
 
     if let Some(drainer_id) = draining_me
-        && rules
-            .object(sim.interner.resolve(type_ref))
+        && sim
+            .interner
+            .object_type(type_ref, rules)
             .is_some_and(|obj| obj.resource_destination)
     {
         let delay = rules.general.drain_money_frame_delay;

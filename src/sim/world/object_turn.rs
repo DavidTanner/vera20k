@@ -524,7 +524,7 @@ impl Simulation {
     /// Component-based movement fixtures enter the same Process corridor as
     /// live object turns, or the tube turn that replaces it. This exposes no
     /// alternate physics or callback loop.
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     pub(crate) fn process_ground_locomotor_for_test(
         &mut self,
         id: u64,
@@ -540,7 +540,7 @@ impl Simulation {
     /// or the tube turn of an object holding a tube.
     /// Infantry Scatter51D478 calls the active locomotor synchronously; its
     /// PerCell and boundary receivers must finish before Scatter returns.
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     pub(crate) fn process_ground_locomotor_stats_for_test(
         &mut self,
         stable_id: u64,
@@ -739,6 +739,7 @@ impl Simulation {
         effects: super::FrameEffects<'_>,
     ) -> Result<LiveObjectPassOutcome, super::FrameAdvanceError> {
         self.answer_batched_path_searches(rules, overlay_registry);
+        self.answer_batched_scans(rules, overlay_registry);
         let miner_config = rules.map(crate::sim::miner::MinerConfig::from_rules);
         let terrain_spawner_cells = self
             .production
@@ -766,6 +767,7 @@ impl Simulation {
             Ok(())
         });
         self.finish_batched_path_searches();
+        self.finish_batched_scans();
         walked?;
         Ok(outcome)
     }
@@ -943,7 +945,7 @@ impl Simulation {
                 if entity.category() != EntityCategory::Unit {
                     return None;
                 }
-                let object = rules?.object(sim.interner.resolve(entity.type_ref()))?;
+                let object = sim.interner.object_type(entity.type_ref(), rules?)?;
                 Some((
                     crate::sim::animation::ShpVehicleCadence {
                         walk_rate: object.walk_rate,
@@ -959,12 +961,7 @@ impl Simulation {
                 crate::sim::animation::tick_unit_body_frame_counter(
                     entity,
                     rules.map(|rules| {
-                        crate::sim::movement::SpeedRules::new(
-                            rules,
-                            &sim.interner,
-                            &sim.type_handles,
-                            &sim.houses,
-                        )
+                        crate::sim::movement::SpeedRules::new(rules, &sim.interner, &sim.houses)
                     }),
                     cadence,
                     hover_attack,

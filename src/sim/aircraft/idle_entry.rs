@@ -318,7 +318,7 @@ fn airborne_arm(
     Some(Move)
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 thread_local! {
     /// While set, [`enter_idle_mode_for`] only counts its calls, as oracles
     /// that stub Enter_Idle_Mode record them ([`record_idle_calls_for_test`]).
@@ -327,7 +327,7 @@ thread_local! {
 
 /// Runs `run` with [`enter_idle_mode_for`] recording its calls instead of
 /// running; answers `run`'s result and the number of calls.
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 pub(crate) fn record_idle_calls_for_test<R>(run: impl FnOnce() -> R) -> (R, u32) {
     RECORDED_CALLS.with(|calls| calls.set(Some(0)));
     let result = run();
@@ -344,7 +344,7 @@ pub(crate) fn enter_idle_mode_for(
     registry: Option<&OverlayTypeRegistry>,
     frame_effects: FrameEffects<'_>,
 ) {
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     if RECORDED_CALLS
         .with(|calls| calls.get().map(|n| calls.set(Some(n + 1))))
         .is_some()
@@ -354,7 +354,7 @@ pub(crate) fn enter_idle_mode_for(
     let Some(entity) = sim.substrate.entities.get(id) else {
         return;
     };
-    let Some(object) = rules.object(sim.interner.resolve(entity.type_ref())) else {
+    let Some(object) = sim.interner.object_type(entity.type_ref(), rules) else {
         return;
     };
     let landing = super::landing_base::landing_base(

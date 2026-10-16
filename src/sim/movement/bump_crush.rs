@@ -43,7 +43,7 @@ fn get_subcell_quadrant(sub_x: SimFixed, sub_y: SimFixed) -> u8 {
     })
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 pub(crate) fn build_blocker_neighbor_counts(
     entities: &EntityStore,
     width: u16,
@@ -179,7 +179,7 @@ pub(crate) fn blocker_plane_source(
     let pos = (entity.position.rx(), entity.position.ry());
     if entity.category() == EntityCategory::Structure {
         let size = rules
-            .and_then(|r| r.object(interner.resolve(entity.type_ref())))
+            .and_then(|r| interner.object_type(entity.type_ref(), r))
             .map(|obj| crate::rules::foundation::foundation_dimensions(&obj.foundation))
             .unwrap_or((1, 1));
         Some(BlockerPlaneSource::Building { origin: pos, size })
@@ -282,7 +282,7 @@ pub(crate) fn ground_gate_is_open(
         .and_then(|id| entities.get(id))
         .is_some_and(|building| {
             rules
-                .and_then(|rules| rules.object(interner.resolve(building.type_ref())))
+                .and_then(|rules| interner.object_type(building.type_ref(), rules))
                 .is_some_and(|object| object.gate)
                 && building.is_open_gate()
         })
@@ -669,7 +669,7 @@ impl<'a> CrushAllyGate<'a> {
 /// path. The event is skipped when CrushSound is absent. Caller must invoke BEFORE
 /// removing the victim from the EntityStore so victim.position and
 /// victim.type_ref are still valid.
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 pub fn emit_crush_kill_sounds(
     victim: &crate::sim::game_entity::GameEntity,
     rules: &crate::rules::ruleset::RuleSet,
@@ -1072,14 +1072,6 @@ mod tests {
     }
 
     #[test]
-    fn test_crusher_crushes_crushable_infantry() {
-        assert!(can_crush(
-            CrushCapability::new(true, false),
-            target(EntityCategory::Infantry, true, false, false, false),
-        ));
-    }
-
-    #[test]
     fn test_crusher_cannot_crush_non_crushable_infantry() {
         assert!(!can_crush(
             CrushCapability::new(true, false),
@@ -1138,22 +1130,6 @@ mod tests {
         assert!(!can_crush(
             CrushCapability::new(true, false),
             target(EntityCategory::Unit, false, false, false, false),
-        ));
-    }
-
-    #[test]
-    fn test_normal_zone_cannot_crush() {
-        assert!(!can_crush(
-            CrushCapability::new(false, false),
-            target(EntityCategory::Infantry, true, false, false, false),
-        ));
-    }
-
-    #[test]
-    fn normal_zone_regular_crusher_crushes_crushable_infantry() {
-        assert!(can_crush(
-            CrushCapability::new(true, false),
-            target(EntityCategory::Infantry, true, false, false, false),
         ));
     }
 

@@ -1,7 +1,7 @@
 //! Unit tests for the minimap renderer.
 //!
 //! Tests coordinate mapping, owner color logic, pixel setting, and viewport math.
-//! GPU-dependent tests (full MinimapRenderer construction) are not possible here.
+//! Explicit retail/GPU integration lives in the adjacent minimap_gpu_tests module.
 
 use super::*;
 use crate::map::houses::HouseAllianceMap;

@@ -867,8 +867,14 @@ fn a_bio_reactor_unload_command_reveals_its_passenger() {
 fn a_blocked_bio_reactor_restores_and_retries_its_cargo_head() {
     let mut ini = crate::sim::arena_fixture::clear_ground_ini(RULES);
     ini.merge(&IniFile::from_str(
-        "[AudioVisual]\nLeaveBioReactorSound=BioReactorExit\n",
+        "[AudioVisual]\nEnterBioReactorSound=BioReactorEnter\nLeaveBioReactorSound=BioReactorExit\n",
     ));
+    assert_eq!(
+        ini.section("AudioVisual")
+            .unwrap()
+            .read_name("EnterBioReactorSound", 0x80),
+        Some("BioReactorEnter")
+    );
     assert_eq!(
         ini.section("AudioVisual")
             .unwrap()
@@ -889,7 +895,9 @@ fn a_blocked_bio_reactor_restores_and_retries_its_cargo_head() {
     let mut rules = RuleSet::from_ini_with_fixed_art_for_test(&ini, &IniFile::from_str(ART))
         .expect("Bio Reactor sound rules parse");
     let sounds = crate::rules::sound_ini::SoundRegistry::from_ini(&IniFile::from_str(
-        "[SoundList]\n0=BioReactorExit\n[BioReactorExit]\nSounds=fixture.wav\n",
+        "[SoundList]\n0=BioReactorEnter\n1=BioReactorExit\n\
+         [BioReactorEnter]\nSounds=fixture.wav\n\
+         [BioReactorExit]\nSounds=fixture.wav\n",
     ));
     rules.bind_type_sound_references(&ini, &sounds);
     assert_eq!(
@@ -905,6 +913,47 @@ fn a_blocked_bio_reactor_restores_and_retries_its_cargo_head() {
     assert!(run_until(&mut sim, &rules, &grid, 300, |sim| {
         entity(sim, passenger).passenger_role.inside_transport_id() == Some(reactor)
     }));
+    assert_eq!(
+        sim.sound_events
+            .iter()
+            .filter(|event| matches!(
+                event,
+                crate::sim::world::SimSoundEvent::VocAt { sound_id, .. }
+                    if sound_id == "BioReactorEnter"
+            ))
+            .count(),
+        1,
+        "successful InfantryAbsorb boarding emits EnterBioReactorSound once"
+    );
+    let foot_coords = crate::sim::movement::ground_pose::object_get_coords(
+        entity(&sim, passenger),
+        sim.resolved_terrain.as_ref(),
+    );
+    let (foot_rx, foot_ry, foot_sub_x, foot_sub_y, _) = crate::sim::anim_class::AnimWorldCoord {
+        x: foot_coords.x,
+        y: foot_coords.y,
+        z: foot_coords.z,
+    }
+    .to_cell_sub_z();
+    assert!(
+        sim.sound_events.iter().any(|event| matches!(
+            event,
+            crate::sim::world::SimSoundEvent::VocAt {
+                sound_id,
+                rx,
+                ry,
+                sub_x,
+                sub_y,
+                world_z_leptons,
+                ..
+            } if sound_id == "BioReactorEnter"
+                && (*rx, *ry) == (foot_rx, foot_ry)
+                && *sub_x == foot_sub_x
+                && *sub_y == foot_sub_y
+                && *world_z_leptons == foot_coords.z
+        )),
+        "entry sound uses the arriving Foot's GetCoords"
+    );
     sim.mission_assign_exact(
         reactor,
         MissionId::from_known(MissionType::Unload),
@@ -1018,6 +1067,17 @@ fn a_blocked_bio_reactor_restores_and_retries_its_cargo_head() {
     assert!(!entity(&sim, passenger).lifecycle.in_limbo());
     assert!(entity(&sim, passenger).lifecycle.cell_marked());
     assert_eq!(sim.scenario_rng.logical_state(), successful_state);
+    let building_coords = crate::sim::movement::ground_pose::object_get_coords(
+        entity(&sim, reactor),
+        sim.resolved_terrain.as_ref(),
+    );
+    let (building_rx, building_ry, building_sub_x, building_sub_y, _) =
+        crate::sim::anim_class::AnimWorldCoord {
+            x: building_coords.x,
+            y: building_coords.y,
+            z: building_coords.z,
+        }
+        .to_cell_sub_z();
     assert!(sim.power_states[&owner].power_recheck_for_test());
     assert_eq!(
         sim.sound_events
@@ -1029,6 +1089,25 @@ fn a_blocked_bio_reactor_restores_and_retries_its_cargo_head() {
             ))
             .count(),
         1
+    );
+    assert!(
+        sim.sound_events.iter().any(|event| matches!(
+            event,
+            crate::sim::world::SimSoundEvent::VocAt {
+                sound_id,
+                rx,
+                ry,
+                sub_x,
+                sub_y,
+                world_z_leptons,
+                ..
+            } if sound_id == "BioReactorExit"
+                && (*rx, *ry) == (building_rx, building_ry)
+                && *sub_x == building_sub_x
+                && *sub_y == building_sub_y
+                && *world_z_leptons == building_coords.z
+        )),
+        "leave sound uses the Bio Reactor's GetCoords"
     );
 }
 
@@ -1901,6 +1980,7 @@ fn an_ejected_human_occupant_drops_its_seek() {
             &rules,
             None,
             bunker,
+            crate::sim::passenger::garrison_eject::GarrisonEjectMode::Release,
             FrameEffects::default(),
         );
 

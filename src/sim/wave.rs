@@ -13,6 +13,7 @@ use crate::map::retail_trig::{AcosTable, TrigTable};
 use crate::sim::cell_rect::{CellRef, get_cellclass_fallback};
 use crate::sim::combat::TargetKind;
 use crate::sim::projectile::ProjectileCoord;
+use crate::sim::touch_log::{TouchLogs, Touched};
 use crate::util::native_x87::{
     NativeF32Bits, NativeF64Bits, X87Chop53, X87Ordering, X87Value, adjust_for_z_standard,
     distance_3d_leptons, sqrt_approx_f32,
@@ -170,6 +171,18 @@ impl Wave {
     pub const DEFAULT_LIFETIME: i32 = 100;
     pub const DEFAULT_LASER_INTENSITY: i32 = 160;
 
+    /// The ids [`WaveStore::pointer_expired`] compares: the owner and an
+    /// object target. VERA-only: feeds the pointer-expiry listener index
+    /// (`ExpiryListeners`); a field that callback compares must be named here
+    /// too.
+    pub(crate) fn expiry_names(&self) -> [Option<u64>; 2] {
+        let target = match self.target_ref {
+            Some(TargetKind::Entity(id)) => Some(id),
+            _ => None,
+        };
+        [self.owner_id, target]
+    }
+
     /// gamemd-derived: `WaveClass::Constructor @ 0x0075E950`.
     pub const fn new(wave_type: u8, source: ProjectileCoord, target: ProjectileCoord) -> Self {
         Self {
@@ -206,7 +219,7 @@ impl Wave {
         wave
     }
 
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     pub fn replace_recorded_cells(&mut self, cells: Vec<WaveRecordedCell>) {
         self.recorded_cells = cells;
     }
@@ -457,9 +470,16 @@ pub struct WaveTickResult {
     pub uninitialized: bool,
 }
 
+/// Waves by id. Every `&mut Wave` goes through the store, which notes it in
+/// a touch log.
 #[derive(Debug, Default, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct WaveStore {
     waves: BTreeMap<u64, Wave>,
+    /// Which waves may have changed since [`Self::take_touched`]. One reader:
+    /// the pointer-expiry listener index. Transient: never saved, compared or
+    /// hashed.
+    #[serde(skip)]
+    touched: TouchLogs<1>,
 }
 
 impl std::hash::Hash for Wave {
@@ -501,6 +521,7 @@ impl WaveStore {
     }
 
     pub(crate) fn iter_mut(&mut self) -> impl Iterator<Item = (&u64, &mut Wave)> {
+        self.touched.note_all();
         self.waves.iter_mut()
     }
 
@@ -509,18 +530,30 @@ impl WaveStore {
     }
 
     pub(crate) fn get_mut(&mut self, id: u64) -> Option<&mut Wave> {
-        self.waves.get_mut(&id)
+        let stored = self.waves.len();
+        let wave = self.waves.get_mut(&id)?;
+        self.touched.note(id, stored);
+        Some(wave)
     }
 
     pub(crate) fn remove(&mut self, id: u64) -> Option<Wave> {
-        self.waves.remove(&id)
+        let removed = self.waves.remove(&id);
+        if removed.is_some() {
+            self.touched.note(id, self.waves.len());
+        }
+        removed
+    }
+
+    /// Take the touch log, leaving it empty.
+    pub(crate) fn take_touched(&mut self) -> Touched {
+        self.touched.take(0)
     }
 
     /// gamemd-derived: `WaveClass::PointerExpired @ 0x0075F610` clears only
     /// exact object-pointer matches. Cell targets are CellClass pointers and
     /// therefore cannot match an expiring ObjectClass identity.
     pub(crate) fn pointer_expired(&mut self, id: u64, expired_id: u64) -> Option<(bool, bool)> {
-        let wave = self.waves.get_mut(&id)?;
+        let wave = self.get_mut(id)?;
         let owner_cleared = wave.owner_id == Some(expired_id);
         let target_cleared = matches!(
             wave.target_ref,
@@ -538,6 +571,7 @@ impl WaveStore {
     pub fn spawn(&mut self, id: u64, mut wave: Wave) -> u64 {
         wave.id = id;
         wave.in_logic_vector = false;
+        self.touched.note(id, self.waves.len());
         self.waves.insert(id, wave);
         id
     }
@@ -548,7 +582,7 @@ impl WaveStore {
         context: WaveUpdateContext,
         terrain: Option<&ResolvedTerrainGrid>,
     ) -> Option<(Option<WaveDamageRequest>, WaveTickResult)> {
-        let wave = self.waves.get_mut(&id)?;
+        let wave = self.get_mut(id)?;
         let result = wave.advance(context, terrain);
         let request = if result.damage_recorded_cells {
             wave.owner_id.map(|firer_id| WaveDamageRequest {
@@ -622,23 +656,23 @@ struct Type0NonmagneticGeometry {
     target: ProjectileCoord,
     edges: WaveEdgeGeometry,
     direction_octant: i32,
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     horizontal: i32,
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     sqrt_bits: NativeF32Bits,
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     acos_index: usize,
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     angle_bits: NativeF32Bits,
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     trig_units: i32,
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     sin_index: usize,
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     cos_index: usize,
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     target_screen: (i32, i32),
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     firer_b_screen: (i32, i32),
 }
 
@@ -799,7 +833,7 @@ fn type0_nonmagnetic_geometry(
     let angle_length = load_f32(angle_length_bits);
 
     // The index is kept for the machine fixtures only.
-    #[cfg_attr(not(test), expect(unused_variables))]
+    #[cfg_attr(not(any(test, feature = "test-support")), expect(unused_variables))]
     let (acos_index, mut angle) = if horizontal == 0 {
         (0, acos.acos_lookup_nan())
     } else {
@@ -866,23 +900,23 @@ fn type0_nonmagnetic_geometry(
         target,
         edges,
         direction_octant: direction_from_projected(target_screen, firer_b_screen),
-        #[cfg(test)]
+        #[cfg(any(test, feature = "test-support"))]
         horizontal,
-        #[cfg(test)]
+        #[cfg(any(test, feature = "test-support"))]
         sqrt_bits,
-        #[cfg(test)]
+        #[cfg(any(test, feature = "test-support"))]
         acos_index,
-        #[cfg(test)]
+        #[cfg(any(test, feature = "test-support"))]
         angle_bits,
-        #[cfg(test)]
+        #[cfg(any(test, feature = "test-support"))]
         trig_units,
-        #[cfg(test)]
+        #[cfg(any(test, feature = "test-support"))]
         sin_index,
-        #[cfg(test)]
+        #[cfg(any(test, feature = "test-support"))]
         cos_index,
-        #[cfg(test)]
+        #[cfg(any(test, feature = "test-support"))]
         target_screen,
-        #[cfg(test)]
+        #[cfg(any(test, feature = "test-support"))]
         firer_b_screen,
     }
 }

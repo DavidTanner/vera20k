@@ -102,7 +102,7 @@ fn admit_attacker_fire<'r>(
         Some(super::BuildingShot::Mission { weapon, .. }) => Some(weapon),
         _ => None,
     };
-    let obj = match rules.object(world.interner.resolve(snap.type_id)) {
+    let obj = match world.interner.object_type(snap.type_id, rules) {
         Some(o) => o,
         None => {
             if delayed_building_slot.is_none() {
@@ -250,7 +250,7 @@ fn admit_attacker_fire<'r>(
                 world,
                 rules,
                 overlay_registry,
-                fog: fog_enabled.then_some(&world.fog),
+                fog: fog_enabled.then(|| world.fog.fire_view()),
                 firer,
                 obj,
                 target: Some(snap.target),
@@ -471,7 +471,7 @@ fn admit_attacker_fire<'r>(
             world,
             rules,
             overlay_registry,
-            fog: fog_enabled.then_some(&world.fog),
+            fog: fog_enabled.then(|| world.fog.fire_view()),
             firer: actor,
             obj,
             target,
@@ -574,8 +574,9 @@ fn heal_weapon_drops_target(
     else {
         return true;
     };
-    let strength = rules
-        .object(world.interner.resolve(target.type_ref()))
+    let strength = world
+        .interner
+        .object_type(target.type_ref(), rules)
         .map_or(0, |object| object.strength);
     target.health.is_full(strength)
 }
@@ -588,7 +589,7 @@ pub(crate) fn start_uncloaking_to_fire(world: &mut Simulation, rules: &RuleSet, 
         .substrate
         .entities
         .get(id)
-        .and_then(|entity| rules.object(world.interner.resolve(entity.type_ref())))
+        .and_then(|entity| world.interner.object_type(entity.type_ref(), rules))
     else {
         return;
     };
@@ -670,8 +671,8 @@ pub(super) fn retaliation_reaches(
         return false;
     };
     let (Some(victim_type), Some(source_type)) = (
-        rules.object(world.interner.resolve(victim.type_ref())),
-        rules.object(world.interner.resolve(source.type_ref())),
+        world.interner.object_type(victim.type_ref(), rules),
+        world.interner.object_type(source.type_ref(), rules),
     ) else {
         return false;
     };
@@ -681,7 +682,7 @@ pub(super) fn retaliation_reaches(
         world,
         rules,
         overlay_registry,
-        fog: Some(&world.fog),
+        fog: Some(world.fog.fire_view()),
         firer: victim,
         obj: victim_type,
         target: Some(TargetKind::Entity(source_id)),
@@ -1078,8 +1079,9 @@ pub(super) fn emit_admitted_fire(
     // ladder's arm K only picks the DrainWeapon against a Drainable target).
     if weapon.drain_weapon {
         if let TargetKind::Entity(target_id) = snap.target
-            && rules
-                .object(world.interner.resolve(target_type_ref))
+            && world
+                .interner
+                .object_type(target_type_ref, rules)
                 .is_some_and(|target_obj| target_obj.drainable)
         {
             out.drain_links.push((snap.stable_id, target_id));
@@ -1351,7 +1353,7 @@ pub(super) fn emit_admitted_fire(
                 TargetKind::Cell(_, _) => None,
             })
             .filter(|target| target.category() == EntityCategory::Structure)
-            .and_then(|target| rules.object(world.interner.resolve(target.type_ref())))
+            .and_then(|target| world.interner.object_type(target.type_ref(), rules))
             .map(|target_type| {
                 rules
                     .building_launch_height(target_type)
@@ -1514,7 +1516,8 @@ pub(super) fn emit_admitted_fire(
     // rearm below (`GetROF` at `0x006FF289` takes the building's weapon
     // through `BuildingClass::GetWeapon @ 0x004526F0`, i.e. the NEXT
     // occupant's ROF and Burst) and the shot's own kill credit, since its
-    // Inviso bullet detonates later, in its own AI in this frame's Logic tail.
+    // Inviso bullet detonates later in its own AI (possibly this frame's
+    // Logic tail, once its impact/fuse admits it).
     if is_garrison
         && let Some(cargo) = world
             .substrate
@@ -1636,10 +1639,6 @@ pub(super) fn emit_admitted_fire(
 /// `Assign_Target(NULL)`. It runs after both successful and failed launches.
 /// Native execution: `tools/projectile_oracle/fire_once.py`.
 ///
-/// RESIDUAL, pre-existing and not ported:
-/// - DistributedFire (TechnoType `+0x6B0`, `0x006FF872..0x006FF8EB`): the
-///   target is remembered at `+0x470`, then dropped. Trigger: the Aegis
-///   Cruiser. Effect: VERA's Aegis keeps its target.
 fn fireat_tail(
     world: &mut Simulation,
     rules: &RuleSet,
@@ -1659,6 +1658,34 @@ fn fireat_tail(
             overlay_registry,
             effects,
         );
+    }
+    // FireAt6FF872..6FF8EB uses its explicit argument, on both successful
+    // and failed-launch tails. Unit mission Attack(1) bypasses this arm;
+    // Buildings take it even on Attack. Keep the real class setter's burst,
+    // passive-acquisition and SpawnManager side effects in that owner.
+    let distributed = world
+        .substrate
+        .entities
+        .get(snap.stable_id)
+        .is_some_and(|entity| {
+            world
+                .interner
+                .object_type(entity.type_ref(), rules)
+                .is_some_and(|kind| kind.distributed_fire)
+                && (entity.category() == EntityCategory::Structure
+                    || entity.mission.current().known()
+                        != Some(crate::sim::mission::MissionType::Attack))
+        });
+    if distributed {
+        world
+            .substrate
+            .entities
+            .get_mut(snap.stable_id)
+            .unwrap()
+            .remember_distributed_fire_target(snap.target);
+        world
+            .assign_target_represented(snap.stable_id, None, Some(rules), overlay_registry, effects)
+            .expect("DistributedFire firer retains its concrete target receiver");
     }
     if weapon.fire_once {
         // Native Abstract+0x14 bit 4 admits Foot receivers, not buildings.
@@ -1876,7 +1903,7 @@ impl FireCommitBoundary {
 /// divergence surfaces one tick later through `barrel_facing` or `gattling`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(transparent)]
-pub(crate) struct LastFireFrame {
+pub struct LastFireFrame {
     frame: i64,
 }
 
@@ -1889,7 +1916,7 @@ impl Default for LastFireFrame {
 
 impl LastFireFrame {
     /// The frame of the last shot.
-    pub(crate) const fn frame(self) -> i64 {
+    pub const fn frame(self) -> i64 {
         self.frame
     }
 
@@ -1899,14 +1926,14 @@ impl LastFireFrame {
     }
 
     /// Install a fixture's frame.
-    #[cfg(test)]
-    pub(crate) fn set_for_test(&mut self, frame: i64) {
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn set_for_test(&mut self, frame: i64) {
         self.frame = frame;
     }
 }
 
 /// Call-local native trigger; no variant stores a future shot.
-pub(crate) enum FireVisit {
+pub enum FireVisit {
     /// Building44B6D0/450492 already admitted the exact target and slot.
     Building { id: u64, shot: super::BuildingShot },
     /// Unit7365E1 Fire_At_Target then7365E8 Facing_Update.
@@ -1944,8 +1971,9 @@ fn infantry_fire_tail(
     else {
         return;
     };
-    let slow = rules
-        .object(world.interner.resolve(actor.type_ref()))
+    let slow = world
+        .interner
+        .object_type(actor.type_ref(), rules)
         .and_then(|obj| {
             combat_weapon::get_weapon(
                 actor,
@@ -1986,8 +2014,9 @@ pub(crate) fn visit_fire(
     match visit {
         FireVisit::Building { id, shot } => {
             let snapshot = world.substrate.entities.get(id).map(|actor| {
-                let garrison = rules
-                    .object(world.interner.resolve(actor.type_ref()))
+                let garrison = world
+                    .interner
+                    .object_type(actor.type_ref(), rules)
                     .filter(|obj| combat_weapon::is_occupied(actor, obj))
                     .and_then(|_| actor.passenger_role.cargo())
                     .map(|cargo| GarrisonSnapshot {
@@ -2026,6 +2055,7 @@ pub(crate) fn visit_fire(
                     emit.unit_facing.push(UnitFacingUpdate {
                         entity_id: id,
                         turret_destination: None,
+                        turret_spins: false,
                         hull_destination: None,
                         turret_destination_is_idle_return: false,
                     });
@@ -2075,7 +2105,7 @@ pub(crate) fn visit_fire(
             // These are the actual FireAt arguments, independently of TarCom.
             // Legality and dispatch cadence belong to the calling mission.
             let shot = world.substrate.entities.get(id).and_then(|actor| {
-                let obj = rules.object(world.interner.resolve(actor.type_ref()))?;
+                let obj = world.interner.object_type(actor.type_ref(), rules)?;
                 let selected = combat_weapon::resolve_weapon_index(
                     rules,
                     actor,
@@ -2187,17 +2217,20 @@ pub(crate) fn tick_combat(
     let sound_enabled = sound_enabled(world);
 
     let binary_frame = world.session.binary_frame;
-    // Only the aircraft release visit reads this frame-start copy of the fog.
-    let fog_snapshot = (!fire_requests.aircraft.is_empty()).then(|| world.fog.clone());
+    // The aircraft release visits ask GetFireError of the fog as this phase
+    // began; its detonations and strikes can move the sensor counts. Only
+    // what GetFireError reads is copied.
     let fog_enabled = fog_enabled(world);
-    let fog = fog_snapshot.as_ref().filter(|_| fog_enabled);
+    let fog_copy =
+        (fog_enabled && !fire_requests.aircraft.is_empty()).then(|| world.fog.fire_copy());
+    let fog = fog_copy.as_ref().map(crate::sim::vision::FireFogCopy::view);
     let active_wave_owners: BTreeSet<_> = world.active_wave_links.keys().copied().collect();
 
     if tick_ms == 0 {
         return CombatTickResult {
             #[cfg(test)]
             fixture_anims: Vec::new(),
-            #[cfg(test)]
+            #[cfg(any(test, feature = "test-support"))]
             projectile_spawns: Vec::new(),
             unit_facing: Vec::new(),
             consequences: crate::sim::world::damage_consequences::DamageConsequences::ordinary(
@@ -2287,7 +2320,7 @@ pub(crate) fn tick_combat(
         .collect();
     enum Visit {
         Attacker(AttackerSnapshot),
-        #[cfg(test)]
+        #[cfg(any(test, feature = "test-support"))]
         Foot(u64),
     }
     let mut visits: Vec<_> = snapshots.into_iter().map(Visit::Attacker).collect();
@@ -2308,17 +2341,20 @@ pub(crate) fn tick_combat(
     visits.sort_by_key(|visit| {
         let id = match visit {
             Visit::Attacker(snap) => snap.stable_id,
-            #[cfg(test)]
+            #[cfg(any(test, feature = "test-support"))]
             Visit::Foot(id) => *id,
         };
         (live_index.get(&id).copied().unwrap_or(usize::MAX), id)
     });
     for visit in visits {
         // `Visit::Foot` exists only in test builds.
-        #[cfg_attr(not(test), expect(clippy::infallible_destructuring_match))]
+        #[cfg_attr(
+            not(any(test, feature = "test-support")),
+            expect(clippy::infallible_destructuring_match)
+        )]
         let snap = match visit {
             Visit::Attacker(snap) => snap,
-            #[cfg(test)]
+            #[cfg(any(test, feature = "test-support"))]
             Visit::Foot(id) => {
                 let actor = world.substrate.entities.get_mut(id).unwrap();
                 let visit = if actor.category() == EntityCategory::Unit {
@@ -2459,7 +2495,7 @@ pub(crate) fn tick_combat(
     CombatTickResult {
         #[cfg(test)]
         fixture_anims: Vec::new(),
-        #[cfg(test)]
+        #[cfg(any(test, feature = "test-support"))]
         projectile_spawns: Vec::new(),
         unit_facing,
         consequences: crate::sim::world::damage_consequences::DamageConsequences::ordinary(
@@ -2629,10 +2665,10 @@ pub(crate) fn estimated_damage_on(
     else {
         return 0;
     };
-    let Some(attacker_obj) = rules.object(sim.interner.resolve(attacker.type_ref())) else {
+    let Some(attacker_obj) = sim.interner.object_type(attacker.type_ref(), rules) else {
         return 0;
     };
-    let target_obj = rules.object(sim.interner.resolve(target.type_ref()));
+    let target_obj = sim.interner.object_type(target.type_ref(), rules);
     let house_type_armor = sim.houses.get(&target.owner()).map_or(1.0, |house| {
         rules.country_armor_mult_for_type(sim.interner.resolve(house.house_type_id()), attacker_obj)
     });

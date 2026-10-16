@@ -5,7 +5,7 @@ See tools/README.md. Standard library only; Python >= 3.11.
 from __future__ import annotations
 
 import argparse
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager
 import hashlib
 import json
 import os
@@ -40,7 +40,7 @@ def build_processes() -> list[str]:
 
 
 @contextmanager
-def build_lock(path: Path, timeout: float):
+def file_lock(path: Path, deadline: float):
     """Kernel lock releases on exit/crash; never unlink an active lock inode."""
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open('a+b') as handle:
@@ -48,7 +48,6 @@ def build_lock(path: Path, timeout: float):
         if handle.tell() == 0:
             handle.write(b'\0')
             handle.flush()
-        deadline = time.monotonic() + timeout
         report_at = 0.0
         while True:
             try:
@@ -68,13 +67,6 @@ def build_lock(path: Path, timeout: float):
                     report_at = time.monotonic() + 30
                 time.sleep(0.25)
         try:
-            while active := build_processes():
-                if time.monotonic() >= deadline:
-                    raise TimeoutError('Timed out waiting for Cargo/rustc: ' + ', '.join(active))
-                if time.monotonic() >= report_at:
-                    print('Waiting for Cargo/rustc: ' + ', '.join(active), file=sys.stderr, flush=True)
-                    report_at = time.monotonic() + 30
-                time.sleep(0.25)
             yield
         finally:
             handle.seek(0)
@@ -84,6 +76,22 @@ def build_lock(path: Path, timeout: float):
             else:
                 import fcntl
                 fcntl.flock(handle, fcntl.LOCK_UN)
+
+
+@contextmanager
+def build_lock(path: Path, timeout: float):
+    """Hold the shared lock once no other Cargo or rustc runs on this host."""
+    deadline = time.monotonic() + timeout
+    with file_lock(path, deadline):
+        report_at = 0.0
+        while active := build_processes():
+            if time.monotonic() >= deadline:
+                raise TimeoutError('Timed out waiting for Cargo/rustc: ' + ', '.join(active))
+            if time.monotonic() >= report_at:
+                print('Waiting for Cargo/rustc: ' + ', '.join(active), file=sys.stderr, flush=True)
+                report_at = time.monotonic() + 30
+            time.sleep(0.25)
+        yield
 
 
 # A file written this close to a fingerprint may change again without its
@@ -320,6 +328,35 @@ def publish_binaries(store: Path, namespace: str, target: Path, artifacts: set[P
     pending.replace(record)
 
 
+def test_runner_config(record: Path) -> str:
+    """Cargo option handing each test executable to the recorder instead of starting it."""
+    runner = [sys.executable, str(Path(__file__).resolve().with_name('_cargo_test_record.py')), str(record)]
+    return 'target."cfg(all())".runner=' + json.dumps(runner, ensure_ascii=False)
+
+
+def run_recorded_tests(record: Path, keep_going: bool) -> int:
+    """Start the recorded test executables in Cargo's order, as Cargo would have.
+
+    Each gets the arguments, environment and working directory Cargo gave the
+    recorder. Like Cargo, stop at the first failure unless --no-fail-fast and
+    report any failure as status 101. No record means another configured runner
+    took precedence and Cargo already ran the tests.
+    """
+    calls = [json.loads(line) for line in record.read_text(encoding='utf-8').splitlines()] if record.exists() else []
+    record.unlink(missing_ok=True)  # It holds the environment; keep it no longer than needed.
+    failed = 0
+    for call in calls:
+        executable = call['command'][0]
+        print(f'Running {executable} (build lock released)', file=sys.stderr, flush=True)
+        status = subprocess.run(call['command'], cwd=call['cwd'], env=call['env']).returncode
+        if status:
+            print(f'error: test failed: {executable} exited with status {status}', file=sys.stderr, flush=True)
+            failed = 101
+            if not keep_going:
+                break
+    return failed
+
+
 def run(root: Path, args: list[str], label: str | None, timeout: float, *, policy=None) -> int:
     from tools._cargo_cache import CachePolicy, register_locked, automatic_locked, retention_due
     policy = policy if policy is not None else CachePolicy.from_env()
@@ -331,7 +368,18 @@ def run(root: Path, args: list[str], label: str | None, timeout: float, *, polic
     cache_root = Path(os.environ.get('CARGO_TARGET_DIR', str(root / 'target'))).resolve()
     target = cache_root / 'owned-worktrees' / namespace
     output = store / 'artifacts' / label if label else None
-    with build_lock(store / 'cargo.lock', timeout):
+    deadline = time.monotonic() + timeout
+    options = args[:args.index('--')] if '--' in args else args
+    # `cargo test` holds the shared lock only while Cargo compiles: Cargo hands each
+    # test executable to a recorder, and they start once the shared lock is
+    # released. This checkout's lock stays held, so its next run cannot relink them.
+    with ExitStack() as checkout, ExitStack() as shared:
+        checkout.enter_context(file_lock(store / 'checkouts' / f'{namespace}.lock', deadline))
+        record = None
+        if args[0] == 'test' and '--no-run' not in options:
+            record = Path(checkout.enter_context(tempfile.TemporaryDirectory(prefix='cargo-tests-'))) / 'tests.jsonl'
+            args = [args[0], '--config', test_runner_config(record), *args[1:]]
+        shared.enter_context(build_lock(store / 'cargo.lock', deadline - time.monotonic()))
         if output and output.exists():
             raise ValueError(f'Label already exists; choose a new label: {output}')
         register_locked(root, store, target)
@@ -424,6 +472,12 @@ def run(root: Path, args: list[str], label: str | None, timeout: float, *, polic
             register_locked(root, store, target, artifacts)
             if retention_due(store, policy, volumes):
                 automatic_locked(root, store, policy)
+        shared.close()
+        if record:
+            if failed := run_recorded_tests(record, '--no-fail-fast' in options):
+                return failed
+            if source_identity(root, hashes) != before:
+                raise ValueError('Source changed during the tests; result is not a validation')
     return 0
 
 

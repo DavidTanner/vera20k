@@ -16,7 +16,7 @@ use crate::sim::state_hasher::{self, StateHasher};
 
 // Rust-only attribution of the retired global initializer's empty Super map.
 // The production registry remains untouched; no control exists in release.
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 std::thread_local! {
     static LEGACY_EMPTY_SUPER_OWNER_HASH_CONTROL: std::cell::Cell<Option<crate::sim::intern::InternedId>> = const {
         std::cell::Cell::new(None)
@@ -156,9 +156,9 @@ fn hash_house_ai_activation_fields(
     house: &crate::sim::house_state::HouseState,
     hasher: &mut impl Hasher,
 ) {
-    house.ai_activation.production.hash(hasher);
-    house.ai_activation.autocreate_allowed.hash(hasher);
-    house.ai_activation.ai_triggers_active.hash(hasher);
+    house.ai_activation().production.hash(hasher);
+    house.ai_activation().autocreate_allowed.hash(hasher);
+    house.ai_activation().ai_triggers_active.hash(hasher);
     house.current_iq.hash(hasher);
 }
 
@@ -321,10 +321,11 @@ mod shared_dummy_bridge_hash_tests {
 
     use crate::map::bridge_facts::BRIDGE_FLAG_ANCHOR_SELF;
     use crate::map::resolved_terrain::ResolvedTerrainGrid;
+    use crate::map::voxel_slope::slope_matrix;
     use crate::rules::ini_parser::IniFile;
     use crate::rules::ruleset::RuleSet;
     use crate::sim::particles::spark::SparkMotionStep;
-    use crate::sim::particles::spark_world::{SparkCollisionWorld, slope_matrix};
+    use crate::sim::particles::spark_world::SparkCollisionWorld;
     use crate::util::native_x87::NativeF32Bits;
 
     fn spark_motion_at(x: i32, y: i32, z: i32) -> SparkMotionStep {
@@ -505,7 +506,7 @@ impl Simulation {
     /// The fixture now installs its map through the existing map owner. This
     /// control changes only the Hash feed, retaining the correctly captured
     /// 64x64 zero-flag authority and the actual gameplay/persistence state.
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     pub(crate) fn state_hash_with_legacy_absent_real_cell_authority_for_test(&self) -> u64 {
         let terrain = self.resolved_terrain.as_ref().expect("fixture map");
         assert_eq!((terrain.width(), terrain.height()), (64, 64));
@@ -531,7 +532,7 @@ impl Simulation {
     /// Attribute the owner-only feed from the former global Super initializer.
     /// Its refresh inserted an empty map even when no Building provided a Super.
     /// Only an empty actual registry is admitted, so no instance/order is hidden.
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     pub(crate) fn state_hash_with_legacy_empty_super_owner_for_test(
         &self,
         owner: crate::sim::intern::InternedId,
@@ -551,7 +552,7 @@ impl Simulation {
 
     /// Read-only Rust diagnostic projections through the existing hash owners.
     /// These are attribution receipts, never gameplay/native golden inputs.
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     pub(crate) fn hash_owner_diagnostics_for_test(&self) -> [(&'static str, u64); 13] {
         fn digest(fold: impl FnOnce(&mut StateHasher)) -> u64 {
             let mut hasher = StateHasher::new();
@@ -702,6 +703,10 @@ impl Simulation {
             b"path-batch-v2".hash(hasher);
             batch.hash(hasher);
         }
+        // Whether target scans are batched; their answers live within a pass.
+        if self.scan_batch.is_some() {
+            b"scan-batch-v1".hash(hasher);
+        }
 
         self.substrate.fold_raw_cell_occupation(hasher);
         self.substrate.fold_hidden_occupation(hasher);
@@ -733,13 +738,13 @@ impl Simulation {
         // Historical pre-v28/pre-v29 provenance probes must omit both this
         // schema tag and the value authority introduced at snapshot v90.
         b"real-cell-bridge-flags-v2".hash(hasher);
-        #[cfg(test)]
+        #[cfg(any(test, feature = "test-support"))]
         if LEGACY_ABSENT_REAL_CELL_HASH_CONTROL.with(std::cell::Cell::get) {
             crate::map::resolved_terrain::RealCellBridgeFlags0x1180::default().hash(hasher);
         } else {
             self.real_cell_bridge_flags_0x1180.hash(hasher);
         }
-        #[cfg(not(test))]
+        #[cfg(not(any(test, feature = "test-support")))]
         self.real_cell_bridge_flags_0x1180.hash(hasher);
         b"dynamic-terrain-cells-v1".hash(hasher);
         self.dynamic_terrain_cells.hash(hasher);
@@ -1063,7 +1068,7 @@ impl Simulation {
 
     /// The owner's stored buildings and other objects whose destruction is
     /// not yet recorded (test observation of the retired per-house counts).
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     pub(crate) fn owned_object_counts(&self, owner: crate::sim::intern::InternedId) -> (u32, u32) {
         self.substrate
             .entities
@@ -1501,7 +1506,7 @@ impl Simulation {
 
     /// Hash per-house superweapon state and active lightning storm.
     fn hash_super_weapons(&self, hasher: &mut impl Hasher) {
-        #[cfg(test)]
+        #[cfg(any(test, feature = "test-support"))]
         if let Some(owner) = LEGACY_EMPTY_SUPER_OWNER_HASH_CONTROL.with(std::cell::Cell::get) {
             // HEAD's global tick -> refresh_super_weapons_for_owner inserted
             // this owner even with no granted types, before this unchanged fold.
@@ -1599,27 +1604,9 @@ impl Simulation {
     /// divergence in the stream itself, even though nothing in the physics
     /// reads them back.
     fn hash_voxel_anims(&self, hasher: &mut impl Hasher) {
-        // An empty store contributes NO bytes. Debris exists only between a
-        // death and the moment the last piece expires, so hashing a length of
-        // zero on every other frame would move every established golden and
-        // every historical schema probe for a plumbing reason rather than a
-        // behavioural one — and would keep doing so at each future store. It
-        // masks nothing: the fold is domain-separated by
-        // `b"voxel-anim-debris-v1"`, so an empty store carries no information a
-        // `0usize` would add.
-        //
-        // Be aware when reading this that it does NOT match its neighbours.
-        // `fold_raw_cell_occupation` is the precedent, but that is a sparse
-        // GRID fold; the two STORE folds this one sits between — `hash_anims`
-        // and `hash_particle_systems` — both write their length
-        // unconditionally. The skip was chosen to avoid a re-baseline, and it
-        // is load-bearing for that reason alone.
-        //
-        // Coverage gap: no parity harness and no replay fixture authors a
-        // positive `MaxDebris=`, so nothing red today exercises either this
-        // fold's populated arm or the producer that fills it. The first fixture
-        // that kills a `MaxDebris>0` type moves the goldens through the RNG
-        // cursor even before a single piece survives to be folded.
+        // Keep the established sparse-store domain: no live debris contributes
+        // no bytes. A live piece includes both independent Rust and native
+        // identities; the latter also advances the shared Scenario cursor.
         if self.substrate.voxel_anims.is_empty() {
             return;
         }
@@ -1627,6 +1614,7 @@ impl Simulation {
         self.substrate.voxel_anims.len().hash(hasher);
         for (id, debris) in self.substrate.voxel_anims.iter() {
             id.hash(hasher);
+            debris.native_unique_id().hash(hasher);
             debris.type_id.0.hash(hasher);
             debris.duration.hash(hasher);
             debris.marked_for_deletion.hash(hasher);
@@ -1702,6 +1690,11 @@ fn hash_entity(entity: &GameEntity, frame: u32, hasher: &mut StateHasher) {
         entity.building_entry.hash(hasher);
     }
     let latches = entity.house_tracking_latches();
+    if entity.tracking_facts.naval_combatant() {
+        // Retained across reload: later Remove_Tracking must use the same
+        // Naval/Passengers admission as construction, even while in limbo.
+        b"naval-tracking-eligibility-v1".hash(hasher);
+    }
     if latches != Default::default() {
         b"house-tracking-infantry-latches-v1".hash(hasher);
         latches.hash(hasher);
@@ -2313,16 +2306,13 @@ fn hash_entity(entity: &GameEntity, frame: u32, hasher: &mut StateHasher) {
         0u8.hash(hasher);
     }
 
-    // Body rocking state. I16F16 doesn't implement Hash directly;
-    // .to_bits() gives the underlying i32. Drive/Ship slope state is
-    // hashed with its active/stashed locomotor payload below.
+    // Body rocking's four authoritative binary32 fields. A sub-fixed-quantum
+    // rate can select a different damping branch on the next visit, so the
+    // presentation's fixed getters cannot stand in for retained state.
+    // Drive/Ship slope state is hashed with its locomotor payload below.
     if let Some(ref r) = entity.rocking {
         1u8.hash(hasher);
-        r.angle_sideways().to_bits().hash(hasher);
-        r.angle_forwards().to_bits().hash(hasher);
-        r.vel_sideways().to_bits().hash(hasher);
-        r.vel_forwards().to_bits().hash(hasher);
-        r.is_ship_rocking().hash(hasher);
+        r.native_bits().hash(hasher);
     } else {
         0u8.hash(hasher);
     }
@@ -2337,6 +2327,7 @@ fn hash_entity(entity: &GameEntity, frame: u32, hasher: &mut StateHasher) {
     // rides along in the same block.
     entity.passive_scan.last_scan_frame().hash(hasher);
     entity.passive_scan.acquired().hash(hasher);
+    entity.hash_distributed_fire(hasher);
     // Foot688 changes the next scan's topology/radius. Constructor
     // false preserves earlier streams; the retained true state is an
     // independent schema255 contribution, never inferred from TarCom.
@@ -3466,7 +3457,7 @@ mod state_hash_field_tests {
             let mut sim = Simulation::new();
             let owner = sim.interner.intern("Computer1");
             let mut house = HouseState::new(owner, 0, None, false, 0, 10);
-            house.ai_activation = latches;
+            house.set_ai_activation_for_test(latches);
             sim.houses.insert(owner, house);
             sim
         }
@@ -4567,7 +4558,7 @@ mod rocking_hash_tests {
         let id = a.substrate.entities.values().next().unwrap().stable_id();
         a.substrate.entities.get_mut(id).unwrap().rocking = Some({
             let mut value = RockingState::default();
-            value.set_angle_sideways_for_test(SimFixed::lit("0.1"));
+            value.set_angle_sideways(SimFixed::lit("0.1"));
             value
         });
         assert_ne!(a.state_hash(), b.state_hash());

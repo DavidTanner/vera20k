@@ -91,7 +91,7 @@ pub(crate) struct DroppedImpact {
 /// `End_Piggyback @ 0x0054DA50` clears both latches ([`Self::end`]). The swap
 /// latch is independent of MCV Unit+68C and the infantry deploy animation.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub(crate) struct LocomotorLift {
+pub struct LocomotorLift {
     #[serde(default)]
     swap_active: bool,
     #[serde(default)]
@@ -138,25 +138,25 @@ impl LocomotorLift {
     }
 
     /// Install a fixture's swap latch.
-    #[cfg(test)]
-    pub(crate) fn set_swap_active_for_test(&mut self, swap_active: bool) {
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn set_swap_active_for_test(&mut self, swap_active: bool) {
         self.swap_active = swap_active;
     }
 
     /// Install a fixture's end latch.
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     pub(crate) fn set_may_end_for_test(&mut self, may_end: bool) {
         self.may_end = may_end;
     }
 
     /// Install a fixture's held object.
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     pub(crate) fn set_target_for_test(&mut self, target: Option<u64>) {
         self.target = target;
     }
 
     /// Install a fixture's holder.
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     pub(crate) fn set_source_for_test(&mut self, source: Option<u64>) {
         self.source = source;
     }
@@ -218,19 +218,19 @@ impl DropCredit {
     }
 
     /// Install a fixture's drop latch.
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     pub(crate) fn set_being_manipulated_for_test(&mut self, being_manipulated: bool) {
         self.being_manipulated = being_manipulated;
     }
 
     /// Install a fixture's dropping Magnetron.
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     pub(crate) fn set_manipulated_by_for_test(&mut self, manipulated_by: Option<u64>) {
         self.manipulated_by = manipulated_by;
     }
 
     /// Install a fixture's credited house.
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     pub(crate) fn set_warped_by_house_for_test(
         &mut self,
         warped_by_house: Option<crate::sim::intern::InternedId>,
@@ -972,7 +972,7 @@ impl Simulation {
 
     /// Jumpjet State 5's sink for a dropped object its own landing test
     /// refused over water (`0x0054CEB4..0x0054CF37`): `+0x3CD` and the Stun
-    /// ([`Self::begin_warp_sinking`]), its slaves freed to the dropping
+    /// ([`Self::begin_living_ship_sinking`]), its slaves freed to the dropping
     /// Magnetron with no house (`FreeSlaves(+0x428, 0)`, `0x0054CEDF`) and
     /// its SlaveManager deleted, and its death booked
     /// ([`Self::record_manipulated_kill`]).
@@ -983,7 +983,12 @@ impl Simulation {
         registry: Option<&OverlayTypeRegistry>,
         effects: FrameEffects<'_>,
     ) {
-        self.begin_warp_sinking(id, rules, effects);
+        self.begin_living_ship_sinking(
+            id,
+            crate::sim::world::LivingSinkTrigger::PostWarpValidation,
+            rules,
+            effects,
+        );
         let killer = self
             .substrate
             .entities

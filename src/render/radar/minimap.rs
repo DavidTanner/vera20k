@@ -147,16 +147,16 @@ pub struct MinimapRenderer {
 impl MinimapRenderer {
     /// Create a new MinimapRenderer, generating the initial terrain image.
     ///
-    /// Each terrain cell is mapped to a minimap pixel based on its normalized
-    /// position within the world. Color is chosen by TMP radar colors when
-    /// available, falling back to tile classification (water/land/elevated).
-    /// Overlay data is pre-classified by the caller to avoid render/ depending
-    /// on rules::overlay_types.
+    /// Native scenario687AA0/post-load685162 -> Rebuild654650 -> Fill654EA0
+    /// queries live Cell47C060 at654F99. Use the same current authority as
+    /// dirty updates and reconciliation; authored rows are only the explicit
+    /// fallback when no simulation runtime is installed.
     pub(crate) fn new(
-        gpu: &GpuContext,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
         batch: &BatchRenderer,
         grid: &TerrainGrid,
-        resolved_terrain: Option<&crate::map::resolved_terrain::ResolvedTerrainGrid>,
+        runtime: Option<&crate::sim::runtime::SimRuntime>,
         overlay_data: &[MinimapOverlayDatum],
         overlay_radar_colors: &HashMap<(u8, u8), [u8; 3]>,
         theater_name: &str,
@@ -164,6 +164,7 @@ impl MinimapRenderer {
         playfield_revision: u64,
     ) -> Self {
         let pixel_count: usize = (MINIMAP_WIDTH * MINIMAP_HEIGHT * 4) as usize;
+        let resolved_terrain = runtime.and_then(|runtime| runtime.view().resolved_terrain());
         let projection = MinimapPlayfieldProjection::derive(
             grid,
             resolved_terrain,
@@ -171,16 +172,17 @@ impl MinimapRenderer {
             overlay_radar_colors,
             theater_name,
             playfield_bounds,
-            None,
+            runtime.map(CurrentRadarCellAuthority::from_runtime),
         );
 
         let (map_texture_raw, map_texture) = batch.create_updatable_texture(
-            gpu,
+            device,
+            queue,
             &projection.base_rgba,
             MINIMAP_WIDTH,
             MINIMAP_HEIGHT,
         );
-        let white_texture: BatchTexture = create_white_texture(gpu, batch);
+        let white_texture: BatchTexture = create_white_texture(device, queue, batch);
         let rgba_scratch: Vec<u8> = vec![0u8; pixel_count];
 
         log::info!(
@@ -356,7 +358,7 @@ impl MinimapRenderer {
     /// unchanged simulation/view inputs reuse the existing texture.
     pub fn update_unit_dots(
         &mut self,
-        gpu: &GpuContext,
+        queue: &wgpu::Queue,
         entities: &crate::sim::entity_store::EntityStore,
         logic_order: &[u64],
         houses: &BTreeMap<InternedId, crate::sim::house_state::HouseState>,
@@ -624,7 +626,7 @@ impl MinimapRenderer {
         let consumed_radar_terrain_generation = staged_radar_terrain_update.finish_infallible(
             &mut self.last_radar_terrain_dirty_generation,
             || {
-                gpu.queue.write_texture(
+                queue.write_texture(
                     wgpu::TexelCopyTextureInfo {
                         texture: &self.map_texture_raw,
                         mip_level: 0,
@@ -797,13 +799,21 @@ fn minimap_entity_in_playfield(
 }
 
 /// Create a 2x2 solid white texture for drawing lines and rectangles.
-fn create_white_texture(gpu: &GpuContext, batch: &BatchRenderer) -> BatchTexture {
+fn create_white_texture(
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    batch: &BatchRenderer,
+) -> BatchTexture {
     let white_rgba: [u8; 16] = [
         255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
     ];
-    batch.create_texture(gpu, &white_rgba, 2, 2)
+    batch.create_texture_on_device(device, queue, &white_rgba, 2, 2, None)
 }
 
 #[cfg(test)]
 #[path = "minimap_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "minimap_gpu_tests.rs"]
+mod gpu_tests;

@@ -103,8 +103,8 @@ impl TarCom {
     }
 
     /// Install a fixture's target without the setter's effects.
-    #[cfg(test)]
-    pub(crate) fn set_for_test(&mut self, target: Option<TargetKind>) {
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn set_for_test(&mut self, target: Option<TargetKind>) {
         self.target = target;
     }
 }
@@ -212,8 +212,8 @@ pub(crate) fn object_distance_to(
 /// Install a bare combat fixture's entity target. Production commands use
 /// `Simulation::assign_target_represented`, including concrete class effects.
 /// This adapter stages the admitted Techno base state without running an event.
-#[cfg(test)]
-pub(crate) fn install_entity_attack_target_for_test(
+#[cfg(any(test, feature = "test-support"))]
+pub fn install_entity_attack_target_for_test(
     entities: &mut EntityStore,
     attacker_id: u64,
     target_id: u64,
@@ -238,8 +238,8 @@ pub(crate) fn install_entity_attack_target_for_test(
 /// Install a bare combat fixture's cell target. Keep its current-weapon gate
 /// through the shared weapon reader; production ForceAttackCell uses the
 /// concrete class authority in `world_commands`, not this setup adapter.
-#[cfg(test)]
-pub(crate) fn install_cell_attack_target_for_test(
+#[cfg(any(test, feature = "test-support"))]
+pub fn install_cell_attack_target_for_test(
     entities: &mut EntityStore,
     attacker_id: u64,
     target_rx: u16,
@@ -250,7 +250,7 @@ pub(crate) fn install_cell_attack_target_for_test(
     // Read weapon presence before the mutable borrow.
     let has_weapon = match entities.get(attacker_id) {
         Some(a) => rules
-            .and_then(|r| r.object(interner.resolve(a.type_ref())))
+            .and_then(|r| interner.object_type(a.type_ref(), r))
             .is_some_and(|obj| combat_weapon::is_armed(a, obj)),
         None => return false,
     };

@@ -79,7 +79,7 @@ impl<'de> serde::Deserialize<'de> for IniSection {
 }
 
 impl IniSection {
-    pub(crate) fn new(name: String) -> Self {
+    pub fn new(name: String) -> Self {
         Self {
             name,
             entries: HashMap::new(),
@@ -120,7 +120,7 @@ impl IniSection {
 
     /// Apply a later load/rules pass. Existing exact keys are replaced and new
     /// keys retain layer source order.
-    pub(crate) fn set(&mut self, key: &str, value: &str) {
+    pub fn set(&mut self, key: &str, value: &str) {
         if !self.entries.contains_key(key) {
             self.key_order.push(key.to_string());
         }
@@ -152,8 +152,8 @@ impl IniSection {
     }
 
     /// Test builds only: the raw stored text, for tests that inspect storage.
-    #[cfg(test)]
-    pub(crate) fn get_for_test(&self, key: &str) -> Option<&str> {
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn get_for_test(&self, key: &str) -> Option<&str> {
         self.get(key)
     }
 
@@ -225,7 +225,7 @@ impl<'de> serde::Deserialize<'de> for IniFile {
 }
 
 impl IniFile {
-    pub(crate) fn empty() -> Self {
+    pub fn empty() -> Self {
         Self {
             sections: Vec::new(),
             first_section: HashMap::new(),
@@ -236,7 +236,7 @@ impl IniFile {
     /// oracle controls contain stored-empty entries or sections, which the
     /// physical reader would discard. Storage and first-section indexing stay
     /// with this owner; production projection mutators remain private.
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     pub(crate) fn from_sections_for_test(sections: impl IntoIterator<Item = IniSection>) -> Self {
         let mut ini = Self::empty();
         for section in sections {
@@ -263,20 +263,28 @@ impl IniFile {
 
         for physical_line in text.split('\n') {
             // Straw::ReadLine removes every CR byte while consuming the line.
-            let without_carriage_returns: String = physical_line
-                .chars()
-                .filter(|character| *character != '\r')
-                .collect();
+            // Most lines end in the one CR of a CRLF pair and hold no other.
+            let line = physical_line.strip_suffix('\r').unwrap_or(physical_line);
+            let without_carriage_returns = if line.contains('\r') {
+                std::borrow::Cow::Owned(line.replace('\r', ""))
+            } else {
+                std::borrow::Cow::Borrowed(line)
+            };
             if without_carriage_returns.is_empty() {
                 continue;
             }
 
             // Straw::ReadLine stores at most 511 payload bytes and consumes the
             // remainder through LF. The discarded tail is never a second line.
-            let chunk_end = without_carriage_returns
-                .char_indices()
-                .nth(READ_LINE_PAYLOAD)
-                .map_or(without_carriage_returns.len(), |(index, _)| index);
+            // A character takes at least one byte, so shorter text is whole.
+            let chunk_end = if without_carriage_returns.len() <= READ_LINE_PAYLOAD {
+                without_carriage_returns.len()
+            } else {
+                without_carriage_returns
+                    .char_indices()
+                    .nth(READ_LINE_PAYLOAD)
+                    .map_or(without_carriage_returns.len(), |(index, _)| index)
+            };
             let buffered = &without_carriage_returns[..chunk_end];
             // NUL occupies a buffer byte, but subsequent C-string operations
             // make the rest of that physical line invisible to the loader.
@@ -360,7 +368,7 @@ impl IniFile {
 
     /// Clone a fixture with an exact key omitted from every matching section
     /// occurrence, including its retained typed-reader history.
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     pub(crate) fn without_entry_for_test(&self, section: &str, key: &str) -> Self {
         let mut ini = self.clone();
         for body in &mut ini.sections {
@@ -418,7 +426,7 @@ impl IniFile {
 
     /// Obtain the first compatibility section, creating it at the current tail.
     /// Native processing owns which values enter it; INI owns storage/order.
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     pub(super) fn projection_section_mut(&mut self, name: &str) -> &mut IniSection {
         let index = if let Some(&index) = self.first_section.get(name) {
             index

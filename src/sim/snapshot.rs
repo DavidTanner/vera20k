@@ -14,9 +14,9 @@ use std::collections::{BTreeMap, BTreeSet};
 use serde::{Deserialize, Serialize};
 
 #[path = "snapshot/saved_local_view.rs"]
-pub(crate) mod saved_local_view;
+pub mod saved_local_view;
 #[path = "snapshot/scenario_resources.rs"]
-pub(crate) mod scenario_resources;
+pub mod scenario_resources;
 
 use saved_local_view::SavedLocalView;
 use scenario_resources::{SavedScenarioResources, SavedScenarioResourcesRef};
@@ -1046,7 +1046,16 @@ use crate::sim::world::Simulation;
 // creation order, which affects rounded field subtraction and later damage.
 // 365 -> 366: process scalable Bullet order and retained type cadence values.
 // 366 -> 367: authoritative PlanMgr nodes/tokens and local planning input mode.
-const SNAPSHOT_VERSION: u32 = 367;
+// 367 -> 368: ordered Techno DistributedFire candidates/scores and history.
+// 368 -> 369: tracked navy scalar and retained Unit Naval/Passengers admission.
+// 369 -> 370: VoxelAnim retains its constructor-assigned native numeric ID.
+// 370 -> 371: Parasite retains grapple Anim, phase/stage/delay/invalidation.
+// 371 -> 372: Rocking retains its four binary32 fields without a synthetic
+// ship-rocking flag; tiny impulse rates affect the next native damping branch.
+// 372 -> 373: House retains four class-local last-built type indices.
+// 373 -> 374: the Simulation retains whether it batches target scans.
+// 374 -> 375: CaptureManager retains its overload pip countdown.
+const SNAPSHOT_VERSION: u32 = 375;
 
 const SNAPSHOT_PRODUCT_MAGIC: [u8; 8] = *b"VERA20K\0";
 const SNAPSHOT_ENVELOPE_VERSION: u32 = 1;
@@ -1054,7 +1063,7 @@ const SNAPSHOT_ENVELOPE_VERSION: u32 = 1;
 /// Neutral type identity shared by the retained sidebar and its save envelope.
 /// The kind matters: a SuperWeapon and an object never share a cameo entry.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub(crate) enum SavedCameoId {
+pub enum SavedCameoId {
     Object(InternedId),
     SuperWeapon(InternedId),
 }
@@ -1068,7 +1077,7 @@ pub(crate) enum SavedCameoId {
 /// no-init5BE9B0->6A4F20 resets progress6AC7C0, preserving count/type/order.
 /// This neutral transport does not introduce a sim dependency on a UI owner.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub(crate) struct SavedSidebarOrder {
+pub struct SavedSidebarOrder {
     owner: InternedId,
     strips: [Vec<SavedCameoId>; 4],
     scroll_rows: [usize; 4],
@@ -1077,11 +1086,7 @@ pub(crate) struct SavedSidebarOrder {
 }
 
 impl SavedSidebarOrder {
-    pub(crate) fn new(
-        owner: InternedId,
-        strips: [Vec<SavedCameoId>; 4],
-        scroll_rows: [usize; 4],
-    ) -> Self {
+    pub fn new(owner: InternedId, strips: [Vec<SavedCameoId>; 4], scroll_rows: [usize; 4]) -> Self {
         let flash_deadlines = std::array::from_fn(|index| vec![0; strips[index].len()]);
         Self {
             owner,
@@ -1092,27 +1097,27 @@ impl SavedSidebarOrder {
         }
     }
 
-    pub(crate) fn with_flash(mut self, deadlines: [Vec<i32>; 4], redraw_until: i32) -> Self {
+    pub fn with_flash(mut self, deadlines: [Vec<i32>; 4], redraw_until: i32) -> Self {
         self.flash_deadlines = deadlines;
         self.redraw_until = redraw_until;
         self
     }
 
-    pub(crate) fn flash(&self) -> (&[Vec<i32>; 4], i32) {
+    pub fn flash(&self) -> (&[Vec<i32>; 4], i32) {
         (&self.flash_deadlines, self.redraw_until)
     }
 
-    #[cfg(test)]
-    pub(crate) fn owner(&self) -> InternedId {
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn owner(&self) -> InternedId {
         self.owner
     }
 
-    #[cfg(test)]
-    pub(crate) fn strips(&self) -> &[Vec<SavedCameoId>; 4] {
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn strips(&self) -> &[Vec<SavedCameoId>; 4] {
         &self.strips
     }
 
-    pub(crate) fn into_parts(self) -> (InternedId, [Vec<SavedCameoId>; 4], [usize; 4]) {
+    pub fn into_parts(self) -> (InternedId, [Vec<SavedCameoId>; 4], [usize; 4]) {
         (self.owner, self.strips, self.scroll_rows)
     }
 }
@@ -1122,17 +1127,17 @@ impl SavedSidebarOrder {
 /// clamped view and overwrites RequestedViewPosition with that view, so pending
 /// scroll is deliberately absent from this neutral presentation transport.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub(crate) struct SavedTacticalView {
+pub struct SavedTacticalView {
     /// Committed tactical center in VERA world pixels, including its existing
     /// projection bias. UpdateViewport6D8B30 derives the viewport from it and
     /// the current viewport size at load, so the window size is not saved.
-    pub(crate) view_center_world_pixels: [f32; 2],
-    pub(crate) zoom: f32,
-    pub(crate) focus_start: [i32; 2],
-    pub(crate) focus_target: [i32; 2],
-    pub(crate) focus_rate_bits: u32,
-    pub(crate) focus_progress_bits: u32,
-    pub(crate) last_ai_frame: u32,
+    pub view_center_world_pixels: [f32; 2],
+    pub zoom: f32,
+    pub focus_start: [i32; 2],
+    pub focus_target: [i32; 2],
+    pub focus_rate_bits: u32,
+    pub focus_progress_bits: u32,
+    pub last_ai_frame: u32,
 }
 
 /// Binary snapshot envelope — wraps the full `Simulation` state plus
@@ -1163,7 +1168,7 @@ pub struct GameSnapshot {
     /// Original AbstractLoad410380 reads the raw object, then FootLoad4DB60D
     /// and no-init Foot4D3540 preserve this short (naval_lifetime_controls).
     /// Kept in the neutral envelope so sim never depends on a render owner.
-    pub(crate) sinking_waterlines: Vec<(u64, i16)>,
+    pub sinking_waterlines: Vec<(u64, i16)>,
     /// Retained local sidebar order is presentation state, outside the lockstep
     /// simulation hash. The app validates/hydrates it before committing a load.
     sidebar_order: Option<SavedSidebarOrder>,
@@ -1389,14 +1394,14 @@ pub enum SnapshotRestoreError {
 
 /// Derived facts produced by the transactional map-authority restore seam.
 #[derive(Debug)]
-pub(crate) struct SnapshotMapRestoreOutput {
+pub struct SnapshotMapRestoreOutput {
     pub occupied_overlays: Vec<crate::map::overlay::OverlayEntry>,
     pub native_tiberium_stats: crate::sim::ore_growth::NativeTiberiumRebuildStats,
 }
 
 /// Retail asset admission on restored live cells, before derived map publication.
 /// The callback can advance Main without obtaining seed/replacement authority.
-pub(crate) type SnapshotTerrainAssetPreparation<'a> = dyn FnMut(
+pub type SnapshotTerrainAssetPreparation<'a> = dyn FnMut(
         &mut crate::map::resolved_terrain::ResolvedTerrainGrid,
         crate::sim::rng::MainRngDraws,
         i32,
@@ -1499,7 +1504,7 @@ impl GameSnapshot {
 
     /// Save the app's retained presentation alongside the simulation. A headless
     /// caller uses `save_validated`, whose presentation supplement is empty.
-    pub(crate) fn save_validated_with_presentation(
+    pub fn save_validated_with_presentation(
         sim: &Simulation,
         map_hash: u64,
         rules_hash: u64,
@@ -1528,25 +1533,25 @@ impl GameSnapshot {
         )
     }
 
-    pub(crate) fn sidebar_order(&self) -> Option<&SavedSidebarOrder> {
+    pub fn sidebar_order(&self) -> Option<&SavedSidebarOrder> {
         self.sidebar_order.as_ref()
     }
 
-    pub(crate) fn tactical_view(&self) -> Option<&SavedTacticalView> {
+    pub fn tactical_view(&self) -> Option<&SavedTacticalView> {
         self.tactical_view.as_ref()
     }
 
-    pub(crate) fn take_local_view(&mut self) -> Option<SavedLocalView> {
+    pub fn take_local_view(&mut self) -> Option<SavedLocalView> {
         self.local_view.take()
     }
 
-    pub(crate) fn take_scenario_resources(&mut self) -> Option<SavedScenarioResources> {
+    pub fn take_scenario_resources(&mut self) -> Option<SavedScenarioResources> {
         self.scenario_resources.take()
     }
 
     /// Test-only constructor for deliberately synthetic envelope metadata.
-    #[cfg(test)]
-    pub(crate) fn save(
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn save(
         sim: &Simulation,
         map_hash: u64,
         rules_hash: u64,
@@ -1571,7 +1576,7 @@ impl GameSnapshot {
     /// Like retail's post-read Scenario
     /// reinitializer, full deserialization resets the embedded Scenario RNG to
     /// `Random__Seed(0)` even though its saved bytes remain in the wire layout.
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     pub(crate) fn load_unchecked(bytes: &[u8]) -> Result<GameSnapshot, SnapshotError> {
         let _ = Self::read_header(bytes)?;
         Ok(bincode::deserialize(bytes)?)
@@ -1579,8 +1584,8 @@ impl GameSnapshot {
 
     /// Compatibility alias for existing unit fixtures that intentionally use
     /// synthetic zero hashes and header-only map names.
-    #[cfg(test)]
-    pub(crate) fn load(bytes: &[u8]) -> Result<GameSnapshot, SnapshotError> {
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn load(bytes: &[u8]) -> Result<GameSnapshot, SnapshotError> {
         Self::load_unchecked(bytes)
     }
 
@@ -1624,7 +1629,7 @@ impl GameSnapshot {
     /// Production cold/cross-map admission. Compatibility is checked against
     /// the saved resource owner and its rebuilt RuleSet, never the outgoing
     /// match or header values passed back as their own expected content.
-    pub(crate) fn load_with_resources(bytes: &[u8]) -> Result<GameSnapshot, SnapshotError> {
+    pub fn load_with_resources(bytes: &[u8]) -> Result<GameSnapshot, SnapshotError> {
         Self::read_header(bytes)?;
         let snapshot = Self::deserialize_admitted(bytes)?;
         let resources = snapshot
@@ -1677,7 +1682,7 @@ impl GameSnapshot {
     /// SaveInfo681840/559ED0 reads metadata even when its internal version is
     /// incompatible. Browser5596A0 sorts those rows before5599DF hides them;
     /// full load still requires the strict current-version header above.
-    pub(crate) fn read_metadata(bytes: &[u8]) -> Result<GameSnapshotHeader, SnapshotError> {
+    pub fn read_metadata(bytes: &[u8]) -> Result<GameSnapshotHeader, SnapshotError> {
         Self::read_preamble(bytes)?;
         Ok(bincode::deserialize(bytes)?)
     }
@@ -1702,7 +1707,7 @@ impl GameSnapshot {
 }
 
 impl GameSnapshotHeader {
-    pub(crate) fn is_current_version(&self) -> bool {
+    pub fn is_current_version(&self) -> bool {
         self.version == SNAPSHOT_VERSION
     }
 }
@@ -1967,6 +1972,20 @@ fn restore_object_references(
     // complete modeled pointer graph before mutating even weak references or
     // derived caches, so a failed restore remains an atomic rejection.
     for (entity_id, entity) in sim.substrate.entities.iter_sorted() {
+        if let Some(anim_id) = entity
+            .parasite
+            .class()
+            .and_then(|class| class.grapple_anim())
+        {
+            require_resolved_reference(
+                anim_ids.contains(&anim_id),
+                "EntityStore",
+                entity_id,
+                "parasite.grapple.anim",
+                "AnimStore",
+                anim_id,
+            )?;
+        }
         if entity.tesla_charger.is_active()
             && !matches!(
                 entity.category(),
@@ -2383,10 +2402,21 @@ fn restore_object_references(
     }
 
     // BulletClass__Load @ 0x0046AE70 queues the non-null source/firer pointer
-    // at +0xB0 and target pointer at +0x10C for global swizzling. VERA's zero
+    // at +0xB0, target at +0x10C and awaited Anim at +0x154 for global
+    // swizzling (46AF8B), independently of the wait flag. VERA's zero
     // source sentinel and Cell/null targets are the corresponding
     // null/non-pointer representations and therefore need no object lookup.
     for (&projectile_id, projectile) in sim.projectiles.iter() {
+        if let Some(anim_id) = projectile.awaited_anim() {
+            require_resolved_reference(
+                anim_ids.contains(&anim_id),
+                "ProjectileStore",
+                projectile_id,
+                "awaited_anim",
+                "AnimStore",
+                anim_id,
+            )?;
+        }
         if projectile.source_id != crate::sim::combat::RAD_NO_ATTACKER {
             require_resolved_reference(
                 entity_ids.contains(&projectile.source_id),
@@ -2527,7 +2557,7 @@ impl Simulation {
     /// rejects any unmatched modeled native pointer, cleans only deliberate
     /// weak/derived identities, and reconstructs skipped indexes in dependency
     /// order.
-    pub(crate) fn restore_after_snapshot_load(&mut self) -> Result<(), SnapshotRestoreError> {
+    pub fn restore_after_snapshot_load(&mut self) -> Result<(), SnapshotRestoreError> {
         self.projectiles
             .validate_scalable_runtime(&self.interner)
             .map_err(SnapshotRestoreError::InvalidScalableProjectileRuntime)?;
@@ -2719,6 +2749,17 @@ impl Simulation {
         }
 
         validate_passenger_size_tables(self)?;
+        // Concrete Unit74451C/Aircraft41B4DC/Infantry521A0C/Building453ECF
+        // Load reconstructs Techno's three empty vectors through NoInit
+        //6F43AB..6F4410. Their raw headers have no element swizzles; discard
+        // them before validating strong references, retaining real TarCom.
+        for id in self.substrate.entities.keys_sorted() {
+            self.substrate
+                .entities
+                .get_mut(id)
+                .unwrap()
+                .clear_distributed_fire_after_load();
+        }
         restore_object_references(self, &identities)?;
 
         // EntityStore already restored its indexes during Deserialize (Clone
@@ -2769,7 +2810,7 @@ impl Simulation {
     /// occupied-only replay would leave the original map overlay's passability
     /// behind. Bridge cell state needs no separate pass: CellClass is its only
     /// owner and returns through the dynamic terrain cells above.
-    pub(crate) fn restore_map_authority_after_snapshot_load(
+    pub fn restore_map_authority_after_snapshot_load(
         &mut self,
         rules: &crate::rules::ruleset::RuleSet,
         overlay_registry: &crate::rules::overlay_types::OverlayTypeRegistry,
@@ -4528,7 +4569,15 @@ mod tests {
         // 364 -> 365: retained RadSite creation/update order.
         // 365 -> 366: process scalable Bullet order and type cadence.
         // 366 -> 367: synchronized planning nodes, paths and local input mode.
-        assert_eq!(super::SNAPSHOT_VERSION, 367);
+        // 367 -> 368: retained runtime DistributedFire state.
+        // 368 -> 369: tracked navy and its retained type admission.
+        // 369 -> 370: constructor-assigned VoxelAnim native IDs.
+        // 370 -> 371: retained Parasite grapple progress.
+        // 371 -> 372: authoritative binary32 body angles/rates.
+        // 372 -> 373: retained House last-built type indices.
+        // 373 -> 374: the batched target scan setting.
+        // 374 -> 375: retained CaptureManager overload pip countdown.
+        assert_eq!(super::SNAPSHOT_VERSION, 375);
     }
 
     #[test]
@@ -5060,7 +5109,7 @@ mod tests {
                 auto_base_building: bits & 8 != 0,
             };
             let mut house = HouseState::new(owner, 0, None, false, 0, 10);
-            house.ai_activation = latches;
+            house.set_ai_activation_for_test(latches);
             sim.houses.insert(owner, house);
             sim.session.house_order.push(owner);
 
@@ -5073,7 +5122,7 @@ mod tests {
             let restored = GameSnapshot::load(&bytes)
                 .expect("current v115 snapshot")
                 .sim;
-            assert_eq!(restored.houses[&owner].ai_activation, latches);
+            assert_eq!(restored.houses[&owner].ai_activation(), latches);
         }
     }
 

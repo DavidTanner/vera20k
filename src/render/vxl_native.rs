@@ -4,55 +4,8 @@
 //! strides. This owner is separate from voxel shadow/model-to-world geometry.
 
 use super::{HvaFile, Mat4, Vec3, VxlFile};
-use crate::util::native_x87::{NativeF32Bits, X87Chop53 as Fpu, X87Value};
-
-pub(super) fn load(value: f32) -> Option<X87Value> {
-    Fpu::load_f32(NativeF32Bits::from_bits(value.to_bits())).ok()
-}
-
-pub(super) fn store(value: X87Value) -> Option<f32> {
-    Some(f32::from_bits(Fpu::store_f32(value).ok()?.bits()))
-}
-
-pub(super) fn ftol(value: X87Value) -> Option<i32> {
-    i32::try_from(Fpu::ftol_i64(value).ok()?).ok()
-}
-
-/// Full affine 5AF980, including its translation-column float stores.
-pub(super) fn matrix_product(left: Mat4, right: Mat4) -> Option<Mat4> {
-    let mut result = Mat4::IDENTITY;
-    for col in 0..4 {
-        for row in 0..3 {
-            let z = Fpu::mul(load(left.col(2)[row])?, load(right.col(col)[2])?);
-            let y = Fpu::mul(load(left.col(1)[row])?, load(right.col(col)[1])?);
-            let x = Fpu::mul(load(left.col(0)[row])?, load(right.col(col)[0])?);
-            let mut sum = Fpu::add(Fpu::add(z, y), x);
-            if col == 3 {
-                sum = Fpu::add(sum, load(left.col(3)[row])?);
-            }
-            result.col_mut(col)[row] = store(sum)?;
-        }
-    }
-    Some(result)
-}
-
-/// 5AFB80 differs from matrix multiplication in the second/third dot order.
-pub(super) fn transform_point(matrix: Mat4, point: Vec3) -> Option<Vec3> {
-    let mut result = Vec3::ZERO;
-    for row in 0..3 {
-        let x = Fpu::mul(load(matrix.col(0)[row])?, load(point.x)?);
-        let y = Fpu::mul(load(matrix.col(1)[row])?, load(point.y)?);
-        let z = Fpu::mul(load(matrix.col(2)[row])?, load(point.z)?);
-        let sum = if row == 0 {
-            Fpu::add(Fpu::add(z, y), x)
-        } else {
-            Fpu::add(Fpu::add(x, z), y)
-        };
-        result[row] = store(Fpu::add(sum, load(matrix.col(3)[row])?))?;
-    }
-    result.y = -result.y;
-    Some(result)
-}
+use crate::util::native_affine::{ftol, load, matrix_product, store, transform_point};
+use crate::util::native_x87::X87Chop53 as Fpu;
 
 // Original 8468C0: start, X edge, Y edge, Z edge, start-X, start-Y,
 // column-X step, column-Y step. Rows 4..7 dispatch backward encoded Z.
@@ -144,7 +97,8 @@ pub(super) fn prepare_geometry(
         let mut hi = Vec3::splat(-10000.0);
         let mut corner_index = 0;
         for (i, corner) in raw_corners.into_iter().enumerate() {
-            let point = transform_point(matrix, corner)?;
+            let mut point = transform_point(matrix, corner)?;
+            point.y = -point.y;
             if point.z < lo.z {
                 corner_index = i;
             }
@@ -826,87 +780,5 @@ mod tests {
         }
         assert_eq!(cases.len(), 24);
         assert_eq!(backward, 7);
-    }
-
-    #[test]
-    #[ignore = "manual atlas preparation timing; requires extracted stock performance models"]
-    fn native_raster_atlas_preparation_timing() {
-        use super::super::{VplFile, VxlRenderParams, VxlSlopeBlend};
-        use std::hint::black_box;
-        use std::time::Instant;
-        let root = std::path::PathBuf::from(
-            std::env::var_os("VERA20K_VOXEL_PROBE_DIR").expect("set stock probe root"),
-        );
-        let vpl =
-            VplFile::from_bytes(&std::fs::read(root.join("extract/voxels.vpl")).unwrap()).unwrap();
-        let mut models = Vec::new();
-        for name in ["GTNK", "LCRF", "ZEP", "ORCA"] {
-            let directory = if name == "GTNK" {
-                root.join("extract")
-            } else {
-                root.join("stock-performance/extract")
-            };
-            models.push((
-                name.to_string(),
-                std::fs::read(directory.join(format!("{name}.VXL"))).unwrap(),
-                std::fs::read(directory.join(format!("{name}.HVA"))).unwrap(),
-            ));
-        }
-        let fixture: Value = serde_json::from_str(crate::test_fixture::text(
-            "tools/voxel_oracle/raster_fixtures.json",
-        ))
-        .unwrap();
-        for model in fixture["models"].as_array().unwrap().iter().take(2) {
-            models.push((
-                model["name"].as_str().unwrap().to_string(),
-                bytes(model["vxl"].as_str().unwrap()),
-                bytes(model["hva"].as_str().unwrap()),
-            ));
-        }
-        // Warm the shared finite facing/slope bases, as ordinary atlas startup
-        // does. Timed loops still parse files, prepare geometry/LUTs and paint.
-        black_box(super::super::voxel_draw_rotation_for_state(0, None, 0));
-        for (name, vxl_bytes, hva_bytes) in models {
-            for mode in ["legacy flat", "native flat", "native dirty slope"] {
-                let started = Instant::now();
-                let mut writes = 0;
-                for step in 0..32u8 {
-                    let vxl = VxlFile::from_bytes(black_box(&vxl_bytes)).unwrap();
-                    let hva = HvaFile::from_bytes(black_box(&hva_bytes)).unwrap();
-                    let params = VxlRenderParams {
-                        facing: step * 8,
-                        slope_blend: (mode == "native dirty slope").then_some(VxlSlopeBlend {
-                            from_slope: step % 17,
-                            to_slope: (step + 1) % 17,
-                            phase_num: i32::from(step % 2 + 1),
-                            phase_den: 3,
-                        }),
-                        ..Default::default()
-                    };
-                    if mode == "legacy flat" {
-                        black_box(super::super::render_vxl_legacy(
-                            &vxl,
-                            Some(&hva),
-                            &params,
-                            Some(&vpl),
-                        ));
-                    } else {
-                        let draw = prepare_draw(&vxl, Some(&hva), &params, Some(&vpl)).unwrap();
-                        writes += draw.writes.len();
-                        black_box(draw.render_cpu().unwrap());
-                        // Atlas depth/crop metadata follows its production
-                        // consumer, which currently prepares geometry again.
-                        black_box(
-                            super::super::native_vxl_draw_bounds(&vxl, Some(&hva), &params)
-                                .unwrap(),
-                        );
-                    }
-                }
-                eprintln!(
-                    "32 {name} {mode} atlas preparations: {:?}; {writes} paint stores",
-                    started.elapsed()
-                );
-            }
-        }
     }
 }

@@ -71,8 +71,12 @@
 //! SpawnSurvivors and Selling reveals restore the contribution and clear
 //! `+0x439` (`0x0051A30F`, `0x0051A327..0x0051A348`,
 //! `0x0044DBEA..0x0044DC02`, `0x00442F6D..0x00442FA1`,
-//! `0x0044A510..0x0044A548`). `+0x2EC`, `+0x2F8`
-//! and the owned-type sets have no reader here and are not kept.
+//! `0x0044A510..0x0044A548`). The tracked navy (`+0x2EC`) counts only Units
+//! whose `Naval=` is set and whose signed `Passengers=` is exactly zero
+//! (`0x004FF8C0`, `0x004FF6C8`). TEvent55 reads this scalar; TEvent56 reads
+//! vehicles minus navy, then tracked infantry (`0x0071F159..0x0071F187`).
+//! Limbo does not remove tracking, so transports and constructed limbo objects
+//! must not be inferred from the on-map sets. `+0x2F8` is not kept.
 //!
 //! Factory counters (`+0x5378` aircraft, `+0x537C` infantry, `+0x5380`
 //! vehicle, `+0x5384` building, `+0x5388` naval): a building whose type has
@@ -90,7 +94,10 @@
 //! Evidence: `tools/spatial_oracle/house_tracking.py` runs the original
 //! Add_Tracking and Remove_Tracking (36 cases);
 //! `tools/spatial_oracle/house_defeat_gate.py` runs the gate block with the
-//! original counter readers (21 cases). Added_To_Game and Removed_From_Game
+//! original counter readers (21 cases). `tag_lifecycle.py --naval-land-events`
+//! replays the tracking payload on the Steam image and executes TEvent55/56;
+//! its metadata distinguishes the old payload's provenance from this replay.
+//! Added_To_Game and Removed_From_Game
 //! are read, not executed.
 //!
 //! RESIDUAL: the survivor flag `+0x6D9` is not written. SpawnSurvivors sets it
@@ -150,6 +157,10 @@ pub struct TrackingFacts {
     /// A building tracked with the units: a 1x1 undeployer, or one that
     /// undeploys into a `ResourceGatherer=` (a deployed Slave Miner).
     unit_like_building: bool,
+    /// Unit RTTI, `Naval=` nonzero and signed `Passengers=` exactly zero:
+    /// the native Add/Remove_Tracking navy arm (`4FF8C0` / `4FF6C8`).
+    #[serde(default)]
+    naval_combatant: bool,
     /// `TechnoType+0x5EC`, `ResourceGatherer=` (ReadINI `0x007143DF`).
     resource_gatherer: bool,
     /// `TechnoType+0x5ED`, `ResourceDestination=` (ReadINI `0x007143FE`).
@@ -192,12 +203,16 @@ impl TrackingFacts {
             dont_score: ty.dont_score,
             insignificant: ty.insignificant,
             unit_like_building,
+            naval_combatant: category == EntityCategory::Unit && ty.naval && ty.passengers == 0,
             resource_gatherer: ty.resource_gatherer,
             resource_destination: ty.resource_destination,
             war_factory: category == EntityCategory::Structure && ty.weapons_factory && !ty.naval,
             force_value: ForceValueFacts::of(category, ty),
             factory: (category == EntityCategory::Structure)
-                .then(|| ty.factory.map(|factory| FactorySlot::of(factory, ty.naval)))
+                .then(|| {
+                    FactoryType::for_production_rtti(ty.factory_rtti())
+                        .map(|factory| FactorySlot::of(factory, ty.naval))
+                })
                 .flatten(),
         }
     }
@@ -207,14 +222,19 @@ impl TrackingFacts {
         self.dont_score
     }
 
+    /// The retained type admission used by both tracking writers and hashing.
+    pub(crate) const fn naval_combatant(self) -> bool {
+        self.naval_combatant
+    }
+
     /// Install a fixture's `DontScore=`.
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     pub(crate) fn set_dont_score_for_test(&mut self, value: bool) {
         self.dont_score = value;
     }
 
     /// An `Insignificant=` object's facts.
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     pub(crate) fn insignificant_for_test() -> Self {
         Self {
             insignificant: true,
@@ -270,12 +290,12 @@ impl InfantryTrackingLatches {
         }
     }
 
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     pub(crate) fn is_counted(&self) -> bool {
         self.counted_infantry_total
     }
 
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     pub(crate) fn is_absorbed(&self) -> bool {
         self.skip_infantry_total_on_add
     }
@@ -293,7 +313,7 @@ pub enum FactorySlot {
 
 impl FactorySlot {
     /// The counter of a building with `Factory=factory`: the switch on Type
-    /// `+0xEB8` in IncrementFactoryCount and Recount, where a `UnitType`
+    /// `+0xEB8` in IncrementFactoryCount and Recount, where a Unit/UnitType
     /// factory whose type is `Naval=` (`+0xCCE`) is a shipyard.
     pub(crate) const fn of(factory: FactoryType, naval: bool) -> Self {
         match factory {
@@ -377,6 +397,10 @@ pub struct HouseTracking {
     /// with them. Derived from the hashed object set; not folded separately.
     #[serde(default)]
     vehicles: i32,
+    /// `HouseClass+0x2EC`: tracked Naval Units without a passenger capacity.
+    /// Zeroed with the other scalars at House construction (`4F58B5`).
+    #[serde(default)]
+    navy: i32,
     /// `HouseClass+0x2F4`: the tracked infantry.
     #[serde(default)]
     infantry: i32,
@@ -448,6 +472,12 @@ impl HouseTracking {
             }
             EntityCategory::Structure | EntityCategory::Unit => {
                 self.vehicles = self.vehicles.wrapping_add(delta);
+                if facts.naval_combatant() {
+                    // Steam 3e81a617..08600: 4FF8C0 INC / 4FF6C8 DEC.
+                    // tools/spatial_oracle/house_tracking.py (36 controls),
+                    // replayed by tag_lifecycle.py --naval-land-events.
+                    self.navy = self.navy.wrapping_add(delta);
+                }
             }
             EntityCategory::Infantry => {
                 let count_total = if delta > 0 {
@@ -497,10 +527,7 @@ impl HouseTracking {
     /// through `0x0049FAE0`, signed `> 0` (`JG`), as the Harvest preamble
     /// (`0x0073E69B..0x0073E6A2`) and Guard's computer-harvester arm
     /// (`0x007408AF..0x007408B6`) test a harvester's `Dock=` list.
-    pub(crate) fn owns_any_building(
-        &self,
-        building_types: impl IntoIterator<Item = InternedId>,
-    ) -> bool {
+    pub fn owns_any_building(&self, building_types: impl IntoIterator<Item = InternedId>) -> bool {
         building_types
             .into_iter()
             .any(|type_id| self.owned_count(EntityCategory::Structure, type_id) > 0)
@@ -623,11 +650,20 @@ impl HouseTracking {
         self.active_infantry().hash(hasher);
         self.active_aircraft().hash(hasher);
         self.active_building_types.hash(hasher);
+        if self.navy != 0 {
+            b"house-tracked-navy-v1".hash(hasher);
+            self.navy.hash(hasher);
+        }
     }
 
     /// `HouseClass+0x2E8`.
     pub(crate) const fn vehicles(&self) -> i32 {
         self.vehicles
+    }
+
+    /// `HouseClass+0x2EC`, independent of the on-map and factory counters.
+    pub(crate) const fn navy(&self) -> i32 {
+        self.navy
     }
 
     /// `HouseClass+0x2F4`.
@@ -749,7 +785,7 @@ impl HouseTracking {
     }
 
     /// `+0x2F0`, the tracked buildings.
-    pub(crate) fn buildings(&self) -> i32 {
+    pub fn buildings(&self) -> i32 {
         self.buildings
     }
 
@@ -857,11 +893,18 @@ fn wrapping_total(counts: &BTreeMap<InternedId, i32>) -> i32 {
         .fold(0, |total, &count| total.wrapping_add(count))
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 impl HouseTracking {
     /// Stand in for tracked buildings a fixture places without the lifecycle.
-    pub(crate) fn set_buildings_for_test(&mut self, buildings: i32) {
+    pub fn set_buildings_for_test(&mut self, buildings: i32) {
         self.buildings = buildings;
+    }
+
+    /// Explicit native TEvent55/56 scalar priors, without fabricating objects.
+    pub(crate) fn set_naval_land_for_test(&mut self, vehicles: i32, navy: i32, infantry: i32) {
+        self.vehicles = vehicles;
+        self.navy = navy;
+        self.infantry = infantry;
     }
 
     /// Stand in for the on-map gatherers, destinations and war factories

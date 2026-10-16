@@ -370,7 +370,10 @@ fn rules_for(input: &serde_json::Value) -> RuleSet {
 /// One aircraft in the oracle's airborne state over a flat 70x70 map whose
 /// MapSize is 64x64 (the oracle's `In_Bounds` diamond).
 fn fixture(input: &serde_json::Value) -> (Simulation, RuleSet) {
-    let rules = rules_for(input);
+    let mut rules = rules_for(input);
+    // The existing native crash component supplies an admitted voxel body;
+    // this headless fixture does not execute an asset loader.
+    rules.supply_loaded_voxel_for_test("TEST");
     let mut sim = Simulation::with_seed(0);
     let level = int(input, "level", 0) as u8;
     install_common_raw_terrain(&mut sim, 70, 70, level, None);
@@ -1115,7 +1118,9 @@ fn jumpjet_rules(balloon: bool) -> RuleSet {
 fn jumpjet_fixture(balloon: bool) -> (Simulation, RuleSet, u64, u64) {
     use crate::sim::house_state::HouseState;
     use crate::sim::passenger::{PassengerCargo, PassengerRole};
-    let rules = jumpjet_rules(balloon);
+    let mut rules = jumpjet_rules(balloon);
+    // Explicit loaded-main-VXL input for the native Jumpjet crash boundary.
+    rules.supply_loaded_voxel_for_test("TEST");
     let mut sim = Simulation::with_seed(0);
     install_common_raw_terrain(&mut sim, 70, 70, 0, None);
     sim.playfield_bounds = Some(crate::sim::cell_rect::PlayfieldBounds {
@@ -1740,7 +1745,7 @@ fn retail_dustbowl_flak_shoots_a_harrier_down() {
         .filter(|path| !path.trim().is_empty())
         .map(std::path::PathBuf::from)
         .unwrap_or_else(|| {
-            crate::util::config::GameConfig::load()
+            crate::test_fixture::game_config()
                 .expect("set RA2_DIR or provide config.toml for this ignored test")
                 .paths
                 .ra2_dir
@@ -1802,6 +1807,7 @@ fn retail_dustbowl_flak_shoots_a_harrier_down() {
                         airfield,
                         (ax as i16, ay as i16),
                         Some(owner),
+                        None,
                     )
                 })?;
             sim.spawn_object("GAAIRC", "Americans", site.0, site.1, 0, &resources.rules)?;
@@ -2014,7 +2020,7 @@ fn retail_dustbowl_flak_shoots_down_a_nighthawk_and_a_kirov() {
         .filter(|path| !path.trim().is_empty())
         .map(std::path::PathBuf::from)
         .unwrap_or_else(|| {
-            crate::util::config::GameConfig::load()
+            crate::test_fixture::game_config()
                 .expect("set RA2_DIR or provide config.toml for this ignored test")
                 .paths
                 .ra2_dir

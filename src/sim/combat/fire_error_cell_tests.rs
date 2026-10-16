@@ -225,7 +225,7 @@ fn cell_target_equality_uses_real_aliases_and_one_shared_dummy() {
         target: Some(TargetKind::Cell(42, 42)),
         weapon_index: 0,
     };
-    assert_eq!(subject.facts().target.land_type, 6);
+    assert_eq!(subject.whole_facts().target.land_type, 6);
     assert_eq!(
         dummy.snapshot().coord,
         (17, -19),
@@ -257,7 +257,7 @@ fn sensor_reads_retained_identity_after_another_query_stamps_dummy() {
         world: &sim,
         rules: &rules,
         overlay_registry: None,
-        fog: Some(&sim.fog),
+        fog: Some(sim.fog.fire_view()),
         firer: sim.substrate.entities.get(1).unwrap(),
         obj: rules.object("TANK").unwrap(),
         target: Some(TargetKind::Entity(2)),
@@ -353,13 +353,13 @@ fn original_early_fire_error_retains_cell_between_temporal_and_lifted_gates() {
             world: &sim,
             rules: &rules,
             overlay_registry: None,
-            fog: Some(&sim.fog),
+            fog: Some(sim.fog.fire_view()),
             firer: sim.substrate.entities.get(1).unwrap(),
             obj: rules.object("TANK").unwrap(),
             target: Some(TargetKind::Entity(2)),
             weapon_index: 0,
         };
-        let mut facts = subject.facts();
+        let mut facts = subject.whole_facts();
         match row.name.as_str() {
             "temporal_held_target" => facts.firer.temporal = Some(Link::Target),
             "firer_lifted" => facts.firer.magnetron_lifted = true,

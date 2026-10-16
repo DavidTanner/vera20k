@@ -66,7 +66,7 @@ impl SensorDeposit {
     }
 
     /// Install a fixture's stamped cell.
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     pub(crate) fn set_center_for_test(&mut self, center: (u16, u16)) {
         self.center = center;
     }
@@ -292,7 +292,7 @@ impl Simulation {
     pub(crate) fn add_unit_sensor_after_unlimbo(&mut self, stable_id: u64, rules: &RuleSet) {
         let Some((owner, center, radius, in_limbo)) =
             self.substrate.entities.get(stable_id).and_then(|entity| {
-                let object = rules.object(self.interner.resolve(entity.type_ref()))?;
+                let object = self.interner.object_type(entity.type_ref(), rules)?;
                 Some((
                     entity.owner(),
                     (entity.position.rx(), entity.position.ry()),
@@ -334,7 +334,7 @@ impl Simulation {
     pub(crate) fn add_building_sensor_array_if_powered(&mut self, stable_id: u64, rules: &RuleSet) {
         let Some((owner, center, sight, remove_radius, detect_radius, powered, in_limbo)) =
             self.substrate.entities.get(stable_id).and_then(|entity| {
-                let object = rules.object(self.interner.resolve(entity.type_ref()))?;
+                let object = self.interner.object_type(entity.type_ref(), rules)?;
                 if entity.category() != EntityCategory::Structure
                     || object.category != ObjectCategory::Building
                 {
@@ -410,7 +410,7 @@ impl Simulation {
 
     /// Foot4D8611/4D8621 executes both receivers for PerCellProcess(2),
     /// including a terminal or chain callback in the same cell.
-    pub(crate) fn refresh_unit_sensor_at_per_cell(&mut self, stable_id: u64, rules: &RuleSet) {
+    pub fn refresh_unit_sensor_at_per_cell(&mut self, stable_id: u64, rules: &RuleSet) {
         let had_unit_deposit = self
             .substrate
             .entities

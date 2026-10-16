@@ -38,8 +38,13 @@ impl BinkMovieSurface {
         let first_packet = file.video_packet(0)?;
         let frame = decoder.decode_frame(first_packet)?;
         let rgba = frame_to_rgba(frame);
-        let (texture, batch_texture) =
-            batch.create_updatable_texture(gpu, &rgba, file.header.width, file.header.height);
+        let (texture, batch_texture) = batch.create_updatable_texture(
+            &gpu.device,
+            &gpu.queue,
+            &rgba,
+            file.header.width,
+            file.header.height,
+        );
         Ok(Self {
             file,
             decoder,

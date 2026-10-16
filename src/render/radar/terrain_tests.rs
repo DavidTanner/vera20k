@@ -1,5 +1,4 @@
 use super::*;
-use crate::util::native_x87::{NativeF32Bits, NativeF64Bits, X87Chop53, X87Ordering};
 
 #[test]
 fn fill_terrain_colors_preserves_two_halves_and_clipped_edges() {
@@ -23,14 +22,14 @@ fn fill_terrain_colors_preserves_two_halves_and_clipped_edges() {
 fn width_constrained_surface_matches_native_weighted_sampler_every_pixel() {
     let geometry = NativeRadarSurfaceGeometry::from_raw_rect(0, 0, 173, 113).unwrap();
     assert_eq!(geometry.generated_size(), (140, 91));
-    assert_surface_matches_reference((173, 113), geometry.generated_size());
+    assert_surface_matches_native((173, 113), geometry.generated_size());
 }
 
 #[test]
 fn height_constrained_surface_matches_native_weighted_sampler_every_pixel() {
     let geometry = NativeRadarSurfaceGeometry::from_raw_rect(0, 0, 137, 149).unwrap();
     assert_eq!(geometry.generated_size(), (99, 108));
-    assert_surface_matches_reference((137, 149), geometry.generated_size());
+    assert_surface_matches_native((137, 149), geometry.generated_size());
 }
 
 #[test]
@@ -55,20 +54,38 @@ fn overlay_color_replaces_both_halves_before_weighted_generation() {
     );
 }
 
-fn assert_surface_matches_reference(raw_size: (i32, i32), generated_size: (i32, i32)) {
-    let raw = fixture(raw_size);
-    let actual = generate_rgb565(&raw, raw_size, generated_size);
-    let expected = disassembly_reference(&raw, raw_size, generated_size);
-    assert_eq!(actual.len(), expected.len());
-    for (index, (&actual, &expected)) in actual.iter().zip(&expected).enumerate() {
-        assert_eq!(
-            actual,
-            expected,
-            "generated pixel ({},{}) differs",
-            index as i32 % generated_size.0,
-            index as i32 / generated_size.0,
-        );
-    }
+/// Full original6547C0 stores, rather than a maintained second sampler.
+fn assert_surface_matches_native(raw_size: (i32, i32), generated_size: (i32, i32)) {
+    let packet = native_packet();
+    let row = packet["radar"]["weighted_controls"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|row| row["input"]["raw_size"] == serde_json::json!(raw_size))
+        .unwrap();
+    assert_eq!(row["input"]["pattern"], "terrain_tests_coordinate_v1");
+    assert_eq!(
+        row["output"]["generated_size"],
+        serde_json::json!(generated_size)
+    );
+    let actual = generate_rgb565(&fixture(raw_size), raw_size, generated_size);
+    assert_eq!(packed_hash(&actual), row["output"]["rgb565_sha256"]);
+}
+
+fn native_packet() -> serde_json::Value {
+    serde_json::from_str(crate::test_fixture::text(
+        "tools/spatial_oracle/ore_render.json",
+    ))
+    .unwrap()
+}
+
+fn packed_hash(pixels: &[u16]) -> String {
+    crate::util::sha256::sha256_hex(
+        &pixels
+            .iter()
+            .flat_map(|word| word.to_le_bytes())
+            .collect::<Vec<_>>(),
+    )
 }
 
 fn fixture(size: (i32, i32)) -> Vec<[u8; 3]> {
@@ -85,111 +102,65 @@ fn fixture(size: (i32, i32)) -> Vec<[u8; 3]> {
         .collect()
 }
 
-/// Independent rectangular-overlap translation of the instruction ranges
-/// `0x00654BE3..0x00654CD2` and `0x00654D29..0x00654DBC`. Production follows
-/// the native first/interior/last branches; this oracle intersects the source
-/// rectangles directly while retaining every observed f32/x87 store boundary.
-fn disassembly_reference(
-    raw: &[[u8; 3]],
-    raw_size: (i32, i32),
-    generated_size: (i32, i32),
-) -> Vec<u16> {
-    let load = |value: f32| X87Chop53::load_f32(NativeF32Bits::from_bits(value.to_bits())).unwrap();
-    let store = |value| f32::from_bits(X87Chop53::store_f32(value).unwrap().bits());
-    let ftol = |value| X87Chop53::ftol_i64(value).unwrap() as i32;
-    let x_step = store(
-        X87Chop53::div(
-            X87Chop53::load_i32(raw_size.0),
-            X87Chop53::load_i32(generated_size.0),
-        )
-        .unwrap(),
-    );
-    let y_step_extended = X87Chop53::div(
-        X87Chop53::load_i32(raw_size.1),
-        X87Chop53::load_i32(generated_size.1),
+/// Original655250 consumes the dirty Cell, queries47C060 and invokes6547C0.
+/// This component transports the packet's declared geometry/background; normal
+/// paid-map harvesting/upload/ack is covered by minimap_gpu_tests separately.
+/// Native incremental vs full regeneration differs at five pixels in one3x2
+/// patch/fringe row; this retained visual residual is not exact incremental proof.
+#[test]
+fn ore_depletion_current_pair_and_rebuilt_surface_match_original() {
+    let packet = native_packet();
+    let native = &packet["radar"]["depletion"];
+    let input = &native["input"];
+    assert_eq!(input["background_rgb"], serde_json::json!([0, 0, 0]));
+    let number = |value: &serde_json::Value| value.as_i64().unwrap() as i32;
+    let geometry = NativeRadarSurfaceGeometry::from_raw_rect(
+        number(&input["column_base"]),
+        number(&input["row_base"]),
+        number(&input["raw_size"][0]),
+        number(&input["raw_size"][1]),
     )
     .unwrap();
-    let y_step = store(y_step_extended);
-    let normalization = store(
-        X87Chop53::div(
-            X87Chop53::load_f64(NativeF64Bits::ONE).unwrap(),
-            X87Chop53::mul(y_step_extended, load(x_step)),
-        )
-        .unwrap(),
-    );
-    let mut result = Vec::with_capacity((generated_size.0 * generated_size.1) as usize);
-    let mut y0 = 0.0f32;
-    for _ in 0..generated_size.1 {
-        let y1_extended = X87Chop53::add(load(y0), load(y_step));
-        let y1_stored = store(y1_extended);
-        let first_y = ftol(load(y0));
-        let last_y = (ftol(y1_extended) + 1).min(raw_size.1);
-        let mut x0 = 0.0f32;
-        for _ in 0..generated_size.0 {
-            let x1_extended = X87Chop53::add(load(x0), load(x_step));
-            let x1 = store(x1_extended);
-            let first_x = ftol(load(x0));
-            let last_x = (ftol(x1_extended) + 1).min(raw_size.0);
-            let mut accum = [X87Chop53::load_i32(0); 3];
-            for sy in first_y..last_y {
-                let y_weight = overlap(
-                    load(y0),
-                    y1_extended,
-                    X87Chop53::load_i32(sy),
-                    X87Chop53::load_i32(sy + 1),
-                );
-                for sx in first_x..last_x {
-                    let x_weight = overlap(
-                        load(x0),
-                        load(x1),
-                        X87Chop53::load_i32(sx),
-                        X87Chop53::load_i32(sx + 1),
-                    );
-                    let weight =
-                        X87Chop53::mul(X87Chop53::mul(x_weight, y_weight), load(normalization));
-                    let sample = raw[(sy * raw_size.0 + sx) as usize];
-                    for channel in 0..3 {
-                        accum[channel] = X87Chop53::add(
-                            accum[channel],
-                            X87Chop53::mul(X87Chop53::load_i32(sample[channel] as i32), weight),
-                        );
-                    }
-                }
-            }
-            let convert = |value| {
-                ftol(X87Chop53::add(
-                    value,
-                    X87Chop53::load_f64(NativeF64Bits::HALF).unwrap(),
-                ))
-                .min(255) as u8
-            };
-            result.push(RGB565.pack_rgb8([
-                convert(accum[0]),
-                convert(accum[1]),
-                convert(accum[2]),
-            ]));
-            x0 = x1;
+    let coords = &native["terrain"]["coords"];
+    let cell = (number(&coords[0]) as u16, number(&coords[1]) as u16);
+    let rows = native["rows"].as_array().unwrap();
+    let empty = rows.iter().find(|row| row["name"] == "empty").unwrap();
+    let rgb = |value: &serde_json::Value| std::array::from_fn(|i| number(&value[i]) as u8);
+    let base = NativeRadarCellColors {
+        cell,
+        left: rgb(&empty["color_pair"][0]),
+        right: rgb(&empty["color_pair"][1]),
+    };
+    let mut surface = NativeRadarTerrainSurface::new(geometry, vec![base], BTreeMap::new(), 1.0);
+    for row in rows {
+        let override_color =
+            (row["state"]["overlay_id"].as_i64().unwrap() >= 0).then(|| rgb(&row["color_pair"][0]));
+        surface.set_cell_states([NativeRadarCellUpdate {
+            base,
+            override_color,
+        }]);
+        let raw: Vec<u8> = surface.raw_rgb().iter().flatten().copied().collect();
+        assert_eq!(
+            crate::util::sha256::sha256_hex(&raw),
+            row["raw_rgb_sha256"],
+            "raw {}",
+            row["name"]
+        );
+        assert_eq!(
+            packed_hash(surface.generated_rgb565()),
+            row["rebuild_output"]["rgb565_sha256"],
+            "generated {}",
+            row["name"]
+        );
+        for run in row["rebuild_output"]["runs"].as_array().unwrap() {
+            let start = number(&run[1]) * geometry.generated_size().0 + number(&run[0]);
+            let count = number(&run[2]);
+            let word = number(&run[3]) as u16;
+            assert!(
+                surface.generated_rgb565()[start as usize..(start + count) as usize]
+                    .iter()
+                    .all(|&actual| actual == word)
+            );
         }
-        y0 = y1_stored;
     }
-    result
-}
-
-fn overlap(
-    start: crate::util::native_x87::X87Value,
-    end: crate::util::native_x87::X87Value,
-    pixel_start: crate::util::native_x87::X87Value,
-    pixel_end: crate::util::native_x87::X87Value,
-) -> crate::util::native_x87::X87Value {
-    let low = if X87Chop53::compare(start, pixel_start) == X87Ordering::Greater {
-        start
-    } else {
-        pixel_start
-    };
-    let high = if X87Chop53::compare(end, pixel_end) == X87Ordering::Less {
-        end
-    } else {
-        pixel_end
-    };
-    X87Chop53::sub(high, low)
 }

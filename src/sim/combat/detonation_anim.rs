@@ -75,8 +75,9 @@ pub(crate) fn bullet_land(
         if let Some(crate::sim::occupancy::CellObjectMember::Entity(id)) = first
             && let Some(unit) = world.substrate.entities.get(id)
             && unit.category() == crate::map::entities::EntityCategory::Unit
-            && rules
-                .object(world.interner.resolve(unit.type_ref()))
+            && world
+                .interner
+                .object_type(unit.type_ref(), rules)
                 .is_some_and(|kind| kind.naval && !kind.underwater)
         {
             return -1;
@@ -199,15 +200,9 @@ pub(crate) fn impact_z_byte(impact_z: i32) -> u8 {
 pub(crate) fn projectile_impact_cell(
     impact: ProjectileCoord,
 ) -> (u16, u16, SimFixed, SimFixed, i32) {
-    let rx = crate::util::lepton::lepton_to_cell(impact.x).clamp(0, i32::from(u16::MAX)) as u16;
-    let ry = crate::util::lepton::lepton_to_cell(impact.y).clamp(0, i32::from(u16::MAX)) as u16;
-    (
-        rx,
-        ry,
-        SimFixed::from_num(impact.x.rem_euclid(256)),
-        SimFixed::from_num(impact.y.rem_euclid(256)),
-        impact.z,
-    )
+    let (rx, sub_x) = crate::util::lepton::split_lepton_axis(impact.x);
+    let (ry, sub_y) = crate::util::lepton::split_lepton_axis(impact.y);
+    (rx, ry, sub_x, sub_y, impact.z)
 }
 
 #[cfg(test)]
@@ -215,6 +210,36 @@ mod tests {
     use super::*;
     use crate::sim::rng::SimRng;
     use serde_json::Value;
+
+    #[test]
+    fn projectile_impact_cell_preserves_signed_native_cell_and_subcell() {
+        // AreaDamage489309..489330 truncates each signed Coord component
+        // toward zero and stores AX. Keep the signed remainder so its exact
+        // distance/layer point survives that packed-cell representation.
+        for (point, expected_cell, expected_subcell) in [
+            ((-257, -511), (-1_i16, -1_i16), (-1, -255)),
+            ((-1, -255), (0, 0), (-1, -255)),
+            ((-128_128, 5_248), (-500, 20), (-128, 128)),
+            ((2_694, 5_253), (10, 20), (134, 133)),
+        ] {
+            let (rx, ry, sub_x, sub_y, z) =
+                projectile_impact_cell(ProjectileCoord::new(point.0, point.1, 209));
+            assert_eq!((rx as i16, ry as i16), expected_cell, "{point:?}");
+            assert_eq!(
+                (sub_x.to_num::<i32>(), sub_y.to_num::<i32>()),
+                expected_subcell,
+                "{point:?}"
+            );
+            assert_eq!(
+                (
+                    i32::from(rx as i16) * 256 + sub_x.to_num::<i32>(),
+                    i32::from(ry as i16) * 256 + sub_y.to_num::<i32>()
+                ),
+                point
+            );
+            assert_eq!(z, 209);
+        }
+    }
 
     #[test]
     fn dummy_land_survives_misses_and_resets_at_native_resize() {
@@ -425,10 +450,9 @@ mod tests {
 
     #[test]
     fn selection_and_bullet_height_match_original_executed_controls() {
-        let Some((ini, art)) = crate::rules::retail_ini_fixture::retail_rules_and_art() else {
+        let Some(rules) = crate::rules::retail_ini_fixture::retail_unlayered_rules() else {
             return;
         };
-        let rules = RuleSet::from_ini_with_fixed_art_for_test(&ini, &art).unwrap();
         let native: Value = serde_json::from_str(crate::test_fixture::text(
             "tools/projectile_oracle/ifv_select_anim.json",
         ))

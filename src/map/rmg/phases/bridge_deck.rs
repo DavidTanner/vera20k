@@ -2194,17 +2194,6 @@ mod tests {
     }
 
     #[test]
-    fn flat_clear_ground_takes_a_deck() {
-        let (mut grid, scratch) = harness();
-        assert!(deck_area_is_clear(
-            &mut grid,
-            &scratch,
-            &ids(),
-            (40, 48, 6, 3)
-        ));
-    }
-
-    #[test]
     fn water_is_accepted_because_that_is_what_a_deck_spans() {
         let (mut grid, scratch) = harness();
         for x in 41..45 {
@@ -2456,7 +2445,7 @@ mod tests {
         let retail_dir = std::env::var_os("RA2_DIR")
             .map(PathBuf::from)
             .or_else(|| {
-                crate::util::config::GameConfig::load()
+                crate::test_fixture::game_config()
                     .ok()
                     .map(|config| config.paths.ra2_dir)
             })

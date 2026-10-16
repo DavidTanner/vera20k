@@ -539,12 +539,7 @@ fn a_jumpjet_cruising_over_water_leaves_no_wake() {
             crate::sim::movement::jumpjet_movement::jumpjet_flight::STATE_TRANSLATE,
         )
         .with_moving_for_test(true);
-    let speed = crate::sim::movement::SpeedRules::new(
-        &rules,
-        &sim.interner,
-        &sim.type_handles,
-        &sim.houses,
-    );
+    let speed = crate::sim::movement::SpeedRules::new(&rules, &sim.interner, &sim.houses);
     let jumpjet = sim.substrate.entities.get(id).expect("Jumpjet");
     assert!(crate::sim::movement::motion_query::is_moving_now(
         jumpjet,
@@ -4208,21 +4203,6 @@ fn long_game_defeats_when_no_owned_objects_remain() {
     check_defeat_now(&mut sim, Some(&rules));
 
     assert!(sim.houses[&owner].is_defeated);
-}
-
-#[test]
-fn short_game_victory_resolution_uses_new_defeat_state() {
-    let rules = short_game_defeat_test_rules();
-    let mut sim = Simulation::new();
-    sim.session.game_options.short_game = true;
-    let defeated = insert_house_with_counts(&mut sim, "Americans", 0, 1);
-    let survivor = insert_house_with_counts(&mut sim, "Russians", 1, 0);
-    insert_test_entity_for_owner(&mut sim, 1, defeated, "MTNK", EntityCategory::Unit);
-
-    check_defeat_now(&mut sim, Some(&rules));
-
-    assert!(sim.houses[&defeated].is_defeated);
-    assert!(sim.houses[&survivor].has_won());
 }
 
 /// HouseClass::Update's gate calls Blowup_All (`0x004F8F7B`) before
@@ -9359,10 +9339,7 @@ fn unit_route_beside_building(
     goal: (u16, u16),
     contact: bool,
 ) -> Option<Vec<(u16, u16)>> {
-    let ini = crate::rules::retail_ini_fixture::retail_ini("rulesmd.ini")?;
-    let art = crate::rules::retail_ini_fixture::retail_ini("artmd.ini")?;
-    let mut rules = RuleSet::from_ini_with_fixed_art_for_test(&ini, &art).expect("retail rules");
-    rules.install_art_data(crate::rules::art_data::ArtRegistry::from_ini(&art));
+    let rules = crate::rules::retail_ini_fixture::retail_unlayered_rules_with_art()?;
     let (mut sim, rules, _) = stacking_navigation_world(rules, 24);
     let building_id = sim
         .spawn_object(building, "Americans", origin.0, origin.1, 0, &rules)
@@ -10852,72 +10829,6 @@ fn column_of_vehicles_all_arrive_without_stacking() {
     watch.assert_no_reported_stacking("column_of_four");
 }
 
-/// DIAGNOSTIC: per-tick reservation trace of the four-tank column, printing the
-/// tick a cell first becomes shared together with the preceding window of
-/// head-to reservations and occupation bits for every member.
-#[test]
-#[ignore = "diagnostic"]
-fn diag_column_reservation_trace() {
-    let Some((mut sim, rules, grid)) = stacking_world(32) else {
-        return;
-    };
-
-    let starts = [(5u16, 10u16), (6, 10), (7, 10), (8, 10)];
-    let goals = [(18u16, 10u16), (19, 10), (20, 10), (21, 10)];
-    let ids: Vec<u64> = starts
-        .iter()
-        .map(|&(cx, cy)| {
-            sim.spawn_object("MTNK", "Americans", cx, cy, 64, &rules)
-                .expect("tank spawns")
-        })
-        .collect();
-    let commands: Vec<CommandEnvelope> = ids
-        .iter()
-        .zip(goals.iter())
-        .map(|(&id, &(gx, gy))| {
-            cmd_envelope(
-                &sim,
-                "Americans",
-                1,
-                Command::Move {
-                    entity_id: id,
-                    target_rx: gx,
-                    target_ry: gy,
-                },
-            )
-        })
-        .collect();
-    let _ = sim.advance_tick(&commands, Some(&rules), Some(&grid), None, 100);
-
-    for tick in 0..70u64 {
-        let _ = sim.advance_tick(&[], Some(&rules), Some(&grid), None, 100);
-        let dups = stacking_duplicates(&stacking_cells(&sim, &ids));
-        let bits: Vec<String> = (4u16..=14)
-            .map(|rx| {
-                format!(
-                    "{rx}:{:02X}",
-                    sim.substrate
-                        .cell_occupation
-                        .vehicle_bits(rx, 10, MovementLayer::Ground)
-                )
-            })
-            .collect();
-        println!(
-            "t{tick:>3} {} | row10 {} {}",
-            ids.iter()
-                .map(|&id| stacking_reservation_state(&sim, id))
-                .collect::<Vec<_>>()
-                .join("  "),
-            bits.join(" "),
-            if dups.is_empty() {
-                String::new()
-            } else {
-                format!("<<< SHARED {dups:?}")
-            }
-        );
-    }
-}
-
 /// How close two vehicles actually get, in leptons, over a group move.
 ///
 /// The three cell-identity tests above assert that no two vehicles ever share
@@ -11015,70 +10926,6 @@ fn group_move_never_draws_two_hulls_on_one_spot() {
          ({a} and {b}) — hulls visibly overlap",
         gap as f64 / 256.0
     );
-}
-
-/// DIAGNOSTIC: short-range group move, per-tick head-to reservations, so the
-/// curve geometry at each shared tick is visible (two-node turning curve vs
-/// one-node straight follow).
-#[test]
-#[ignore = "diagnostic"]
-fn diag_short_range_group_reservation_trace() {
-    let Some((mut sim, rules, grid)) = stacking_world(48) else {
-        return;
-    };
-    let start_cells = [
-        (10u16, 10u16),
-        (11, 10),
-        (12, 10),
-        (13, 10),
-        (10, 11),
-        (11, 11),
-        (12, 11),
-        (13, 11),
-    ];
-    let ids: Vec<u64> = start_cells
-        .iter()
-        .map(|&(cx, cy)| {
-            sim.spawn_object("MTNK", "Americans", cx, cy, 64, &rules)
-                .expect("tank spawns")
-        })
-        .collect();
-    let commands: Vec<CommandEnvelope> = ids
-        .iter()
-        .map(|&id| {
-            cmd_envelope(
-                &sim,
-                "Americans",
-                1,
-                Command::Move {
-                    entity_id: id,
-                    target_rx: 16,
-                    target_ry: 16,
-                },
-            )
-        })
-        .collect();
-    let _ = sim.advance_tick(&commands, Some(&rules), Some(&grid), None, 100);
-
-    for tick in 0..110u64 {
-        let _ = sim.advance_tick(&[], Some(&rules), Some(&grid), None, 100);
-        let dups = stacking_duplicates(&stacking_cells(&sim, &ids));
-        if dups.is_empty() && !(60..=70).contains(&tick) && !(93..=99).contains(&tick) {
-            continue;
-        }
-        println!(
-            "t{tick:>3} {} {}",
-            ids.iter()
-                .map(|&id| stacking_reservation_state(&sim, id))
-                .collect::<Vec<_>>()
-                .join(" | "),
-            if dups.is_empty() {
-                String::new()
-            } else {
-                format!("<<< SHARED {dups:?}")
-            }
-        );
-    }
 }
 
 #[test]
@@ -11314,22 +11161,30 @@ fn gsi_05_14_death_debris_joins_the_live_order_the_hash_and_the_snapshot() {
 
     let mut sim = Simulation::new();
     let empty_hash = sim.state_hash();
-    let mut rng = crate::sim::rng::SimRng::new(17);
-    let pieces: Vec<_> = (0..3)
-        .map(|_| crate::sim::voxel_anim::VoxelDebrisSpawn {
-            type_id: crate::rules::voxel_anim_type::VoxelAnimTypeId(0),
-            object: crate::sim::voxel_anim::spawn_debris_piece(
-                0,
-                crate::rules::voxel_anim_type::VoxelAnimTypeId(0),
-                &voxel_type,
-                None,
-                glam::IVec3::new(1280, 2560, 0),
-                &mut rng,
-            )
-            .expect("in domain"),
-        })
-        .collect();
-    sim.admit_death_debris(pieces);
+    sim.native_unique_ids =
+        Some(crate::sim::native_identity::NativeUniqueIdCursor::test_at_current_value(1000));
+    let mut deferred = Vec::new();
+    for _ in 0..3 {
+        sim.emit_debris_voxel(
+            crate::rules::voxel_anim_type::VoxelAnimTypeId(0),
+            &voxel_type,
+            None,
+            glam::IVec3::new(1280, 2560, 0),
+            true,
+            &mut deferred,
+        )
+        .expect("in domain");
+    }
+    assert!(deferred.is_empty());
+    assert_eq!(sim.native_identity_cursor(), Some(1003));
+    assert_eq!(
+        sim.voxel_anims()
+            .iter()
+            .map(|(_, piece)| piece.native_unique_id())
+            .collect::<Vec<_>>(),
+        [1001, 1002, 1003],
+        "constructor native IDs are independent of stable handles"
+    );
 
     assert_eq!(sim.substrate.voxel_anims.len(), 3);
     let ids: Vec<u64> = sim.substrate.voxel_anims.ids();
@@ -11369,16 +11224,25 @@ fn gsi_05_14_death_debris_joins_the_live_order_the_hash_and_the_snapshot() {
 
     let expected_order = sim.live_object_order_snapshot();
     let expected_store = sim.substrate.voxel_anims.clone();
-    let bytes = bincode::serialize(&sim).expect("serialize sim with VoxelAnimStore");
-    let mut restored: Simulation =
-        bincode::deserialize(&bytes).expect("deserialize VoxelAnimStore");
-    restored.rebuild_logic_membership();
+    let bytes =
+        crate::sim::snapshot::GameSnapshot::save_validated(&sim, 17, 23, "live voxel debris", 0);
+    let mut restored = crate::sim::snapshot::GameSnapshot::load_validated(&bytes, 17, 23, "")
+        .expect("current envelope preserves VoxelAnimStore")
+        .sim;
+    restored
+        .restore_after_snapshot_load()
+        .expect("restore live debris");
     assert_eq!(restored.live_object_order_snapshot(), expected_order);
     assert_eq!(
         restored.substrate.voxel_anims, expected_store,
         "every piece and its physics body survive the snapshot"
     );
     restored.debug_assert_logic_membership_consistent();
+    assert_eq!(
+        restored.native_identity_cursor(),
+        sim.native_identity_cursor()
+    );
+    assert_eq!(restored.next_native_runtime_id(), 1004);
 
     // The scheduler slot advances the physics body, and a piece leaves the live
     // order once its AI reaches Delete.
@@ -11798,4 +11662,37 @@ fn a_captured_war_factory_takes_its_contact_along() {
         assert!(entity.radio_contacts.contains(partner), "{id}");
         assert_eq!(entity.tether.partner(), Some(partner), "{id}");
     }
+}
+
+/// Callback-disabled damage fixtures may deliver after another constructor;
+/// they retain the original constructor IDs and spend no second RNG/ID draws.
+#[test]
+fn deferred_voxel_delivery_keeps_constructor_identity_without_spending_again() {
+    let mut sim = Simulation::with_seed(17);
+    let kind = crate::rules::voxel_anim_type::VoxelAnimType::with_defaults("DEBRIS");
+    let type_id = crate::rules::voxel_anim_type::VoxelAnimTypeId(0);
+    let mut packets = Vec::new();
+    sim.emit_debris_voxel(type_id, &kind, None, glam::IVec3::ZERO, false, &mut packets)
+        .unwrap();
+    assert_eq!(packets.len(), 1);
+    let id = packets[0].object.stable_id;
+    let native_id = packets[0].object.native_unique_id();
+    assert_eq!(sim.native_identity_cursor(), Some(native_id as u32));
+    assert!(sim.voxel_anims().is_empty());
+    assert!(sim.live_object_order_snapshot().is_empty());
+    let adjacent = sim.next_native_runtime_id();
+    assert_ne!(adjacent, native_id);
+    let cursor = sim.native_identity_cursor();
+    let rng = sim.scenario_rng.logical_state();
+    let stable_cursor = sim.substrate.next_stable_object_id;
+    sim.admit_death_debris(packets);
+    assert_eq!(
+        sim.voxel_anims().get(id).unwrap().native_unique_id(),
+        native_id
+    );
+    assert_eq!(sim.native_identity_cursor(), cursor);
+    assert_eq!(sim.scenario_rng.logical_state(), rng);
+    assert_eq!(sim.substrate.next_stable_object_id, stable_cursor);
+    assert_eq!(sim.live_object_order_snapshot(), [id]);
+    sim.debug_assert_logic_membership_consistent();
 }

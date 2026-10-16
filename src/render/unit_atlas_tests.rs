@@ -1,62 +1,7 @@
 use super::*;
 use crate::render::vxl_raster::VxlSprite;
 use crate::rules::ini_parser::IniFile;
-use crate::sim::voxel_frame_catalog::draws_turret_parts;
-
-#[test]
-#[ignore = "manual timing of production atlas lookups for 20,000 cached units"]
-fn cached_native_sprite_lookup_timing() {
-    use std::hint::black_box;
-    use std::time::Instant;
-    let mut entries = HashMap::new();
-    let mut keys = Vec::new();
-    for type_id in ["MTNK", "HTNK", "LCRF", "ORCA", "ZEP", "TNKD"] {
-        for step in 0..32u8 {
-            for slope_type in 0..17u8 {
-                for layer in [VxlLayer::Body, VxlLayer::Turret, VxlLayer::Barrel] {
-                    let key = UnitSpriteKey {
-                        type_id: type_id.into(),
-                        turret_index: 0,
-                        facing: step * 8,
-                        layer,
-                        frame: 0,
-                        slope_type,
-                        barrel_pitch: 0,
-                    };
-                    entries.insert(
-                        key.clone(),
-                        UnitSpriteEntry {
-                            uv_origin: [0.0; 2],
-                            uv_size: [1.0; 2],
-                            pixel_size: [64.0, 48.0],
-                            offset_x: -32.0,
-                            offset_y: -24.0,
-                            native_draw_bounds: Some([-32, -24, 64, 48]),
-                            page: 0,
-                        },
-                    );
-                    keys.push(key);
-                }
-            }
-        }
-    }
-    let atlas = UnitAtlas::new(vec![], entries);
-    let started = Instant::now();
-    for unit in 0..20_000 {
-        for layer in 0..3 {
-            black_box(
-                atlas
-                    .get(black_box(&keys[(unit * 3 + layer) % keys.len()]))
-                    .unwrap(),
-            );
-        }
-    }
-    eprintln!(
-        "20,000 units, three cached layer lookups each ({} entries): {:?}",
-        atlas.sprite_count(),
-        started.elapsed()
-    );
-}
+use crate::rules::voxel_frame_catalog::draws_turret_parts;
 
 fn gsi_13_07_variant_rules() -> RuleSet {
     RuleSet::from_ini(&IniFile::from_str(
@@ -855,7 +800,7 @@ fn retail_ifv_atlas_covers_all_turrets_without_replicating_its_hull() {
 
 #[test]
 fn indexed_turret_names_and_draw_admission_match_native_controls() {
-    use crate::sim::voxel_frame_catalog::voxel_turret_index;
+    use crate::rules::voxel_frame_catalog::voxel_turret_index;
     let native: serde_json::Value = serde_json::from_str(crate::test_fixture::text(
         "tools/spatial_oracle/ifv_turret_switching.json",
     ))
@@ -1008,10 +953,13 @@ fn indexed_model_loader_requires_turret_pairs_but_allows_absent_barrels() {
             .unwrap();
         }
         let fixture = AssetManager::from_loose_root_for_test(directory.path());
-        let rules = RuleSet::from_ini(&IniFile::from_str(&format!(
+        let mut rules = RuleSet::from_ini(&IniFile::from_str(&format!(
             "[VehicleTypes]\n0=FV\n[FV]\nTurretCount=2\nTurret={turret}\nIsGattling={gattling}\n"
         )))
         .unwrap();
+        rules.install_art_fixture(crate::rules::art_data::ArtRegistry::from_ini(
+            &IniFile::from_str("[FV]\nVoxel=yes\n"),
+        ));
         assert_eq!(
             UnitModel::load(&fixture, "FV", Some(&rules)).map(|model| model.guns.len()),
             expected_guns,
@@ -1027,7 +975,7 @@ fn kirov_direct_matrix_requires_hva_and_wraps_its_native_frame() {
     let Some((_, assets)) = crate::rules::retail_ini_fixture::retail_assets() else {
         return;
     };
-    let mut model = UnitModel::load(&assets, "ZBOMB", None).expect("retail bomb model");
+    let model = UnitModel::load(&assets, "ZBOMB", None).expect("retail bomb model");
     let vpl = crate::assets::vpl_file::VplFile::from_bytes(assets.get_ref("VOXELS.VPL").unwrap())
         .unwrap();
     let matrix = crate::render::vxl_raster::projectile_voxel_matrix(
@@ -1039,20 +987,23 @@ fn kirov_direct_matrix_requires_hva_and_wraps_its_native_frame() {
         .render_matrix(matrix, 0, true, lighting, Some(&vpl))
         .unwrap();
     assert!(bounds.is_some());
-    let frames = model
-        .body
-        .as_ref()
-        .unwrap()
-        .hva
-        .as_ref()
-        .unwrap()
-        .frame_count;
+    let frames = model.body.as_ref().unwrap().hva().unwrap().frame_count;
     let (wrapped, wrapped_bounds) = model
         .render_matrix(matrix, frames, true, lighting, Some(&vpl))
         .unwrap();
     assert_eq!(first.palette_indices, wrapped.palette_indices);
     assert_eq!(bounds, wrapped_bounds);
-    model.body.as_mut().unwrap().hva = None;
+    // Explicit raw-image input without an HVA, through the same loader.
+    // The typed Techno loader requires the complete pair; this is the
+    // existing Bullet/debris component boundary, not a malformed typed body.
+    let directory = crate::map::source::test_support::TestDirectory::new("matrix-no-hva");
+    std::fs::write(
+        directory.path().join("ZBOMB.VXL"),
+        assets.get_ref("ZBOMB.VXL").unwrap(),
+    )
+    .unwrap();
+    let no_hva = AssetManager::from_loose_root_for_test(directory.path());
+    let model = UnitModel::load(&no_hva, "ZBOMB", None).unwrap();
     assert!(
         model
             .render_matrix(matrix, 0, true, lighting, Some(&vpl))

@@ -5,8 +5,9 @@
 //!
 //! To avoid SimFixed (I16F16, max 32767) overflow on large maps, we store lepton
 //! positions as **cell coordinate + sub-cell offset** rather than absolute leptons.
-//! The sub-cell offset (`sub_x`, `sub_y`) ranges from 0 to 256 within the cell,
-//! with 128 being the cell center.
+//! Map sub-cell offsets use 128 for the cell center. Native signed coordinate
+//! packets truncate toward zero, retaining a negative sub-cell remainder for
+//! negative world positions.
 //!
 //! ## Dependency rules
 //! - util/ has NO dependencies on other game modules.
@@ -37,13 +38,13 @@ pub const CELL_CENTER_LEPTON_I32: i32 = 128;
 /// Tile width in pixels (60.0) divided by leptons per cell (256).
 /// Pre-computed for efficient lepton → screen pixel conversion.
 /// = 60.0 / 256.0 = 0.234375
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 pub(crate) const SCREEN_X_PER_LEPTON: f32 = 60.0 / 256.0;
 
 /// Tile half-height in pixels (15.0) divided by leptons per cell (256).
 /// Pre-computed for efficient lepton → screen pixel conversion.
 /// = 30.0 / 256.0 = 0.1171875
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 pub(crate) const SCREEN_Y_PER_LEPTON: f32 = 30.0 / 256.0;
 
 /// Screen-Y offset every VERA world layer carries relative to the original's
@@ -138,6 +139,20 @@ pub const fn lepton_to_cell(v: i32) -> i32 {
 /// [`lepton_to_cell`] stored into a 16-bit `CellStruct` field.
 pub const fn lepton_to_cell_packed(v: i32) -> i16 {
     lepton_to_cell(v) as i16
+}
+
+/// Signed native cell word and the remaining integer leptons. AreaDamage
+///489309..489330 and Object41BEA0 use the shared truncating conversion above.
+/// Consumed native query controls: `tools/spatial_oracle/map_queries.json`.
+/// The remainder is signed too: -257 is cell -1 plus -1 lepton, not cell0+255.
+/// The packed word intentionally wraps outside the native signed-cell domain;
+/// callers retaining an arbitrary absolute coordinate must keep that coordinate.
+pub(crate) fn split_lepton_axis(leptons: i32) -> (u16, SimFixed) {
+    let cell = lepton_to_cell(leptons);
+    (
+        cell as i16 as u16,
+        SimFixed::from_num(leptons - cell * LEPTONS_PER_CELL_I32),
+    )
 }
 
 /// Levels a high bridge deck sits above the cell that carries it.
@@ -299,7 +314,7 @@ pub fn subcell_lepton_offset(sub_cell: Option<u8>) -> (SimFixed, SimFixed) {
 ///   dy_pixels = (sub_x + sub_y - 256) * (TILE_HEIGHT / 2) / 256
 ///
 /// This replaces hardcoded pixel offsets with lepton-derived values.
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 pub fn lepton_sub_to_screen_offset(sub_x: SimFixed, sub_y: SimFixed) -> (f32, f32) {
     let dx_lep: f32 = sub_x.to_num::<f32>() - CELL_CENTER_LEPTON.to_num::<f32>();
     let dy_lep: f32 = sub_y.to_num::<f32>() - CELL_CENTER_LEPTON.to_num::<f32>();
@@ -315,7 +330,7 @@ pub fn lepton_sub_to_screen_offset(sub_x: SimFixed, sub_y: SimFixed) -> (f32, f3
 /// gamemd-derived: active YR `TacticalClass::CoordsToClient2` at `0x006D2140`
 /// forms each 60/30-pixel numerator in signed integer arithmetic and divides
 /// the complete result by 256, truncating toward zero.
-pub(crate) fn project_absolute_lepton_xy(world_x_leptons: i32, world_y_leptons: i32) -> (i32, i32) {
+pub fn project_absolute_lepton_xy(world_x_leptons: i32, world_y_leptons: i32) -> (i32, i32) {
     let world_x = i64::from(world_x_leptons);
     let world_y = i64::from(world_y_leptons);
     let screen_x_numerator = world_x * 60 / 2 + world_y * -60 / 2;
@@ -327,7 +342,7 @@ pub(crate) fn project_absolute_lepton_xy(world_x_leptons: i32, world_y_leptons: 
 }
 
 /// Project an exact signed XYZ world coordinate into VERA's world-pixel frame.
-pub(crate) fn absolute_leptons_to_screen(
+pub fn absolute_leptons_to_screen(
     world_x_leptons: i32,
     world_y_leptons: i32,
     world_z_leptons: i32,
@@ -338,8 +353,12 @@ pub(crate) fn absolute_leptons_to_screen(
     (screen_x as f32, screen_y as f32)
 }
 
-fn absolute_lepton_axis(cell: u16, sub_cell: SimFixed) -> i32 {
-    let absolute_fixed = i64::from(cell) * 256 * SIM_FIXED_SCALE + i64::from(sub_cell.to_bits());
+/// Compose a native signed CellStruct word and subcell offset before chopping
+/// fractional leptons. This is the shared inverse for packed cell packets;
+/// the original absolute coordinate remains authoritative when one is retained.
+pub(crate) fn absolute_lepton_axis(cell: u16, sub_cell: SimFixed) -> i32 {
+    let absolute_fixed =
+        i64::from(cell as i16) * 256 * SIM_FIXED_SCALE + i64::from(sub_cell.to_bits());
     (absolute_fixed / SIM_FIXED_SCALE) as i32
 }
 
@@ -368,7 +387,7 @@ fn absolute_lepton_axis(cell: u16, sub_cell: SimFixed) -> i32 {
 /// footprint cell. That shift is owned by
 /// `render::locomotor_visual::BUILDING_ART_LIFT_PX`, not by this function —
 /// every other consumer here wants the plain projection.
-pub(crate) fn lepton_to_screen_exact_z(
+pub fn lepton_to_screen_exact_z(
     rx: u16,
     ry: u16,
     sub_x: SimFixed,

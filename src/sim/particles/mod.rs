@@ -20,6 +20,7 @@
 use crate::rules::particle_system_type::ParticleSystemTypeId;
 use crate::rules::particle_type::{ParticleBehavesLike, ParticleType, ParticleTypeId};
 use crate::sim::intern::InternedId;
+use crate::sim::touch_log::{TouchLogs, Touched};
 use crate::sim::world::Simulation;
 use crate::util::fixed_math::{SIM_ZERO, SimFixed};
 use crate::util::native_x87::{NativeF32Bits, NativeF64Bits};
@@ -136,7 +137,7 @@ impl Particle {
     pub fn stable_id(&self) -> u64 {
         self.stable_id
     }
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     pub(crate) fn set_velocity_for_test(&mut self, velocity: NativeF32Bits) {
         self.velocity = velocity;
     }
@@ -235,13 +236,21 @@ impl Particle {
 }
 
 impl ParticleSystem {
+    /// The ids [`ParticleSystemStore::pointer_expired`] compares: the target
+    /// (`+0xE4`) and the owner (`+0xE0`). VERA-only: feeds the pointer-expiry
+    /// listener index (`ExpiryListeners`); a field that callback compares
+    /// must be named here too.
+    pub(crate) fn expiry_names(&self) -> [Option<u64>; 2] {
+        [self.attached_entity, self.owner_entity]
+    }
+
     pub fn alive(&self) -> bool {
         self.alive
     }
     pub fn in_limbo(&self) -> bool {
         self.in_limbo
     }
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     pub(crate) fn set_spawn_timer_for_test(&mut self, value: NativeF32Bits) {
         self.spawn_timer = value;
     }
@@ -256,7 +265,7 @@ impl ParticleSystem {
 
     /// Declared synthetic state for tests that exercise storage or AI directly.
     /// Runtime construction always goes through `Simulation::spawn_particle_system`.
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     pub(crate) fn test_fixture(
         stable_id: u64,
         type_id: ParticleSystemTypeId,
@@ -285,7 +294,7 @@ impl ParticleSystem {
     }
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 impl Particle {
     /// Synthetic particle state without allocating a runtime identity or RNG draw.
     pub(crate) fn test_fixture(type_id: ParticleTypeId, coords: IVec3) -> Self {
@@ -354,10 +363,16 @@ mod ivec3_serde {
 ///
 /// BTreeMap-backed so storage iteration is deterministic.
 /// Identity is assigned by `ObjectSubstrate`; this store deliberately has no
-/// allocator of its own.
+/// allocator of its own. Every `&mut ParticleSystem` goes through the store,
+/// which notes it in a touch log.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ParticleSystemStore {
     systems: BTreeMap<u64, ParticleSystem>,
+    /// Which systems may have changed since [`Self::take_touched`]. One
+    /// reader: the pointer-expiry listener index. Transient: never saved,
+    /// compared or hashed.
+    #[serde(skip)]
+    touched: TouchLogs<1>,
 }
 
 impl ParticleSystemStore {
@@ -367,20 +382,26 @@ impl ParticleSystemStore {
 
     /// SystemPointerExpired62FE90: target+E4 only clears; owner+E0
     /// clears and ends emission, independently of the broadcast control byte.
-    pub(crate) fn pointer_expired(&mut self, listener: u64, expired: u64) {
-        if let Some(sys) = self.systems.get_mut(&listener) {
-            if sys.attached_entity == Some(expired) {
-                sys.attached_entity = None;
-            }
-            if sys.owner_entity == Some(expired) {
-                sys.owner_entity = None;
-                sys.done_spawning = true;
-            }
+    /// Whether the system changed.
+    pub(crate) fn pointer_expired(&mut self, listener: u64, expired: u64) -> bool {
+        let Some(sys) = self.get_mut(listener) else {
+            return false;
+        };
+        let mut changed = false;
+        if sys.attached_entity == Some(expired) {
+            sys.attached_entity = None;
+            changed = true;
         }
+        if sys.owner_entity == Some(expired) {
+            sys.owner_entity = None;
+            sys.done_spawning = true;
+            changed = true;
+        }
+        changed
     }
 
     pub(crate) fn enter_limbo(&mut self, id: u64) {
-        if let Some(sys) = self.systems.get_mut(&id) {
+        if let Some(sys) = self.get_mut(id) {
             sys.alive = false;
             sys.in_limbo = true;
         }
@@ -391,6 +412,7 @@ impl ParticleSystemStore {
     }
 
     pub fn iter_mut(&mut self) -> impl Iterator<Item = (&u64, &mut ParticleSystem)> + '_ {
+        self.touched.note_all();
         self.systems.iter_mut()
     }
 
@@ -399,32 +421,50 @@ impl ParticleSystemStore {
     }
 
     pub fn get_mut(&mut self, id: u64) -> Option<&mut ParticleSystem> {
-        self.systems.get_mut(&id)
+        let stored = self.systems.len();
+        let sys = self.systems.get_mut(&id)?;
+        self.touched.note(id, stored);
+        Some(sys)
     }
 
     /// Insert a system whose identity was assigned by the object substrate.
     pub(crate) fn insert(&mut self, sys: ParticleSystem) -> u64 {
         let id = sys.stable_id;
         debug_assert_ne!(id, 0, "particle system requires an assigned stable id");
+        self.touched.note(id, self.systems.len());
         self.systems.insert(id, sys);
         id
     }
 
     /// Temporarily take a system while its AI owns `&mut Simulation`.
     pub(crate) fn take_for_tick(&mut self, id: u64) -> Option<ParticleSystem> {
-        self.systems.remove(&id)
+        self.remove(id)
     }
 
     /// Reinsert a system after the temporary tick ownership round-trip.
     pub(crate) fn reinsert_after_tick(&mut self, sys: ParticleSystem) {
         let id = sys.stable_id;
         debug_assert!(id > 0, "reinsert requires a previously-assigned stable_id");
+        self.touched.note(id, self.systems.len());
         self.systems.insert(id, sys);
     }
 
     /// Physical removal boundary used only by the shared pending-delete finalizer.
     pub(crate) fn finalize_remove(&mut self, id: u64) -> Option<ParticleSystem> {
-        self.systems.remove(&id)
+        self.remove(id)
+    }
+
+    fn remove(&mut self, id: u64) -> Option<ParticleSystem> {
+        let removed = self.systems.remove(&id);
+        if removed.is_some() {
+            self.touched.note(id, self.systems.len());
+        }
+        removed
+    }
+
+    /// Take the touch log, leaving it empty.
+    pub(crate) fn take_touched(&mut self) -> Touched {
+        self.touched.take(0)
     }
 
     pub(crate) fn contains_key(&self, id: u64) -> bool {

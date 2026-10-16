@@ -10,21 +10,21 @@ use crate::rules::ruleset::RuleSet;
 /// may have been rejected) while the latch remains set. Device state must
 /// never rewrite this state or decide whether simulation spends a Main draw.
 #[derive(Debug, Clone, Copy, Default, serde::Serialize, serde::Deserialize)]
-pub(crate) struct MoveSoundState {
+pub struct MoveSoundState {
     active: bool,
     countdown: i32,
 }
 
 impl MoveSoundState {
-    pub(crate) fn is_active(self) -> bool {
+    pub fn is_active(self) -> bool {
         self.active
     }
 
-    pub(crate) fn countdown(self) -> i32 {
+    pub fn countdown(self) -> i32 {
         self.countdown
     }
 
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     pub(crate) fn from_raw_for_test(active: bool, countdown: i32) -> Self {
         Self { active, countdown }
     }
@@ -69,12 +69,7 @@ impl Simulation {
             || crate::sim::movement::motion_query::is_moving_now(
                 entity,
                 rules.map(|rules| {
-                    crate::sim::movement::SpeedRules::new(
-                        rules,
-                        &self.interner,
-                        &self.type_handles,
-                        &self.houses,
-                    )
+                    crate::sim::movement::SpeedRules::new(rules, &self.interner, &self.houses)
                 }),
                 self.session.binary_frame,
             );

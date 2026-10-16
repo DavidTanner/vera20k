@@ -437,13 +437,9 @@ fn conversion_receipt_rebuilds_navigation_in_the_conversion_frame() {
 }
 #[test]
 fn retail_mcv_and_target_rules_deploy_with_one_command() {
-    let Some((rules_ini, art_ini)) = crate::rules::retail_ini_fixture::retail_rules_and_art()
-    else {
+    let Some(rules) = crate::rules::retail_ini_fixture::retail_unlayered_rules_with_art() else {
         return;
     };
-    let mut rules = RuleSet::from_ini_with_fixed_art_for_test(&rules_ini, &art_ini).unwrap();
-    let art = crate::rules::art_data::ArtRegistry::from_ini(&art_ini);
-    rules.install_art_data(art);
     for kind in ["AMCV", "SMCV", "PCV"] {
         for facing in [0, 64, 128, 192] {
             let mut sim = Simulation::new();
@@ -696,7 +692,10 @@ fn house_fixture(human: bool, land: &str) -> (Simulation, RuleSet, u64) {
     sim.session.game_mode_nonzero = true;
     let owner = sim.interner.intern("Americans");
     let mut house = crate::sim::house_state::HouseState::new(owner, 0, None, human, 5000, 10);
-    house.ai_activation.auto_base_building = true;
+    house.set_ai_activation_for_test(crate::sim::house_state::HouseAiActivationLatches {
+        auto_base_building: true,
+        ..house.ai_activation()
+    });
     house.base_plan.nodes = vec![crate::sim::base_plan::BasePlanNode {
         type_or_control: 0,
         packed_cell: 0,
@@ -857,7 +856,7 @@ fn retail_dustbowl_computer_mcv() -> (
         .filter(|path| !path.trim().is_empty())
         .map(std::path::PathBuf::from)
         .unwrap_or_else(|| {
-            crate::util::config::GameConfig::load()
+            crate::test_fixture::game_config()
                 .expect("set RA2_DIR or provide config.toml for this ignored test")
                 .paths
                 .ra2_dir
@@ -955,7 +954,7 @@ fn retail_dustbowl_a_computer_mcv_deploys_where_it_stands() {
     let (mut scenario, owner, mcv, (x, y)) = retail_dustbowl_computer_mcv();
     retail_frame(&mut scenario);
     let sim = scenario.sim();
-    assert!(sim.houses[&owner].ai_activation.auto_base_building);
+    assert!(sim.houses[&owner].ai_activation().auto_base_building);
     let mut frames = 1;
     while retail_yard_at(&scenario).is_none() && frames < 600 {
         retail_frame(&mut scenario);

@@ -60,12 +60,9 @@
 //!   Effect: the unit hunts where native may send it into one of the
 //!   house's Grinders. Frequency: AI Yuri games with a Grinder.
 //! - The link line (`DrawLinks @ 0x00472160`, the node timer from
-//!   `MindControlAttackLineFrames=`), the overload flash counter (`+0x44`)
-//!   and the Mastermind's `PipScale=MindControl` pips (`0x0070A15C` ->
-//!   `0x00708C30` case 5 -> Count `0x004722D0`) feed only rendering and are
-//!   not kept.
-//! - The Mastermind's overload rocking (`+0x330`, sideways lean 0.015/0.03)
-//!   has no VERA rocking producer; its Scenario draw is kept.
+//!   `MindControlAttackLineFrames=`) is not kept. The separate overload pip
+//!   countdown (`+0x44`) is retained here; `IsOverloading @ 0x004726C0`
+//!   supplies its state to the `PipScale=MindControl` presentation arm.
 //! - An expired ring anim clears the victim's `+0x2C8` natively
 //!   (`TechnoClass::PointerExpired @ 0x00707946`, `0x0071043D`); VERA clears
 //!   the link only in FreeUnit, so a ring that ran out of loops leaves a
@@ -128,6 +125,10 @@ pub struct CaptureManagerState {
     overload_sound_played: bool,
     /// `+0x4C` frames until the next overload check.
     overload_countdown: i32,
+    /// `+0x44` positive countdown selecting the active overload pip.
+    /// Constructors `0x00471832` / `0x004718EA` initialize it to zero.
+    /// This is distinct from TechnoClass's hull-flash countdown.
+    overload_pip_countdown: i32,
 }
 
 impl CaptureManagerState {
@@ -138,6 +139,7 @@ impl CaptureManagerState {
             nodes: Vec::new(),
             overload_sound_played: false,
             overload_countdown: OVERLOAD_FIRST_CHECK_FRAMES,
+            overload_pip_countdown: 0,
         }
     }
 
@@ -152,8 +154,19 @@ impl CaptureManagerState {
         !self.nodes.is_empty()
     }
 
-    fn count(&self) -> i32 {
+    /// `GetControlledCount @ 0x004722D0`.
+    pub fn count(&self) -> i32 {
         i32::try_from(self.nodes.len()).unwrap_or(i32::MAX)
+    }
+
+    /// `IsOverloading @ 0x004726C0`: no extra pip unless an infinite
+    /// manager exceeds its retained capacity. The returned bool is the
+    /// native out-parameter (`+0x44 > 0`), which selects the active frame.
+    /// The base strip's maximum comes from the current type's weapon;
+    /// this method owns only the manager's overload decision.
+    pub fn overload_pip_state(&self) -> Option<bool> {
+        (self.infinite && self.count() > self.max_control)
+            .then_some(self.overload_pip_countdown > 0)
     }
 
     /// CanCapture's capacity gate (`0x00471C90`, gate 8): a finite manager
@@ -192,12 +205,13 @@ impl CaptureManagerState {
     }
 
     /// `RemoveNode @ 0x00471F90`, the pointer-expiry listener: a dead
-    /// victim's node goes silently.
+    /// victim's node goes silently. It compares the [`Self::victims`], which
+    /// the pointer-expiry index reaches the owner by.
     pub(crate) fn pointer_expired(&mut self, stable_id: u64) {
         self.nodes.retain(|node| node.victim != stable_id);
     }
 
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     pub(crate) fn with_victims_for_test(max_control: i32, infinite: bool, victims: &[u64]) -> Self {
         let mut state = Self::constructed(max_control, infinite);
         state.nodes = victims
@@ -210,13 +224,13 @@ impl CaptureManagerState {
         state
     }
 
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     pub(crate) fn reverse_nodes_for_test(&mut self) {
         self.nodes.reverse();
     }
 
     /// A manager holding these `(victim, original owner)` nodes in order.
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     pub(crate) fn with_nodes_for_test(nodes: &[(u64, InternedId)]) -> Self {
         let mut state = Self::constructed(3, false);
         state.nodes = nodes
@@ -263,7 +277,7 @@ impl MindControlLink {
 
     /// `+0x2C0` MindControlledBy alone, which the deploy and repack tests
     /// read (`0x00700ED0`, `0x00449C15`, `0x0044F614`, `0x00449D50`).
-    pub(crate) fn controller(&self) -> Option<u64> {
+    pub fn controller(&self) -> Option<u64> {
         self.controller
     }
 
@@ -272,7 +286,7 @@ impl MindControlLink {
         self.permanent
     }
 
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     pub(crate) fn controlled_by_for_test(controller: u64) -> Self {
         Self {
             controller: Some(controller),
@@ -281,7 +295,7 @@ impl MindControlLink {
     }
 
     /// The Dominator's hold (`+0x2C4`) with no controller or ring.
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     pub(crate) fn permanent_for_test() -> Self {
         Self {
             permanent: true,
@@ -629,6 +643,7 @@ impl Simulation {
             draw_flags: RING_ANIM_DRAW_FLAGS,
             z_adjust: 0,
             reverse: false,
+            owner: Some(target_id),
             ..crate::sim::components::AnimClassSpawnDescriptor::new(
                 type_id, rx, ry, sub_x, sub_y, z,
             )
@@ -643,7 +658,6 @@ impl Simulation {
         if let Some(target) = self.substrate.entities.get_mut(target_id) {
             target.mind_control.ring_anim = Some(anim_id);
         }
-        self.set_anim_owner_object(anim_id, Some(target_id), rules);
         if building {
             self.set_anim_z_adjust(anim_id, BUILDING_RING_Z_ADJUST);
         }
@@ -927,6 +941,11 @@ impl Simulation {
         if !manager.infinite {
             return;
         }
+        // `0x00471A64..0x00471A6C`: this precedes the overload-check
+        // countdown's early return, so the pip also expires on quiet visits.
+        if manager.overload_pip_countdown > 0 {
+            manager.overload_pip_countdown -= 1;
+        }
         if manager.overload_countdown > 0 {
             manager.overload_countdown -= 1;
             return;
@@ -953,6 +972,9 @@ impl Simulation {
             manager.overload_sound_played = false;
             return;
         }
+        // `0x00471ADF`: store ten before ReceiveDamage, including a fatal
+        // receiver. Non-damaging rows leave the earlier decrement intact.
+        manager.overload_pip_countdown = 10;
         let sound_played = manager.overload_sound_played;
         let position = entity.position;
         let location = crate::sim::movement::ground_pose::position_world_coord(&position);
@@ -1011,15 +1033,30 @@ impl Simulation {
                 );
             }
         }
-        // 0x00471C29..0x00471C62: above the first row and still alive, the
-        // sideways lean's sign (module residual) takes one draw.
+        // 0x00471C29..0x00471C78: after the receiver and all five full Spark
+        // constructors, a surviving controller above row zero replaces its
+        // sideways angular rate. These are original MOV binary32 literals,
+        // with FCHS for draws below 50, not an ApplyRocker impulse. The common
+        // Techno rocking slot already ran, so integration waits for its next
+        // visit; preserve both angles and the forward rate here.
         let alive = self
             .substrate
             .entities
             .get(controller_id)
             .is_some_and(|controller| controller.lifecycle.object_alive());
         if index > 0 && alive {
-            let _lean_left = self.scenario_rng.next_range_i32_inclusive(0, 100) < 50;
+            let lean_left = self.scenario_rng.next_range_i32_inclusive(0, 100) < 50;
+            let magnitude = if index == 1 { 0x3c75_c28f } else { 0x3cf5_c28f };
+            let velocity = crate::util::native_x87::NativeF32Bits::from_bits(
+                magnitude | if lean_left { 0x8000_0000 } else { 0 },
+            );
+            self.substrate
+                .entities
+                .get_mut(controller_id)
+                .expect("live overload controller remains represented")
+                .rocking
+                .get_or_insert_with(Default::default)
+                .set_vel_sideways_native(velocity);
         }
     }
 }

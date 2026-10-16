@@ -28,12 +28,12 @@ pub struct NavigationState {
     pub(crate) neighbor_state: crate::sim::cell_neighbors::FootNeighborState,
     /// Foot timers, retry count and blockage latch survive path retirement.
     #[serde(default)]
-    pub(crate) path_runtime: crate::sim::components::FootPathRuntime,
+    pub path_runtime: crate::sim::components::FootPathRuntime,
     /// Foot-owned direction replay and reference cell (+5E0/+558), shared by
     /// every locomotor instance. Retirement must not discard the owner queue.
     /// Native chain tails reload the owner at Drive4B1DF7 / Ship6A143A.
     #[serde(default)]
-    pub(crate) path_replay: crate::sim::components::FootPathQueue,
+    pub path_replay: crate::sim::components::FootPathQueue,
     /// `Foot+0x5A0`, NavCom's auxiliary slot, cleared whenever NavCom is
     /// published or stopped.
     #[serde(default)]
@@ -100,7 +100,7 @@ impl NavigationState {
     }
 
     /// `Foot+0x5A4`, NavCom.
-    pub(crate) fn nav_com(&self) -> Option<NavTargetRef> {
+    pub fn nav_com(&self) -> Option<NavTargetRef> {
         self.nav_com
     }
 
@@ -110,7 +110,7 @@ impl NavigationState {
     }
 
     /// `Foot+0x5A8`, SuspendedNavCom.
-    pub(crate) fn suspended_nav_com(&self) -> Option<NavTargetRef> {
+    pub fn suspended_nav_com(&self) -> Option<NavTargetRef> {
         self.suspended_nav_com
     }
 
@@ -167,33 +167,30 @@ impl NavigationState {
     }
 
     /// A fixture's NavCom.
-    #[cfg(test)]
-    pub(crate) fn set_nav_com_for_test(&mut self, nav_com: Option<NavTargetRef>) {
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn set_nav_com_for_test(&mut self, nav_com: Option<NavTargetRef>) {
         self.nav_com = nav_com;
     }
 
     /// A fixture's NavComAux.
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     pub(crate) fn set_nav_com_aux_for_test(&mut self, nav_com_aux: Option<NavTargetRef>) {
         self.nav_com_aux = nav_com_aux;
     }
 
     /// A fixture's SuspendedNavCom.
-    #[cfg(test)]
-    pub(crate) fn set_suspended_nav_com_for_test(
-        &mut self,
-        suspended_nav_com: Option<NavTargetRef>,
-    ) {
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn set_suspended_nav_com_for_test(&mut self, suspended_nav_com: Option<NavTargetRef>) {
         self.suspended_nav_com = suspended_nav_com;
     }
 
     /// `Foot+0x588`, the NavQueue, oldest first.
-    pub(crate) fn nav_queue(&self) -> &[NavTargetRef] {
+    pub fn nav_queue(&self) -> &[NavTargetRef] {
         &self.nav_queue
     }
 
     /// A fixture's NavQueue.
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     pub(crate) fn set_nav_queue_for_test(&mut self, nav_queue: Vec<NavTargetRef>) {
         self.nav_queue = nav_queue;
     }
@@ -209,8 +206,8 @@ impl NavigationState {
     }
 
     /// Append to a fixture's NavQueue.
-    #[cfg(test)]
-    pub(crate) fn push_nav_queue_for_test(&mut self, target: NavTargetRef) {
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn push_nav_queue_for_test(&mut self, target: NavTargetRef) {
         self.nav_queue.push(target);
     }
 
@@ -269,7 +266,7 @@ impl NavigationState {
     }
 
     /// A fixture's navigation list and loop flag.
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     pub(crate) fn set_nav_list_for_test(&mut self, nav_list: Vec<NavTargetRef>, loops: bool) {
         self.nav_list = nav_list;
         self.nav_list_loops = loops;
@@ -298,7 +295,7 @@ impl NavigationState {
     }
 
     /// A fixture's owed call.
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     pub(crate) fn set_pending_destination_setter_for_test(&mut self, pending: bool) {
         self.pending_destination_setter = pending;
     }
@@ -466,6 +463,7 @@ pub(super) fn refresh_drive_destination_coord(
     entity: &mut GameEntity,
     coord: DriveCoord,
     terrain: Option<&ResolvedTerrainGrid>,
+    binary_frame: u32,
 ) -> bool {
     let Some(loco) = entity
         .locomotor
@@ -478,7 +476,7 @@ pub(super) fn refresh_drive_destination_coord(
     if loco.track_destination(TrackFamily::Drive) == requested {
         return false;
     }
-    drive_set_destination(entity, coord, terrain)
+    drive_set_destination(entity, coord, terrain, binary_frame)
 }
 
 /// The cell of `BuildingClass::GetDockCoord @ 0x00447B20` for `building`, as
@@ -513,7 +511,7 @@ pub(crate) fn building_dock_coordinate(
     interner: &crate::sim::intern::StringInterner,
 ) -> Option<DriveCoord> {
     let building = entities.get(building_id)?;
-    let object = rules.object(interner.resolve(building.type_ref()))?;
+    let object = interner.object_type(building.type_ref(), rules)?;
     super::building_coordinate::dock_coordinate(
         super::ground_pose::object_location(building, terrain),
         super::ground_pose::object_get_coords(building, terrain),
@@ -590,8 +588,8 @@ pub(crate) fn nav_target_coordinate(
     if entity.category() == crate::map::entities::EntityCategory::Structure {
         let (rules, interner) =
             rules.ok_or_else(|| format!("Building {id} navigation requires type data"))?;
-        let object = rules
-            .object(interner.resolve(entity.type_ref()))
+        let object = interner
+            .object_type(entity.type_ref(), rules)
             .ok_or_else(|| format!("Building {id} navigation type disappeared"))?;
         return super::building_coordinate::navigation_coordinate(
             super::ground_pose::object_location(entity, terrain),
@@ -637,7 +635,7 @@ pub(crate) fn set_destination_internal_cell(
 
 /// Foot4D9510/4D9628 publishes the reference and dispatches its captured +4C
 /// coordinate. Cell and object orders reach the same active locomotor owner;
-/// `binary_frame` is Hover Move_To's paralysis clock.
+/// `binary_frame` is the locomotor Move_To paralysis clock.
 pub(crate) fn set_destination_internal_coord(
     entity: &mut GameEntity,
     target: NavTargetRef,
@@ -648,9 +646,9 @@ pub(crate) fn set_destination_internal_coord(
     publish_nav_com(entity, target);
 
     if is_drive_locomotor(entity) {
-        drive_set_destination(entity, coord, resolved_terrain);
+        drive_set_destination(entity, coord, resolved_terrain, binary_frame);
     } else if is_ship_locomotor(entity) {
-        ship_set_destination(entity, coord, resolved_terrain);
+        ship_set_destination(entity, coord, resolved_terrain, binary_frame);
     } else if super::hover::hover_move_to(entity, coord, resolved_terrain, binary_frame) {
     } else {
         set_walk_destination_coord(entity, coord, resolved_terrain);
@@ -679,13 +677,15 @@ fn drive_set_destination(
     entity: &mut GameEntity,
     destination: DriveCoord,
     terrain: Option<&ResolvedTerrainGrid>,
+    binary_frame: u32,
 ) -> bool {
-    // Drive4AFD40 checks owner+270/+271 before any destination or map read.
-    // Track MoveTo refusal leaves Foot's accepted NavCom/timer writes intact.
-    // EMP/Unit+6D8 remains a separate unported gate; Foot+6A0 paralysis
-    // (FootParasite::is_paralyzed) is not read here yet.
+    // Drive4AFD5E calls FootIsParalyzed4DE770 before destination/map access,
+    // including a zero Move_To. Refusal retains Foot's NavCom/timer writes.
+    // Owner warp bytes follow at4AFD71/80; EMP/Unit+6D8 is still unported.
     // Original whole-call comparisons: tools/spatial_oracle/track_destination.
-    if super::locomotor_owner::owner_is_warping(entity) {
+    if entity.parasite.is_paralyzed(binary_frame)
+        || super::locomotor_owner::owner_is_warping(entity)
+    {
         return false;
     }
     let destination = adjusted_destination(destination, terrain);
@@ -699,17 +699,18 @@ fn drive_set_destination(
 
 /// ILocomotion +0x44 Move_To of the active Drive/Ship instance without the
 /// Foot setter (Drive 0x4AFD40 / Ship 0x69F450): the outer Process's NavCom
-/// reissue (0x4B09A3 / 0x6A006C) calls it directly. A warping instance
-/// refuses; another locomotor has no such Move_To here.
+/// reissue (0x4B09A3 / 0x6A006C) calls it directly. Paralysis and warp
+/// admission belong to the shared destination setters below.
 pub(super) fn track_move_to(
     entity: &mut GameEntity,
     coord: DriveCoord,
     terrain: Option<&ResolvedTerrainGrid>,
+    binary_frame: u32,
 ) {
     if is_drive_locomotor(entity) {
-        drive_set_destination(entity, coord, terrain);
-    } else if is_ship_locomotor(entity) && !super::locomotor_owner::owner_is_warping(entity) {
-        ship_set_destination(entity, coord, terrain);
+        drive_set_destination(entity, coord, terrain, binary_frame);
+    } else if is_ship_locomotor(entity) {
+        ship_set_destination(entity, coord, terrain, binary_frame);
     }
 }
 
@@ -759,10 +760,13 @@ fn ship_set_destination(
     entity: &mut GameEntity,
     destination: DriveCoord,
     terrain: Option<&ResolvedTerrainGrid>,
+    binary_frame: u32,
 ) {
-    // Ship69F450 has the same owner warp refusal before its map lookup.
-    // Use the existing warp owner, independent of power and locomotor stash.
-    if super::locomotor_owner::owner_is_warping(entity) {
+    // Ship69F46E calls FootIsParalyzed4DE770 before even a zero destination
+    // write. Warp gates69F481/90 follow; Stop69F510 is a separate entry.
+    if entity.parasite.is_paralyzed(binary_frame)
+        || super::locomotor_owner::owner_is_warping(entity)
+    {
         return;
     }
     let destination = adjusted_destination(destination, terrain);

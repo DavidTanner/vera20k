@@ -149,7 +149,7 @@ impl Simulation {
             .substrate
             .entities
             .get(building)
-            .and_then(|entity| rules.object(self.interner.resolve(entity.type_ref())))
+            .and_then(|entity| self.interner.object_type(entity.type_ref(), rules))
         else {
             return ControlFlow::Continue(Some(dock));
         };
@@ -320,7 +320,7 @@ impl Simulation {
                 self.substrate
                     .entities
                     .get(building)
-                    .and_then(|e| rules.object(self.interner.resolve(e.type_ref())))
+                    .and_then(|e| self.interner.object_type(e.type_ref(), rules))
                     .is_some_and(|o| o.unit_repair || o.unit_reload)
             });
         let Some(pad) = pad else {
@@ -471,7 +471,7 @@ impl Simulation {
                 .is_some_and(|l| l.action_latch() != 0);
         let non_landable = aircraft
             && rules
-                .and_then(|r| r.object(self.interner.resolve(entity.type_ref())))
+                .and_then(|r| self.interner.object_type(entity.type_ref(), r))
                 .is_some_and(|o| !o.landable);
         if let Some(state) = entity.locomotor.as_mut().and_then(|l| l.fly_runtime_mut()) {
             let destination = state.destination();
@@ -560,7 +560,7 @@ impl Simulation {
         let entity = self.substrate.entities.get(id).unwrap();
         let airport_bound = entity.category() == crate::map::entities::EntityCategory::Aircraft
             && rules
-                .and_then(|r| r.object(self.interner.resolve(entity.type_ref())))
+                .and_then(|r| self.interner.object_type(entity.type_ref(), r))
                 .is_some_and(|o| o.airport_bound);
         if airport_bound {
             let cell = ground_pose::position_world_coord(&entity.position);
@@ -613,7 +613,7 @@ impl Simulation {
             });
         };
         let order = self.fly_stop_order(id, rules);
-        #[cfg(test)]
+        #[cfg(any(test, feature = "test-support"))]
         if let Some(order) = order {
             self.trace_lifecycle_for_test(super::LifecycleTestEvent::FlyStopOrdered { id, order });
         }
@@ -717,7 +717,7 @@ impl Simulation {
 /// What Fly's `Stop_Moving` does to a moving Aircraft
 /// ([`Simulation::fly_stop_order`]).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum FlyStopOrder {
+pub enum FlyStopOrder {
     /// `ReceiveDamage` with `C4Warhead=` (`0x004CD0CD`).
     SelfDestruct,
     /// The owner's class setter (vt+0x480) with this target (`0x004CD0F7`,

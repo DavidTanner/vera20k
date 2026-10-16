@@ -92,7 +92,7 @@ impl HouseFactoryAbandonment {
 /// appends it. Trigger: a second building PRODUCE before the first executes
 /// (the sidebar refuses a busy structure strip, and VERA's AI asks only while
 /// no building is queued). Effect: VERA builds both in turn. Rare.
-pub(crate) fn enqueue_by_type(
+pub fn enqueue_by_type(
     sim: &mut Simulation,
     rules: &RuleSet,
     owner: &str,
@@ -347,7 +347,7 @@ fn refund_abandoned(
 /// registry's `cancel_one`. An abandoned active object is refunded and
 /// destroyed ([`settle_abandoned`]), a finished building stops waiting for
 /// placement, and the next queued build starts (`0x004FAC96`).
-pub(crate) fn cancel_by_type_for_owner(
+pub fn cancel_by_type_for_owner(
     sim: &mut Simulation,
     rules: &RuleSet,
     owner: &str,
@@ -477,8 +477,9 @@ pub(super) fn publish_completion(
     {
         return;
     }
-    if rules
-        .object(sim.interner.resolve(type_id))
+    if sim
+        .interner
+        .object_type(type_id, rules)
         .is_some_and(|object| object.category == ObjectCategory::Building)
     {
         sim.sound_events
@@ -520,19 +521,29 @@ pub(in crate::sim) fn release_delivered_mobile(
 /// (`+0x55A0`, `+0x55B4`, `+0x55C8` or `+0x55DC`) grows unless its type is
 /// `DontScore=` (`+0xC9F`);
 /// [`MatchStatistics::built`](crate::sim::house_state::MatchStatistics) is
-/// the sum of the four. Its other writes are residuals of
-/// `sim::ai_base_building`.
+/// the sum of the four. Before DontScore, each class stores its own Type
+/// ArrayIndex (+26C/+270/+274/+278): TEvent19..22 reads the most recent one,
+/// even for an unscored product. Executed: tag_lifecycle --build-type-events.
+/// Notification90-frame timer/CreateSound remain the documented residuals
+/// in `sim::ai_base_building`, not an alternate production-event dispatcher.
 pub(super) fn record_last_built(
     sim: &mut Simulation,
     rules: &RuleSet,
     owner: InternedId,
     type_id: InternedId,
 ) {
-    let scores = sim
-        .object_type(type_id, rules)
-        .is_some_and(|ty| !ty.dont_score);
-    if scores && let Some(house) = sim.houses.get_mut(&owner) {
-        house.stats.record_built();
+    let Some(ty) = sim.object_type(type_id, rules) else {
+        return;
+    };
+    let (category, scores) = (ty.category, !ty.dont_score);
+    let type_index = rules
+        .type_array_index(category, sim.interner.resolve(type_id))
+        .expect("a produced object belongs to its class Type registry");
+    if let Some(house) = sim.houses.get_mut(&owner) {
+        house.record_built_type(category, type_index);
+        if scores {
+            house.stats.record_built();
+        }
     }
 }
 
@@ -647,7 +658,7 @@ pub(super) fn ready_object(
 /// Read-only identity of a completed building held by the existing House
 /// factory owner. Input uses the same ready-object lookup as placement; no
 /// app-side ready flag or copy of the factory is retained.
-pub(crate) fn ready_building_entity_for_owner(
+pub fn ready_building_entity_for_owner(
     sim: &Simulation,
     rules: &RuleSet,
     owner: InternedId,
@@ -664,8 +675,8 @@ pub(crate) fn ready_building_entity_for_owner(
 /// Fixture: `owner`'s `type_id` completed in its House factory and held there
 /// with its completion published, as a finished building waits for placement.
 /// Returns the held object's identity.
-#[cfg(test)]
-pub(crate) fn complete_held_building_for_test(
+#[cfg(any(test, feature = "test-support"))]
+pub fn complete_held_building_for_test(
     sim: &mut Simulation,
     rules: &RuleSet,
     owner: InternedId,
@@ -705,7 +716,7 @@ pub(crate) fn complete_held_building_for_test(
 }
 
 /// Fixture-only bridge for tests that deliberately seed a registry kernel.
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 pub(in crate::sim) fn construct_active_factory_fixture(
     sim: &mut Simulation,
     rules: &RuleSet,
@@ -853,7 +864,7 @@ pub(in crate::sim) fn refresh_factory_rates_for_house(
 /// A saved relationship that the live factory operations cannot publish.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[error("factory state for owner {owner}: {reason}")]
-pub(crate) struct FactoryRestoreError {
+pub struct FactoryRestoreError {
     pub(crate) owner: InternedId,
     pub(crate) reason: &'static str,
 }
@@ -867,7 +878,7 @@ pub(crate) struct FactoryRestoreError {
 /// limbo objects remain supported; manager pointers are not globally reciprocal.
 /// VERA-only: checks each held object's InLimbo, Marked and LogicVector facts and its
 /// spawn/slave links against the loaded store, their source of truth.
-pub(crate) fn validate_restored_factory_state(
+pub fn validate_restored_factory_state(
     sim: &Simulation,
     rules: &RuleSet,
 ) -> Result<(), FactoryRestoreError> {

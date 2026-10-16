@@ -23,7 +23,6 @@ pub mod batch;
 pub mod bink_movie;
 pub mod bit_font;
 pub mod bridge_atlas;
-pub mod bridge_railing_atlas;
 pub mod building_light;
 pub mod building_zshape;
 pub(crate) mod chrono_screen;
@@ -81,7 +80,6 @@ pub mod terrain_instances;
 pub mod tile_atlas;
 pub mod unit_atlas;
 pub mod unit_pose_cache;
-pub mod unit_slope_transition_cache;
 pub mod upscale_pass;
 #[cfg(test)]
 mod voxel_parity_tests;

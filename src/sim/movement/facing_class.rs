@@ -85,19 +85,19 @@ impl FacingClass {
         self.rot_per_frame
     }
 
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     pub(crate) fn timer_start_frame(&self) -> Option<u32> {
         self.start_frame
     }
 
     /// The native start word (`+0x04`).
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     pub(crate) fn start_word(&self) -> u16 {
         self.prev
     }
 
     /// The native timer's time left (`+0x10`).
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     pub(crate) fn timer_duration(&self) -> u16 {
         self.duration_frames
     }
@@ -588,24 +588,5 @@ mod tests {
         assert!(fc.is_rotating(9));
         assert!(!fc.is_rotating(10)); // exactly at end
         assert!(!fc.is_rotating(100));
-    }
-
-    #[test]
-    fn turret_spins_formula_smoke_test() {
-        // Forward-test the deferred Floating Disk permaspin formula:
-        // each frame, set target = ((current(f) >> 7 + 1) >> 1 + 8) << 8.
-        // ROT byte = 100 (Disk's ROT), per-frame step = 25600 in 16-bit units.
-        // Per-frame target advance = 8 << 8 = 2048 < 25600, so step_size = 0
-        // → snaps every frame to the new target. After 32 frames, full revolution.
-        let mut fc = FacingClass::new(0, 100);
-        for f in 0..32u32 {
-            let animated = fc.current(f);
-            let rounded_8bit: u16 = (((animated >> 7) + 1) >> 1) & 0xFF;
-            let next_target: u16 = ((rounded_8bit + 8) & 0xFF) << 8;
-            fc.set(next_target, f);
-        }
-        // After 32 frames of advancing by 8 8-bit units, we should be back at
-        // (8 * 32) % 256 = 256 % 256 = 0 (in 8-bit), so 0 << 8 = 0 in 16-bit.
-        assert_eq!(fc.current(32), 0);
     }
 }

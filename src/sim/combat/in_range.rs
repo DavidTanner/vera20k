@@ -105,7 +105,7 @@ fn initial_range_leptons(
     {
         // AirRange bonus when target is high-flying.
         if is_high_flying_in_query(target_entity, cells, Some((rules, interner)))
-            && let Some(attacker_obj) = rules.object(interner.resolve(attacker.type_ref()))
+            && let Some(attacker_obj) = interner.object_type(attacker.type_ref(), rules)
             && let Some(air_bonus) = attacker_obj.air_range_bonus
         {
             range_lep += cells_fixed_to_leptons(air_bonus);
@@ -130,7 +130,7 @@ fn occupied_range_leptons(
     if attacker.category() != EntityCategory::Structure {
         return None;
     }
-    let obj = rules.object(interner.resolve(attacker.type_ref()))?;
+    let obj = interner.object_type(attacker.type_ref(), rules)?;
     combat_weapon::is_occupied(attacker, obj)
         .then(|| i64::from(combat_weapon::occupied_reach_cells(obj, rules).wrapping_shl(8)))
 }
@@ -274,7 +274,7 @@ fn minimum_range_blocks(weapon: &WeaponType, src: (i64, i64, i64), tgt: (i64, i6
 ///
 /// `src` is caller-supplied as `(attacker_x_lep, attacker_y_lep,
 /// object_world_z_leptons(attacker, Some(terrain)))`.
-pub(crate) fn compute_in_range(
+pub fn compute_in_range(
     attacker: &GameEntity,
     src: (i64, i64, i64),
     target: &TargetKind,
@@ -505,7 +505,7 @@ fn compute_range_target(
     if let RangeTarget::Abstract(TargetKind::Entity(id)) = target
         && let Some(entity) = entities.get(*id)
         && entity.category() == EntityCategory::Structure
-        && let Some(object) = rules.object(interner.resolve(entity.type_ref()))
+        && let Some(object) = interner.object_type(entity.type_ref(), rules)
     {
         let (width, height) = foundation_dimensions(&object.foundation);
         max_range_lep += (width as i64 + height as i64) * 0x40;
@@ -698,7 +698,7 @@ fn target_own_z_leptons(
 /// unsupported slopes, or fixtures lacking exact physical Z and terrain;
 /// ordinary live objects retain exact coordinates. Cell targets recover their
 /// allocation before source queries, without restamping a retained Dummy.
-pub(crate) fn fire_source_coords(
+pub fn fire_source_coords(
     attacker: &GameEntity,
     target: &TargetKind,
     weapon: &WeaponType,
@@ -814,7 +814,7 @@ mod cell_query_tests;
 /// `0x006F7780`, which is `CanFireAt(target, SelectWeapon(target))`
 /// (`0x006F77B0`) and ordinary `TechnoClass::InRange` @ `0x006F7220`. It asks
 /// no legality: a target the weapon may not fire at is still in range.
-pub(crate) fn can_fire_at_target(
+pub fn can_fire_at_target(
     entities: &EntityStore,
     rules: &RuleSet,
     interner: &StringInterner,
@@ -872,7 +872,7 @@ impl crate::sim::world::Simulation {
 /// Ordinary callers select against `Some(target)`; the deployed Unit action
 /// wrappers (740793/7403AA) explicitly select against NULL before measuring
 /// their original target. The range itself remains one owner.
-pub(crate) fn can_fire_at_target_in_query(
+pub fn can_fire_at_target_in_query(
     entities: &EntityStore,
     rules: &RuleSet,
     interner: &StringInterner,
@@ -886,7 +886,7 @@ pub(crate) fn can_fire_at_target_in_query(
     let Some(attacker) = entities.get(attacker_id) else {
         return false;
     };
-    let Some(attacker_obj) = rules.object(interner.resolve(attacker.type_ref())) else {
+    let Some(attacker_obj) = interner.object_type(attacker.type_ref(), rules) else {
         return false;
     };
     let Some((index, _)) = combat_weapon::select_weapon_against_in_query(
@@ -923,7 +923,7 @@ pub(crate) fn can_fire_at_target_in_query(
 ///
 /// Takes individual fields rather than a `&Position`, for use with snapshots
 /// where positions are destructured.
-pub(crate) fn lepton_distance_sq_raw(
+pub fn lepton_distance_sq_raw(
     ax_cell: u16,
     ay_cell: u16,
     ax_sub: SimFixed,
@@ -981,7 +981,7 @@ pub(crate) fn lepton_distance_sq_raw(
 /// fixtures, pre-map bring-up): the fire gate, the threat scan and the
 /// cursor. None of them can run a walk, so they agree with each other rather
 /// than diverging.
-pub(crate) fn is_within_range_leptons(dist_sq_leptons: i64, range_cells: SimFixed) -> bool {
+pub fn is_within_range_leptons(dist_sq_leptons: i64, range_cells: SimFixed) -> bool {
     let range_leptons: i64 = (i64::from(range_cells.to_bits()) * 256) >> 16;
     let range_sq: i64 = range_leptons * range_leptons;
     dist_sq_leptons <= range_sq

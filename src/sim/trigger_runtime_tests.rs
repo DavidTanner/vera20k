@@ -16,6 +16,308 @@ use crate::sim::snapshot::GameSnapshot;
 use crate::sim::world::{FrameEffects, MasterFrameTestRung, Simulation, TickLane, TriggerInputs};
 
 #[test]
+fn loss_threshold_events_poll_recorded_losses_and_create_real_reinforcements() {
+    use crate::rules::{ini_parser::IniFile, team_ai_ini::TeamAiIniRegistry};
+    use crate::sim::combat::{KillCallback, KillSource};
+    use crate::sim::world::UninitContext;
+
+    for (kind, victim_type) in [(15, "CABHUT"), (16, "TAGUNIT")] {
+        let (mut sim, rules, overlay, houses) = event_ingress_fixture();
+        sim.session.game_mode_nonzero = false;
+        for house in sim.houses.values_mut() {
+            house.is_human = true;
+        }
+        let victims: Vec<_> = [(15, 15), (16, 15)]
+            .into_iter()
+            .map(|cell| {
+                sim.spawn_object_at_height(victim_type, "House0", cell.0, cell.1, 0, 0, &rules)
+                    .unwrap()
+            })
+            .collect();
+        let killer = spawn_event_ingress_unit(&mut sim, &rules, houses[1], (17, 16));
+        let map = install_event_ingress_map(
+            &mut sim,
+            &rules,
+            &format!(
+                "[Triggers]\nLOSS=Country0,<none>,Loss,0,1,1,1,0\n\
+                 [Events]\nLOSS=1,{kind},0,2\n\
+                 [Actions]\nLOSS=2,7,1,TT,0,0,0,0,A,28,0,7,0,0,0,0,A\n\
+                 [Tags]\nLOSS_TAG=0,Loss,LOSS\n\
+                 [TeamTypes]\n0=TT\n[TT]\nHouse=Country0\nScript=S\nTaskForce=F\nWaypoint=A\nMax=1\n\
+                 [ScriptTypes]\n0=S\n[S]\n0=5,0\n\
+                 [TaskForces]\n0=F\n[F]\n0=1,TAGUNIT\n\
+                 [Waypoints]\n0=16014\n"
+            ),
+        );
+        let teams = TeamAiIniRegistry::from_sources(&IniFile::from_str(""), &map.ini, false);
+        sim.install_team_ai_registry(&teams, &rules).unwrap();
+        // The shared simple-map fixture initially has no Team registry.
+        // Re-enter the real definition reader with the authored Team inputs.
+        sim.initialize_trigger_definitions(&map, &teams, None, None);
+        sim.session.install_waypoints(&map.waypoints);
+        sim.classify_map_triggers(Some(&rules));
+        let team_type = sim.interner.get("TT").unwrap();
+        let loss_count = |sim: &Simulation| {
+            let stats = &sim.houses[&houses[0]].stats;
+            if kind == 15 {
+                stats.buildings_lost()
+            } else {
+                stats.units_lost()
+            }
+        };
+        let frame = |sim: &mut Simulation| {
+            sim.advance_master_frame(
+                &[],
+                Some(&rules),
+                Some(&overlay),
+                67,
+                TickLane::Ordinary,
+                Some(TriggerInputs {
+                    events: &Default::default(),
+                    actions: &Default::default(),
+                    rules: Some(&rules),
+                }),
+                FrameEffects::default(),
+            )
+            .unwrap();
+        };
+        assert_eq!(loss_count(&sim), 0);
+        for (index, victim) in victims.into_iter().enumerate() {
+            // Enter at the existing real kill callback, before UnInit. The
+            // callback's native arithmetic/gates have their own RecordKill
+            // evidence; this regression connects its authoritative loss write
+            // to House polling, Team construction, placement and Tag cleanup.
+            sim.record_the_kill(
+                victim,
+                KillSource::Techno(Some(killer)),
+                KillCallback::Terminal,
+                UninitContext::new(Some(&rules), Some(&overlay)),
+            );
+            assert_eq!(loss_count(&sim), index as u32 + 1);
+            assert!(
+                sim.substrate
+                    .entities
+                    .get(victim)
+                    .unwrap()
+                    .lifecycle
+                    .object_alive()
+            );
+            assert!(!sim.trigger_runtime.globals_set.contains(&7));
+            sim.uninit_with_rules(victim, &rules);
+            sim.session.binary_frame = if index == 0 { 8 } else { 16 };
+            frame(&mut sim);
+            assert_eq!(sim.trigger_runtime.globals_set.contains(&7), index == 1);
+        }
+        let members: Vec<_> = sim
+            .team_script_vm
+            .teams_in_order()
+            .filter(|team| team.team_type_id() == Some(team_type))
+            .flat_map(|team| team.members())
+            .collect();
+        assert_eq!(members.len(), 1, "event{kind}: real Team member");
+        let reinforcement = sim.substrate.entities.get(members[0]).unwrap();
+        assert_eq!(reinforcement.owner(), houses[0]);
+        assert_eq!(sim.interner.resolve(reinforcement.type_ref()), "TAGUNIT");
+        assert!(!reinforcement.lifecycle.in_limbo());
+        assert!(reinforcement.lifecycle.object_alive());
+        assert!(sim.trigger_runtime.tag_order.is_empty());
+        sim.session.binary_frame = 24;
+        frame(&mut sim);
+        assert_eq!(
+            sim.trigger_runtime
+                .action_trace
+                .iter()
+                .map(|row| row.0)
+                .collect::<Vec<_>>(),
+            [7, 28],
+            "event{kind}: one-shot reinforcement must not repeat"
+        );
+    }
+}
+
+#[test]
+fn funds_event_runs_from_house_rung_after_a_spend() {
+    let (mut sim, rules, overlay, houses) = event_ingress_fixture();
+    sim.session.game_mode_nonzero = false;
+    for house in sim.houses.values_mut() {
+        house.is_human = true;
+    }
+    install_event_ingress_map(
+        &mut sim,
+        &rules,
+        "[Triggers]\nFUNDS=Country0,<none>,Funds,0,1,1,1,0\n\
+         [Events]\nFUNDS=1,52,0,10000\n\
+         [Actions]\nFUNDS=1,28,0,7,0,0,0,0,A\n\
+         [Tags]\nFUNDS_TAG=0,Funds,FUNDS\n",
+    );
+    crate::sim::credit_income::add_credits(&mut sim, houses[0], 70000);
+    sim.session.binary_frame = 0;
+    for frame in 0..=8 {
+        assert_eq!(sim.session.binary_frame, frame);
+        if frame == 7 {
+            crate::sim::credit_income::spend_money(&mut sim, houses[0], 60000);
+        }
+        sim.advance_master_frame(
+            &[],
+            Some(&rules),
+            Some(&overlay),
+            67,
+            TickLane::Ordinary,
+            None,
+            FrameEffects::default(),
+        )
+        .expect("the ordinary frame reaches its House rung");
+        // Native House4F8F87 -> Tag/RegisterEvent -> HasOccurred52:
+        // equality after spending admits the next eighth-frame poll.
+        assert_eq!(
+            sim.trigger_runtime.globals_set.contains(&7),
+            frame == 8,
+            "frame {frame}"
+        );
+    }
+    assert_eq!(
+        crate::sim::credit_income::available_money(&sim, houses[0]),
+        10000
+    );
+    assert!(sim.trigger_runtime.tag_order.is_empty());
+}
+
+#[test]
+fn building_loss_event_waits_for_the_real_destructor_and_house_poll() {
+    let (mut sim, rules, overlay, houses) = event_ingress_fixture();
+    sim.session.game_mode_nonzero = false;
+    for house in sim.houses.values_mut() {
+        house.is_human = true;
+    }
+    let building = sim
+        .spawn_object_at_height("CABHUT", "House0", 15, 15, 0, 0, &rules)
+        .expect("the shared fixture admits ordinary Building construction");
+    assert_eq!(sim.houses[&houses[0]].tracking.buildings(), 1);
+    install_event_ingress_map(
+        &mut sim,
+        &rules,
+        "[Triggers]\nLOSS=Country7,<none>,Buildings gone,0,1,1,1,0\nFOLLOW=Country7,<none>,Follow,0,1,1,1,0\n\
+         [Events]\nLOSS=1,10,0,0\nFOLLOW=1,36,0,10\n\
+         [Actions]\nLOSS=1,56,0,10,0,0,0,0,A\nFOLLOW=1,28,0,7,0,0,0,0,A\n\
+         [Tags]\nLOSS_TAG=0,Loss,LOSS\nFOLLOW_TAG=0,Follow,FOLLOW\n",
+    );
+    let frame = |sim: &mut Simulation| {
+        sim.advance_master_frame(
+            &[],
+            Some(&rules),
+            Some(&overlay),
+            67,
+            TickLane::Ordinary,
+            Some(TriggerInputs {
+                events: &Default::default(),
+                actions: &Default::default(),
+                rules: Some(&rules),
+            }),
+            FrameEffects::default(),
+        )
+        .unwrap();
+    };
+    frame(&mut sim);
+    assert!(!sim.trigger_runtime.locals_set.contains(&10));
+    sim.session.binary_frame = 8;
+    sim.uninit_with_rules(building, &rules);
+    assert!(
+        sim.substrate
+            .entities
+            .get(building)
+            .unwrap()
+            .lifecycle
+            .in_limbo()
+    );
+    assert_eq!(sim.houses[&houses[0]].tracking.buildings(), 1);
+    frame(&mut sim);
+    // House polls before the shared pending-delete drain. Limbo alone must
+    // not report all buildings destroyed, even with no live map building.
+    assert!(!sim.trigger_runtime.locals_set.contains(&10));
+    assert!(sim.substrate.entities.get(building).is_none());
+    assert_eq!(sim.houses[&houses[0]].tracking.buildings(), 0);
+    sim.session.binary_frame = 16;
+    frame(&mut sim);
+    assert!(sim.trigger_runtime.locals_set.contains(&10));
+    assert!(!sim.trigger_runtime.globals_set.contains(&7));
+    frame(&mut sim);
+    assert!(sim.trigger_runtime.globals_set.contains(&7));
+    assert_eq!(sim.trigger_runtime.action_trace, [(56, 10), (28, 7)]);
+    assert!(sim.trigger_runtime.tag_order.is_empty());
+}
+
+#[test]
+
+fn naval_land_events_poll_final_tracking_removal_from_the_master_house_rung() {
+    let (mut sim, rules, overlay) = crate::sim::world::entry_test_fixture::fixture_with_rules(
+        "[Countries]\n0=Country0\n[Country0]\n\
+         [VehicleTypes]\n0=NAVAL\n1=LAND\n\
+         [NAVAL]\nStrength=100\nNaval=yes\n[LAND]\nStrength=100\n",
+    );
+    let country = sim.interner.intern("Country0");
+    let owner = sim.interner.intern("House0");
+    sim.houses.insert(
+        owner,
+        crate::sim::house_state::HouseState::new(owner, 0, Some(country), true, 0, 10),
+    );
+    sim.session.house_order.push(owner);
+    sim.session.game_mode_nonzero = false;
+    let navy = sim
+        .spawn_object_limbo_at_height("NAVAL", "House0", 15, 15, 0, 0, &rules)
+        .unwrap();
+    let land = sim
+        .spawn_object_limbo_at_height("LAND", "House0", 17, 15, 0, 0, &rules)
+        .unwrap();
+    let map = install_event_ingress_map(
+        &mut sim,
+        &rules,
+        "[Triggers]\nNAVY=Country0,<none>,Navy,0,1,1,1,0\nLAND=Country0,<none>,Land,0,1,1,1,0\n\
+         [Events]\nNAVY=1,55,0,0\nLAND=1,56,0,0\n\
+         [Actions]\nNAVY=1,28,0,7,0,0,0,0,A\nLAND=1,28,0,8,0,0,0,0,A\n\
+         [Tags]\nNAVY_TAG=0,Navy,NAVY\nLAND_TAG=0,Land,LAND\n",
+    );
+    for frame in 0..=24 {
+        assert_eq!(sim.session.binary_frame, frame);
+        if frame == 7 {
+            sim.uninit_with_rules(navy, &rules);
+            assert_eq!(sim.houses[&owner].tracking.navy(), 1);
+        } else if frame == 15 {
+            sim.uninit_with_rules(land, &rules);
+            assert_eq!(sim.houses[&owner].tracking.vehicles(), 1);
+        }
+        sim.advance_master_frame(
+            &[],
+            Some(&rules),
+            Some(&overlay),
+            67,
+            TickLane::Ordinary,
+            Some(TriggerInputs {
+                events: &map.events,
+                actions: &map.actions,
+                rules: Some(&rules),
+            }),
+            FrameEffects::default(),
+        )
+        .unwrap();
+        assert_eq!(
+            sim.trigger_runtime.globals_set.contains(&7),
+            frame >= 8,
+            "navy at frame{frame}"
+        );
+        assert_eq!(
+            sim.trigger_runtime.globals_set.contains(&8),
+            frame >= 16,
+            "land at frame{frame}"
+        );
+    }
+    assert_eq!(sim.trigger_runtime.action_trace, [(28, 7), (28, 8)]);
+    assert!(
+        sim.trigger_runtime.tag_order.is_empty(),
+        "both one-shot tags detach and drain"
+    );
+}
+
+#[test]
 fn music_action_reaches_the_ordered_presentation_effects() {
     let (mut sim, rules, overlay, _) = event_ingress_fixture();
     install_event_ingress_map(
@@ -1492,8 +1794,8 @@ fn entered_cell_retains_the_actual_duplicate_country_house_for_8997_actions() {
         sim.substrate.entities.get(other).unwrap().owner(),
         houses[2]
     );
-    assert!(sim.houses[&houses[2]].ai_activation.production);
-    assert!(!sim.houses[&houses[0]].ai_activation.production);
+    assert!(sim.houses[&houses[2]].ai_activation().production);
+    assert!(!sim.houses[&houses[0]].ai_activation().production);
     let tag = sim.trigger_runtime.attachments[&TagAttachment::Object(actor)];
     let live = sim.trigger_runtime.tag(tag).unwrap().triggers[0];
     assert_eq!(
@@ -1699,6 +2001,7 @@ fn create_building_type10_reaches_placement_and_house_publication() {
         rules.object("GTGCAN").unwrap(),
         (10, 10),
         Some(owner),
+        None,
     ));
     assert!(sim.trigger_waypoint_coord(139).is_some());
     let ini = IniFile::from_str("[Actions]\nRESTORE=1,125,10,GTGCAN,0,0,0,0,EJ\n");

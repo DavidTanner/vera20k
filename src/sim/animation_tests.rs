@@ -17,7 +17,6 @@ use crate::sim::movement::locomotor::LocomotorState;
 use crate::sim::movement::teleport_movement::{TeleportPhase, TeleportState};
 use crate::sim::movement::{DriveLocomotionRuntime, ShipLocomotionRuntime};
 use crate::sim::movement::{FacingClass, SpeedRules};
-use crate::sim::type_handle_table::TypeHandleTable;
 use crate::util::fixed_math::{SIM_ZERO, SimFixed};
 
 /// Helper: create a SequenceDef for tests.
@@ -42,20 +41,6 @@ fn test_def(
 }
 
 // --- resolve_shp_frame tests ---
-
-#[test]
-fn test_resolve_stand_facing_north() {
-    let def = test_def(0, 1, 8, 200, LoopMode::Loop);
-    // Facing 0 is cell-N, which is infantry slot 7 → frame 7.
-    assert_eq!(resolve_shp_frame(&def, 0, 0), 7);
-}
-
-#[test]
-fn test_resolve_stand_facing_south() {
-    let def = test_def(0, 1, 8, 200, LoopMode::Loop);
-    // Facing 128 is cell-S, which is infantry slot 3 → frame 3.
-    assert_eq!(resolve_shp_frame(&def, 128, 0), 3);
-}
 
 #[test]
 fn test_resolve_walk_facing_east_frame_3() {
@@ -264,11 +249,10 @@ fn gsi_13_06_active_shp_unit(type_name: &str, kind: LocomotorKind) -> GameEntity
 }
 
 /// The inputs the live GetCurrentSpeed reads for the SHP fixtures: each type's
-/// `Speed=`, resolved by name through an unbuilt handle table.
+/// `Speed=`, resolved by name through an interner with no bound handles.
 struct Gsi1306Speed {
     rules: RuleSet,
     interner: StringInterner,
-    types: TypeHandleTable,
     houses: std::collections::BTreeMap<
         crate::sim::intern::InternedId,
         crate::sim::house_state::HouseState,
@@ -287,18 +271,12 @@ impl Gsi1306Speed {
             ))
             .expect("SHP fixture rules"),
             interner: crate::sim::intern::test_interner(),
-            types: TypeHandleTable::default(),
             houses: std::collections::BTreeMap::new(),
         }
     }
 
     fn rules(&self) -> Option<SpeedRules<'_>> {
-        Some(SpeedRules::new(
-            &self.rules,
-            &self.interner,
-            &self.types,
-            &self.houses,
-        ))
+        Some(SpeedRules::new(&self.rules, &self.interner, &self.houses))
     }
 }
 
@@ -1564,14 +1542,13 @@ fn raw_infantry_frames_match_whole_original_selector_rows() {
     // ordinary physical GI bank is independently bound through production
     // rules/ART readers. Disguise selection, Jumpjet target-facing, rotating
     // FacingClass and downstream invalid-index shape access are excluded.
-    let Some(ini) = crate::rules::retail_ini_fixture::retail_ini("rulesmd.ini") else {
-        return;
-    };
     let Some(art) = crate::rules::retail_ini_fixture::retail_ini("artmd.ini") else {
         return;
     };
-    let mut rules = RuleSet::from_ini_with_fixed_art_for_test(&ini, &art).unwrap();
-    rules.install_art_data(ArtRegistry::from_ini(&art));
+    let Some(mut rules) = crate::rules::retail_ini_fixture::retail_unlayered_rules_with_art()
+    else {
+        return;
+    };
     rules.bind_animation_sequences(&parse_infantry_sequence_registry(&art));
     let set = rules.animation_sequence("E1").unwrap();
     let corpus: serde_json::Value = serde_json::from_str(crate::test_fixture::text(

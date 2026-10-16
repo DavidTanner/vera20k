@@ -30,17 +30,17 @@
 
 use std::collections::BTreeSet;
 
-use vera20k::headless_scenario::{HeadlessScenario, battle_session};
-use vera20k::map::entities::EntityCategory;
-use vera20k::rules::foundation::foundation_dimensions;
-use vera20k::rules::ruleset::RuleSet;
-use vera20k::sim::ai_buildable::{candidate_allowed, house_country_bit};
-use vera20k::sim::combat::TargetKind;
-use vera20k::sim::command::{Command, CommandEnvelope};
-use vera20k::sim::intern::InternedId;
-use vera20k::sim::production::ProductionCategory;
-use vera20k::sim::runtime::SimRuntime;
-use vera20k::skirmish_launch::{AiDifficulty, LaunchCountry, SkirmishLaunchSession};
+use vera20k_core::headless_scenario::{HeadlessScenario, battle_session};
+use vera20k_core::map::entities::EntityCategory;
+use vera20k_core::rules::foundation::foundation_dimensions;
+use vera20k_core::rules::ruleset::RuleSet;
+use vera20k_core::sim::ai_buildable::{candidate_allowed, house_country_bit};
+use vera20k_core::sim::combat::TargetKind;
+use vera20k_core::sim::command::{Command, CommandEnvelope};
+use vera20k_core::sim::intern::InternedId;
+use vera20k_core::sim::production::ProductionCategory;
+use vera20k_core::sim::runtime::SimRuntime;
+use vera20k_core::skirmish_launch::{AiDifficulty, LaunchCountry, SkirmishLaunchSession};
 
 /// Objects in a squad.
 const SQUAD: usize = 30;
@@ -1031,10 +1031,8 @@ impl MatchScenario {
                 let slave = sim.interner.get(SLAVE);
                 let house = &self.houses[index];
                 let selectable = |type_ref: InternedId| {
-                    runtime
-                        .resources
-                        .rules
-                        .object(sim.interner.resolve(type_ref))
+                    sim.interner
+                        .object_type(type_ref, &runtime.resources.rules)
                         .is_some_and(|object| object.selectable)
                 };
                 let fresh: Vec<(u64, bool)> = sim
@@ -1126,7 +1124,7 @@ impl MatchScenario {
                 spent += i64::from(state.economy.spent_credits());
                 defeated += usize::from(state.is_defeated);
             }
-            let (output, drain) = vera20k::sim::production::power_balance_for_owner(
+            let (output, drain) = vera20k_core::sim::production::power_balance_for_owner(
                 sim,
                 &runtime.resources.rules,
                 &house.name,

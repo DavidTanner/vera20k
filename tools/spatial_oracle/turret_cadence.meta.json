@@ -26,5 +26,6 @@
     "set_rot": "0x004C9680",
     "constructor": "0x004C91C0"
   },
-  "payload_sha256": "57af2a40ffd4d7026d450f26d1672f40aa5ee73e844e5d9ff3eb0af50bc19e0c"
+  "replay_command": "python -m tools.spatial_oracle.turret_cadence",
+  "payload_sha256": "e1106370ddd5c472f9336b9f2df0860778676e1b6ba2ef38543c7860ae305c8c"
 }

@@ -2,7 +2,6 @@ use super::*;
 use crate::map::resolved_terrain::{ResolvedTerrainCell, ResolvedTerrainGrid};
 use crate::map::terrain::{TerrainGrid, build_terrain_grid_from_resolved};
 use crate::render::radar::helpers::OverlayClassification;
-use crate::util::native_x87::{NativeF32Bits, NativeF64Bits, X87Chop53, X87Value};
 use std::collections::{BTreeMap, HashMap};
 
 const SIZE_WIDTH: u16 = 80;
@@ -121,18 +120,12 @@ fn projection_raw_fill_keeps_clipped_edges_and_final_source_row() {
 
     let expected_raw = reference_raw(&grid, geometry);
     assert_eq!(raw, expected_raw);
-    assert_eq!(
-        surface.generated_rgb565(),
-        reference_generate(
-            &expected_raw,
-            geometry.raw_size(),
-            geometry.generated_size()
-        )
-    );
+    // Numeric generation is checked against executed original6547C0 in
+    // terrain_tests; this test owns projection admission and raw source fill.
 }
 
 #[test]
-fn action40_projection_rebuild_regenerates_every_pixel_without_stale_raw_data() {
+fn action40_projection_rebuild_changes_geometry_and_raw_source_without_stale_data() {
     let (grid, resolved) = fixture();
     let initial = MinimapPlayfieldProjection::derive(
         &grid,
@@ -162,14 +155,6 @@ fn action40_projection_rebuild_regenerates_every_pixel_without_stale_raw_data() 
     assert_ne!(initial.raw_rgb(), rebuilt.raw_rgb());
     let expected = reference_raw(&grid, rebuilt_geometry);
     assert_eq!(rebuilt.raw_rgb(), expected);
-    assert_eq!(
-        rebuilt.generated_rgb565(),
-        reference_generate(
-            &expected,
-            rebuilt_geometry.raw_size(),
-            rebuilt_geometry.generated_size(),
-        )
-    );
 }
 
 #[test]
@@ -310,11 +295,6 @@ fn cell_get_radar_color_precedence_feeds_raw_surface_before_weighted_generation(
         "missing subimage fallback"
     );
     assert_eq!(pair((52, 50)), [[0, 0, 0]; 2], "valid black remains black");
-    assert_eq!(
-        terrain.generated_rgb565(),
-        reference_generate(&raw, geometry.raw_size(), geometry.generated_size()),
-        "corrected tiberium raw colors feed every weighted generated pixel",
-    );
 }
 
 fn reference_raw(grid: &TerrainGrid, geometry: NativeRadarSurfaceGeometry) -> Vec<[u8; 3]> {
@@ -332,90 +312,6 @@ fn reference_raw(grid: &TerrainGrid, geometry: NativeRadarSurfaceGeometry) -> Ve
         }
     }
     raw
-}
-
-/// Independent rectangle-overlap translation of the active loop at
-/// `0x00654BE3..0x00654DBC`, retained here so the projection test compares
-/// every generated pixel rather than trusting the production sampler.
-fn reference_generate(raw: &[[u8; 3]], raw_size: (i32, i32), out: (i32, i32)) -> Vec<u16> {
-    let load = |value: f32| X87Chop53::load_f32(NativeF32Bits::from_bits(value.to_bits())).unwrap();
-    let store = |value| f32::from_bits(X87Chop53::store_f32(value).unwrap().bits());
-    let ftol = |value| X87Chop53::ftol_i64(value).unwrap() as i32;
-    let x_step =
-        store(X87Chop53::div(X87Chop53::load_i32(raw_size.0), X87Chop53::load_i32(out.0)).unwrap());
-    let y_step_extended =
-        X87Chop53::div(X87Chop53::load_i32(raw_size.1), X87Chop53::load_i32(out.1)).unwrap();
-    let y_step = store(y_step_extended);
-    let normalization = store(
-        X87Chop53::div(
-            X87Chop53::load_f64(NativeF64Bits::ONE).unwrap(),
-            X87Chop53::mul(y_step_extended, load(x_step)),
-        )
-        .unwrap(),
-    );
-    let mut result = Vec::with_capacity((out.0 * out.1) as usize);
-    let mut y0 = 0.0f32;
-    for _ in 0..out.1 {
-        let y1_extended = X87Chop53::add(load(y0), load(y_step));
-        let y1 = store(y1_extended);
-        let first_y = ftol(load(y0));
-        let last_y = (ftol(y1_extended) + 1).min(raw_size.1);
-        let mut x0 = 0.0f32;
-        for _ in 0..out.0 {
-            let x1_extended = X87Chop53::add(load(x0), load(x_step));
-            let x1 = store(x1_extended);
-            let first_x = ftol(load(x0));
-            let last_x = (ftol(x1_extended) + 1).min(raw_size.0);
-            let mut accum = [X87Chop53::load_i32(0); 3];
-            for sy in first_y..last_y {
-                let wy = overlap(load(y0), y1_extended, sy);
-                for sx in first_x..last_x {
-                    let wx = overlap(load(x0), load(x1), sx);
-                    let weight = X87Chop53::mul(X87Chop53::mul(wx, wy), load(normalization));
-                    let sample = raw[(sy * raw_size.0 + sx) as usize];
-                    for channel in 0..3 {
-                        accum[channel] = X87Chop53::add(
-                            accum[channel],
-                            X87Chop53::mul(X87Chop53::load_i32(sample[channel] as i32), weight),
-                        );
-                    }
-                }
-            }
-            let convert = |value| {
-                ftol(X87Chop53::add(
-                    value,
-                    X87Chop53::load_f64(NativeF64Bits::HALF).unwrap(),
-                ))
-                .min(255) as u8
-            };
-            result.push(crate::render::native_surface_format::RGB565.pack_rgb8([
-                convert(accum[0]),
-                convert(accum[1]),
-                convert(accum[2]),
-            ]));
-            x0 = x1;
-        }
-        y0 = y1;
-    }
-    result
-}
-
-fn overlap(start: X87Value, end: X87Value, pixel: i32) -> X87Value {
-    let pixel_start = X87Chop53::load_i32(pixel);
-    let pixel_end = X87Chop53::load_i32(pixel + 1);
-    let low = if X87Chop53::compare(start, pixel_start)
-        == crate::util::native_x87::X87Ordering::Greater
-    {
-        start
-    } else {
-        pixel_start
-    };
-    let high = if X87Chop53::compare(end, pixel_end) == crate::util::native_x87::X87Ordering::Less {
-        end
-    } else {
-        pixel_end
-    };
-    X87Chop53::sub(high, low)
 }
 
 fn flat_cell(rx: u16, ry: u16, radar_left: [u8; 3], radar_right: [u8; 3]) -> ResolvedTerrainCell {

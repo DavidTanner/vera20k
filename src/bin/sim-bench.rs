@@ -40,10 +40,11 @@
 //! flat 500x500-cell map used for 20,000-unit, 30-house march runs, and with
 //! `--starts 30` the match map with ore and trees.
 //!
-//! The simulation batches its path searches as a real match does;
-//! `--serial-paths` searches them in native order instead.
+//! The simulation batches its path searches and target scans as a real
+//! match does; `--serial-paths` searches and `--serial-scans` scans in native
+//! order instead.
 //!
-//! Build with `cargo build --release --bin sim-bench`; timings from a debug
+//! Build with `cargo build --release -p vera20k-core --bin sim-bench`; timings from a debug
 //! build are not meaningful.
 
 mod sim_bench_match;
@@ -52,11 +53,11 @@ use std::num::NonZeroU64;
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
-use vera20k::headless_scenario::{self, SIM_TICK_MS};
-use vera20k::sim::command::{Command, CommandEnvelope};
-use vera20k::sim::house_state::HouseState;
-use vera20k::sim::intern::InternedId;
-use vera20k::sim::runtime::SimRuntime;
+use vera20k_core::headless_scenario::{self, SIM_TICK_MS};
+use vera20k_core::sim::command::{Command, CommandEnvelope};
+use vera20k_core::sim::house_state::HouseState;
+use vera20k_core::sim::intern::InternedId;
+use vera20k_core::sim::runtime::SimRuntime;
 
 use sim_bench_match::MatchScenario;
 
@@ -85,6 +86,7 @@ struct Args {
     frame_hash_every: NonZeroU64,
     csv: Option<PathBuf>,
     serial_paths: bool,
+    serial_scans: bool,
 }
 
 fn parse_args() -> Result<Args, String> {
@@ -103,9 +105,10 @@ fn parse_args() -> Result<Args, String> {
         order_spread: 30,
         return_at: None,
         hash_every: 0,
-        frame_hash_every: vera20k::sim::replay::PLAY_HASH_INTERVAL,
+        frame_hash_every: vera20k_core::sim::replay::PLAY_HASH_INTERVAL,
         csv: None,
         serial_paths: false,
+        serial_scans: false,
     };
     let mut march_flag = None;
     let mut argv = std::env::args().skip(1);
@@ -151,6 +154,7 @@ fn parse_args() -> Result<Args, String> {
             }
             "--csv" => args.csv = Some(PathBuf::from(value()?)),
             "--serial-paths" => args.serial_paths = true,
+            "--serial-scans" => args.serial_scans = true,
             other => return Err(format!("unrecognised argument {other}")),
         }
     }
@@ -329,7 +333,7 @@ fn march(
                 Command::AttackMove {
                     entity_id: unit.id,
                     target: None,
-                    destination: Some(vera20k::sim::combat::TargetKind::Cell(
+                    destination: Some(vera20k_core::sim::combat::TargetKind::Cell(
                         clamp(target_home.0, unit.offset.0),
                         clamp(target_home.1, unit.offset.1),
                     )),
@@ -360,7 +364,7 @@ fn main() -> Result<(), String> {
                  [--scenario march|match] [--seed S] [--units 20000] [--houses N] \
                  [--computers 7 (match)] [--ticks 300 (match: 1800)] \
                  [--types E1,E2,MTNK,HTNK] [--order-spread 30] [--return-at T] (march) \
-                 [--hash-every N] [--frame-hash-every 15] [--csv <path>] [--serial-paths]"
+                 [--hash-every N] [--frame-hash-every 15] [--csv <path>] [--serial-paths] [--serial-scans]"
             );
             std::process::exit(2);
         }
@@ -383,6 +387,9 @@ fn main() -> Result<(), String> {
     };
     if !args.serial_paths {
         scenario.runtime.simulation.batch_path_searches();
+    }
+    if !args.serial_scans {
+        scenario.runtime.simulation.batch_target_scans();
     }
     scenario
         .runtime

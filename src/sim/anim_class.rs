@@ -61,7 +61,7 @@ use crate::sim::intern::InternedId;
 use crate::sim::movement::locomotor::MovementLayer;
 use crate::sim::occupancy::{RawCellKey, RawCellOccupationGrid, infantry_raw_occupation_mask};
 use crate::sim::timer::CdTimer;
-use crate::sim::touch_log::{TouchLog, Touched};
+use crate::sim::touch_log::{TouchLogs, Touched};
 use crate::sim::world::{LifecycleOutput, SimSoundEvent, Simulation};
 use crate::util::fixed_math::SimFixed;
 use crate::util::lepton::BRIDGE_DECK_HEIGHT_LEPTONS;
@@ -82,7 +82,7 @@ impl AnimWorldCoord {
     /// and is for consumers that key on a level (depth rows, lighting); a
     /// screen position comes from the exact `z` field, which may sit between
     /// levels (a muzzle, an airburst).
-    pub(crate) fn to_cell_sub_z(
+    pub fn to_cell_sub_z(
         self,
     ) -> (
         u16,
@@ -91,18 +91,8 @@ impl AnimWorldCoord {
         crate::util::fixed_math::SimFixed,
         u8,
     ) {
-        let rx = self
-            .x
-            .div_euclid(LEPTONS_PER_CELL)
-            .clamp(0, i32::from(u16::MAX)) as u16;
-        let ry = self
-            .y
-            .div_euclid(LEPTONS_PER_CELL)
-            .clamp(0, i32::from(u16::MAX)) as u16;
-        let sub_x =
-            crate::util::fixed_math::SimFixed::from_num(self.x.rem_euclid(LEPTONS_PER_CELL));
-        let sub_y =
-            crate::util::fixed_math::SimFixed::from_num(self.y.rem_euclid(LEPTONS_PER_CELL));
+        let (rx, sub_x) = crate::util::lepton::split_lepton_axis(self.x);
+        let (ry, sub_y) = crate::util::lepton::split_lepton_axis(self.y);
         let z = self
             .z
             .div_euclid(LEVEL_HEIGHT_LEPTONS)
@@ -123,12 +113,8 @@ impl AnimWorldCoord {
         z: u8,
     ) -> Self {
         Self {
-            x: i32::from(rx)
-                .wrapping_mul(LEPTONS_PER_CELL)
-                .wrapping_add(sub_x.to_num::<i32>()),
-            y: i32::from(ry)
-                .wrapping_mul(LEPTONS_PER_CELL)
-                .wrapping_add(sub_y.to_num::<i32>()),
+            x: crate::util::lepton::absolute_lepton_axis(rx, sub_x),
+            y: crate::util::lepton::absolute_lepton_axis(ry, sub_y),
             z: i32::from(z).wrapping_mul(LEVEL_HEIGHT_LEPTONS),
         }
     }
@@ -152,6 +138,7 @@ pub const COMBAT_EXPLOSION_DRAW_FLAGS: u32 = 0x2600;
 /// value and ignores it, always yielding `-15`.
 pub const COMBAT_EXPLOSION_Z_ADJUST: i32 = -15;
 
+#[cfg(any(test, feature = "test-support"))]
 const LEPTONS_PER_CELL: i32 = crate::util::lepton::LEPTONS_PER_CELL_I32;
 /// The native level height. `AnimClass` coordinates are ordinary world
 /// `CoordStruct` leptons, so a producer that places an anim by height level
@@ -170,19 +157,19 @@ const TRAILER_DRAW_FLAGS: u32 = 0x600;
 const DAMAGE_FIRE_SLOT_COUNT: usize = 8;
 
 /// Pure YR `AnimClass_UpdateBouncePhysics` directional-frame projection.
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 pub fn directional_tumble_frame(running_frames: i32, bucket8: i32, global_frame: i32) -> i32 {
     let running = running_frames.max(1);
     running * ((-1 - bucket8) & 7) + (global_frame / 3).rem_euclid(running)
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 pub fn settled_bounce_frame(running_frames: i32) -> i32 {
     running_frames.wrapping_mul(8).wrapping_add(1)
 }
 
 /// `AnimClass_Update` @ 0x00423f37: landing consumes two inclusive rolls.
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 pub fn bounce_spawn_count(has_spawns: bool, spawn_count: i32, roll_a: i32, roll_b: i32) -> i32 {
     if !has_spawns || spawn_count <= 0 {
         return 0;
@@ -433,11 +420,11 @@ impl AnimObject {
         self.remap
     }
 
-    pub(crate) fn no_effects(&self) -> bool {
+    pub fn no_effects(&self) -> bool {
         self.no_effects
     }
 
-    pub(crate) fn completed(&self) -> bool {
+    pub fn completed(&self) -> bool {
         self.completed
     }
 
@@ -454,7 +441,7 @@ impl AnimObject {
         self.display.y_sort_adjust = y_sort;
     }
 
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     pub(crate) fn install_building_expiry_fixture(&mut self, marker: bool, completed: bool) {
         self.building_anim = marker;
         self.completed = completed;
@@ -462,7 +449,7 @@ impl AnimObject {
 
     /// Minimal unattached object for tests of storage, lifecycle and checksum
     /// consumers. Runtime producers use the animation constructor below.
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     pub(crate) fn new_unattached_for_test(
         stable_id: AnimId,
         native_unique_id: i32,
@@ -506,9 +493,17 @@ impl AnimObject {
     }
 
     /// The bullet whose expiry ends this anim (`AnimClass+0x17C`).
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     pub(crate) fn attached_bullet(&self) -> Option<u64> {
         self.attached_bullet
+    }
+
+    /// The ids `Simulation::anim_pointer_expired` compares: the owner object
+    /// (`AnimClass+0xCC`) and the attached bullet (`+0x17C`). VERA-only: feeds
+    /// the pointer-expiry listener index (`ExpiryListeners`); a field that
+    /// callback compares must be named here too.
+    pub(crate) fn expiry_names(&self) -> [Option<u64>; 2] {
+        [self.owner_entity, self.attached_bullet]
     }
 
     /// Preserve the former field order; the new damage-fire reverse index is
@@ -617,12 +612,26 @@ pub(crate) fn anim_world_coords(
 }
 
 /// Animation objects by id. Every `&mut AnimObject` goes through the store,
-/// which notes it in a touch log for the kept Ground display sort keys.
+/// which notes it in a touch log for each [`AnimTouchReader`].
 pub struct AnimStore {
     anims: BTreeMap<AnimId, AnimObject>,
-    /// Which anims may have changed since [`Self::take_touched`]. Transient:
-    /// never saved, compared or hashed.
-    touched: TouchLog,
+    /// Which anims may have changed since each reader last took its log
+    /// ([`Self::take_touched`]). Transient: never saved, compared or hashed.
+    touched: TouchLogs<{ AnimTouchReader::COUNT }>,
+}
+
+/// A product derived from the anims that re-derives from the touch log.
+/// Each reads its own log, so one reader's take leaves the others' intact.
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum AnimTouchReader {
+    /// The kept Ground display sort keys.
+    GroundKeys = 0,
+    /// The pointer-expiry broadcast's listener index.
+    ExpiryListeners = 1,
+}
+
+impl AnimTouchReader {
+    const COUNT: usize = 2;
 }
 
 impl AnimStore {
@@ -630,7 +639,7 @@ impl AnimStore {
         self.anims.get(&id)
     }
 
-    pub(crate) fn get_mut(&mut self, id: AnimId) -> Option<&mut AnimObject> {
+    pub fn get_mut(&mut self, id: AnimId) -> Option<&mut AnimObject> {
         let stored = self.anims.len();
         let anim = self.anims.get_mut(&id)?;
         self.touched.note(id, stored);
@@ -662,7 +671,7 @@ impl AnimStore {
     fn from_anims(anims: BTreeMap<AnimId, AnimObject>) -> Self {
         Self {
             anims,
-            touched: TouchLog::everything(),
+            touched: TouchLogs::everything(),
         }
     }
 
@@ -687,10 +696,9 @@ impl AnimStore {
         self.anims.keys().nth(index).copied()
     }
 
-    /// Take the touch log, leaving it empty. One reader: the kept Ground
-    /// display sort keys.
-    pub(crate) fn take_touched(&mut self) -> Touched {
-        self.touched.take()
+    /// Take `reader`'s touch log, leaving it empty.
+    pub(crate) fn take_touched(&mut self, reader: AnimTouchReader) -> Touched {
+        self.touched.take(reader as usize)
     }
 }
 
@@ -823,7 +831,7 @@ impl DamageFires {
     }
 
     /// Install a fixture's slot.
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     pub(crate) fn set_slot_for_test(&mut self, slot: usize, id: Option<AnimId>) {
         self.anim_ids[slot] = id;
     }
@@ -923,8 +931,8 @@ impl Simulation {
 
     /// Construct the `AnimClass` a producer described by cell, sub-cell and
     /// height level.
-    #[cfg(test)]
-    pub(crate) fn spawn_anim_object(
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn spawn_anim_object(
         &mut self,
         rules: &RuleSet,
         descriptor: AnimClassSpawnDescriptor,
@@ -963,7 +971,7 @@ impl Simulation {
     ///
     /// The anim is constructed at the producer's exact impact Z (`world_z`);
     /// `z` is only the level byte of the descriptor.
-    pub(crate) fn spawn_combat_explosion_anim(
+    pub fn spawn_combat_explosion_anim(
         &mut self,
         rules: &RuleSet,
         type_name: InternedId,
@@ -998,7 +1006,7 @@ impl Simulation {
         }
     }
 
-    pub(crate) fn spawn_anim_at_world(
+    pub fn spawn_anim_at_world(
         &mut self,
         rules: &RuleSet,
         descriptor: AnimClassSpawnDescriptor,
@@ -1174,10 +1182,23 @@ impl Simulation {
         registered.runtime.frame_timer = frame_timer;
         registered.bounce = draws.bounce;
         // Native registry insertion precedes Reveal, and Reveal precedes the
-        // delay-zero constructor-time Start call.
-        self.reveal_anim(stable_id, Some(rules));
+        // delay-zero constructor-time Start call. A producer's attach then
+        // removes the Anim from Display and submits it to Ground again, so
+        // Reveal's own submit is left out when nothing before the attach can
+        // read or change Display: Start reaches it only through Middle's
+        // smudge construction.
+        let start_reaches_display = descriptor.delay == 0
+            && middle_frame(&config).is_none()
+            && (config.scorch || config.crater);
+        let attaches = descriptor
+            .owner
+            .is_some_and(|owner| self.anim_owner_coords(owner).is_some());
+        self.reveal_anim(stable_id, Some(rules), !attaches || start_reaches_display);
         if descriptor.delay == 0 {
             self.anim_start(stable_id, &config, rules, None);
+        }
+        if let Some(owner) = descriptor.owner {
+            self.set_anim_owner_object(stable_id, Some(owner), rules);
         }
         Ok(stable_id)
     }
@@ -1203,6 +1224,7 @@ impl Simulation {
                 .anims
                 .get(id)
                 .is_some_and(|anim| anim.start_sound_active);
+            self.notify_anim_pointer_expired(id);
             self.clear_damage_fire_anim_reference(id);
             self.release_anim_owner_reference(id);
             if start_sound_active {
@@ -1270,7 +1292,7 @@ impl Simulation {
         )
     }
 
-    pub(crate) fn visit_anim(
+    pub fn visit_anim(
         &mut self,
         id: AnimId,
         rules: &RuleSet,
@@ -1359,6 +1381,7 @@ impl Simulation {
                 use_cell_drawer: false,
                 terrain_attached: false,
                 draw_runtime: AnimDrawRuntime::default(),
+                owner: None,
             };
             // RESIDUAL: this unwrap relies on the binder having bound the
             // parent's whole `TrailerAnim=` closure. The strict binder
@@ -1648,21 +1671,28 @@ impl Simulation {
         else {
             return;
         };
-        if self
+        if let Some(building_slot) = self
             .anim(id)
-            .is_some_and(|anim| anim.owner_entity.is_some())
+            .and_then(|anim| anim.owner_entity.map(|_| anim.building_slot.is_some()))
         {
-            if let Some(rules) = rules {
-                self.detach_anim_from_owner(id, rules);
-            } else {
-                // An imminent physical owner retirement may have no Rules.
-                // Preserve SetOwner(NULL)'s resolved coordinates and pointer
-                // callback here. Its temporary Display resubmission is omitted:
-                // this same operation conceals the Anim before another draw.
-                self.release_anim_owner_reference(id);
-                self.anim_mut_by_id(id)
-                    .expect("the retiring animation still exists")
-                    .world_coord = world;
+            match rules {
+                // A Building slot Anim's expiry below can construct its
+                // successor, which reads and changes Display.
+                Some(rules) if building_slot => {
+                    self.detach_anim_from_owner(id, rules);
+                }
+                _ => {
+                    // SetOwner(NULL)'s resolved coordinates and pointer
+                    // callback, without its temporary Display resubmission:
+                    // until this operation's conceal below, nothing reads or
+                    // changes Display (the expiry reaches Bullets and
+                    // damage-fire slots only), so it is unobservable. An
+                    // imminent physical owner retirement may have no Rules.
+                    self.release_anim_owner_reference(id);
+                    self.anim_mut_by_id(id)
+                        .expect("the retiring animation still exists")
+                        .world_coord = world;
+                }
             }
         }
         if let Some(anim) = self.anim_mut_by_id(id) {
@@ -1692,12 +1722,14 @@ impl Simulation {
         // Object::UnInit5F6616 broadcasts the Anim's expiry before Limbo;
         // Building44EA1A..44EA4F clears its matching damage-fire slot or
         // runs the building-slot transition before this Anim leaves Logic.
+        self.notify_anim_pointer_expired(id);
         self.clear_damage_fire_anim_reference(id);
         self.building_anim_pointer_expired(id, rules);
         // Limbo5F4D30→DetachAll5F4D61 announces again. The first callback
         // normally removed the reverse index; preserve the second visit for
         // native dead-building gates that retained the matched slot. Both
         // notifications precede Display5F4D79 and Logic5F4DD3 removal.
+        self.notify_anim_pointer_expired(id);
         self.building_anim_pointer_expired(id, rules);
         self.conceal_anim(id);
         self.substrate.pending_delete.queue_object(id);
@@ -1711,6 +1743,7 @@ impl Simulation {
         // never reaches UnInit4255B0 or its StopSound playback. The slot was
         // cleared by the caller before these synchronous destructor effects.
         let sound_active = self.anim(id).is_some_and(|anim| anim.start_sound_active);
+        self.notify_anim_pointer_expired(id);
         self.clear_damage_fire_anim_reference(id);
         self.release_anim_owner_reference(id);
         self.clear_building_anim_reference(id);
@@ -1920,6 +1953,18 @@ impl Simulation {
         changed
     }
 
+    /// Manual frame writer62979A..6297D7: restart the owned stage timer,
+    /// write its reload rate (+C0 at6297B7), then set the requested frame.
+    /// The animation remains in Logic and must retain this rate on expiry.
+    pub(crate) fn set_anim_manual_frame(&mut self, id: AnimId, frame: i32, duration: u16) {
+        let current = self.session.binary_frame as i32;
+        if let Some(anim) = self.anim_mut_by_id(id) {
+            anim.runtime.frame_timer = CdTimer::started(current, i32::from(duration));
+            anim.runtime.rate_reload = duration;
+            anim.runtime.current_frame = frame;
+        }
+    }
+
     pub(crate) fn set_anim_frame_and_z_adjust(&mut self, id: AnimId, frame: i32, z_adjust: i32) {
         if let Some(anim) = self.anim_mut_by_id(id) {
             anim.runtime.current_frame = frame;
@@ -1930,7 +1975,7 @@ impl Simulation {
     /// Apply OverlayClass's post-constructor CellAnim writes: `+0xD4` selects
     /// the Tiberium ConvertClass when present and `+0xFC` receives CellClass's
     /// current ground Z-adjust (`+0x10A`).
-    pub(crate) fn set_cell_anim_draw_authority(
+    pub fn set_cell_anim_draw_authority(
         &mut self,
         id: AnimId,
         remap_color: Option<HouseColorIndex>,
@@ -1951,7 +1996,7 @@ impl Simulation {
     /// the house conversion); InfantryClass::ReceiveDamage's InfDeath 9 arm
     /// the house's colour scheme's (`0x00518AB5..0x00518AC9`,
     /// `0x00518AE4..0x00518AF9`).
-    pub(crate) fn set_anim_house_remap(&mut self, id: AnimId, house: InternedId) -> bool {
+    pub fn set_anim_house_remap(&mut self, id: AnimId, house: InternedId) -> bool {
         let Some(anim) = self.anim_mut_by_id(id) else {
             return false;
         };
@@ -2028,7 +2073,7 @@ impl Simulation {
     /// The answer depends on the local player, so the presentation asks it
     /// in place of the hidden flag. Evidence: instruction reading only; no
     /// native run compares the distance's rounding at the radius edge.
-    pub(crate) fn psi_warning_detected_by(
+    pub fn psi_warning_detected_by(
         &self,
         viewer: InternedId,
         anim: &AnimObject,
@@ -2059,8 +2104,9 @@ impl Simulation {
             {
                 return false;
             }
-            let radius = rules
-                .object(self.interner.resolve(entity.type_ref()))
+            let radius = self
+                .interner
+                .object_type(entity.type_ref(), rules)
                 .map_or(0, |object| i32::from(object.psychic_detection_radius));
             if radius <= 0
                 || self.building_operational_state(entity.stable_id(), rules) != Some(true)
@@ -2164,6 +2210,7 @@ impl Simulation {
                     use_cell_drawer: false,
                     terrain_attached: false,
                     draw_runtime: AnimDrawRuntime::default(),
+                    owner: None,
                 };
                 let world = AnimWorldCoord {
                     x: base.x.wrapping_add(offset.world_dx),
@@ -3463,7 +3510,94 @@ mod tests {
             use_cell_drawer: false,
             terrain_attached: false,
             draw_runtime: AnimDrawRuntime::default(),
+            owner: None,
         }
+    }
+
+    /// A producer's `owner` attaches inside the constructor without Reveal's
+    /// own Display submit, and Destroy conceals the attached Anim without
+    /// SetOwner(NULL)'s temporary resubmission: Display ends as the native
+    /// constructor, SetOwnerObject, detach and conceal sequence leaves it.
+    #[test]
+    fn an_owned_anim_leaves_display_as_construct_then_attach_does() {
+        let rules = runtime_rules("[A]\nLayer=Ground\n", &[("A", 10)]);
+        let coord = AnimWorldCoord {
+            x: 2816,
+            y: 2944,
+            z: 0,
+        };
+        let scene = || {
+            let mut sim = Simulation::with_seed(0);
+            let house = sim.interner.intern("HOUSE");
+            let unit = sim.interner.intern("UNIT");
+            let ids: Vec<u64> = [(10, 10), (14, 3), (6, 9), (12, 12), (8, 15)]
+                .into_iter()
+                .map(|(rx, ry)| {
+                    let id = sim.allocate_stable_id();
+                    sim.substrate
+                        .entities
+                        .insert(GameEntity::new_at_frame_zero_for_test(
+                            id,
+                            rx,
+                            ry,
+                            0,
+                            0,
+                            house,
+                            Health::new(100),
+                            unit,
+                            EntityCategory::Unit,
+                            0,
+                            5,
+                            false,
+                        ));
+                    sim.resubmit_entity_display_for_test(id);
+                    id
+                })
+                .collect();
+            let type_id = sim.interner.intern("A");
+            (sim, ids[3], type_id)
+        };
+        let layers = |sim: &Simulation| -> Vec<Vec<u64>> {
+            (0..5)
+                .map(|index| {
+                    let layer = crate::sim::world::display_layers::DisplayLayer::from_index(index);
+                    sim.substrate.display.members(layer.unwrap()).to_vec()
+                })
+                .collect()
+        };
+
+        let (mut native, owner, type_id) = scene();
+        let id = native
+            .spawn_anim_at_world(&rules, runtime_descriptor(type_id, 0), coord)
+            .unwrap();
+        assert!(native.set_anim_owner_object(id, Some(owner), &rules));
+        let (mut sim, _, _) = scene();
+        let descriptor = AnimClassSpawnDescriptor {
+            owner: Some(owner),
+            ..runtime_descriptor(type_id, 0)
+        };
+        assert_eq!(
+            sim.spawn_anim_at_world(&rules, descriptor, coord).unwrap(),
+            id
+        );
+        assert_eq!(sim.anim(id).unwrap().owner_entity, Some(owner));
+        assert_eq!(
+            sim.anim(id).unwrap().world_coord,
+            native.anim(id).unwrap().world_coord
+        );
+        assert!(sim.anim(id).unwrap().display.marked_on_map);
+        assert_eq!(layers(&sim), layers(&native));
+
+        assert!(native.set_anim_owner_object(id, None, &rules));
+        native.destroy_anim(id, &rules);
+        sim.destroy_anim(id, &rules);
+        assert_eq!(
+            sim.anim(id).unwrap().world_coord,
+            native.anim(id).unwrap().world_coord
+        );
+        assert_eq!(sim.anim(id).unwrap().owner_entity, None);
+        assert_eq!(layers(&sim), layers(&native));
+        assert_eq!(sim.substrate.display.layer_of(id), None);
     }
 
     /// Techno710443..71044E clears the matching retained animation pointer,
@@ -3846,6 +3980,31 @@ mod tests {
     }
 
     #[test]
+    fn signed_impact_packet_keeps_exact_xy_through_explosion_admission() {
+        let rules = runtime_rules("[TWLT036]\nEnd=8\n", &[("TWLT036", 8)]);
+        for (x, y) in [(-257, -511), (-1, 1811), (-128_128, 5248), (2694, 5253)] {
+            let mut sim = Simulation::new();
+            let type_id = sim.interner.intern("TWLT036");
+            let point = crate::sim::projectile::ProjectileCoord::new(x, y, 209);
+            let packet = crate::sim::combat::detonation_anim::placed_effect(type_id, point);
+            let packed = (packet.rx, packet.ry, packet.sub_x, packet.sub_y);
+            crate::sim::world::damage_consequences::admit_explosion_effect(
+                &mut sim, &rules, packet,
+            );
+            let ids = sim.anims().map(|(id, _)| *id).collect::<Vec<_>>();
+            assert_eq!(
+                ids.len(),
+                1,
+                "the real constructor admits the impact packet"
+            );
+            let coord = sim.anim_absolute_coord(ids[0]).unwrap();
+            assert_eq!(coord, AnimWorldCoord { x, y, z: 209 });
+            let (rx, ry, sub_x, sub_y, _) = coord.to_cell_sub_z();
+            assert_eq!((rx, ry, sub_x, sub_y), packed);
+        }
+    }
+
+    #[test]
     fn combat_explosion_uses_the_verified_constructor_row_and_plays_report() {
         // TWLT036 is the stock AP-shell explosion: Report=Explosion06,
         // Translucent=yes, no Rate= (so one logic frame per image frame).
@@ -3991,16 +4150,22 @@ mod tests {
         assert_eq!(bincode::serialize(&restored).unwrap(), bytes);
 
         // Nothing has been derived from a fresh store yet.
-        assert_eq!(store.take_touched(), Touched::All);
+        let keys = AnimTouchReader::GroundKeys;
+        assert_eq!(store.take_touched(keys), Touched::All);
         assert!(store.get(id).is_some());
-        assert_eq!(store.take_touched(), Touched::Ids(Vec::new()));
+        assert_eq!(store.take_touched(keys), Touched::Ids(Vec::new()));
         store.get_mut(id).unwrap().z_adjust += 1;
         let removed = store.remove(id).unwrap();
         store.insert(removed);
-        assert_eq!(store.take_touched(), Touched::Ids(vec![id]));
-        assert_eq!(store.clone().take_touched(), Touched::All);
+        assert_eq!(store.take_touched(keys), Touched::Ids(vec![id]));
+        // Each reader takes its own log.
+        assert_eq!(
+            store.take_touched(AnimTouchReader::ExpiryListeners),
+            Touched::All
+        );
+        assert_eq!(store.clone().take_touched(keys), Touched::All);
         let _ = store.values_mut().count();
-        assert_eq!(store.take_touched(), Touched::All);
+        assert_eq!(store.take_touched(keys), Touched::All);
     }
 
     #[test]
@@ -4535,6 +4700,136 @@ mod tests {
         assert_eq!(assigned_identity_rows, 134);
     }
 
+    /// Original full Anim421EA0 constructor controls, with a supplied genuine
+    /// Random2Class state that makes one of the Z/Y/X draws INT_MIN. Shared
+    /// raw_abs_modulo must retain the native CDQ/XOR/SUB-before-IDIV sign.
+    /// Frame count 2 is a declared fixture binding; no image/render claim.
+    #[test]
+    fn bouncer_launch_int_min_axes_match_the_original() {
+        let golden: serde_json::Value = serde_json::from_str(crate::test_fixture::text(
+            "tools/spatial_oracle/anim_bouncer_launch_intmin.json",
+        ))
+        .unwrap();
+        let rows = golden["ctor"].as_array().unwrap();
+        assert_eq!(rows.len(), 3);
+        for row in rows {
+            let input = &row["input"];
+            let name = input["type"].as_str().unwrap();
+            let rate = &input["random_rate"];
+            let rules = runtime_rules(
+                &format!(
+                    "[{name}]\nBouncer=yes\nRandomRate={},{}\nElasticity={}\nMaxXYVel={}\nMinZVel={}\nEnd=2\n",
+                    rate[0], rate[1], input["elasticity"], input["max_xy"], input["min_z"],
+                ),
+                &[(name, 2)],
+            );
+            let mut sim = Simulation::with_seed(0);
+            // The recorded seed describes native setup, not this constrained
+            // boundary. Import every logical RNG field without reseeding it.
+            sim.scenario_rng = crate::sim::rng::SimRng::from_native_state_hex_for_test(
+                row["rng_before"].as_str().unwrap(),
+            );
+            let type_id = sim.interner.intern(name);
+            let native_id = sim.next_native_runtime_id();
+            let at = |axis: usize| input["coord"][axis].as_i64().unwrap() as i32;
+            let (id, raw) = crate::sim::rng::trace_draws(|| {
+                sim.spawn_anim_at_world_with_constructor(
+                    &rules,
+                    runtime_descriptor(type_id, 0),
+                    AnimWorldCoord {
+                        x: at(0),
+                        y: at(1),
+                        z: at(2),
+                    },
+                    AnimConstructorInput::AssignedIdentity(native_id),
+                )
+                .unwrap()
+            });
+            let actual_raw: Vec<u32> = raw
+                .iter()
+                .map(|draw| draw["value"].as_u64().unwrap() as u32)
+                .collect();
+            let native_raw: Vec<u32> = row["raw_draws"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|draw| draw.as_u64().unwrap() as u32)
+                .collect();
+            assert_eq!(actual_raw, native_raw, "{input}: all raw words in order");
+            assert_eq!(
+                raw.len() as u64,
+                row["raw_draw_count"].as_u64().unwrap(),
+                "{input}"
+            );
+            assert_eq!(
+                sim.scenario_rng.native_state_hex(),
+                row["rng_after"].as_str().unwrap(),
+                "{input}"
+            );
+
+            let velocity_draws: Vec<u32> = row["velocity_draws"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|draw| draw.as_i64().unwrap() as i32 as u32)
+                .collect();
+            assert_eq!(
+                &actual_raw[..3],
+                velocity_draws.as_slice(),
+                "{input}: Z,Y,X first"
+            );
+            let exceptional_draw = match input["name"].as_str().unwrap() {
+                "int_min_z" => 0,
+                "int_min_y" => 1,
+                "int_min_x" => 2,
+                name => panic!("unexpected axis control {name}"),
+            };
+            assert_eq!(actual_raw[exceptional_draw], i32::MIN as u32, "{input}");
+            assert_eq!(
+                velocity_draws
+                    .iter()
+                    .filter(|&&word| word == i32::MIN as u32)
+                    .count(),
+                1
+            );
+            let request_sites: Vec<_> = row["events"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .filter_map(|event| event["site"].as_str())
+                .collect();
+            assert_eq!(
+                request_sites,
+                [
+                    "0x004221F5",
+                    "0x00422552",
+                    "0x00422564",
+                    "0x00422579",
+                    "0x00439857",
+                    "0x00439875",
+                    "0x00439897"
+                ],
+                "{input}"
+            );
+
+            let anim = sim.anim(id).unwrap();
+            assert_eq!(anim.native_unique_id, native_id);
+            let body = anim.bounce.expect("Bouncer=yes must construct its body");
+            // Every stored field, including both quaternions, is compared to
+            // the whole original constructor rather than a second launch port.
+            let actual = serde_json::json!({
+                "elasticity_bits": body.elasticity.bits(),
+                "gravity_bits": body.gravity.bits(),
+                "clamp_bits": body.angular_velocity_magnitude.bits(),
+                "position_bits": body.position.map(|v| v.bits()),
+                "velocity_bits": body.velocity.map(|v| v.bits()),
+                "orientation_bits": body.orientation.map(|v| v.bits()),
+                "rotation_bits": body.rotation.map(|v| v.bits()),
+            });
+            assert_eq!(actual, row["bounce"], "{input}: whole native Bounce state");
+        }
+    }
+
     /// A stock-shaped debris chunk (`DBRIS1LG` numbers, `MaxXYVel` cut to 0.5
     /// so it lands in its own cell) launched over a flat arena beside a tank:
     /// it flies its body, then on touching down (`BounceClass::Update`
@@ -4886,7 +5181,7 @@ mod tests {
         assert_eq!(sim.substrate.pending_delete.object_ids(), vec![id]);
         assert!(!sim.anim(id).unwrap().in_logic_vector);
         assert_eq!(sim.display_layers().layer_of(id), None);
-        assert!(!sim.reveal_anim(id, Some(&rules)));
+        assert!(!sim.reveal_anim(id, Some(&rules), true));
         sim.process_pending_delete();
         assert!(sim.anim(id).is_none());
     }
@@ -5346,6 +5641,7 @@ mod tests {
                     use_cell_drawer: false,
                     terrain_attached: false,
                     draw_runtime: AnimDrawRuntime::default(),
+                    owner: None,
                 },
                 AnimWorldCoord { x: 0, y: 0, z: 0 },
             )

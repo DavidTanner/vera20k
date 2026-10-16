@@ -550,13 +550,15 @@ impl GameSoundEvent {
 ///   only a sim-side producer and the same owner-keyed handle `MoveSound=`
 ///   already uses; the arbiter behind it is landed.
 ///
+/// Bio Reactor entry (`+0x270`) and successful InfantryAbsorb unload
+/// (`+0x274`) are wired through `VocAt`; their native callers are
+/// `InfantryClass::Per_Cell_Process @ 0x00519630` and
+/// `BuildingClass::Mission_Unload @ 0x0044D880`, respectively.
+///
 /// **`[AudioVisual]` keys with a verified native consumer but no VERA producer
-/// yet**, all read by `RulesClass::ReadAudioVisual @ 0x006691E0` and all
-/// UNCHECKED against their own callers unless noted:
-/// - `EnterGrinderSound`/`LeaveGrinderSound` (`+0x268`/`+0x26C`) and
-///   `EnterBioReactorSound` (`+0x270`) have no VERA consumer. The successful
-///   InfantryAbsorb `BuildingClass::Mission_Unload @ 0x0044D880` now reads and
-///   plays `LeaveBioReactorSound` (`+0x274`) through the direct `VocAt` event.
+/// yet**, all read by `RulesClass::ReadAudioVisual @ 0x006691E0`:
+/// - `EnterGrinderSound`/`LeaveGrinderSound` (`+0x268`/`+0x26C`) have no VERA
+///   consumer.
 /// - The seven `Crate*Sound` keys (`+0x1E4`..`+0x1FC`): `sim/crates` places
 ///   and regenerates crates but nothing picks one up, so there is no VERA
 ///   producer to hang them on. The gap is a crate-pickup gap, not an audio one.

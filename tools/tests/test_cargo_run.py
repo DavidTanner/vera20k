@@ -14,6 +14,30 @@ from unittest.mock import patch
 
 from tools import cargo_run
 
+REPOSITORY = Path(cargo_run.__file__).resolve().parents[1]
+# Stands in for a test executable: records whether each lock is free, where it
+# runs and one variable Cargo set, optionally edits a source, then exits.
+PROBE = '''
+import json, os, sys, time
+from pathlib import Path
+from tools.cargo_run import file_lock
+
+def free(path):
+    try:
+        with file_lock(Path(path), time.monotonic()):
+            return True
+    except TimeoutError:
+        return False
+
+shared, checkout, report, status, edit = sys.argv[1:]
+with open(report, 'a') as handle:
+    handle.write(json.dumps({'shared': free(shared), 'checkout': free(checkout), 'cwd': os.getcwd(),
+                             'package': os.environ.get('CARGO_PKG_NAME')}) + '\\n')
+if edit:
+    Path(edit).write_text('edited during the tests')
+sys.exit(int(status))
+'''
+
 
 class CargoRunTests(unittest.TestCase):
     def setUp(self):
@@ -310,6 +334,61 @@ class CargoRunTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'Source changed'):
             self.invoke(mutate=True)
         self.assertFalse((self.root / '.git/owned-builds/artifacts/build-a').exists())
+
+    def run_tests(self, calls, *options):
+        """`cargo test` whose Cargo hands each (status, edited path) call to its runner."""
+        store, namespace = cargo_run.build_store(self.root)
+        package = self.root / 'crate'
+        package.mkdir(exist_ok=True)
+        report = self.root / 'target' / 'report.jsonl'  # Ignored: not a source edit.
+        report.parent.mkdir(exist_ok=True)
+        report.unlink(missing_ok=True)
+        commands = []
+        actual_popen = subprocess.Popen
+        def start(command, **kwargs):
+            if command[0] != 'cargo':
+                return actual_popen(command, **kwargs)
+            commands.append(command)
+            if '--config' in command:
+                key, value = command[command.index('--config') + 1].split('=', 1)
+                self.assertEqual(key, 'target."cfg(all())".runner')
+                env = dict(kwargs['env'], CARGO_PKG_NAME='fixture', PYTHONPATH=str(REPOSITORY))
+                for status, edit in calls:
+                    subprocess.run([*json.loads(value), sys.executable, '-c', PROBE, str(store / 'cargo.lock'),
+                                    str(store / 'checkouts' / f'{namespace}.lock'), str(report), str(status), edit],
+                                   cwd=package, env=env, check=True)
+            child = unittest.mock.MagicMock()
+            child.__enter__.return_value = child
+            child.stdout = io.StringIO('')
+            child.wait.return_value = 0
+            return child
+        with patch.object(cargo_run, 'build_processes', return_value=[]), \
+             patch.object(cargo_run.subprocess, 'Popen', side_effect=start):
+            result = cargo_run.run(self.root, ['test', '--lib', *options], None, 0)
+        reports = [json.loads(line) for line in report.read_text().splitlines()] if report.exists() else []
+        return result, commands, reports
+
+    def test_tests_run_after_releasing_the_shared_lock_but_not_the_checkout_lock(self):
+        result, _, reports = self.run_tests([(0, '')])
+        self.assertEqual(result, 0)
+        self.assertEqual(reports, [{'shared': True, 'checkout': False,
+                                    'cwd': str(self.root / 'crate'), 'package': 'fixture'}])
+        result, commands, reports = self.run_tests([(0, '')], '--no-run')
+        self.assertEqual((result, reports), (0, []))
+        self.assertNotIn('--config', commands[0])
+
+    def test_failing_test_stops_later_ones_unless_no_fail_fast(self):
+        result, _, reports = self.run_tests([(3, ''), (0, '')])
+        self.assertEqual((result, len(reports)), (101, 1))
+        result, _, reports = self.run_tests([(3, ''), (0, '')], '--no-fail-fast')
+        self.assertEqual((result, len(reports)), (101, 2))
+
+    def test_source_edit_during_the_tests_fails_validation(self):
+        with self.assertRaisesRegex(ValueError, 'Source changed during the tests'):
+            self.run_tests([(0, str(self.root / 'source.rs'))])
+
+    def test_tests_another_runner_already_ran_keep_cargo_result(self):
+        self.assertEqual(self.run_tests([])[0::2], (0, []))
 
     def recorded_binary(self, profile):
         store, namespace = cargo_run.build_store(self.root)

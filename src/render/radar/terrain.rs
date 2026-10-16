@@ -71,6 +71,10 @@ impl NativeRadarTerrainSurface {
         &self.raw_rgb
     }
 
+    // Original655250 regenerates the dirty union rectangle through6547C0.
+    // This cache rebuilds the full surface instead. The consumed ordinary-ore
+    // control matches original full generation; incremental generation differs
+    // at five pixels in one3x2 patch/fringe row (ore_render.json radar).
     pub fn set_cell_states(
         &mut self,
         changes: impl IntoIterator<Item = NativeRadarCellUpdate>,

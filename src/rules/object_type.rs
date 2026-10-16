@@ -106,27 +106,29 @@ impl BuildCategory {
     }
 }
 
-/// What pip display to show below a unit's health bar (PipScale= in rules.ini).
-///
-/// Controls the type of pip overlay rendered beneath selected units:
-/// - `Tiberium`: cargo fill pips for harvesters (green=ore, colored=gem)
-/// - `Passengers`: passenger count pips for transports
-/// - `Ammo`: ammunition count pips
+/// TechnoType PipScale+3D4: constructor710D1C defaults to0; ReadINI714111
+/// uses ReadPipScale474940 (ReadString capacity32, case-insensitive names).
+/// Native values follow table81B9B0, not the order in a C++ header.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[repr(i32)]
 pub enum PipScale {
     #[default]
-    None,
-    Tiberium,
-    Passengers,
-    Ammo,
+    None = 0,
+    Ammo = 1,
+    Tiberium = 2,
+    Passengers = 3,
+    Power = 4,
+    MindControl = 5,
 }
 
 impl PipScale {
     fn from_ini(value: &str) -> Self {
-        match value.trim().to_ascii_lowercase().as_str() {
+        match value.to_ascii_lowercase().as_str() {
+            "ammo" => Self::Ammo,
             "tiberium" => Self::Tiberium,
             "passengers" => Self::Passengers,
-            "ammo" => Self::Ammo,
+            "power" => Self::Power,
+            "mindcontrol" => Self::MindControl,
             _ => Self::None,
         }
     }
@@ -151,22 +153,27 @@ pub enum FactoryType {
 }
 
 impl FactoryType {
-    /// Parse the Factory= INI value (case-insensitive).
-    ///
-    /// RESIDUAL: native reads `Factory=` through `INIClass::ReadFactory @
-    /// 0x00474FF0`, the case-insensitive class-name table of
-    /// `AbstractType_From_Name @ 0x0040DCE0`, so the object class names
-    /// (`Unit`, `Infantry`, ...) and every other class parse too; VERA keeps
-    /// the four type names and reads anything else as no factory. Trigger: a
-    /// rules or map INI naming another class. Effect: each reader compares
-    /// that class its own way natively. Frequency: none in retail (all 14
-    /// `rulesmd.ini` `Factory=` values are type names).
-    pub fn from_ini(value: &str) -> Option<Self> {
-        match value.trim().to_ascii_lowercase().as_str() {
-            "buildingtype" => Some(Self::BuildingType),
-            "infantrytype" => Some(Self::InfantryType),
-            "unittype" => Some(Self::UnitType),
-            "aircrafttype" => Some(Self::AircraftType),
+    /// Shared object/type aliases in Suggest_New_Object (4FBD80),
+    /// IncrementFactoryCount (4FFA50), Recount (4FF980) and
+    /// GetFactoryCount (500910), Steam3e81a617..08600. Exact RTTI
+    /// comparisons, including primary-factory grouping, must retain the raw value.
+    pub(crate) const fn for_production_rtti(value: i32) -> Option<Self> {
+        match value {
+            6 | 7 => Some(Self::BuildingType),
+            15 | 16 => Some(Self::InfantryType),
+            1 | 40 => Some(Self::UnitType),
+            2 | 3 => Some(Self::AircraftType),
+            _ => None,
+        }
+    }
+
+    /// Exact production Type RTTI projection, not ReadFactory's full enum.
+    const fn from_rtti(value: i32) -> Option<Self> {
+        match value {
+            7 => Some(Self::BuildingType),
+            16 => Some(Self::InfantryType),
+            40 => Some(Self::UnitType),
+            3 => Some(Self::AircraftType),
             _ => None,
         }
     }
@@ -372,7 +379,8 @@ pub struct ObjectType {
     /// `IdleRate=` — signed native-frame divisor for idle Foot body animation.
     /// Zero disables idle counter advancement.
     pub idle_rate: i32,
-    /// Inertia weight (`Weight=` in vehicle/aircraft sections). Default 2.0.
+    /// Inertia weight (`Weight=`), initially 1.0 from TechnoType710C66..710C71.
+    /// ReadINI7124CF..7124EA passes the current double as each pass's default.
     /// Used as the divisor in rocker-impulse force scaling: heavier units rock
     /// proportionally less per equivalent impulse. Retail range: 0.5 (lightest
     /// vehicles) to 5 (Aircraft Carrier).
@@ -688,6 +696,12 @@ pub struct ObjectType {
     /// Whether this unit has an independently rotating turret.
     /// Parsed from rules.ini `Turret=yes`. Only meaningful for vehicles/aircraft.
     pub has_turret: bool,
+    /// TechnoType+0xD21: `TurretSpins=` makes `UnitClass::Facing_Update`
+    /// replace its ordinary idle/target decision with a per-frame turret Set.
+    /// TechnoType construction writes false at `0x007114C4`; ReadINI reads the
+    /// exact `TurretSpins` key (`0x0084412C`) through `ReadBool @ 0x005295F0`,
+    /// using the current field as its default (`0x00713357`..`0x00713371`).
+    pub turret_spins: bool,
     /// Turret rotation speed in RA2 "ROT" units (degrees per game frame at 15fps).
     /// Higher = faster turret rotation. Only meaningful when `has_turret` is true.
     /// Typical values: 5 (War Miner), 7 (Grizzly/Rhino).
@@ -1180,10 +1194,12 @@ pub struct ObjectType {
     /// Poison-warhead immunity.
     pub immune_to_poison: bool,
 
-    /// What type of objects this building can produce (Factory= in rules.ini).
-    /// None for non-factory buildings/units. Data-driven replacement for
-    /// hardcoded building-name checks in production queue logic.
-    pub factory: Option<FactoryType>,
+    /// BuildingType+EB8. Constructor45DD90 leaves0; ReadFactory474FF0 at
+    /// 460529 stores any recognized raw RTTI, including object classes.
+    /// Rules own this value; production categories are derived, never stored
+    /// as a second, lossy authority. Steam3e81a617..08600; native controls in
+    /// trigger_no_factories_events.json.
+    factory_rtti: i32,
     /// Native BuildingType `WeaponsFactory=` classification used by Unit
     /// ReadyToCommence. Independent from `Factory=` and `Naval=`.
     pub weapons_factory: bool,
@@ -1922,6 +1938,23 @@ fn native_minutes_to_ticks(value: f64) -> u32 {
 }
 
 impl ObjectType {
+    /// The authoritative BuildingType+EB8 class, including non-production
+    /// RTTI names. Consumers must keep their own native comparisons.
+    pub const fn factory_rtti(&self) -> i32 {
+        self.factory_rtti
+    }
+
+    /// Native nonzero-Factory gates (HasOccurred17, AI, quarry and exit).
+    pub const fn has_factory(&self) -> bool {
+        self.factory_rtti != 0
+    }
+
+    /// Exact Type comparisons used by FindFactory, exit arms and rally.
+    /// Object RTTIs (Unit1/Infantry15/...) are deliberately not type RTTIs.
+    pub const fn factory_type(&self) -> Option<FactoryType> {
+        FactoryType::from_rtti(self.factory_rtti)
+    }
+
     pub(crate) fn target_coord_offset(&self) -> [i32; 3] {
         self.target_coord_offset
     }
@@ -2143,7 +2176,7 @@ impl ObjectType {
     /// rally click archives only on these, and their rally lines draw.
     pub fn has_rally_line(&self) -> bool {
         matches!(
-            self.factory,
+            self.factory_type(),
             Some(FactoryType::InfantryType | FactoryType::UnitType)
         ) || self.unit_repair
             || self.cloning
@@ -2392,7 +2425,7 @@ impl ObjectType {
             walk_rate: section.read_int("WalkRate", 1),
             idle_rate: section.read_int("IdleRate", 0),
             // Double fields (`0x007124A3..0x007124E5`).
-            weight: sim_from_f32(section.read_double("Weight", 2.0) as f32),
+            weight: sim_from_f32(section.read_double("Weight", 1.0) as f32),
             accel_factor: sim_from_f32(section.read_double("AccelerationFactor", 0.03) as f32),
             decel_factor: sim_from_f32(section.read_double("DeaccelerationFactor", 0.002) as f32),
             accelerates: section.read_bool("Accelerates", true),
@@ -2549,10 +2582,11 @@ impl ObjectType {
                 .map(str::to_owned),
             chrono_in_sound: section.read_name("ChronoInSound", 0x80).map(str::to_owned),
             chrono_out_sound: section.read_name("ChronoOutSound", 0x80).map(str::to_owned),
-            // Native relative order: ManualReload713352, then
+            // Native relative order: ManualReload713352, TurretSpins713357,
             // TiltCrashJumpjet713386, then Turret. The shared bool reader
             // retains earlier-layer values when a later token is malformed.
             manual_reload: section.read_bool("ManualReload", false),
+            turret_spins: section.read_bool("TurretSpins", false),
             tilt_crash_jumpjet: section.read_bool("TiltCrashJumpjet", false),
             has_turret: section.read_bool("Turret", false),
             // gamemd writes a separate UnitType +0x398=10 for Harvester/Weeder,
@@ -2799,9 +2833,11 @@ impl ObjectType {
             anti_air_value: building_int(section, category, "AntiAirValue"),
             anti_armor_value: building_int(section, category, "AntiArmorValue"),
             anti_infantry_value: building_int(section, category, "AntiInfantryValue"),
-            factory: section
-                .read_name("Factory", 0x20)
-                .and_then(FactoryType::from_ini),
+            factory_rtti: if category == ObjectCategory::Building {
+                section.read_factory("Factory", 0)
+            } else {
+                0
+            },
             weapons_factory: section.read_bool("WeaponsFactory", false),
             armory,
             gdi_barracks,
@@ -3207,7 +3243,7 @@ impl AbilityFlags {
         self.0[ability as usize]
     }
 
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     pub(crate) fn from_abilities(abilities: &[Ability]) -> Self {
         let mut flags = [false; 18];
         for ability in abilities {
@@ -3422,6 +3458,102 @@ mod tests {
                 row.raw
             );
         }
+    }
+
+    #[test]
+    fn pip_scale_native_names_default_capacity_and_layer_retention() {
+        use crate::rules::native_processing::{RulesLayerKind, RulesLayerStack};
+        use crate::rules::ruleset::RuleSet;
+        // Reader474940's file-backed table81B9B0, through ReadString32.
+        for (raw, expected) in [
+            ("Ammo", PipScale::Ammo),
+            ("tIbErIuM", PipScale::Tiberium),
+            ("Passengers", PipScale::Passengers),
+            ("Power", PipScale::Power),
+            ("mInDcOnTrOl", PipScale::MindControl),
+            ("Unknown", PipScale::None),
+            ("5", PipScale::None),
+            ("MindControl,Ammo", PipScale::None),
+        ] {
+            let ini = IniFile::from_str(&format!("[MIND]\nPipScale={raw}\n"));
+            let object = ObjectType::from_ini_section(
+                "MIND",
+                ini.section("MIND").unwrap(),
+                ObjectCategory::Vehicle,
+            );
+            assert_eq!(object.pip_scale, expected, "{raw}");
+        }
+        let ini = IniFile::from_str(&format!(
+            "[MIND]\nPipScale=MindControl{}invalid\n",
+            " ".repeat(20)
+        ));
+        assert_eq!(
+            ObjectType::from_ini_section(
+                "MIND",
+                ini.section("MIND").unwrap(),
+                ObjectCategory::Vehicle
+            )
+            .pip_scale,
+            PipScale::MindControl,
+            "copy truncates to31 bytes BEFORE trim/name lookup"
+        );
+        let mut layers = RulesLayerStack::new(IniFile::from_str(
+            "[VehicleTypes]\n0=MIND\n[MIND]\nPipScale=MindControl\n",
+        ));
+        for patch in ["Strength=500", "PipScale=", "PipScale=   ", "pipscale=Ammo"] {
+            layers.push(
+                RulesLayerKind::Scenario,
+                IniFile::from_str(&format!("[MIND]\n{patch}\n")),
+            );
+            assert_eq!(
+                RuleSet::from_rules_layers(&layers)
+                    .unwrap()
+                    .object("MIND")
+                    .unwrap()
+                    .pip_scale,
+                PipScale::MindControl,
+                "absent/empty/exact-case key: {patch}"
+            );
+        }
+        layers.push(
+            RulesLayerKind::Scenario,
+            IniFile::from_str("[MIND]\nPipScale=Unknown\n"),
+        );
+        assert_eq!(
+            RuleSet::from_rules_layers(&layers)
+                .unwrap()
+                .object("MIND")
+                .unwrap()
+                .pip_scale,
+            PipScale::None
+        );
+        let default_ini = IniFile::from_str("[MIND]\nStrength=500\n");
+        assert_eq!(
+            ObjectType::from_ini_section(
+                "MIND",
+                default_ini.section("MIND").unwrap(),
+                ObjectCategory::Vehicle
+            )
+            .pip_scale,
+            PipScale::None
+        );
+    }
+
+    #[test]
+    fn retail_mastermind_uses_mind_control_pips_and_current_primary_capacity() {
+        let Some(fixture) = crate::rules::retail_ini_fixture::retail_battle_rules() else {
+            return;
+        };
+        let object = fixture.rules.object("MIND").unwrap();
+        assert_eq!(object.pip_scale, PipScale::MindControl);
+        assert_eq!(
+            fixture
+                .rules
+                .weapon(object.weapon_at(0).unwrap())
+                .unwrap()
+                .damage,
+            3
+        );
     }
 
     #[test]
@@ -4161,9 +4293,12 @@ mod tests {
         assert!(!parse("MISSING").weapons_factory);
         assert!(!parse("EXPLICIT_NO").weapons_factory);
         assert!(parse("EXPLICIT_YES").weapons_factory);
-        assert_eq!(parse("FACTORY_ONLY").factory, Some(FactoryType::UnitType));
+        assert_eq!(
+            parse("FACTORY_ONLY").factory_type(),
+            Some(FactoryType::UnitType)
+        );
         assert!(!parse("FACTORY_ONLY").weapons_factory);
-        assert_eq!(parse("WEAPONS_FACTORY_ONLY").factory, None);
+        assert_eq!(parse("WEAPONS_FACTORY_ONLY").factory_type(), None);
         assert!(parse("WEAPONS_FACTORY_ONLY").weapons_factory);
     }
 
@@ -5326,6 +5461,52 @@ mod tests {
         );
     }
 
+    #[test]
+    fn turret_spins_reads_constructor_default_and_rule_layer_overrides() {
+        use crate::rules::native_processing::{RulesLayerKind, RulesLayerStack};
+        use crate::rules::ruleset::RuleSet;
+
+        let mut layers = RulesLayerStack::new(IniFile::from_str(
+            "[VehicleTypes]\n0=DISK\n[DISK]\nTurret=yes\n",
+        ));
+        assert!(
+            !RuleSet::from_rules_layers(&layers)
+                .unwrap()
+                .object("DISK")
+                .unwrap()
+                .turret_spins
+        );
+
+        for (kind, patch, expected) in [
+            (RulesLayerKind::LangRule, "TurretSpins=yes", true),
+            (RulesLayerKind::GameMode, "TurretSpins=malformed", true),
+            (RulesLayerKind::Scenario, "TurretSpins=no", false),
+            (RulesLayerKind::Scenario, "TurretSpins=yes", true),
+        ] {
+            layers.push(kind, IniFile::from_str(&format!("[DISK]\n{patch}\n")));
+            let rules = RuleSet::from_rules_layers(&layers).unwrap();
+            assert_eq!(
+                rules.object("DISK").unwrap().turret_spins,
+                expected,
+                "{patch}"
+            );
+        }
+    }
+
+    /// The production rules reader on the stock battle source stack. DISK is
+    /// the authored `TurretSpins=yes` type; an ordinary tank remains the
+    /// default-false control.
+    #[test]
+    fn retail_flying_disk_turret_spins_reads_from_battle_rules_layers() {
+        let Some(retail) =
+            crate::rules::retail_ini_fixture::retail_battle_rules_for_map("XMP03T4.MAP")
+        else {
+            return;
+        };
+        assert!(retail.rules.object("DISK").unwrap().turret_spins);
+        assert!(!retail.rules.object("MTNK").unwrap().turret_spins);
+    }
+
     /// The production reader on retail `rulesmd.ini`: `CrateBeneath=` and
     /// `CrateBeneathIsMoney=` (BuildingTypeClass::ReadINI `0x00460EC1`,
     /// `0x00460EDB`), defaulting to the constructor's false.
@@ -5545,11 +5726,11 @@ mod tests {
     }
 
     #[test]
-    fn parse_weight_default_two() {
+    fn parse_weight_constructor_default_one() {
         let ini: IniFile = IniFile::from_str("[MTNK]\nStrength=300\n");
         let section = ini.section("MTNK").expect("section");
         let obj = ObjectType::from_ini_section("MTNK", section, ObjectCategory::Vehicle);
-        assert_eq!(obj.weight, SimFixed::lit("2.0"));
+        assert_eq!(obj.weight, SimFixed::ONE);
     }
 
     #[test]
@@ -5574,16 +5755,16 @@ mod tests {
     }
 
     #[test]
-    fn parse_retail_weight_grizzly_defaults_to_two() {
-        // Retail rulesmd.ini: MTNK (Grizzly) has no Weight= line, so it should
-        // fall back to the engine default 2.0.
+    fn absent_weight_keeps_the_techno_type_constructor_value() {
+        // Original TechnoType710C66..710C71 writes 1.0. UnitType7470D0
+        // does not replace it before its reader calls TechnoType712170.
         let ini = IniFile::from_str("[MTNK]\nStrength=300\n");
         let mtnk = ObjectType::from_ini_section(
             "MTNK",
             ini.section("MTNK").expect("MTNK section"),
             ObjectCategory::Vehicle,
         );
-        assert_eq!(mtnk.weight, SimFixed::lit("2.0"));
+        assert_eq!(mtnk.weight, SimFixed::ONE);
     }
 
     /// Retail `rulesmd.ini`, read from the gitignored `ini/` corpus.

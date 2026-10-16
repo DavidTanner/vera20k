@@ -26,7 +26,7 @@ use crate::sim::components::NavTargetRef;
 use crate::sim::world::FrameEffects;
 use crate::sim::world::Simulation;
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 use super::concrete_effects::UnavailableConcreteMissionEffects;
 use super::concrete_effects::{
     AuthorityUnavailable, ConcreteMissionEffects, ConcreteSetterRequest,
@@ -54,13 +54,13 @@ mod ready_private {
 /// expiry drop it ([`Self::clear`]).
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(transparent)]
-pub(crate) struct SuspendedTarget {
+pub struct SuspendedTarget {
     target: Option<crate::sim::combat::TargetKind>,
 }
 
 impl SuspendedTarget {
     /// The archived target.
-    pub(crate) const fn target(self) -> Option<crate::sim::combat::TargetKind> {
+    pub const fn target(self) -> Option<crate::sim::combat::TargetKind> {
         self.target
     }
 
@@ -75,8 +75,8 @@ impl SuspendedTarget {
     }
 
     /// Install a fixture's archived target.
-    #[cfg(test)]
-    pub(crate) fn set_for_test(&mut self, target: Option<crate::sim::combat::TargetKind>) {
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn set_for_test(&mut self, target: Option<crate::sim::combat::TargetKind>) {
         self.target = target;
     }
 }
@@ -153,7 +153,7 @@ struct OverridePacket {
 }
 
 #[derive(Debug, thiserror::Error)]
-pub(crate) enum MissionAuthorityError {
+pub enum MissionAuthorityError {
     #[error("Mission receiver {0} does not exist")]
     MissingReceiver(u64),
     #[error(transparent)]
@@ -199,8 +199,9 @@ struct LiveUnitWorld<'a> {
 
 impl LiveUnitWorld<'_> {
     fn weapons_factory(&self, entity: &crate::sim::game_entity::GameEntity) -> bool {
-        self.rules
-            .object(self.sim.interner.resolve(entity.type_ref()))
+        self.sim
+            .interner
+            .object_type(entity.type_ref(), self.rules)
             .is_some_and(|obj| obj.weapons_factory)
     }
 }
@@ -333,12 +334,7 @@ fn evaluate_ready(
         let locomotor = crate::sim::movement::ready_producer::ready_state_for(
             entity,
             rules.map(|rules| {
-                crate::sim::movement::SpeedRules::new(
-                    rules,
-                    &sim.interner,
-                    &sim.type_handles,
-                    &sim.houses,
-                )
+                crate::sim::movement::SpeedRules::new(rules, &sim.interner, &sim.houses)
             }),
             sim.session.binary_frame,
         )
@@ -704,7 +700,7 @@ impl Simulation {
         Ok(())
     }
 
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     fn mission_override_exact(
         &mut self,
         receiver: u64,
@@ -714,7 +710,7 @@ impl Simulation {
         self.mission_override_exact_with_effects(receiver, packet, &mut effects)
     }
 
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     pub(crate) fn mission_restore_exact(
         &mut self,
         receiver: u64,
@@ -726,7 +722,7 @@ impl Simulation {
     /// The overlay registry and frame effects serve the Infantry setter's
     /// `Infiltrate=` arm, the one that sets a destination
     /// ([`Simulation::infiltrator_target_building`]).
-    pub(crate) fn assign_target_represented(
+    pub fn assign_target_represented(
         &mut self,
         receiver: u64,
         requested: Option<TargetKind>,
@@ -896,7 +892,7 @@ impl Simulation {
         .expect("present represented blocker receiver has concrete setters")
     }
 
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     pub(crate) fn mission_refinery_completion_exact(
         &mut self,
         receiver: u64,

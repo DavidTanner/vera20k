@@ -10,6 +10,7 @@
 use std::collections::BTreeMap;
 
 use crate::map::playfield::local_to_packed_cell;
+use crate::rules::object_type::ObjectCategory;
 use crate::sim::cell_rect::PlayfieldBounds;
 use crate::sim::economy::Economy;
 use crate::sim::intern::InternedId;
@@ -222,28 +223,28 @@ impl Default for HouseStrategyEmergencyState {
 }
 
 impl HouseStrategyEmergencyState {
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     pub(crate) const fn mode(&self) -> i32 {
         self.mode
     }
 
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     pub(crate) const fn all_to_hunt_bias(&self) -> bool {
         self.all_to_hunt_bias
     }
 
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     pub(crate) const fn last_building_attack_frame(&self) -> i32 {
         self.last_building_attack_frame
     }
 
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     pub(crate) const fn last_attacker_house_index(&self) -> i32 {
         self.last_attacker_house_index
     }
 
-    /// Trigger action 9 and Team script opcode 30 write state four directly.
-    #[cfg(test)]
+    /// Trigger action9 writes only House+250=4 at6DEAFF; the existing
+    /// strategy timer and its eventual FireSale/Hunt remain untouched.
     pub(crate) fn set_state_four(&mut self) {
         self.mode = 4;
     }
@@ -326,7 +327,7 @@ impl BaseReservationState {
         (self.min_x, self.min_y, self.width, self.height)
     }
 
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     pub(crate) fn perimeter_cells(&self) -> &[u32] {
         &self.perimeter_cells
     }
@@ -369,6 +370,17 @@ struct SpyGains {
     veteran_infantry: bool,
     /// `+0x2C0`: veteran units.
     veteran_units: bool,
+}
+
+/// The four class-local indices use ObjectCategory's registry order. Keeping
+/// their constructor value here also gives HouseState::default() native -1s.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+struct LastBuiltTypes([i32; 4]);
+
+impl Default for LastBuiltTypes {
+    fn default() -> Self {
+        Self([-1; 4])
+    }
 }
 
 /// Per-player game state.
@@ -482,7 +494,7 @@ pub struct HouseState {
     /// the lifecycle authority at construction, deletion, Limbo, Unlimbo and
     /// owner change.
     #[serde(default)]
-    pub(crate) tracking: crate::sim::house_tracking::HouseTracking,
+    pub tracking: crate::sim::house_tracking::HouseTracking,
     /// House+1FC: retained tech-tree invalidation, initially set by
     /// HouseCtor4F5746. Building Limbo445D99, GrandOpening446A61,
     /// DiscoveredBy44D61A and ChangeOwner44936E/449379 set it again.
@@ -596,6 +608,13 @@ pub struct HouseState {
     /// trigger mechanism; retaining this prerequisite does not implement it.
     #[serde(default)]
     building_capture_notified: bool,
+    /// Last type ArrayIndex in each ObjectCategory registry (not a count).
+    /// House4F57DE..4F57F0 initializes +26C/+270/+274/+278 to -1.
+    /// Record_Last_Built4FB6B0 writes before DontScore; Building discovery
+    /// 44D601 also writes its owner's building slot outside ScenarioInit.
+    /// Executed controls: tag_lifecycle --build-type-events (Steam3e81a617).
+    #[serde(default)]
+    last_built_types: LastBuiltTypes,
     /// House+54E0: the last building that left this House through an owner
     /// change. `BuildingClass::ChangeOwner` records it on the old owner after
     /// the Techno owner swap (`0x00448C70`) and forgets it on the new owner
@@ -640,12 +659,12 @@ pub struct HouseState {
     /// `+0x565C`), owned by `sim::ai_team_creation`. Persisted and hashed
     /// (schema v238).
     #[serde(default)]
-    pub(crate) team_creation: crate::sim::ai_team_creation::HouseTeamCreation,
+    pub team_creation: crate::sim::ai_team_creation::HouseTeamCreation,
     /// Native House bytes `+0x1EE`, `+0x1EF`, `+0x1F2`, and `+0x1F3`. All four
     /// persist, while Production, AutocreateAllowed, and AITriggersActive
     /// directly enter House CRC.
     #[serde(default)]
-    pub ai_activation: HouseAiActivationLatches,
+    ai_activation: HouseAiActivationLatches,
     /// The computer's production mode, building choice and naval latch
     /// (`HouseClass+0x1E4`, `+0x564C`, `+0x1F0`), owned by
     /// `sim::ai_base_building`. Persisted and hashed (schema v232).
@@ -748,6 +767,17 @@ impl Default for HouseSuperWeaponCells {
 }
 
 impl HouseState {
+    /// The shared House field writer for production4FB6B0 and discovery44D601.
+    /// Scoring, admission and notification effects stay with those callers.
+    pub(crate) fn record_built_type(&mut self, category: ObjectCategory, type_index: i32) {
+        self.last_built_types.0[category as usize] = type_index;
+    }
+
+    /// HasOccurred71EFEB..71F03D reads the incoming House's class-local slot.
+    pub(crate) fn last_built_type_index(&self, category: ObjectCategory) -> i32 {
+        self.last_built_types.0[category as usize]
+    }
+
     /// Original50D610 appends even when an earlier snapshot already exists.
     pub(crate) fn retain_initial_techno(&mut self, type_id: InternedId, cell: (i16, i16)) {
         self.initial_techno_records.push((type_id, cell));
@@ -791,12 +821,12 @@ impl HouseState {
         }
     }
 
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     pub(crate) fn allow_win_tag_state(&self) -> (i32, CdTimer) {
         (self.allow_win_tags, self.allow_win_timer)
     }
 
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     pub(crate) fn supply_allow_win_tag_state(&mut self, count: i32, timer: CdTimer) {
         self.allow_win_tags = count;
         self.allow_win_timer = timer;
@@ -830,7 +860,7 @@ impl HouseState {
         });
     }
 
-    pub(crate) fn native_unique_id(&self) -> Option<i32> {
+    pub fn native_unique_id(&self) -> Option<i32> {
         self.native_construction
             .map(|construction| construction.unique_id)
     }
@@ -859,11 +889,11 @@ impl HouseState {
         );
     }
 
-    pub(crate) const fn authored_edge(&self) -> i32 {
+    pub const fn authored_edge(&self) -> i32 {
         self.scenario_parameters.edge
     }
 
-    pub(crate) const fn scenario_team_ratios(&self) -> [i32; 3] {
+    pub const fn scenario_team_ratios(&self) -> [i32; 3] {
         [
             self.scenario_parameters.ratio_team_aircraft,
             self.scenario_parameters.ratio_team_infantry,
@@ -891,7 +921,7 @@ impl HouseState {
         }
     }
 
-    pub(crate) fn native_attack_timer(&self) -> Option<(CdTimer, i32)> {
+    pub fn native_attack_timer(&self) -> Option<(CdTimer, i32)> {
         self.native_construction
             .map(|construction| (construction.attack_timer, construction.initial_attack_delay))
     }
@@ -899,14 +929,14 @@ impl HouseState {
     /// The infantry self-heal count — `HouseClass+0x164`, the value
     /// `HasInfSelfHeal @ 0x0050D9C0` tests and `0x0070A534` draws the status
     /// pip from.
-    pub(crate) fn self_heal_infantry(&self) -> i32 {
+    pub fn self_heal_infantry(&self) -> i32 {
         self.self_heal_infantry
     }
 
     /// The unit self-heal count — `HouseClass+0x168`, the value
     /// `HasUnitSelfHeal @ 0x0050D9D0` tests and `0x0070A5A0` draws the status
     /// pip from.
-    pub(crate) fn self_heal_units(&self) -> i32 {
+    pub fn self_heal_units(&self) -> i32 {
         self.self_heal_units
     }
 
@@ -967,7 +997,7 @@ impl HouseState {
     }
 
     /// Retained input to original TEvent kind3, not current building ownership.
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     pub(crate) fn building_capture_notified(&self) -> bool {
         self.building_capture_notified
     }
@@ -1029,26 +1059,26 @@ impl HouseState {
 
     /// Infiltrate's factory arm on a `Factory=InfantryType` building
     /// (`0x0045751E`): this house's infantry start veteran from now on.
-    pub(crate) fn grant_veteran_infantry(&mut self) {
+    pub fn grant_veteran_infantry(&mut self) {
         self.spy_gains.veteran_infantry = true;
     }
 
     /// Infiltrate's factory arm on a `Factory=UnitType` building
     /// (`0x004574BD`): this house's vehicles (and undeploying buildings)
     /// start veteran from now on.
-    pub(crate) fn grant_veteran_units(&mut self) {
+    pub fn grant_veteran_units(&mut self) {
         self.spy_gains.veteran_units = true;
     }
 
     /// House `+0x2BF`, read by `InfantryClass::InitFromType` (`0x00517D2A`).
-    pub(crate) fn veteran_infantry(&self) -> bool {
+    pub fn veteran_infantry(&self) -> bool {
         self.spy_gains.veteran_infantry
     }
 
     /// House `+0x2C0`, read by the Unit constructor and InitFromType
     /// (`0x00735647`, `0x0074686A`) and `BuildingClass::Init_Managers`
     /// (`0x00442CE0`).
-    pub(crate) fn veteran_units(&self) -> bool {
+    pub fn veteran_units(&self) -> bool {
         self.spy_gains.veteran_units
     }
 
@@ -1103,7 +1133,7 @@ impl HouseState {
         self.discovered_by_current_house = true;
     }
 
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     pub(crate) fn discovered_by_current_house(&self) -> bool {
         self.discovered_by_current_house
     }
@@ -1112,6 +1142,10 @@ impl HouseState {
         if self.building_capture_notified {
             std::hash::Hash::hash(b"house-building-capture-notification-v1", hasher);
             std::hash::Hash::hash(&self.building_capture_notified, hasher);
+        }
+        if self.last_built_types != LastBuiltTypes::default() {
+            std::hash::Hash::hash(b"house-last-built-types-v1", hasher);
+            std::hash::Hash::hash(&self.last_built_types, hasher);
         }
     }
 
@@ -1141,14 +1175,14 @@ impl HouseState {
     }
     /// The HouseType this House was made from (HouseClass `+0x34`): its
     /// `Country=`, else its own name, which a map House shares with its type.
-    pub(crate) fn house_type_id(&self) -> InternedId {
+    pub fn house_type_id(&self) -> InternedId {
         self.country.unwrap_or(self.name)
     }
 
     /// Take the `Cost*Mult=` and `Speed*Mult=` of the House's type from
     /// `rules` ([`CountryCostMults`]); the scenario's House creation calls it
     /// once.
-    pub(crate) fn project_country_mults(
+    pub fn project_country_mults(
         &mut self,
         rules: &crate::rules::ruleset::RuleSet,
         interner: &crate::sim::intern::StringInterner,
@@ -1272,14 +1306,14 @@ impl HouseState {
         }
     }
 
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     pub(crate) fn set_repair_delay_for_test(&mut self, delay: f64) {
         self.difficulty_biases.repair_delay = NativeF64Bits::from_bits(delay.to_bits());
     }
 
     /// Immutable native scalar order: Firepower/Groundspeed/Airspeed/Armor/
     /// ROF/Cost/BuildTime/RepairDelay/BuildDelay. Used by startup receipts.
-    pub(crate) fn scalar_difficulty_biases(&self) -> [NativeF64Bits; 9] {
+    pub fn scalar_difficulty_biases(&self) -> [NativeF64Bits; 9] {
         let b = self.difficulty_biases;
         [
             b.firepower,
@@ -1305,7 +1339,7 @@ impl HouseState {
     }
 
     /// Active offline EventClass house-scan eligibility.
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     pub const fn event_dispatch_eligible(&self) -> bool {
         self.is_human || self.player_control
     }
@@ -1336,6 +1370,24 @@ impl HouseState {
         if self.repair_start_latch && self.repair_latch_timer.expired(frame as i32) {
             self.repair_start_latch = false;
         }
+    }
+
+    /// Read-only snapshot of the four independent activation bytes. HouseState
+    /// owns all runtime writes; consumers cannot replace the retained block.
+    pub(crate) const fn ai_activation(&self) -> HouseAiActivationLatches {
+        self.ai_activation
+    }
+
+    /// Active TAction74/75 stores only House+1F2 at6DF2FA/6DF339.
+    /// The House team timer, selector RNG and existing Teams remain with
+    /// ai_team_creation. Steam3e81a617; trigger_action_values --ai-activation.
+    pub(crate) fn set_ai_triggers_active(&mut self, active: bool) {
+        self.ai_activation.ai_triggers_active = active;
+    }
+
+    #[cfg(any(test, feature = "test-support"))]
+    pub(crate) fn set_ai_activation_for_test(&mut self, latches: HouseAiActivationLatches) {
+        self.ai_activation = latches;
     }
 
     /// Co-enable the three successful AI base-unit deploy latches.
@@ -1373,15 +1425,15 @@ impl HouseState {
         self.ai_activation.autocreate_allowed = true;
     }
 
-    pub(crate) const fn has_won(&self) -> bool {
+    pub const fn has_won(&self) -> bool {
         self.has_won
     }
 
-    pub(crate) const fn has_lost(&self) -> bool {
+    pub const fn has_lost(&self) -> bool {
         self.has_lost
     }
 
-    pub(crate) const fn outcome(&self) -> Option<HouseOutcomeState> {
+    pub const fn outcome(&self) -> Option<HouseOutcomeState> {
         self.outcome_state
     }
 
@@ -1394,12 +1446,7 @@ impl HouseState {
     /// (including input/audio effects) belongs to world::house_defeat.
     /// +1F6 is Flag_To_Die, not Draw; its unported network/DESTRUCT producer
     /// is outside this offline campaign/skirmish route.
-    pub(crate) fn accept_win_result(
-        &mut self,
-        frame: i32,
-        savour_frames: i32,
-        skip_timer: bool,
-    ) -> bool {
+    pub fn accept_win_result(&mut self, frame: i32, savour_frames: i32, skip_timer: bool) -> bool {
         if self.has_won || self.has_lost {
             return false;
         }
@@ -1458,7 +1505,7 @@ impl HouseState {
         outcome.exit_ready
     }
 
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     pub(crate) fn supply_outcome_state_for_test(
         &mut self,
         won: bool,
@@ -1521,6 +1568,7 @@ impl HouseState {
             waypoint_edge: 0,
             stats: MatchStatistics::default(),
             building_capture_notified: false,
+            last_built_types: LastBuiltTypes::default(),
             lost_building: None,
             spy_gains: SpyGains::default(),
             powered_unit_centers: 0,
@@ -1543,7 +1591,12 @@ impl HouseState {
     }
 }
 
-/// Post-match statistics accumulated for the end-of-match score screen.
+/// House accounting shared by loss-trigger predicates and the score screen.
+///
+/// HasOccurred15/16 (`71F03F`/`71F058`) reads the same cumulative loss
+/// counters that RecordKill updates, interpreted as signed32-bit values.
+/// These count admitted callbacks, including building captures, rather than
+/// objects currently absent from the map. The counters wrap on increment.
 ///
 /// gamemd sums per-victim-house kill tables into one number for the Kills
 /// column, adds its two loss counters for the Losses column, and sums its four
@@ -1558,9 +1611,9 @@ pub struct MatchStatistics {
     units_killed: u32,
     /// Buildings recorded as kills for this house, including captures.
     buildings_killed: u32,
-    /// Non-building objects of this house that were destroyed.
+    /// Admitted non-building loss callbacks for this house.
     units_lost: u32,
-    /// Buildings of this house that were destroyed.
+    /// Admitted building loss callbacks for this house, including captures.
     buildings_lost: u32,
     /// Objects of this house that left their factory, `DontScore=` types
     /// excepted: placed buildings and delivered units
@@ -1621,7 +1674,7 @@ impl MatchStatistics {
         self.built = self.built.wrapping_add(1);
     }
 
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     pub(crate) const fn from_totals_for_test(
         units_killed: u32,
         buildings_killed: u32,

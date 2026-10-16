@@ -234,7 +234,7 @@ impl Simulation {
 
     /// The native decoder corpus starts after+1AC at75B696. It supplies
     ///only that result, preserving this exact production response body.
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     pub(crate) fn replay_walk_admission_response(
         &mut self,
         id: u64,
@@ -557,8 +557,9 @@ impl Simulation {
             .get(id)
             .ok_or("retired Walk failed-path receiver")?;
         if actor.category() == EntityCategory::Infantry
-            && rules
-                .object(self.interner.resolve(actor.type_ref()))
+            && self
+                .interner
+                .object_type(actor.type_ref(), rules)
                 .is_some_and(|object| object.jumpjet)
         {
             return Err(
@@ -579,8 +580,9 @@ impl Simulation {
             .ok_or("retired Walk short-path receiver")?;
         if actor.category() == EntityCategory::Infantry
             && actor.navigation.path_replay.remaining_directions().len() < 4
-            && rules
-                .object(self.interner.resolve(actor.type_ref()))
+            && self
+                .interner
+                .object_type(actor.type_ref(), rules)
                 .is_some_and(|object| object.jumpjet)
         {
             return Err(

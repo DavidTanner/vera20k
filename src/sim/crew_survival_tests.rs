@@ -1038,8 +1038,9 @@ fn load_passengers(
 ) -> Vec<u64> {
     let (rx, ry, open_topped) = {
         let entity = sim.substrate.entities.get(transport).unwrap();
-        let open_topped = rules
-            .object(sim.interner.resolve(entity.type_ref()))
+        let open_topped = sim
+            .interner
+            .object_type(entity.type_ref(), rules)
             .is_some_and(|object| object.open_topped);
         (entity.position.rx(), entity.position.ry(), open_topped)
     };
@@ -1337,12 +1338,9 @@ fn a_selected_foreign_vehicle_selects_nothing() {
 /// receiver leave stock crew with native health ranges.
 #[test]
 fn retail_rules_crew_the_power_plant_and_the_mcv() {
-    let Some((rules_ini, art_ini)) = crate::rules::retail_ini_fixture::retail_rules_and_art()
-    else {
+    let Some(rules) = crate::rules::retail_ini_fixture::retail_unlayered_rules_with_art() else {
         return;
     };
-    let mut rules = RuleSet::from_ini_with_fixed_art_for_test(&rules_ini, &art_ini).unwrap();
-    rules.install_art_data(crate::rules::art_data::ArtRegistry::from_ini(&art_ini));
     let general = &rules.general;
     assert_eq!(
         [
@@ -1438,7 +1436,7 @@ fn retail_dustbowl_crews_scatter_off_their_wrecks() {
         .filter(|path| !path.trim().is_empty())
         .map(std::path::PathBuf::from)
         .unwrap_or_else(|| {
-            crate::util::config::GameConfig::load()
+            crate::test_fixture::game_config()
                 .expect("set RA2_DIR or provide config.toml for this ignored test")
                 .paths
                 .ra2_dir
@@ -1561,7 +1559,7 @@ fn retail_dustbowl_passengers_leave_their_destroyed_transports() {
         .filter(|path| !path.trim().is_empty())
         .map(std::path::PathBuf::from)
         .unwrap_or_else(|| {
-            crate::util::config::GameConfig::load()
+            crate::test_fixture::game_config()
                 .expect("set RA2_DIR or provide config.toml for this ignored test")
                 .paths
                 .ra2_dir

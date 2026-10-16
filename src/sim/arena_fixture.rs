@@ -10,7 +10,7 @@ use crate::sim::world::Simulation;
 /// Native LandType defaults are not buildable; an arena intended to host
 /// ordinary buildings must supply the retail Clear `Buildable=yes` input.
 /// Merge the scene last so its deliberate overrides still take precedence.
-pub(crate) fn clear_ground_ini(source: &str) -> crate::rules::ini_parser::IniFile {
+pub fn clear_ground_ini(source: &str) -> crate::rules::ini_parser::IniFile {
     let mut ini = crate::rules::ini_parser::IniFile::from_str("[Clear]\nBuildable=yes\n");
     ini.merge(&crate::rules::ini_parser::IniFile::from_str(source));
     ini
@@ -53,16 +53,60 @@ pub(crate) fn rival_arena_with_size(rules: &RuleSet, seed: u64, size: u16) -> Si
     sim
 }
 
+/// The rival-house arena with flat Water cells and the production rules'
+/// land semantics. Ships enter through ordinary Unlimbo; no movement tuning
+/// or missing-terrain placement bypass is needed.
+pub fn rival_water_arena(rules: &RuleSet, seed: u64, size: u16) -> Simulation {
+    use crate::rules::terrain_rules::LandType;
+
+    let mut sim = rival_arena_with_size(rules, seed, size);
+    let water = rules
+        .terrain_rules
+        .semantics_for_land_type(LandType::Water.as_index())
+        .expect("Water land semantics");
+    let mut terrain = clear_ground(size);
+    for y in 0..size {
+        for x in 0..size {
+            let cell = terrain.cell_mut(x, y).unwrap();
+            cell.land_type = LandType::Water.as_index();
+            cell.yr_cell_land_type = cell.land_type;
+            cell.terrain_class = water.terrain_class;
+            cell.speed_costs = water.speed_costs;
+            cell.is_water = water.water;
+            cell.is_cliff_like = water.cliff_like;
+            cell.is_rough = water.rough;
+            cell.is_road = water.road;
+            cell.ground_walk_blocked = water.ground_blocked;
+            cell.base_ground_walk_blocked = water.ground_blocked;
+            cell.base_build_blocked = !water.buildable;
+            cell.base_land_type = cell.land_type;
+            cell.base_yr_cell_land_type = cell.yr_cell_land_type;
+            cell.base_terrain_class = cell.terrain_class;
+            cell.base_speed_costs = cell.speed_costs;
+            cell.zone_type = crate::map::resolved_terrain::recalc_zone_type(
+                false,
+                None,
+                cell.land_type,
+                cell.speed_costs.wheel,
+                None,
+            );
+        }
+    }
+    sim.install_resolved_terrain_for_new_map(terrain);
+    assert!(sim.rebuild_dynamic_navigation(rules));
+    sim
+}
+
 /// Install the arena on `sim`, with commands executing on the next tick, and
 /// return its path grid.
-pub(crate) fn flat_arena(sim: &mut Simulation, rules: &RuleSet) -> PathGrid {
+pub fn flat_arena(sim: &mut Simulation, rules: &RuleSet) -> PathGrid {
     sim.input_delay_ticks = 0;
     flat_ground(sim, rules)
 }
 
 /// Install the arena's ground, playfield and navigation on `sim` and return
 /// its path grid.
-pub(crate) fn flat_ground(sim: &mut Simulation, rules: &RuleSet) -> PathGrid {
+pub fn flat_ground(sim: &mut Simulation, rules: &RuleSet) -> PathGrid {
     flat_ground_with_size(sim, rules, 32)
 }
 
@@ -109,8 +153,11 @@ fn clear_ground(size: u16) -> crate::map::resolved_terrain::ResolvedTerrainGrid 
 /// for those cells, generous LocalSize bounds, and the path grid. Inputs the
 /// fixture already installed are kept, including a zone grid built before a
 /// later terrain change; rebuild zones after editing cells.
-pub(crate) fn supply_native_map(sim: &mut Simulation) {
-    if sim.resolved_terrain.is_none() {
+pub fn supply_native_map(sim: &mut Simulation) {
+    use crate::sim::pathfinding::zone_map::ZoneGrid;
+
+    let supplies_ground = sim.resolved_terrain.is_none();
+    if supplies_ground {
         // A newly supplied map also owns its saved real CellClass values.
         // Keep already installed terrain and deliberate native priors intact.
         sim.install_resolved_terrain_for_new_map(clear_ground(64));
@@ -120,16 +167,24 @@ pub(crate) fn supply_native_map(sim: &mut Simulation) {
     let grid = PathGrid::from_resolved_terrain(terrain);
     let size = (i32::from(width), i32::from(height));
     if sim.zone_grid.is_none() {
-        sim.zone_grid = Some(
-            crate::sim::pathfinding::zone_map::ZoneGrid::build_with_native_bridge_geometry(
+        let build = || {
+            ZoneGrid::build_with_native_bridge_geometry(
                 &grid,
                 terrain,
                 &[],
                 width,
                 height,
                 Some(size),
-            ),
-        );
+            )
+        };
+        // Every supplied clear ground has the same zones; a fixture builds
+        // them once per test process and installs a copy.
+        static CLEAR_GROUND_ZONES: std::sync::OnceLock<ZoneGrid> = std::sync::OnceLock::new();
+        sim.zone_grid = Some(if supplies_ground {
+            CLEAR_GROUND_ZONES.get_or_init(build).clone()
+        } else {
+            build()
+        });
     }
     if sim.playfield_bounds.is_none() {
         let span = size.0.max(size.1);
@@ -144,3 +199,6 @@ pub(crate) fn supply_native_map(sim: &mut Simulation) {
     sim.playfield_size_height.get_or_insert(size.1);
     sim.install_fixture_path_grid(Some(&grid));
 }
+
+#[cfg(any(test, feature = "test-support"))]
+pub mod mastermind;

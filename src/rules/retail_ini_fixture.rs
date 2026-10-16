@@ -3,13 +3,13 @@
 //! The retail INIs are EA data, so they are never committed. `cargo run --bin
 //! extract-ini` fills `ini/` from a local Red Alert 2 / Yuri's Revenge install.
 //! Without them a retail-data test prints a `SKIPPED` line and passes, so a
-//! fresh clone's `cargo test -p vera20k --lib` is green. Set
+//! fresh clone's `cargo test --workspace --lib` is green. Set
 //! `VERA20K_REQUIRE_RETAIL_INI=1` to make a missing file fail instead; do that
 //! in any checkout whose results you rely on for parity. Archive-backed fixture
 //! checks instead use explicit `RA2_DIR` and `VERA20K_REQUIRE_RETAIL_ASSETS=1`.
 
 use std::ffi::OsStr;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use crate::assets::asset_manager::{AssetManager, MediaArchiveMode};
 use crate::rules::ini_parser::IniFile;
@@ -18,7 +18,7 @@ use crate::rules::ini_parser::IniFile;
 /// Callers explicitly supply E1 Image=GI and use the existing ART reader and
 /// sequence binder. These are input records, not native replay goldens. The
 /// original reader/Ready receipt is in anytown_damage/foot_missions.json.
-pub(crate) const GI_ART_EXCERPT: &str = "\
+pub const GI_ART_EXCERPT: &str = "\
 [GI]
 Sequence=GISequence
 Crawls=yes
@@ -91,7 +91,7 @@ pub(crate) const REQUIRE_RETAIL_ASSETS_ENV: &str = "VERA20K_REQUIRE_RETAIL_ASSET
 /// One mechanical export of the original registered UnitReady consumers.
 /// The factory oracle owns selection and verifies this export against its
 /// complete native receipts; component tests only read the selected state.
-pub(crate) fn factory_unit_ready_native() -> serde_json::Value {
+pub fn factory_unit_ready_native() -> serde_json::Value {
     let fixture: serde_json::Value = serde_json::from_str(crate::test_fixture::text(
         "tools/spatial_oracle/_factory_infantry_output/fixtures/unit-ready-consumer-rust.json",
     ))
@@ -111,7 +111,7 @@ fn required(value: Option<&OsStr>) -> bool {
 }
 
 fn retail_ini_path(name: &str) -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("ini").join(name)
+    crate::test_fixture::checkout_root().join("ini").join(name)
 }
 
 pub(crate) fn require_retail_ini() -> bool {
@@ -146,16 +146,78 @@ pub(crate) fn retail_ini_text(name: &str) -> Option<String> {
 }
 
 /// `ini/<name>` parsed, or `None` when absent (see [`retail_ini_bytes`]).
-pub(crate) fn retail_ini(name: &str) -> Option<IniFile> {
-    let bytes = retail_ini_bytes(name)?;
-    Some(
-        IniFile::from_bytes(&bytes).unwrap_or_else(|error| panic!("retail {name} parses: {error}")),
-    )
+/// Parsed once per test process; each caller gets its own copy.
+pub fn retail_ini(name: &str) -> Option<IniFile> {
+    once_per_process(name.to_owned(), || {
+        let bytes = retail_ini_bytes(name)?;
+        Some(
+            IniFile::from_bytes(&bytes)
+                .unwrap_or_else(|error| panic!("retail {name} parses: {error}")),
+        )
+    })
+}
+
+/// A copy of the value `load` returns for `key`, loaded once per test process.
+///
+/// Retail fixtures read only the files under `ini/` and `RA2_DIR`, which do
+/// not change while tests run, so every later load would build the same value.
+/// Concurrent first callers wait for one load; a load that panics is retried.
+fn once_per_process<K, T>(key: K, load: impl FnOnce() -> Option<T>) -> Option<T>
+where
+    K: Ord + Send + 'static,
+    T: Clone + Send + Sync + 'static,
+{
+    use std::any::{Any, TypeId};
+    use std::collections::BTreeMap;
+    use std::sync::{Arc, Mutex, OnceLock, PoisonError};
+
+    type Slots = BTreeMap<TypeId, Box<dyn Any + Send>>;
+    static SLOTS: Mutex<Slots> = Mutex::new(BTreeMap::new());
+    let slot = {
+        let mut slots = SLOTS.lock().unwrap_or_else(PoisonError::into_inner);
+        let by_key = slots
+            .entry(TypeId::of::<(K, T)>())
+            .or_insert_with(|| Box::new(BTreeMap::<K, Arc<OnceLock<Option<T>>>>::new()))
+            .downcast_mut::<BTreeMap<K, Arc<OnceLock<Option<T>>>>>()
+            .expect("slot map type follows its TypeId");
+        Arc::clone(by_key.entry(key).or_default())
+    };
+    slot.get_or_init(load).clone()
 }
 
 /// Retail `rulesmd.ini` and `artmd.ini` parsed, or `None` when either is absent.
-pub(crate) fn retail_rules_and_art() -> Option<(IniFile, IniFile)> {
+pub fn retail_rules_and_art() -> Option<(IniFile, IniFile)> {
     Some((retail_ini("rulesmd.ini")?, retail_ini("artmd.ini")?))
+}
+
+/// [`retail_rules_and_art`] read by one unlayered pass
+/// ([`RuleSet::from_ini_with_fixed_art_for_test`]), without the scenario
+/// layers of [`retail_battle_rules`]. Built once per test process; each caller
+/// gets its own copy.
+///
+/// [`RuleSet::from_ini_with_fixed_art_for_test`]: crate::rules::ruleset::RuleSet::from_ini_with_fixed_art_for_test
+pub fn retail_unlayered_rules() -> Option<crate::rules::ruleset::RuleSet> {
+    once_per_process("rulesmd.ini over artmd.ini", || {
+        let (ini, art) = retail_rules_and_art()?;
+        Some(
+            crate::rules::ruleset::RuleSet::from_ini_with_fixed_art_for_test(&ini, &art)
+                .expect("retail rules"),
+        )
+    })
+    .map(crate::rules::ruleset::RuleSet::with_fresh_serial)
+}
+
+/// [`retail_unlayered_rules`] with `artmd.ini`'s art data installed, as the
+/// app installs it before a scenario starts.
+pub fn retail_unlayered_rules_with_art() -> Option<crate::rules::ruleset::RuleSet> {
+    once_per_process("rulesmd.ini over artmd.ini, with art data", || {
+        let mut rules = retail_unlayered_rules()?;
+        rules.install_art_data(crate::rules::art_data::ArtRegistry::from_ini(&retail_ini(
+            "artmd.ini",
+        )?));
+        Some(rules)
+    })
+    .map(crate::rules::ruleset::RuleSet::with_fresh_serial)
 }
 
 fn open_retail_assets(
@@ -186,18 +248,42 @@ fn open_retail_assets(
 /// Active-YR archive fixtures use explicit RA2_DIR only, never config fallback.
 /// An absent variable skips unless REQUIRE_RETAIL_ASSETS is enabled; an explicit
 /// invalid install always fails. REQUIRE_RETAIL_INI still means extracted files.
-pub(crate) fn retail_assets() -> Option<(PathBuf, AssetManager)> {
-    let result = open_retail_assets(
-        std::env::var_os("RA2_DIR").as_deref(),
-        required(std::env::var_os(REQUIRE_RETAIL_ASSETS_ENV).as_deref()),
-    )
-    .unwrap_or_else(|error| panic!("{error}"));
+/// The install is opened once per test process; each caller gets its own copy.
+pub fn retail_assets() -> Option<(PathBuf, AssetManager)> {
+    let root = std::env::var_os("RA2_DIR");
+    let required = required(std::env::var_os(REQUIRE_RETAIL_ASSETS_ENV).as_deref());
+    let result = once_per_process(("retail install", root.clone(), required), || {
+        open_retail_assets(root.as_deref(), required).unwrap_or_else(|error| panic!("{error}"))
+    });
     if result.is_none() {
         eprintln!(
             "SKIPPED: archive fixture needs RA2_DIR; set {REQUIRE_RETAIL_ASSETS_ENV}=1 to require it"
         );
     }
     result
+}
+
+/// [`retail_assets`] as a Battle launch holds it: after the shell archives
+/// register and the app's Choose Map scan registers the loose YRO scenario
+/// archives. The scan parses every listed map, so it runs once per test
+/// process; each caller gets its own copy.
+#[cfg(any(test, feature = "test-support"))]
+pub(crate) fn retail_scenario_assets() -> Option<(PathBuf, AssetManager)> {
+    let root = std::env::var_os("RA2_DIR");
+    let required = required(std::env::var_os(REQUIRE_RETAIL_ASSETS_ENV).as_deref());
+    once_per_process(("after the Choose Map scan", root, required), || {
+        let (root, mut assets) = retail_assets()?;
+        assets
+            .register_neutral_archives()
+            .expect("register retail shell archives");
+        crate::map::scenario_sources::list_skirmish_scenario_records_with_assets(
+            &root,
+            &mut assets,
+            None,
+        )
+        .expect("register retail scenario archives");
+        Some((root, assets))
+    })
 }
 
 /// One file's bytes from that same archive stack (for example a campaign map
@@ -212,16 +298,17 @@ pub(crate) fn retail_archive_bytes(name: &str) -> Option<Vec<u8>> {
 }
 
 /// Authored root text and final scenario fields are deliberately separate.
-pub(crate) struct RetailBattleRules {
+#[derive(Clone)]
+pub struct RetailBattleRules {
     pub(crate) authored_rules: IniFile,
-    pub(crate) fixed_art: IniFile,
-    pub(crate) processed_rules: IniFile,
-    pub(crate) rules: crate::rules::ruleset::RuleSet,
+    pub fixed_art: IniFile,
+    pub processed_rules: IniFile,
+    pub rules: crate::rules::ruleset::RuleSet,
 }
 
 /// Select once and retain the production process owner. A present but malformed
 /// optional input cannot serve as successful retail-fixture evidence.
-pub(crate) fn retail_rules_owner(
+pub fn retail_rules_owner(
     assets: &AssetManager,
 ) -> crate::rules::process_owner::NativeRulesProcessOwner {
     use crate::rules::retail_sources::RetailRulesSources;
@@ -256,54 +343,67 @@ pub(crate) fn retail_rules_owner(
 /// No claims about campaign, TMCJ4F, LANGRULE Digest or other maps/modes.
 // Keep the fixture's upward map calls explicitly test-gated: the source-level
 // dependency guard scans leaf files without inheriting rules/mod.rs's gate.
-#[cfg(test)]
-pub(crate) fn retail_battle_rules() -> Option<RetailBattleRules> {
+#[cfg(any(test, feature = "test-support"))]
+pub fn retail_battle_rules() -> Option<RetailBattleRules> {
     retail_battle_rules_for_map("Hills.mmx")
 }
 
 /// The same physical retail startup/mode/map source owner for a requested
 /// stock Battle map. Rules and the fixed ART snapshot keep their production
 /// selection and reader order; this does not load the app's asset bindings.
-#[cfg(test)]
-pub(crate) fn retail_battle_rules_for_map(map_name: &str) -> Option<RetailBattleRules> {
+#[cfg(any(test, feature = "test-support"))]
+pub fn retail_battle_rules_for_map(map_name: &str) -> Option<RetailBattleRules> {
     retail_mode_rules_for_map(1, map_name)
 }
 
 /// An explicit authored override merged into Hills' map before the existing
 /// production pass. Keep startup, mode and map chronology intact: reparsing
 /// a projected merged INI loses the startup AudioVisual defaults/postpass.
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 pub(crate) fn retail_battle_rules_with_map_patch(patch: &IniFile) -> Option<RetailBattleRules> {
     retail_mode_rules_for_map_impl(1, "Hills.mmx", Some(patch))
 }
 
 /// [`retail_battle_rules_for_map`] for another retail skirmish mode, by its
 /// roster id.
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 pub(crate) fn retail_mode_rules_for_map(mode_id: i32, map_name: &str) -> Option<RetailBattleRules> {
     retail_mode_rules_for_map_impl(mode_id, map_name, None)
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 fn retail_mode_rules_for_map_impl(
+    mode_id: i32,
+    map_name: &str,
+    patch: Option<&IniFile>,
+) -> Option<RetailBattleRules> {
+    // Patched loads are not kept: callers patch different keys, so a copy
+    // would only hold memory.
+    if let Some(patch) = patch {
+        return load_retail_mode_rules_for_map(mode_id, map_name, Some(patch));
+    }
+    once_per_process((mode_id, map_name.to_owned()), || {
+        load_retail_mode_rules_for_map(mode_id, map_name, None)
+    })
+    .map(|loaded| RetailBattleRules {
+        rules: loaded.rules.with_fresh_serial(),
+        ..loaded
+    })
+}
+
+#[cfg(any(test, feature = "test-support"))]
+fn load_retail_mode_rules_for_map(
     mode_id: i32,
     map_name: &str,
     patch: Option<&IniFile>,
 ) -> Option<RetailBattleRules> {
     use crate::rules::retail_sources::select_ini;
 
-    let (root, mut assets) = retail_assets()?;
-    let mut owner = retail_rules_owner(&assets);
+    // The owner selects its startup sources before the shell and Choose Map
+    // archives register.
+    let mut owner = retail_rules_owner(&retail_assets()?.1);
     let authored_rules = owner.selected_rules_root().clone();
-    assets
-        .register_neutral_archives()
-        .expect("register retail shell archives");
-    crate::map::scenario_sources::list_skirmish_scenario_records_with_assets(
-        &root,
-        &mut assets,
-        None,
-    )
-    .expect("register retail scenario archives");
+    let (root, mut assets) = retail_scenario_assets()?;
     let modes = crate::skirmish_modes::skirmish_modes_from_assets(&assets)
         .expect("load retail mode roster");
     let mode = crate::skirmish_modes::mode_by_id(&modes, mode_id).expect("stock skirmish mode");
@@ -340,7 +440,7 @@ fn retail_mode_rules_for_map_impl(
 }
 
 // The same explicit boundary covers the map-owned temporary-directory helper.
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 #[test]
 fn archive_gate_requires_only_explicit_inputs_without_environment_mutation() {
     assert!(open_retail_assets(None, false).unwrap().is_none());

@@ -20,7 +20,7 @@ impl Simulation {
     /// factory. AircraftType changes them to Winged/Fly; Naval overrides both.
     /// Source zone uses physical Location, and the clicked cell's bridge flag.
     /// Native FNPC selection reads binary frame; it makes no RNG draw.
-    pub(crate) fn factory_rally_cell_input(
+    pub fn factory_rally_cell_input(
         &self,
         id: u64,
         clicked: (u16, u16),
@@ -29,7 +29,7 @@ impl Simulation {
         let Some(entity) = self.substrate.entities.get(id) else {
             return Ok(None);
         };
-        let Some(object) = rules.object(self.interner.resolve(entity.type_ref())) else {
+        let Some(object) = self.interner.object_type(entity.type_ref(), rules) else {
             return Ok(None);
         };
         let terrain = self
@@ -59,7 +59,7 @@ impl Simulation {
             &RallyCellClick {
                 clicked: (clicked.0 as i16, clicked.1 as i16),
                 location: crate::sim::movement::ground_pose::position_world_coord(&entity.position),
-                factory: object.factory,
+                factory: object.factory_type(),
                 naval: object.naval,
             },
         )

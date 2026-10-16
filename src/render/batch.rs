@@ -97,7 +97,8 @@ pub struct SpriteInstance {
     pub palette_light: crate::render::palette_light::PaletteLight,
     /// For a palette-indexed SHP atlas page, the palette row its indices
     /// resolve through, plus one (`ShpSpriteEntry::source_palette`); 0 samples
-    /// an RGBA page.
+    /// an RGBA page. Voxel pages use 0 for the theater/house palette and
+    /// 1 for the native global UNITSNO palette, bypassing house substitution.
     pub source_palette: u32,
 }
 
@@ -1754,13 +1755,14 @@ impl BatchRenderer {
     /// without recreating the bind group.
     pub fn create_updatable_texture(
         &self,
-        gpu: &GpuContext,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
         rgba_data: &[u8],
         width: u32,
         height: u32,
     ) -> (wgpu::Texture, BatchTexture) {
-        let texture: wgpu::Texture = gpu.device.create_texture_with_data(
-            &gpu.queue,
+        let texture: wgpu::Texture = device.create_texture_with_data(
+            queue,
             &wgpu::TextureDescriptor {
                 label: Some("Updatable Batch Texture"),
                 size: wgpu::Extent3d {
@@ -1780,32 +1782,31 @@ impl BatchRenderer {
         );
 
         let view: wgpu::TextureView = texture.create_view(&Default::default());
-        let sampler: wgpu::Sampler = gpu.device.create_sampler(&wgpu::SamplerDescriptor {
+        let sampler: wgpu::Sampler = device.create_sampler(&wgpu::SamplerDescriptor {
             label: Some("Updatable Batch Sampler"),
             mag_filter: wgpu::FilterMode::Nearest,
             min_filter: wgpu::FilterMode::Nearest,
             ..Default::default()
         });
 
-        let bind_group: wgpu::BindGroup =
-            gpu.device.create_bind_group(&wgpu::BindGroupDescriptor {
-                label: Some("Updatable Batch Texture BG"),
-                layout: &self.texture_bind_group_layout,
-                entries: &[
-                    wgpu::BindGroupEntry {
-                        binding: 0,
-                        resource: wgpu::BindingResource::TextureView(&view),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 1,
-                        resource: wgpu::BindingResource::Sampler(&sampler),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 3,
-                        resource: wgpu::BindingResource::TextureView(&self.default_source_indices),
-                    },
-                ],
-            });
+        let bind_group: wgpu::BindGroup = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("Updatable Batch Texture BG"),
+            layout: &self.texture_bind_group_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(&sampler),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 3,
+                    resource: wgpu::BindingResource::TextureView(&self.default_source_indices),
+                },
+            ],
+        });
 
         let batch_tex = BatchTexture {
             bind_group,
@@ -1841,15 +1842,6 @@ impl BatchRenderer {
     /// The color texture view and depth texture view must have identical UV layout
     /// (same atlas dimensions and tile placements) so the shader can sample both
     /// at the same UV coordinates.
-    pub fn create_zdepth_bind_group(
-        &self,
-        gpu: &GpuContext,
-        color_view: &wgpu::TextureView,
-        depth_view: &wgpu::TextureView,
-    ) -> wgpu::BindGroup {
-        self.create_zdepth_bind_group_on_device(&gpu.device, color_view, depth_view)
-    }
-
     pub(crate) fn create_zdepth_bind_group_on_device(
         &self,
         device: &wgpu::Device,
@@ -1882,10 +1874,10 @@ impl BatchRenderer {
         })
     }
 
-    /// Draw instances with the Z-depth pipeline (per-pixel frag_depth, Less compare).
+    /// Draw instances with the TMP Z-depth pipeline (per-pixel depth, LessEqual).
     ///
     /// Used for terrain tiles with TMP Z-data. The bind_group must be created via
-    /// `create_zdepth_bind_group()` with matching color + depth atlas textures.
+    /// `create_zdepth_bind_group_on_device()` with matching color + depth atlas textures.
     pub fn draw_with_buffer_zdepth<'a>(
         &'a self,
         render_pass: &mut wgpu::RenderPass<'a>,

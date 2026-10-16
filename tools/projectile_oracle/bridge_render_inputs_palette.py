@@ -15,11 +15,11 @@ class PaletteReader(module.BulletReader):
  def alloc(self,n):
   out=self.cursor;self.cursor+=(n+15)&~15;assert self.cursor<0x28000000;return out
  def hook(self,u,p,n,d):
-  if p==0x7c8e17:
+  if p in (0x7c8e17,0x7c9430):
    self.ret(self.alloc(self.read32(u.reg_read(UC_X86_REG_ESP)+4)));return
   super().hook(u,p,n,d)
 
-def initialize(m):
+def initialize(m, *, ordinary=False, early_temperat=False):
  u=m.u;surface=m.alloc(0x40);vtable=m.alloc(0x100)
  u.mem_write(surface,dwords(vtable));u.mem_write(surface+0x10,dwords(2))
  u.mem_write(vtable+0x70,dwords(0x411630));u.mem_write(0x887308,dwords(surface))
@@ -31,11 +31,64 @@ def initialize(m):
   u.mem_write(addr,dwords(value))
  u.mem_write(0x8a0de8,struct.pack('<2H',0x7bef,0xf7de))
  u.reg_write(UC_X86_REG_ESP,SP);u.reg_write(UC_X86_REG_EBX,0)
+ if early_temperat:
+  # Placement87F6C4 needs Init_Game's actual destination palette before its
+  # constructor. Historical modes retain their allocation and startup order.
+  run_checked(u,0x52BC49,0x52BCBB,
+   required_addresses=(0x52BC55,0x52BCA1))
+  u.reg_write(UC_X86_REG_ESP,SP);u.reg_write(UC_X86_REG_EBX,0)
  # Full original calls, not injected Convert fields or shade tables.
  run_checked(u,0x52be61,0x52bfce,count=100000000,timeout_us=120000000,
   required_addresses=(0x52be6d,0x52bf26,0x48e740,0x48ebf0,0x4bbb00))
  assert u.reg_read(UC_X86_REG_ESP)==SP
+ if ordinary:
+  # The ordinary Cell ore caller reads87F6B8, not an ISO-source Cell
+  # LightConvert. Preserve default callers' allocation/order exactly.
+  # Original Init_Game loads literal TEMPERAT.PAL, expands it, then builds
+  # the independent basic Convert table before publishing this global.
+  u.reg_write(UC_X86_REG_ESP,SP);u.reg_write(UC_X86_REG_EBX,0)
+  run_checked(u,0x52BC49,0x52BCBB,
+   required_addresses=(0x52BC55,0x52BCA1))
+  u.reg_write(UC_X86_REG_ESP,SP);u.reg_write(UC_X86_REG_EBX,0)
+  run_checked(u,0x52BE0F,0x52BE48,count=100000000,timeout_us=120000000,
+   required_addresses=(0x52BE36,0x48E740,0x4BBB00,0x48EBF0,0x52BE3B))
+  assert u.reg_read(UC_X86_REG_ESP)==SP
  return m
+
+def color_scheme_palette(name='LightGold'):
+ """Native selected temperate palette expansion and whole ColorScheme ctor.
+
+ The selected theater/name and spare registry are supplied component inputs;
+ no SHP Convert or reconstructed table initializes the voxel Convert.
+ """
+ from tools.procedural_drawing_oracle.house_color import parse_native_color
+ root=module.assets_root();raw=(root/'RULESMD.INI').read_bytes()
+ sections,_=module.lexical(raw,{'Colors'});token=sections['Colors'][name]
+ hsv=parse_native_color(name,token)
+ m=initialize(PaletteReader({}));u=m.u
+ source=m.alloc(768);unit=(root/'UNITTEM.PAL').read_bytes();assert len(unit)==768
+ u.mem_write(source,unit);u.reg_write(UC_X86_REG_ESI,source)
+ u.reg_write(UC_X86_REG_ESP,SP);u.reg_write(UC_X86_REG_EDI,0)
+ run_checked(u,0x534cd3,0x534d31,required_addresses=(0x6260d0,))
+ # Same paired1/53 order as66D444/66D45B, for this selected name only.
+ u.mem_write(0xb054d0,dwords(0x7eb6d4,m.alloc(4096),1024,1,0,10))
+ color=m.alloc(3);u.mem_write(color,hsv)
+ for shades in (1,53):
+  scheme=m.alloc(0x33c)
+  m.invoke(0x68c710,scheme,(m.cstring(name),color,0x886380,0x885780,shades,1),
+           timeout_us=120000000)
+ assert m.read32(0xb054e0)==2
+ scheme=m.read32(m.read32(0xb054d4)+4);convert=m.read32(scheme+0x30c)
+ table=m.read32(convert+0x170);shades=m.read32(convert+0x16c)
+ metadata=dict(name=name,lexical=token,hsv=list(hsv),color_index=1,shade_count=shades,
+  rulesmd_sha256=hashlib.sha256(raw).hexdigest(),
+  palette=dict(name='UNITTEM.PAL',bytes=len(unit),sha256=hashlib.sha256(unit).hexdigest()),
+  expanded_palette_sha256=hashlib.sha256(bytes(u.mem_read(0x886380,768))).hexdigest(),
+  table_sha256=hashlib.sha256(bytes(u.mem_read(table,shades*512))).hexdigest())
+ # Only actual initialized output storage crosses into the existing raster VM.
+ globals_=[(p,bytes(u.mem_read(p,n))) for p,n in
+  ((0x8a0dd0,28),(0xb054d0,24),(0x88a080,24),(0x89ecf8,24))]
+ return (bytes(u.mem_read(0x24000000,m.cursor-0x24000000)),globals_),metadata
 
 def generate():
  m=initialize(PaletteReader({}));u=m.u;rows=[]

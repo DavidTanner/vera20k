@@ -152,7 +152,7 @@ impl EntryCell {
             Self::Live(cell) => crate::sim::cell_rect::retained_cell_is_in_playfield(
                 cell,
                 live.sim.playfield_bounds,
-                live.terrain(),
+                &crate::map::resolved_terrain::NativeCellQuery::canonical(live.terrain()),
             ),
         }
     }
@@ -617,8 +617,9 @@ fn classify_entry(
         .get(id)
         .ok_or("repair admission retired entity")?;
     let obj = live
-        .rules
-        .object(live.sim.interner.resolve(e.type_ref()))
+        .sim
+        .interner
+        .object_type(e.type_ref(), live.rules)
         .ok_or("repair admission missing ObjectType")?;
     if e.category() == EntityCategory::Structure {
         return building_impassable(live, e, obj, cell).map(|hard| if hard { 7 } else { 0 });
@@ -711,7 +712,7 @@ impl<'a> EntryMover<'a> {
 
     fn object_type(&self, live: &EntryReadContext<'a>, id: InternedId) -> Option<&'a ObjectType> {
         self.types
-            .get_or(id, || live.rules.object(live.sim.interner.resolve(id)))
+            .get_or(id, || live.sim.interner.object_type(id, live.rules))
     }
 
     fn allied_with(&self, live: &EntryReadContext<'_>, house: InternedId) -> bool {
@@ -801,8 +802,9 @@ impl Simulation {
                 )
             })
             .ok_or("Foot entry requires a live Infantry or Unit receiver")?;
-        let obj = rules
-            .object(self.interner.resolve(e.type_ref()))
+        let obj = self
+            .interner
+            .object_type(e.type_ref(), rules)
             .ok_or("repair admission missing ObjectType")?;
         let mover = EntryMover::new(&live, id, e, obj);
         Ok(FootEntryReceiver { live, mover })
@@ -1569,6 +1571,7 @@ fn terrain_impassable(
             Some(speed),
             None,
             None,
+            None,
         ) {
             return Ok(true);
         }
@@ -1593,6 +1596,7 @@ fn building_impassable(
             crate::sim::build_site::building_speed_type(obj),
             Some(obj),
             Some(e.owner()),
+            None,
         )
     } else {
         crate::sim::build_site::can_place_building_at(
@@ -1602,6 +1606,7 @@ fn building_impassable(
             obj,
             live.coord(cell),
             Some(e.owner()),
+            None,
         )
     };
     Ok(!admitted)

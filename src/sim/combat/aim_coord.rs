@@ -26,7 +26,7 @@ use crate::sim::world::Simulation;
 /// Cell+58 uses the existing read-only structural bridge coordinate owner.
 /// Its mapless/off-map fallback remains an existing coverage limit; retained
 /// shared-Dummy Cell identity belongs to the separate Cell Attack chain.
-pub(crate) fn led_target_coordinate(
+pub fn led_target_coordinate(
     world: &Simulation,
     rules: &RuleSet,
     firer_id: u64,
@@ -63,7 +63,7 @@ pub(crate) fn led_target_coordinate(
 
     // 70BD44..70BD74 samples the live Foot getter, Object::Distance, then
     // GetCurrentWeapon.
-    let target_type = rules.object(world.interner.resolve(target.type_ref()));
+    let target_type = world.interner.object_type(target.type_ref(), rules);
     let target_speed = owner_current_speed(
         target,
         target_type,
@@ -81,8 +81,9 @@ pub(crate) fn led_target_coordinate(
         [target_coords.x, target_coords.y, target_coords.z],
         None,
     );
-    let Some(current_weapon) = rules
-        .object(world.interner.resolve(firer.type_ref()))
+    let Some(current_weapon) = world
+        .interner
+        .object_type(firer.type_ref(), rules)
         .and_then(|firer_type| {
             super::combat_weapon::current_weapon(
                 firer,

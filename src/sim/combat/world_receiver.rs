@@ -1,13 +1,17 @@
 //! World-owned synchronous receiver execution.
 //!
 //! Gameplay authorities stay in Simulation across nested receiver/lifecycle
-//! calls. Only recursion guards and ordered publication receipts are local.
+//! calls. Local contexts retain call arguments, recursion guards and ordered
+//! publication receipts; they never own competing gameplay state.
 
 use super::world_fire::{object_get_coords, retaliation_reaches};
 use super::*;
 use crate::sim::movement::{DamageRetaliation, ScatterFlags};
 use crate::sim::world::techno_ai_cloak::emit_configured_cloak_sound;
 use crate::sim::world::{FrameEffects, Simulation};
+
+#[path = "area_rocker.rs"]
+mod area_rocker;
 
 /// FootClass::AI `0x004DA554..0x004DA635`: after the whole Techno AI and
 /// before locomotor Process, read this Foot's current cell and synchronously
@@ -206,8 +210,8 @@ pub(crate) fn collect_area(
 /// `Apply_area_damage @ 0x00489280` outside a damage transaction (an
 /// anim's landing at `0x00423EAB`, the Psychic Dominator at `0x0053B16B`, a
 /// bomb's fuse at `0x006FA712`):
-/// the area's receivers around `impact` committed in order, then its bridge
-/// continuation (`0x00489E87`). `origin` is the source object, the source
+/// the area's receivers around `impact` committed in order, then area rocking
+/// (`0x00489B49`) and bridge damage (`0x00489E87`). `origin` is the source object, the source
 /// house and the warhead's id. Returns whether a bridge changed.
 pub(crate) fn apply_area_damage(
     world: &mut Simulation,
@@ -232,15 +236,11 @@ pub(crate) fn apply_area_damage(
     );
     let receipt =
         world.commit_noncombat_aoe_receivers(rules, overlay_registry, &area.aoe.receivers, effects);
-    let bridge_continued = continue_area_bridge_damage(
+    let bridge_continued = continue_area_damage(
         world,
         rules,
         overlay_registry,
-        area.cell,
-        damage,
-        origin.2,
-        area.z_leptons,
-        area.routed_wall,
+        area.continuation,
         receipt.area_result.expect("area receiver receipt"),
         effects,
     );
@@ -249,7 +249,7 @@ pub(crate) fn apply_area_damage(
 
 /// [`apply_area_damage`] inside a damage transaction (a TerrainClass death's
 /// C4 at `0x0071BABF`, a dying carrier's bomb at `0x0070267F`): the receivers
-/// commit in `run`, then the bridge continuation. Their effects and pings go
+/// commit in `run`, then area rocking and bridge damage. Their effects and pings go
 /// back to the receiver that set the area off.
 pub(crate) fn apply_area_damage_in_run(
     world: &mut Simulation,
@@ -272,52 +272,63 @@ pub(crate) fn apply_area_damage_in_run(
     );
     let mut effects = DeathEffects::default();
     append_fixture_tiberium(world, &mut effects.tiberium_reduction_requests);
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     effects.wall_mutations.extend(area.aoe.wall_mutations);
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     effects
         .cell_target_detaches
         .extend(area.aoe.cell_target_detaches);
     let (nested, pings, area_result) =
         commit_area_with_dispatch(world, run, &area.aoe.receivers, rules, overlay_registry);
     effects.append(nested);
-    effects.bridge_state_changed |= continue_area_bridge_damage(
+    effects.bridge_state_changed |= continue_area_damage(
         world,
         rules,
         overlay_registry,
-        area.cell,
-        damage,
-        origin.2,
-        area.z_leptons,
-        area.routed_wall,
+        area.continuation,
         area_result,
         run.effects(),
     );
     (effects, pings)
 }
 
-/// The first half of `Apply_area_damage @ 0x00489280` at `impact`, shared by
-/// the bullet's ordinary arm and the two entry points above: the impact
-/// cell's wall route, then the receivers collected around that cell, the air
-/// query at the impact's sub-cell and height.
-struct AreaAtImpact {
+/// Original AreaDamage call arguments and the layer selected at489357..48958D,
+/// retained across synchronous receiver callbacks. The source is the original
+/// argument, even if a callback clears the owning Bullet's Owner pointer.
+#[derive(Clone, Copy)]
+struct AreaDamageContinuation<'r> {
     cell: (u16, u16),
-    z_leptons: i32,
+    impact: ProjectileCoord,
+    damage: i32,
+    source_id: u64,
+    warhead: &'r WarheadType,
+    warhead_ref: InternedId,
+    object_list_layer: crate::sim::map::bridge_topology::ListLayer,
     routed_wall: bool,
+    /// The entry gate precedes every receiver callback. A nested effect must
+    /// not replace this call's arguments or its admitted/selected-layer state.
+    entered: bool,
+}
+
+struct AreaAtImpact<'r> {
+    continuation: AreaDamageContinuation<'r>,
     aoe: combat_aoe::AoEDamageResult,
 }
 
-fn collect_area_at(
+/// The shared first half of Apply_area_damage489280: wall routing and
+/// receiver collection, including the air query at the exact impact.
+fn collect_area_at<'r>(
     world: &mut Simulation,
     rules: &RuleSet,
     overlay_registry: Option<&OverlayTypeRegistry>,
     impact: ProjectileCoord,
     damage: i32,
-    warhead: &WarheadType,
+    warhead: &'r WarheadType,
     origin: (u64, Option<InternedId>, InternedId),
-) -> AreaAtImpact {
+) -> AreaAtImpact<'r> {
     let (rx, ry, sub_x, sub_y, z_leptons) = projectile_impact_cell(impact);
-    let routed_wall = area_routes_to_wall(world, overlay_registry, (rx, ry), warhead);
+    let entered = damage != 0 && !world.session.no_damage;
+    let routed_wall = entered && area_routes_to_wall(world, overlay_registry, (rx, ry), warhead);
     let aoe = collect_area(
         world,
         rules,
@@ -334,9 +345,17 @@ fn collect_area_at(
         z_leptons.div_euclid(LEPTONS_PER_LEVEL as i32),
     );
     AreaAtImpact {
-        cell: (rx, ry),
-        z_leptons,
-        routed_wall,
+        continuation: AreaDamageContinuation {
+            cell: (rx, ry),
+            impact,
+            damage,
+            source_id: origin.0,
+            warhead,
+            warhead_ref: origin.2,
+            object_list_layer: aoe.object_list_layer,
+            routed_wall,
+            entered,
+        },
         aoe,
     }
 }
@@ -512,8 +531,9 @@ fn area_record_dispatches(world: &Simulation, rules: &RuleSet, event: &EntityDam
         .is_some_and(|target| {
             target.lifecycle.object_alive()
                 && !(target.category() == EntityCategory::Structure
-                    && rules
-                        .object(world.interner.resolve(target.type_ref()))
+                    && world
+                        .interner
+                        .object_type(target.type_ref(), rules)
                         .is_some_and(|object| object.invisible_in_game))
                 && target.health.current() > 0
                 && target.lifecycle.cell_marked()
@@ -748,12 +768,12 @@ pub(crate) fn commit_entities(
         if starts_berserk {
             world.leave_team(target_id, false, Some(rules), run.effects());
         }
-        let receiver_callbacks = callbacks_enabled(world);
         let Some(receiver_health::ReceiverHealthCommit {
             building_entry_frame,
             state: receive_state,
             entered_techno_death,
-            reached_exact_zero,
+            #[cfg(any(test, feature = "test-support"))]
+                reached_exact_zero: _,
             postmortem_candidate,
             fatal_category,
             positive_postlude,
@@ -762,7 +782,7 @@ pub(crate) fn commit_entities(
             healing_only,
             latch_hostile_hit,
             uncloak_after_damage,
-            threat_feedback,
+            house_threat_delta,
             psychedelic,
         }) = receiver_health::commit_receiver_health(
             event,
@@ -771,25 +791,45 @@ pub(crate) fn commit_entities(
             overlay_registry,
             receiver_outcome,
             run.effects(),
-            receiver_callbacks,
+            true,
         )
         else {
             continue;
         };
-        // Generic Object damage Tags have already returned. This later
-        //kill continuation reads the source's current Owner; the separately
-        //supplied source-House ABI pointer stays fixed for the receive call.
-        let attacker_owner: Option<InternedId> = event.source_house.or_else(|| {
-            (attacker_id != RAD_NO_ATTACKER)
-                .then(|| {
-                    world
-                        .substrate
-                        .entities
-                        .get(attacker_id)
-                        .map(|attacker| attacker.owner())
-                })
-                .flatten()
-        });
+        // Object Tags, Kill and Destroy have already returned, followed by
+        // the immediate live-owner House anger update at Techno701E68.
+        let _ = house_threat_delta;
+        #[cfg(any(test, feature = "test-support"))]
+        if let Some(delta) = house_threat_delta {
+            death
+                .receiver_stage_trace
+                .push(ReceiverStageTrace::HouseThreat { target_id, delta });
+        }
+        if let Some(duration_frames) = postmortem_candidate {
+            let current_frame = current_tick as u32 as i32;
+            let target = world
+                .substrate
+                .entities
+                .get_mut(target_id)
+                .expect("PostMortem exact-zero callbacks retain the represented target");
+            // RecordKill already consumed this exact-zero attribution in the
+            // shared RecordTheKill receiver before the PostMortem Destroy hook. Native retains no killer on the
+            // restored object: a fresh null-source timer expiry must stay
+            // uncredited, while a later sourced lethal hit captures anew.
+            target.kill_record.clear();
+            target
+                .pending_c4_detonation
+                .arm_post_mortem(current_frame, duration_frames);
+            // PostMortem's restore (`0x00701F60`, `0x00701F67`).
+            target.lifecycle.restore_alive();
+            target.health.set(1);
+            target.death.restore();
+            #[cfg(any(test, feature = "test-support"))]
+            death
+                .receiver_stage_trace
+                .push(ReceiverStageTrace::PostMortem { target_id });
+            continue;
+        }
         if starts_berserk {
             // The class setter: Infantry's (`0x0051B1F0`) also resets its
             // action and path head.
@@ -822,8 +862,9 @@ pub(crate) fn commit_entities(
         if result_one_arm && sound_enabled {
             for _ in 0..2 {
                 if let Some(target) = world.substrate.entities.get(target_id)
-                    && let Some(sound_id) = rules
-                        .object(world.interner.resolve(target.type_ref()))
+                    && let Some(sound_id) = world
+                        .interner
+                        .object_type(target.type_ref(), rules)
                         .and_then(|object| object.damage_sound())
                 {
                     let coordinate =
@@ -847,7 +888,7 @@ pub(crate) fn commit_entities(
         // Original executed controls: input_oracle/unit_voice_playback.
         if receive_state == damage::DamageState::Yellow
             && let Some(target) = world.substrate.entities.get(target_id)
-            && let Some(object) = rules.object(world.interner.resolve(target.type_ref()))
+            && let Some(object) = world.interner.object_type(target.type_ref(), rules)
             && !object.voice_feedback.is_empty()
             && world.main_rng.next_range_i32_inclusive(0, 99) < 0x1E
             && world.house_is_human_player(target.owner())
@@ -884,8 +925,9 @@ pub(crate) fn commit_entities(
                 .entities
                 .get(target_id)
                 .is_some_and(|target| {
-                    rules
-                        .object(world.interner.resolve(target.type_ref()))
+                    world
+                        .interner
+                        .object_type(target.type_ref(), rules)
                         .is_some_and(|object| object.to_protect)
                         && world.houses.contains_key(&target.owner())
                         && !world.owner_is_human(target.owner())
@@ -902,7 +944,7 @@ pub(crate) fn commit_entities(
         }
 
         // `0x0070281D`, in its native slot: after the `ToProtect` response
-        // (`0x007027E9`) and before the death branch's kill callbacks. The
+        // (`0x007027E9`); Object's Kill/Destroy have already returned. The
         // `StartUncloaking(0)` argument is zero, so it owns one positional
         // `[AudioVisual] CloakSound`.
         if uncloak_after_damage {
@@ -914,7 +956,7 @@ pub(crate) fn commit_entities(
                 .substrate
                 .entities
                 .get(target_id)
-                .and_then(|target| rules.object(world.interner.resolve(target.type_ref())))
+                .and_then(|target| world.interner.object_type(target.type_ref(), rules))
                 .map_or(1, |object| object.cloaking_speed);
             // `TechnoClass::ReceiveDamage @ 0x0070281D` invokes virtual
             // `+0xFC` (`0x00703850`, a plain `StartUncloaking(0)` wrapper) for
@@ -940,115 +982,6 @@ pub(crate) fn commit_entities(
             }
         }
 
-        if reached_exact_zero && postmortem_candidate.is_none() {
-            world.begin_receiver_kill_record(target_id);
-        }
-        // ObjectClass routes its kill callback while Health is exactly zero,
-        // before Destroy's reference notification and before TechnoClass's
-        // victim-house anger callback. `Record_The_Kill` awards the killer's
-        // experience in the same call, so it is a same-tick write the victim's
-        // own death effects can already observe. Deferring it to the lifecycle
-        // release point would change that visibility.
-        if reached_exact_zero {
-            //Object5F5772..579A chooses E4 only for a supplied sourceHouse
-            //that differs from the source Techno's CURRENT Owner (or NULL
-            //Techno). Do not turn that House pointer into an E0 attacker.
-            let live_source_owner = (attacker_id != RAD_NO_ATTACKER)
-                .then(|| {
-                    world
-                        .substrate
-                        .entities
-                        .get(attacker_id)
-                        .map(GameEntity::owner)
-                })
-                .flatten();
-            let source = if let Some(house) = event.source_house
-                && (attacker_id == RAD_NO_ATTACKER || live_source_owner != Some(house))
-            {
-                super::KillSource::House(Some(house))
-            } else {
-                super::KillSource::Techno((attacker_id != RAD_NO_ATTACKER).then_some(attacker_id))
-            };
-            world.record_the_kill(
-                target_id,
-                source,
-                super::KillCallback::Terminal,
-                crate::sim::world::UninitContext::new(Some(rules), overlay_registry)
-                    .with_effects(run.effects()),
-            );
-        }
-        if reached_exact_zero && postmortem_candidate.is_none() {
-            // Techno702FF0 awards experience before the score/loss writes
-            // (703003..7031DC); Object5F57AF's Destroy observes all of them.
-            // Keep the separately owned PostMortem bookkeeping below intact.
-            world.record_destruction_once(target_id);
-        }
-        // ObjectClass::ReceiveDamage 0x005F5765..0x005F57AF: after the kill
-        // callback the exact-zero arm runs Destroy = Detach_All(1), so every
-        // listener drops the dying object at the killing hit, before the
-        // anger callback and TechnoClass's death arm. The CausesDelayKill
-        // PostMortem stage below runs the same callback after its bookkeeping.
-        if reached_exact_zero && postmortem_candidate.is_none() && callbacks_enabled(world) {
-            world.object_destroy_callback(
-                target_id,
-                crate::sim::world::UninitContext::new(Some(rules), overlay_registry)
-                    .with_effects(run.effects()),
-            );
-        }
-        if postmortem_candidate.is_some() && callbacks_enabled(world) {
-            world.apply_fatal_lifecycle_stage(
-                rules,
-                FatalLifecycleStage::PostMortemExactZero {
-                    killer_owner: attacker_owner,
-                },
-                target_id,
-                fatal_category,
-                crate::sim::world::UninitContext::with_rules(rules)
-                    .with_registry(overlay_registry)
-                    .with_effects(run.effects()),
-            );
-        };
-        if let Some((victim_owner, source_owner, final_damage, strength, cost)) = threat_feedback {
-            let delta = receiver_anger_delta(final_damage, strength, cost);
-            update_anger_nodes(
-                &mut world.houses,
-                &world.session.house_order,
-                &world.house_alliances,
-                &world.interner,
-                victim_owner,
-                source_owner,
-                delta,
-            );
-            #[cfg(test)]
-            death
-                .receiver_stage_trace
-                .push(ReceiverStageTrace::HouseThreat { target_id, delta });
-        }
-        if let Some(duration_frames) = postmortem_candidate {
-            let current_frame = current_tick as u32 as i32;
-            let target = world
-                .substrate
-                .entities
-                .get_mut(target_id)
-                .expect("PostMortem exact-zero callbacks retain the represented target");
-            // RecordKill already consumed this exact-zero attribution in the
-            // shared RecordTheKill receiver before the PostMortem Destroy hook. Native retains no killer on the
-            // restored object: a fresh null-source timer expiry must stay
-            // uncredited, while a later sourced lethal hit captures anew.
-            target.kill_record.clear();
-            target
-                .pending_c4_detonation
-                .arm_post_mortem(current_frame, duration_frames);
-            // PostMortem's restore (`0x00701F60`, `0x00701F67`).
-            target.lifecycle.restore_alive();
-            target.health.set(1);
-            target.death.restore();
-            #[cfg(test)]
-            death
-                .receiver_stage_trace
-                .push(ReceiverStageTrace::PostMortem { target_id });
-            continue;
-        }
         if latch_hostile_hit && let Some(target) = world.substrate.entities.get_mut(target_id) {
             target.ai_sell_repair.hit_by_enemy();
         }
@@ -1085,7 +1018,7 @@ pub(crate) fn commit_entities(
         // Process at once.
         if synchronous_retaliation {
             let retaliates = attacker_id != RAD_NO_ATTACKER && {
-                #[cfg(test)]
+                #[cfg(any(test, feature = "test-support"))]
                 death
                     .receiver_stage_trace
                     .push(ReceiverStageTrace::ShouldRetaliate { target_id });
@@ -1184,8 +1117,9 @@ pub(crate) fn commit_entities(
             && let Some(target) = world.substrate.entities.get(target_id)
             && target.category() == EntityCategory::Structure
             && target.lifecycle.object_alive()
-            && rules
-                .object(world.interner.resolve(target.type_ref()))
+            && world
+                .interner
+                .object_type(target.type_ref(), rules)
                 .is_some_and(|object| object.damage_sound().is_none())
             && let Some(sound_id) = rules.general.building_damage_sound()
         {
@@ -1314,8 +1248,9 @@ pub(crate) fn commit_entities(
                     .get(target_id)
                     .is_some_and(|target| {
                         !world.owner_is_human(target.owner())
-                            && rules
-                                .object(world.interner.resolve(target.type_ref()))
+                            && world
+                                .interner
+                                .object_type(target.type_ref(), rules)
                                 .is_some_and(|obj| obj.engineer)
                             && matches!(
                                 target.mission.effective().known(),
@@ -1346,7 +1281,7 @@ pub(crate) fn commit_entities(
                 );
             }
             if let Some(target) = world.substrate.entities.get_mut(target_id) {
-                if let Some(obj) = rules.object(world.interner.resolve(target.type_ref())) {
+                if let Some(obj) = world.interner.object_type(target.type_ref(), rules) {
                     infantry::apply_fear_from_damage(
                         obj,
                         target,
@@ -1360,8 +1295,9 @@ pub(crate) fn commit_entities(
                 // with or without a source. A building's ping is its
                 // retaliation block's, below.
                 if target.category() != EntityCategory::Structure
-                    && rules
-                        .object(world.interner.resolve(target.type_ref()))
+                    && world
+                        .interner
+                        .object_type(target.type_ref(), rules)
                         .is_some_and(|obj| obj.harvester)
                 {
                     under_attack_events.push(UnderAttackEvent {
@@ -1441,7 +1377,7 @@ fn finish_building_art_receiver(
     if !target.lifecycle.object_alive() {
         return;
     }
-    let Some(object) = rules.object(world.interner.resolve(target.type_ref())) else {
+    let Some(object) = world.interner.object_type(target.type_ref(), rules) else {
         return;
     };
     if state != damage::DamageState::Unaffected
@@ -1703,7 +1639,7 @@ fn finish_concrete_death(
         entity.animation.is_some(),
     );
     let mut concrete_smudge_plans = Vec::new();
-    if let Some(obj) = rules.object(world.interner.resolve(type_id)) {
+    if let Some(obj) = world.interner.object_type(type_id, rules) {
         // `TechnoClass::Death_Announcement @ 0x004D98C0` runs at the
         // Aircraft/Infantry/Unit `ReceiveDamage` kill sites (vtable
         // `+0x3B8`; `BuildingClass` has none) and skips `Spawned=`
@@ -1956,8 +1892,8 @@ enum SpecialArmTarget {
 
 /// The special arm of `BulletClass::DetonateAtCoord @ 0x004690B0`
 /// (`0x0046920B..0x00469A3D`) the warhead's flags selected, for both
-/// deliveries: a visible bullet's detonation, and an `Inviso=` bullet's first
-/// AI visit, which detonates through the same chain.
+/// deliveries: visible and `Inviso=` bullets both enter when their AI
+/// admits detonation; Inviso placement does not bypass the Arm-gated fuse.
 ///
 /// Whatever the arm does, it claims the impact: every arm, its internal
 /// refusals included, leaves by `JMP 0x00469AA4`, and `Apply_area_damage`
@@ -2172,52 +2108,78 @@ pub(crate) fn area_routes_to_wall(
     cell: (u16, u16),
     warhead: &WarheadType,
 ) -> bool {
-    wall_overlay_flags_at(
-        world.overlay_grid.as_ref(),
-        overlay_registry,
-        cell.0,
-        cell.1,
-    )
-    .is_some_and(|flags| warhead_damages_wall(warhead, flags))
+    let (Some(grid), Some(registry)) = (world.overlay_grid.as_ref(), overlay_registry) else {
+        return false;
+    };
+    let overlay_id = if let Some(terrain) = world.resolved_terrain.as_ref() {
+        //489342 retains the primary CellClass, including fixed512 aliases
+        //and the live Dummy. Its overlay, not a rectangular requested key,
+        //decides whether this call skips its later bridge continuation.
+        let query = crate::map::resolved_terrain::NativeCellQuery::canonical(terrain);
+        let identity = query.lookup((cell.0 as i16, cell.1 as i16));
+        match identity {
+            crate::map::cell_index::NativeCellIdentity::Real(_) => {
+                let (rx, ry) = query.coord(identity);
+                grid.cell(rx as u16, ry as u16).overlay_id
+            }
+            crate::map::cell_index::NativeCellIdentity::Dummy => {
+                u8::try_from(query.overlay_identity(identity)).ok()
+            }
+        }
+    } else {
+        // Mapless focused hosts have only their supplied rectangular grid.
+        grid.cell(cell.0, cell.1).overlay_id
+    };
+    overlay_id
+        .and_then(|id| registry.flags(id))
+        .is_some_and(|flags| flags.wall && warhead_damages_wall(warhead, flags))
 }
 
-/// Apply_area_damage's bridge continuation489E87..48A2C4 runs after all
-/// ordinary receivers and their recursive deaths, before returning to the
-/// caller. In particular Bullet469033 completes it before cluster RNG469057.
-/// A negative nonzero packet still reaches the native strength draw.
-pub(crate) fn continue_area_bridge_damage(
+/// Apply_area_damage489B49..48A2C4 resumes after synchronous receivers and
+/// recursive deaths: area rocking, then the existing bridge driver. The
+/// original source argument and pre-receiver layer survive those callbacks;
+/// a Bullet's now-cleared Owner must not replace this call's source.
+/// Bullet469033 completes both effects before cluster RNG469057. Negative
+/// nonzero packets skip the weak rocker but still reach the bridge draw.
+fn continue_area_damage(
     world: &mut Simulation,
     rules: &RuleSet,
     overlay_registry: Option<&OverlayTypeRegistry>,
-    cell: (u16, u16),
-    damage: i32,
-    warhead_ref: InternedId,
-    impact_z_leptons: i32,
-    routed_wall: bool,
+    context: AreaDamageContinuation<'_>,
     area_result: AreaDamageResult,
     effects: FrameEffects<'_>,
 ) -> bool {
-    if area_result == AreaDamageResult::IronCurtain
-        || world.session.no_damage
-        || damage == 0
-        || routed_wall
-        || !rules
-            .warhead(world.interner.resolve(warhead_ref))
-            .is_some_and(|warhead| warhead.wall)
-    {
+    if !context.entered || area_result == AreaDamageResult::IronCurtain {
+        return false;
+    }
+    area_rocker::apply(
+        world,
+        rules,
+        context.warhead,
+        area_rocker::AreaRockerInput {
+            impact: context.impact,
+            cell: context.cell,
+            damage: context.damage,
+            source_id: context.source_id,
+            list_layer: context.object_list_layer,
+        },
+    );
+    //489E87 follows the rocker even when this impact routed into a wall.
+    // The saved wall-route decision suppresses only the bridge driver.
+    if context.routed_wall || !context.warhead.wall {
         return false;
     }
     let event = BridgeDamageEvent {
-        rx: cell.0,
-        ry: cell.1,
-        damage,
-        warhead_ref,
-        is_ion_cannon: warhead_ref
+        rx: context.cell.0,
+        ry: context.cell.1,
+        damage: context.damage,
+        warhead_ref: context.warhead_ref,
+        is_ion_cannon: context.warhead_ref
             == world
                 .rule_handles
                 .expect("Simulation::resolve_type_handles must run before combat")
                 .ion_cannon,
-        impact_z_leptons,
+        impact_z_leptons: context.impact.z,
     };
     crate::sim::world::bridge_orchestrator::apply_bridge_damage_events_with_overlay_registry(
         world,
@@ -2231,7 +2193,7 @@ pub(crate) fn continue_area_bridge_damage(
 /// `BulletClass::DetonateAtCoord @ 0x004690B0` up to its receivers: the
 /// radiation site, then the special-warhead chain or, in its final else, the
 /// shrapnel (`0x00469A51`) and `Apply_area_damage` (`0x00489280`) records,
-/// then bridge damage. Returns the ordinary area's wall-route decision, or
+/// then its shared continuation. Returns the ordinary area's frozen context, or
 /// None for a special arm without Apply_area_damage. The receivers and bridge
 /// continuation commit before the anim tail
 /// ([`emit_detonation_anim`]), as native's area damage returns before
@@ -2240,15 +2202,15 @@ pub(crate) fn continue_area_bridge_damage(
 /// The area damage's house (`0x00469A5C..0x00469A75`) is the live bullet
 /// owner's: a bullet whose firer has expired (`BulletClass::PointerExpired
 /// @ 0x004684E0` nulled `+0xB0`) damages with no house.
-fn emit_detonation_receivers(
+fn emit_detonation_receivers<'r>(
     world: &mut Simulation,
     rules: &RuleSet,
     overlay_registry: Option<&OverlayTypeRegistry>,
     detonation: &ProjectileDetonation,
-    warhead: &WarheadType,
+    warhead: &'r WarheadType,
     out: &mut CombatEmit,
     effects: FrameEffects<'_>,
-) -> Option<bool> {
+) -> Option<AreaDamageContinuation<'r>> {
     let (impact_rx, impact_ry, ..) = projectile_impact_cell(detonation.impact);
 
     // Named location: `BulletClass::Detonate @ 0x004690b0`. Radiation is
@@ -2337,16 +2299,16 @@ fn emit_detonation_receivers(
                 ),
             );
             append_fixture_tiberium(world, &mut out.effects.tiberium_reduction_requests);
-            #[cfg(test)]
+            #[cfg(any(test, feature = "test-support"))]
             out.effects.wall_mutations.extend(area.aoe.wall_mutations);
 
-            #[cfg(test)]
+            #[cfg(any(test, feature = "test-support"))]
             out.effects
                 .cell_target_detaches
                 .extend(area.aoe.cell_target_detaches);
             out.damage_events.extend(area.aoe.receivers);
 
-            Some(area.routed_wall)
+            Some(area.continuation)
         }
         claimed => {
             run_special_detonation_arm(
@@ -2386,6 +2348,132 @@ fn bullet_location(
     }
 }
 
+/// Bullet469D06..469EBA: one budget, then the typed VoxelAnim arm or the
+/// MetallicDebris SHP fallback. Both finish constructors synchronously before
+/// the outer cluster successor. Stock Smashing/TRexWH use the empty-list arm;
+/// an authored Smashing TIRE list uses the same typed selector as Techno deaths.
+fn emit_warhead_debris(
+    world: &mut Simulation,
+    rules: &RuleSet,
+    detonation: &ProjectileDetonation,
+    warhead: &WarheadType,
+    out: &mut CombatEmit,
+) {
+    use crate::sim::voxel_anim::{
+        ShpDebrisSource, debris_budget, throw_shp_debris, throw_typed_debris,
+    };
+
+    let budget = debris_budget(
+        warhead.min_debris,
+        warhead.max_debris,
+        &mut world.scenario_rng,
+    );
+    if budget <= 0 {
+        return;
+    }
+    let mut host = WarheadDebrisHost {
+        world,
+        rules,
+        detonation: *detonation,
+        anims: &mut out.effects.explosion_effects,
+        voxels: &mut out.effects.voxel_debris,
+    };
+    let result = if warhead.debris_types.is_empty() {
+        throw_shp_debris(
+            budget,
+            ShpDebrisSource::RulesMetallicDebris,
+            rules.general.metallic_debris.len(),
+            &mut host,
+        )
+    } else {
+        let types: Vec<_> = warhead
+            .debris_types
+            .iter()
+            .map(|name| {
+                rules
+                    .voxel_anim_type_id_by_name(name)
+                    .map(|id| (id, rules.voxel_anim_type(id)))
+            })
+            .collect();
+        throw_typed_debris(budget, &types, &warhead.debris_maximums, None, &mut host).map(|_| ())
+    };
+    if let Err(error) = result {
+        // Preserve earlier synchronous births on unsupported authored launch
+        // arithmetic, as the existing Techno debris entry does.
+        log::debug!("warhead debris stopped outside verified numeric domain: {error}");
+    }
+}
+
+struct WarheadDebrisHost<'w, 'r> {
+    world: &'w mut Simulation,
+    rules: &'r RuleSet,
+    detonation: ProjectileDetonation,
+    anims: &'w mut Vec<ExplosionEffect>,
+    voxels: &'w mut Vec<crate::sim::voxel_anim::VoxelDebrisSpawn>,
+}
+
+impl crate::sim::voxel_anim::ShpDebrisHost for WarheadDebrisHost<'_, '_> {
+    fn rng(&mut self) -> &mut SimRng {
+        &mut self.world.scenario_rng
+    }
+
+    fn construct_anim(
+        &mut self,
+        source: crate::sim::voxel_anim::ShpDebrisSource,
+        index: usize,
+    ) -> Result<(), crate::util::native_x87::NativeX87Error> {
+        debug_assert_eq!(
+            source,
+            crate::sim::voxel_anim::ShpDebrisSource::RulesMetallicDebris
+        );
+        //469E50 reads live GetCoords per piece, independently of the
+        // impact argument and Inviso-scattered explosion placement.
+        let location = bullet_location(self.world, &self.detonation).0;
+        let coord = crate::sim::anim_class::AnimWorldCoord {
+            x: location.x,
+            y: location.y,
+            z: location.z.wrapping_add(20),
+        };
+        self.world.emit_debris_anim(
+            self.rules,
+            self.rules
+                .general
+                .metallic_debris
+                .get(index)
+                .map(String::as_str),
+            coord,
+            self.anims,
+        )
+    }
+}
+
+impl crate::sim::voxel_anim::VoxelDebrisHost for WarheadDebrisHost<'_, '_> {
+    fn voxel_origin(&self) -> glam::IVec3 {
+        // 469DC3..469DCF queries the live Bullet per constructor. Unlike
+        // SHP469E50 it adds no 20; VoxelAnim74950C owns its own 10-lepton lift.
+        let coord = bullet_location(self.world, &self.detonation).0;
+        glam::IVec3::new(coord.x, coord.y, coord.z)
+    }
+
+    fn construct_voxel(
+        &mut self,
+        type_id: crate::rules::voxel_anim_type::VoxelAnimTypeId,
+        voxel_type: &crate::rules::voxel_anim_type::VoxelAnimType,
+        owner_house: Option<InternedId>,
+        origin: glam::IVec3,
+    ) -> Result<(), crate::util::native_x87::NativeX87Error> {
+        let admit_inline = callbacks_enabled(self.world);
+        self.world.emit_debris_voxel(
+            type_id,
+            voxel_type,
+            owner_house,
+            origin,
+            admit_inline,
+            self.voxels,
+        )
+    }
+}
+
 /// `LAB_00469AA4`, reached by the ordinary arm and every special arm after
 /// their receivers: an `Inviso=` bullet first scatters the anim coordinate
 /// by one raw Scenario draw (`0x0049F420`, radius 0x20; the damage keeps the
@@ -2400,19 +2488,20 @@ fn emit_detonation_anim(
     area_result: Option<AreaDamageResult>,
     out: &mut CombatEmit,
 ) {
-    let (impact_rx, impact_ry, impact_sub_x, impact_sub_y, world_z_leptons) =
-        projectile_impact_cell(detonation.impact);
-    let (rx, ry, sub_x, sub_y) = if inviso {
-        inviso_scatter::scatter_inviso_effect_coord(
+    //469AA4 retains the raw coordinate before49F420; packing first would
+    // change negative edges and coordinates beyond the signed cell word.
+    let (x, y) = if inviso {
+        inviso_scatter::random_direction_coord(
             &mut world.scenario_rng,
-            impact_rx,
-            impact_ry,
-            impact_sub_x,
-            impact_sub_y,
+            detonation.impact.x,
+            detonation.impact.y,
+            0x20,
+            inviso_scatter::RandomDirectionSnap::Preserve,
         )
     } else {
-        (impact_rx, impact_ry, impact_sub_x, impact_sub_y)
+        (detonation.impact.x, detonation.impact.y)
     };
+    let placement = ProjectileCoord::new(x, y, detonation.impact.z);
     // 469AF0..469BCF reads the still-live Bullet, not the damage/animation
     // coordinate copied at469AA4. The terrain here includes the synchronous
     // bridge continuation, so a collapsed deck can now select SplashList.
@@ -2423,11 +2512,6 @@ fn emit_detonation_anim(
         selection_coordinate,
         on_bridge,
         area_result == Some(AreaDamageResult::ReceiverDispatched),
-    );
-    let placement = ProjectileCoord::new(
-        i32::from(rx) * 256 + sub_x.to_num::<i32>(),
-        i32::from(ry) * 256 + sub_y.to_num::<i32>(),
-        world_z_leptons,
     );
     // Selection still runs for an isolated Iron Curtain impact, including
     // EMEffect RNG. Only afterward469BEA replaces its constructor type.
@@ -2454,11 +2538,7 @@ fn emit_detonation_anim(
                 target_id: None,
                 damage: detonation.payload.base_damage,
                 warhead_ref: detonation.payload.warhead,
-                coord: ProjectileCoord::new(
-                    i32::from(rx) * 256 + sub_x.to_num::<i32>(),
-                    i32::from(ry) * 256 + sub_y.to_num::<i32>(),
-                    world_z_leptons,
-                ),
+                coord: placement,
                 force_create: true,
                 flags,
             });
@@ -2522,6 +2602,10 @@ pub(crate) fn commit_projectile_detonations_inline(
             _ => (1, false),
         };
         let mut coordinate = detonation.impact;
+        // Production impacts retain their Bullet until this transaction ends.
+        // Bare death weapons and explicit component fixtures may supply only
+        // the temporary Bullet packet; do not invent a second alive flag.
+        let represented_bullet = world.projectiles.get(detonation.projectile_id).is_some();
         for _ in 0..clusters {
             let clustered = world.projectiles.current_detonation(ProjectileDetonation {
                 impact: coordinate,
@@ -2530,7 +2614,7 @@ pub(crate) fn commit_projectile_detonations_inline(
             let damage_start = emit.damage_events.len();
             let explosion_start = emit.effects.explosion_effects.len();
             let smudge_start = emit.effects.smudge_spawn_requests.len();
-            let area_wall_route = emit_detonation_receivers(
+            let area_continuation = emit_detonation_receivers(
                 world,
                 rules,
                 overlay_registry,
@@ -2549,19 +2633,12 @@ pub(crate) fn commit_projectile_detonations_inline(
                 overlay_registry,
             );
             emit.effects.append(inline_death);
-            if let Some(routed_wall) = area_wall_route
-                && area_result != AreaDamageResult::IronCurtain
-            {
-                let (rx, ry, _, _, z) = projectile_impact_cell(clustered.impact);
-                emit.effects.bridge_state_changed |= continue_area_bridge_damage(
+            if let Some(context) = area_continuation {
+                emit.effects.bridge_state_changed |= continue_area_damage(
                     world,
                     rules,
                     overlay_registry,
-                    (rx, ry),
-                    clustered.payload.area_damage(),
-                    clustered.payload.warhead,
-                    z,
-                    routed_wall,
+                    context,
                     area_result,
                     run.effects(),
                 );
@@ -2570,6 +2647,26 @@ pub(crate) fn commit_projectile_detonations_inline(
                 .explosion_effects
                 .extend(outer_explosion_effects);
             under_attack_events.append(&mut pings);
+            //469A88..469A94: ordinary AreaDamage may synchronously remove
+            // its Bullet. Return before Inviso/selection/debris; the outer
+            //469038 alive gate also skips all remaining cluster draws.
+            if area_continuation.is_some()
+                && represented_bullet
+                && (world.projectiles.get(detonation.projectile_id).is_none()
+                    || world
+                        .substrate
+                        .pending_delete
+                        .contains_object(&detonation.projectile_id))
+            {
+                commit_smudges(
+                    world,
+                    rules,
+                    overlay_registry,
+                    outer_anim_requests,
+                    &mut emit.effects.smudge_spawn_requests,
+                );
+                break;
+            }
             let anim_start = emit.effects.smudge_spawn_requests.len();
             let live_tail = world.projectiles.current_detonation(clustered);
             let inviso = live_tail
@@ -2584,7 +2681,7 @@ pub(crate) fn commit_projectile_detonations_inline(
                 warhead,
                 inviso,
                 live_tail.payload.bright(),
-                area_wall_route.map(|_| area_result),
+                area_continuation.map(|_| area_result),
                 emit,
             );
             let mut anim_requests = outer_anim_requests;
@@ -2596,6 +2693,11 @@ pub(crate) fn commit_projectile_detonations_inline(
                 anim_requests,
                 &mut emit.effects.smudge_spawn_requests,
             );
+            //46A2A1..46A2FB returns immediately after the nullify Anim.
+            // The ordinary outer cluster successor still follows that return.
+            if area_continuation.is_none() || area_result != AreaDamageResult::IronCurtain {
+                emit_warhead_debris(world, rules, &live_tail, warhead, emit);
+            }
             if cluster_draws {
                 coordinate =
                     projectile_next_cluster_coord(detonation.impact, &mut world.scenario_rng);
@@ -2694,22 +2796,6 @@ mod ifv_area_receipt_tests;
 #[cfg(test)]
 #[path = "nuke_maker_tests.rs"]
 mod nuke_maker_tests;
-
-/// Return the active wall-overlay flags at a cell, if available.
-fn wall_overlay_flags_at<'a>(
-    overlay_grid: Option<&OverlayGrid>,
-    overlay_registry: Option<&'a OverlayTypeRegistry>,
-    rx: u16,
-    ry: u16,
-) -> Option<&'a crate::rules::overlay_types::OverlayTypeFlags> {
-    let (Some(grid), Some(registry)) = (overlay_grid, overlay_registry) else {
-        return None;
-    };
-    grid.cell(rx, ry)
-        .overlay_id
-        .and_then(|id| registry.flags(id))
-        .filter(|flags| flags.wall)
-}
 
 fn warhead_damages_wall(
     warhead: &WarheadType,

@@ -4,7 +4,7 @@
 use crate::sim::projectile::ProjectileCoord;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct ElectricBoltBirth {
+pub struct ElectricBoltBirth {
     pub frame: i32,
     pub from: ProjectileCoord,
     pub to: ProjectileCoord,
@@ -29,7 +29,7 @@ pub(crate) fn fired(
     let Some(source) = world.substrate.entities.get(source_id) else {
         return;
     };
-    let Some(object) = rules.object(world.interner.resolve(source.type_ref())) else {
+    let Some(object) = world.interner.object_type(source.type_ref(), rules) else {
         return;
     };
     let Some((index, Some(selected))) = super::combat_weapon::select_weapon_against(

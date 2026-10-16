@@ -23,7 +23,7 @@ pub(crate) struct DamageConsequences {
     delivery: DamageDelivery,
 }
 
-pub(crate) struct DamageCommitReceipt {
+pub struct DamageCommitReceipt {
     pub(crate) area_result: Option<crate::sim::combat::world_receiver::AreaDamageResult>,
     pub(super) structure_destroyed: bool,
     pub(crate) bridge_state_changed: bool,
@@ -34,13 +34,13 @@ impl DamageConsequences {
         self.terrain_navigation_changed_cells = cells;
     }
 
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     pub(crate) fn effects(&self) -> &DeathEffects {
         &self.effects
     }
 
     /// Fold a combat fixture's tail detonations into this frame's effects.
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     pub(crate) fn append_tail_for_test(
         &mut self,
         mut effects: DeathEffects,
@@ -50,7 +50,7 @@ impl DamageConsequences {
         self.effects.append(effects);
     }
 
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     pub(crate) fn prepend_live_fire_events_for_test(&mut self, mut earlier: Vec<SimFireEvent>) {
         if let DamageDelivery::Ordinary { fire_events } = &mut self.delivery {
             earlier.append(fire_events);
@@ -58,7 +58,7 @@ impl DamageConsequences {
         }
     }
 
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     pub(crate) fn fire_events(&self) -> &[SimFireEvent] {
         match &self.delivery {
             DamageDelivery::Ordinary { fire_events, .. } => fire_events,
@@ -287,20 +287,16 @@ pub(crate) fn admit_muzzle_anim(world: &mut Simulation, rules: &RuleSet, event: 
             0
         },
         reverse: false,
+        owner: (!is_building).then_some(event.attacker_id),
         ..crate::sim::components::AnimClassSpawnDescriptor::new(
             type_name, rx, ry, sub_x, sub_y, level,
         )
     };
-    match world.spawn_anim_at_world(rules, descriptor, coord) {
-        Ok(anim_id) => {
-            if !is_building {
-                world.set_anim_owner_object(anim_id, Some(event.attacker_id), rules);
-            }
-        }
-        Err(error) => log::debug!(
+    if let Err(error) = world.spawn_anim_at_world(rules, descriptor, coord) {
+        log::debug!(
             "muzzle anim [{}] did not construct: {error}",
             world.interner.resolve(type_name)
-        ),
+        );
     }
 }
 

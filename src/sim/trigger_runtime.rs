@@ -12,12 +12,12 @@ use std::hash::{Hash, Hasher};
 use crate::map::actions::{ActionDefinitionReference, ActionEntry, DefinitionSelector};
 use crate::map::cell_index::NativeCellIdentity;
 use crate::map::events::EventCondition;
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 use crate::map::events::EventMap;
 use crate::map::resolved_terrain::NativeCellQuery;
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 use crate::map::triggers::TriggerMap;
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 use crate::map::variable_names::LocalVariableMap;
 use crate::rules::ini_parser::is_native_none_type_name;
 use crate::rules::ini_value::{crt_atoi, truncate_native_bytes};
@@ -46,14 +46,14 @@ const ACTION_CLEAR_ALTERNATE_BASE: i32 = 138;
 
 // Rust-only attribution of retiring the former duplicated announcement feed.
 // No native/gameplay state is restored, and release builds contain no control.
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 std::thread_local! {
     static LEGACY_ANNOUNCEMENT_HASH_CONTROL: std::cell::Cell<bool> = const {
         std::cell::Cell::new(false)
     };
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 pub(crate) fn with_legacy_announcement_hash_control_for_test<R>(read: impl FnOnce() -> R) -> R {
     struct Restore(bool);
     impl Drop for Restore {
@@ -591,6 +591,9 @@ struct LiveTag {
     type_index: usize,
     ///6E4F44 prepends instances, reversing definition-construction order.
     triggers: Vec<usize>,
+    /// Native+2C is written by attachment operations, not reconstructed from
+    /// live Object/Cell indexes. Object5F3B80 frees an attached Object without
+    /// decrementing this counter; damage-events' destruction controls pin it.
     refs: i32,
     attached_cell: (i16, i16),
     pending: bool,
@@ -628,22 +631,22 @@ pub struct TriggerRuntime {
     map_cursor: i32,
     definitions_prepared: bool,
     classified: bool,
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     fixture_awaiting_records: bool,
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     fixture_difficulty: Option<i32>,
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     #[serde(skip)]
     action_trace: Vec<(i32, i32)>,
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     #[serde(skip)]
     dispatch_trace: Vec<(usize, i32)>,
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     #[serde(skip)]
     freed_trace: Vec<&'static str>,
     /// Native stock comparison abandons its real first-poll stack at the same
     /// first gameplay action boundary; no action receives a success substitute.
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     #[serde(skip)]
     stop_before_action: Option<i32>,
 }
@@ -699,7 +702,7 @@ impl TriggerRuntime {
         self.map_cursor.hash(hasher);
         self.definitions_prepared.hash(hasher);
         self.classified.hash(hasher);
-        #[cfg(test)]
+        #[cfg(any(test, feature = "test-support"))]
         if LEGACY_ANNOUNCEMENT_HASH_CONTROL.with(std::cell::Cell::get) {
             // Exact old Rust enum shape at HEAD40bcc7a7. Even None folded
             // Option's discriminant. These no-Tag replay fixtures never wrote
@@ -967,16 +970,12 @@ impl Simulation {
                 }
             }
         }
-        let mut references = vec![0i32; runtime.tags.len()];
         for (&attachment, &index) in &runtime.attachments {
             if runtime.tag(index).is_none() {
                 return Err(format!("{attachment:?} references unresolved Tag {index}"));
             }
             let resolves = match attachment {
-                TagAttachment::Object(id) => {
-                    references[index] = references[index].wrapping_add(1);
-                    self.classify_object(id).is_some()
-                }
+                TagAttachment::Object(id) => self.classify_object(id).is_some(),
                 TagAttachment::Team(id) => self.team_script_vm.team(id).is_some(),
             };
             if !resolves {
@@ -1004,20 +1003,12 @@ impl Simulation {
             if !resolves {
                 return Err(format!("Tag {index} has an unresolved {cell:?} attachment"));
             }
-            references[index] = references[index].wrapping_add(1);
         }
-        for (index, tag) in runtime
-            .tags
-            .iter()
-            .enumerate()
-            .filter_map(|(index, tag)| tag.as_ref().map(|tag| (index, tag)))
-        {
-            if tag.refs != references[index] {
-                return Err(format!(
-                    "Tag {index} reference count disagrees with its Object/Cell attachments"
-                ));
-            }
-        }
+        // Original Object5F3B80/Techno6F4500 destructors do not call
+        // SetTag5F5B50(nullptr). A native Tag can therefore retain a counter
+        // after its last attached object is gone. Keep the saved authority;
+        // requiring equality with live indexes rejects valid death snapshots.
+        // Executed: tag_lifecycle --damage-events object_destruction_controls.
         Ok(())
     }
 
@@ -1026,7 +1017,7 @@ impl Simulation {
     }
     /// Full_Init687984..6879CB registry ingress. No live instance is created
     /// until a Cell/Object attachment or Fill classification requires it.
-    pub(crate) fn initialize_trigger_definitions(
+    pub fn initialize_trigger_definitions(
         &mut self,
         map: &crate::map::map_file::MapFile,
         teams: &crate::rules::team_ai_ini::TeamAiIniRegistry,
@@ -1047,7 +1038,7 @@ impl Simulation {
     }
 
     fn trigger_difficulty(&self) -> i32 {
-        #[cfg(test)]
+        #[cfg(any(test, feature = "test-support"))]
         if let Some(difficulty) = self.trigger_runtime.fixture_difficulty {
             return difficulty;
         }
@@ -1059,7 +1050,7 @@ impl Simulation {
     /// Legacy unit fixtures declare one synthetic Tag per Trigger. This seam
     /// supplies fixture definitions only; construction, polling and actions use
     /// the same production owner. Map loading always uses the physical reader.
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     fn initialize_map_triggers(&mut self, triggers: &TriggerMap, locals: &LocalVariableMap) {
         let mut ids: Vec<_> = triggers.keys().collect();
         ids.sort();
@@ -1107,7 +1098,7 @@ impl Simulation {
         };
     }
 
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     fn install_pending_trigger_fixture(&mut self, inputs: TriggerInputs<'_>) {
         if !self.trigger_runtime.fixture_awaiting_records {
             return;
@@ -1271,7 +1262,7 @@ impl Simulation {
 
     /// Fill684D47..684EC1 registers in retained TagType order: map, Logic,
     /// then House. Registration does not increase the attachment refcount.
-    pub(crate) fn classify_map_triggers(&mut self, rules: Option<&crate::rules::ruleset::RuleSet>) {
+    pub fn classify_map_triggers(&mut self, rules: Option<&crate::rules::ruleset::RuleSet>) {
         if self.trigger_runtime.classified {
             return;
         }
@@ -1413,6 +1404,17 @@ impl Simulation {
             }
         }
         tag.is_some()
+    }
+
+    /// Physical Object storage disappears without a SetTag5F5B50 call.
+    /// Steam3e81a617 Object5F3B80, including actual scalar/drain controls in
+    /// tag_lifecycle --damage-events, leaves Tag+2C and the Tag itself intact.
+    /// Remove only the Rust index whose source object no longer exists; no
+    /// counter write, pending ticket, RNG draw or timer change belongs here.
+    pub(crate) fn finalize_object_trigger_tag_attachment(&mut self, object: u64) {
+        self.trigger_runtime
+            .attachments
+            .remove(&TagAttachment::Object(object));
     }
 
     /// Object5F5B50 attachment funnel. An absent/null authored reference clears
@@ -1561,7 +1563,7 @@ impl Simulation {
         }
         self.trigger_runtime.trigger_order.retain(|&t| t != index);
         self.trigger_runtime.triggers[index] = None;
-        #[cfg(test)]
+        #[cfg(any(test, feature = "test-support"))]
         self.trigger_runtime.freed_trace.push("trigger");
     }
 
@@ -1608,7 +1610,7 @@ impl Simulation {
         }
         self.trigger_runtime.tag_order.retain(|&t| t != index);
         self.trigger_runtime.tags[index] = None;
-        #[cfg(test)]
+        #[cfg(any(test, feature = "test-support"))]
         self.trigger_runtime.freed_trace.push("tag");
     }
     fn adjust_tag_destructor_cursors(&mut self, flags: u8, game_state: i32, started: bool) {
@@ -1653,6 +1655,78 @@ impl Simulation {
             .clone();
         match condition.kind {
             14 => self.session.scenario_timer_elapsed(),
+            17 => {
+                // Steam3e81a617..08600:71EE82 takes the incoming House;
+                // 71EF3F..71EF89 reads tracked+2F0, then its ordered+68 list.
+                // Only null/limbo entries are skipped: neither Health nor
+                // Alive gates this leaf. Factory is the raw nonzero RTTI,
+                // independent of Event.value, actor, raised kind and init.
+                // No persistence, Event+54, timer, RNG or detach write.
+                // Executed controls: tag_lifecycle --no-factories-events.
+                let Some(owner) = incoming_house else {
+                    return true;
+                };
+                let Some(house) = self.houses.get(&owner) else {
+                    return false;
+                };
+                if house.tracking.buildings() <= 0 {
+                    return true;
+                }
+                let Some(rules) = rules else {
+                    return false;
+                };
+                !house.base_projection.buildings().iter().any(|&id| {
+                    self.substrate.entities.get(id).is_some_and(|building| {
+                        !building.lifecycle.in_limbo()
+                            && self
+                                .object_type(building.type_ref(), rules)
+                                .is_some_and(|ty| ty.has_factory())
+                    })
+                })
+            }
+            19..=22 => {
+                // Steam3e81a617: HasOccurred71EFEB..71F03D reads incoming
+                // House+26C/+274/+270/+278, not a Country or built count.
+                // Match sets persistence; mismatch leaves it alone. The null
+                // House takes the generic true tail without that write.
+                // Original execution: tag_lifecycle --build-type-events.
+                let Some(owner) = incoming_house else {
+                    return true;
+                };
+                use crate::rules::object_type::ObjectCategory;
+                let category = match condition.kind {
+                    19 => ObjectCategory::Building,
+                    20 => ObjectCategory::Vehicle,
+                    21 => ObjectCategory::Infantry,
+                    22 => ObjectCategory::Aircraft,
+                    _ => unreachable!(),
+                };
+                let matched = self
+                    .houses
+                    .get(&owner)
+                    .is_some_and(|house| house.last_built_type_index(category) == condition.value);
+                if matched {
+                    *persistence = true;
+                }
+                matched
+            }
+            12 | 52 => {
+                // Steam3e81a617..08600: HasOccurred71EF01/71EF20 calls
+                // IHouse::AvailableMoney4F6990 on Register7264C0's incoming
+                // House, then compares the literal signed threshold inclusively.
+                // No raised-kind gate, persistence, retained-House or timer write.
+                // Executed: tag_lifecycle --funds-events. The shared Economy
+                // getter retains its documented empty-silo coverage boundary.
+                let Some(owner) = incoming_house else {
+                    return true;
+                };
+                let funds = crate::sim::credit_income::available_money(self, owner);
+                if condition.kind == 12 {
+                    funds >= condition.value
+                } else {
+                    funds <= condition.value
+                }
+            }
             1 | 24 | 25 | 26 | 59 => {
                 //71ECAF ->71F1BD compares actor6F9DB0's House ArrayIndex
                 //with Country502D30's first matching House+30, then retains
@@ -1719,13 +1793,41 @@ impl Simulation {
                 }
                 result
             }
-            9 | 11 => {
+            15 | 16 => {
+                // HasOccurred71EE82 takes the Trigger's incoming House,
+                // not Event.value's Country. 71F03F/71F058 compare signed
+                // House+5488/+5434 loss counters with Event+34 using >=.
+                // The null-House tail is true; neither arm latches, writes
+                // the timer/retained House, draws RNG or detaches anything.
+                // Steam3e81a617..08600; tag_lifecycle --loss-threshold-events.
+                let Some(owner) = incoming_house else {
+                    return true;
+                };
+                let Some(house) = self.houses.get(&owner) else {
+                    return false;
+                };
+                let losses = if condition.kind == 15 {
+                    house.stats.buildings_lost()
+                } else {
+                    house.stats.units_lost()
+                };
+                (losses as i32) >= condition.value
+            }
+            9 | 10 | 11 | 55 | 56 => {
                 //71F069 ->502D30: Event.value selects a Country's first
                 //registered House, independently of the incoming House or
                 //raised event. No matching House reaches the AL1 tail; this
                 //does not write persistence or the Type-owned Event+54.
                 //The private HouseTracking owner preserves separate signed
-                //Unit/Infantry totals and11's tracked Building scalar.
+                //Unit/Infantry totals and the tracked Building scalar.
+                //10's71F115..71F12E tests tracked buildings <=0, including
+                //constructor-complete Limbo until actual destruction. Steam
+                //3e81a617..08600; tag_lifecycle --building-loss-events.
+                //55/56: Steam3e81a617..08600, 71F159 /71F16F..71F187;
+                //tools/spatial_oracle/tag_lifecycle.py --naval-land-events.
+                //56's TEST after SUB observes wrapping subtraction, not a
+                //signed comparison of the two source counts. These events
+                //read tracked scalars, unlike9's on-map CounterClass totals.
                 let owner = rules.and_then(|rules| {
                     u16::try_from(condition.value).ok().and_then(|country| {
                         self.house_by_country_index(
@@ -1735,13 +1837,23 @@ impl Simulation {
                     })
                 });
                 owner.is_none_or(|owner| {
-                    self.houses.get(&owner).is_none_or(|house| {
-                        if condition.kind == 9 {
-                            house.tracking.units_destroyed()
-                        } else {
-                            house.tracking.all_destroyed()
-                        }
-                    })
+                    self.houses
+                        .get(&owner)
+                        .is_none_or(|house| match condition.kind {
+                            9 => house.tracking.units_destroyed(),
+                            10 => house.tracking.buildings() <= 0,
+                            11 => house.tracking.all_destroyed(),
+                            55 => house.tracking.navy() <= 0,
+                            56 => {
+                                house
+                                    .tracking
+                                    .vehicles()
+                                    .wrapping_sub(house.tracking.navy())
+                                    <= 0
+                                    && house.tracking.infantry() <= 0
+                            }
+                            _ => unreachable!(),
+                        })
                 })
             }
             30 | 58 => {
@@ -1788,7 +1900,13 @@ impl Simulation {
             //All secondary switch entries are the generic true tail; no
             //House-retention or persistence write. Original Steam identity:
             //3e81a617..08600; RecordKill702D40 publishes4/6/7/48/29 here.
-            2 | 4 | 6 | 7 | 29 | 33 | 48 => {
+            //Object5F55EA..5F573F raises38..43 through this same gate. The
+            //original bodies ignore value/incoming House/actor/source here;
+            //tag_lifecycle.py --damage-events / trigger_damage_events.json
+            //execute30 controls, including prior persistence and NULL House.
+            //49/50 use the same gate. Steam3e81a617,71EC9A/71F1B1;
+            //trigger_action_values --crate records their original predicates.
+            2 | 4 | 6 | 7 | 29 | 33 | 38 | 39 | 40 | 41 | 42 | 43 | 48 | 49 | 50 => {
                 input.kind == condition.kind && !self.buildup_bypass_active()
             }
             //71F28B selects the generic true tail71F1B4, no persistence write.
@@ -1958,6 +2076,8 @@ impl Simulation {
     /// Original Tag6E53A0 attached-object ingress. `subject` chooses the
     /// attachment; `actor` and `source` keep the caller's distinct objects.
     /// Discovery6F4A18, Infantry519B53/519F44/51A025 use this same funnel.
+    /// Returns whether the caller had a nonnull Tag, independently of whether
+    /// an action fired. Pickup481A7F skips its Alive reread without a Tag.
     pub(crate) fn dispatch_object_tag_event(
         &mut self,
         subject: u64,
@@ -1965,13 +2085,13 @@ impl Simulation {
         actor: Option<u64>,
         source: Option<u64>,
         context: crate::sim::world::UninitContext<'_>,
-    ) {
+    ) -> bool {
         let Some(&tag) = self
             .trigger_runtime
             .attachments
             .get(&TagAttachment::Object(subject))
         else {
-            return;
+            return false;
         };
         let mut effects = Vec::new();
         self.dispatch_live_tag_event(
@@ -1989,6 +2109,14 @@ impl Simulation {
             context.effects(),
         );
         self.publish_trigger_effects(effects);
+        true
+    }
+
+    /// Pickup481AC1 writes Scenario+34BE only after its optional Tag callback
+    /// survives. Logic55AFB0 consumes and clears this existing serialized flag.
+    /// Steam3e81a617; tools/spatial_oracle/trigger_crate.json.
+    pub(crate) fn mark_crate_pickup_event(&mut self) {
+        self.trigger_runtime.dirty[3] = true;
     }
 
     /// Foot4D8978..4D8A14, reached from the unique Arrival per-cell owner.
@@ -2206,7 +2334,7 @@ impl Simulation {
         overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
         frame_effects: FrameEffects<'_>,
     ) -> bool {
-        #[cfg(test)]
+        #[cfg(any(test, feature = "test-support"))]
         self.trigger_runtime
             .dispatch_trace
             .push((index, input.kind));
@@ -2311,7 +2439,7 @@ impl Simulation {
 
     /// Shared Scenario SetGlobal689670/SetLocal689910 mutation, including
     /// Tag timer resets. Trigger and Team scripts use this same owner.
-    pub(crate) fn set_trigger_variable(&mut self, global: bool, index: i32, set: bool) -> bool {
+    pub fn set_trigger_variable(&mut self, global: bool, index: i32, set: bool) -> bool {
         if !(0..if global { 50 } else { 100 }).contains(&index) {
             return false;
         }
@@ -2355,13 +2483,13 @@ impl Simulation {
     /// Logic55AFB0 reads the mutable list length and dirty bytes afresh for
     /// every Tag. A removed current Tag shifts the next entry, which is skipped
     /// until the next visit; an enabled later Tag can fire during this pass.
-    pub(crate) fn advance_triggers(
+    pub fn advance_triggers(
         &mut self,
         inputs: TriggerInputs<'_>,
         overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
         frame_effects: FrameEffects<'_>,
     ) -> Vec<TriggerEffect> {
-        #[cfg(test)]
+        #[cfg(any(test, feature = "test-support"))]
         self.install_pending_trigger_fixture(inputs);
         let mut effects = Vec::new();
         self.trigger_runtime.logic_cursor = 0;
@@ -2509,8 +2637,9 @@ impl Simulation {
                 let eligible = self.substrate.entities.get(id).is_some_and(|entity| {
                     let powered = entity.category()
                         == crate::map::entities::EntityCategory::Structure
-                        && rules
-                            .object(self.interner.resolve(entity.type_ref()))
+                        && self
+                            .interner
+                            .object_type(entity.type_ref(), rules)
                             .is_some_and(|object| object.powered || object.powered_special);
                     entity.owner() == owner && powered == powered_pass
                 });
@@ -2622,11 +2751,11 @@ impl Simulation {
         overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
         frame_effects: FrameEffects<'_>,
     ) -> bool {
-        #[cfg(test)]
+        #[cfg(any(test, feature = "test-support"))]
         if self.trigger_runtime.stop_before_action == Some(action.entry.kind) {
             std::panic::panic_any(action.entry.kind);
         }
-        #[cfg(test)]
+        #[cfg(any(test, feature = "test-support"))]
         self.trigger_runtime
             .action_trace
             .push((action.entry.kind, action.value.unwrap_or(0)));
@@ -2635,6 +2764,61 @@ impl Simulation {
         let sound = action.sound.as_deref();
         let action = &action.entry;
         match action.kind {
+            6 => {
+                // Steam3e81a617..08600, Execute6DEBF9..6DEC3B:
+                // shared6E45E0 selects the House, then IHouse vt+38 is
+                // AllToHunt501400. A NULL Trigger/House is rejected.
+                // Native evidence: trigger_action_values --all-to-hunt.
+                let (Some(live), Some(value), Some(rules)) = (context.live_index, value, rules)
+                else {
+                    return false;
+                };
+                let Some(owner) = self.live_action_house(live, value, rules) else {
+                    return false;
+                };
+                crate::sim::house_strategy::all_to_hunt(
+                    self,
+                    rules,
+                    owner,
+                    overlay_registry,
+                    frame_effects,
+                );
+            }
+            74 | 75 => {
+                // Steam3e81a617:6DF2D1/6DF310 -> existing6E45E0 selector,
+                // then only House+1F2=1/0 at6DF2FA/6DF339. No immediate
+                // timer, Team, sibling-latch or RNG change belongs here.
+                // Native actions/consumer streams: --ai-activation corpus.
+                let (Some(live), Some(value), Some(rules)) = (context.live_index, value, rules)
+                else {
+                    return false;
+                };
+                let Some(house) = self
+                    .live_action_house(live, value, rules)
+                    .and_then(|owner| self.houses.get_mut(&owner))
+                else {
+                    return false;
+                };
+                house.set_ai_triggers_active(action.kind == 74);
+            }
+            9 => {
+                // Execute6DEAD6 -> shared House selector6E45E0;6DEAFF
+                // writes only House+250=4. No immediate FireSale/Hunt and
+                // no strategy timer reset. Those remain with house_strategy.
+                // The shared6E45E0 selector rejects a null Trigger.
+                // Steam3e81a617..08600, --no-factories-events Action9 controls.
+                let (Some(live), Some(value), Some(rules)) = (context.live_index, value, rules)
+                else {
+                    return false;
+                };
+                let Some(house) = self
+                    .live_action_house(live, value, rules)
+                    .and_then(|owner| self.houses.get_mut(&owner))
+                else {
+                    return false;
+                };
+                house.strategy_emergency.set_state_four();
+            }
             12 => {
                 // Steam3e81a617..08600, Execute6DF051..6DF08F: reverse
                 // live Trigger array, then726720's deferred marker. No
@@ -2816,6 +3000,64 @@ impl Simulation {
                 }
                 return matched;
             }
+            81..=83 => {
+                use crate::map::entities::EntityCategory;
+                use crate::sim::mission::{MissionId, MissionType};
+
+                // Steam3e81a617..08600: Execute6DDB67 ->6E01C0 (81),
+                //6DDBF6 (82),6DDC71 (83). Original execution, including
+                //Tag6E5380/GetMission5B3040/Queue5B35E0/41BA90:
+                //tools/spatial_oracle/trigger_action_values.py --wakeup.
+                //81 walks Techno by live Trigger identity and deliberately
+                //does NOT test Health or Limbo. 82/83 walk Foot and compare
+                //the incoming House, not the scalar or retained House.
+                let mut ordinal = 0;
+                while let Some(id) = if action.kind == 81 {
+                    self.substrate.entities.techno_registry_at(ordinal)
+                } else {
+                    self.substrate.entities.foot_registry_at(ordinal)
+                } {
+                    let eligible = self.substrate.entities.get(id).is_some_and(|entity| {
+                        let mission = entity.mission.effective().known();
+                        entity.lifecycle.object_alive()
+                            && entity.lifecycle.cell_marked()
+                            && if action.kind == 81 {
+                                entity.category() != EntityCategory::Structure
+                                    && matches!(
+                                        mission,
+                                        Some(MissionType::Sleep | MissionType::Harmless)
+                                    )
+                                    && context.live_index.is_some_and(|live| {
+                                        self.tag_contains_live_trigger(
+                                            TagAttachment::Object(id),
+                                            live,
+                                        )
+                                    })
+                            } else {
+                                entity.health.current() > 0
+                                    && !entity.lifecycle.in_limbo()
+                                    && if action.kind == 82 {
+                                        mission == Some(MissionType::Sleep)
+                                            && Some(entity.owner()) != context.incoming_house
+                                    } else {
+                                        mission == Some(MissionType::Harmless)
+                                            && Some(entity.owner()) == context.incoming_house
+                                    }
+                            }
+                    });
+                    if eligible && let Some(entity) = self.substrate.entities.get_mut(id) {
+                        //Every admitted call is Queue(Guard,0): no readiness,
+                        //Commence, timer write, RNG draw or detach. The normal
+                        //AI promotion remains with Mission's existing owner.
+                        crate::sim::mission::authority::queue_entity_mission_deferred(
+                            entity,
+                            MissionId::from_known(MissionType::Guard),
+                        );
+                    }
+                    ordinal += 1;
+                }
+                //Original AL=1 even for an empty registry or no matches.
+            }
             32 => {
                 //6DEC3B ->6E2050 uses live Tag membership, not owner/name.
                 //Repeated forward scans re-read the dynamic registry after
@@ -2954,6 +3196,7 @@ impl Simulation {
                             rules,
                             overlay_registry,
                             id,
+                            crate::sim::passenger::garrison_eject::GarrisonEjectMode::Release,
                             frame_effects,
                         );
                         return true;
@@ -3142,6 +3385,28 @@ impl Simulation {
                     waypoint,
                     crate::sim::world::UninitContext::new(Some(rules), overlay_registry)
                         .with_effects(frame_effects),
+                );
+            }
+            108 => {
+                //Steam3e81a617: active Execute6DF69B..6DF6CD ->68BCC0
+                //->56BEC0. Unset valid waypoints supply(0,0) to FNPC; the
+                //Place AL is returned. Compare the full scalar with20 before
+                //the fixed choice's low-byte store, including276 -> byte20.
+                //Original execution: trigger_action_values.py --crate.
+                let (Some(rules), Some(registry), Some(value), Some(waypoint)) =
+                    (rules, overlay_registry, value, action.waypoint_index)
+                else {
+                    return false;
+                };
+                let Some(cell) = self.session.waypoint_cell(waypoint as i32) else {
+                    return false;
+                };
+                return crate::sim::crates::place_crate(
+                    self,
+                    rules,
+                    registry,
+                    cell,
+                    (value != 20).then_some(value as u8),
                 );
             }
             101 => {
@@ -3589,5 +3854,33 @@ mod tests;
 mod native_tests;
 
 #[cfg(test)]
+#[path = "trigger_runtime_all_to_hunt_tests.rs"]
+mod all_to_hunt_tests;
+
+#[cfg(test)]
+#[path = "trigger_runtime_no_factories_tests.rs"]
+mod no_factories_tests;
+
+#[cfg(test)]
+#[path = "trigger_runtime_damage_event_tests.rs"]
+mod damage_event_tests;
+
+#[cfg(test)]
 #[path = "trigger_runtime_reveal_zone_tests.rs"]
 mod reveal_zone_tests;
+
+#[cfg(test)]
+#[path = "trigger_runtime_ai_activation_tests.rs"]
+mod ai_activation_tests;
+
+#[cfg(test)]
+#[path = "trigger_runtime_crate_tests.rs"]
+mod crate_tests;
+
+#[cfg(test)]
+#[path = "trigger_runtime_build_type_tests.rs"]
+mod build_type_tests;
+
+#[cfg(test)]
+#[path = "trigger_runtime_wakeup_tests.rs"]
+mod wakeup_tests;

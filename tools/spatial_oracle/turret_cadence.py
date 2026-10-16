@@ -272,6 +272,8 @@ def cases():
     yield case("aim_no_weapon", weapon=dict(present=0, omni_fire=0, turret_locked=0),
                target_coord=at_bearing(deg(90)))
     yield case("aim_turret_spins", turret_spins=1, target_coord=at_bearing(deg(90)), frames=20)
+    yield case("no_target_turret_spins_rot100_wrap", frames=4,
+               turret_init=0xF800, turret_rot=100, turret_spins=1, latch_init=1)
     # A target that appears after the turret has settled; and a mid-arc retarget.
     yield case("aim_target_appears", events=[dict(at=5, kind="target_coord",
                                                   value=at_bearing(deg(120)))])
