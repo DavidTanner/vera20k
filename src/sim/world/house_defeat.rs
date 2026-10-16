@@ -96,13 +96,12 @@ impl Simulation {
         rules: Option<&RuleSet>,
         registry: Option<&OverlayTypeRegistry>,
     ) {
-        let generated = self.house_rung(
+        self.house_rung(
             rules,
             registry,
             true,
             crate::sim::world::FrameEffects::default(),
         );
-        self.queue_commands(generated);
     }
 
     /// The house rung's per-house steps in HouseClass::Array order: each
@@ -112,8 +111,8 @@ impl Simulation {
     /// production choices (`0x004F9038..0x004F9265`, `sim::ai_base_building`)
     /// and tech recheck (`0x004F9265..0x004F9302`, `sim::production`);
     /// then the game-over scan. The native result head4F85BE precedes teams.
-    /// Returned events join the post-Logic dispatcher without executing during
-    /// a House visit. Without `defeat_pass`
+    /// Strip events it raises go to the OutList for the post-Logic dispatcher,
+    /// never executing during a House visit. Without `defeat_pass`
     /// (VERA's first tick) the defeat gates and the game-over scan are
     /// skipped.
     pub(super) fn house_rung(
@@ -122,8 +121,7 @@ impl Simulation {
         registry: Option<&OverlayTypeRegistry>,
         defeat_pass: bool,
         frame_effects: FrameEffects<'_>,
-    ) -> Vec<crate::sim::command::CommandEnvelope> {
-        let mut generated = Vec::new();
+    ) {
         // 0x004F8E86..0x004F8EB7: not a campaign, past frame zero.
         let defeat_gate =
             defeat_pass && self.session.game_mode_nonzero && (self.session.binary_frame as i32) > 0;
@@ -208,11 +206,9 @@ impl Simulation {
                     .is_some_and(|house| house.take_tech_recheck())
                 {
                     // Strip recalculation precedes4F92F6/4F92FD's Super
-                    // revoke/grant passes. Carry generated ABANDON events
-                    // to MainTick's post-Logic647260 dispatcher.
-                    generated.extend(crate::sim::production::recalculate_strips(
-                        self, rules, owner,
-                    ));
+                    // revoke/grant passes. Its ABANDON events wait in the
+                    // OutList for MainTick's post-Logic647260 dispatcher.
+                    crate::sim::production::recalculate_strips(self, rules, owner);
                     crate::sim::superweapon::update_owned_supers(self, rules, owner);
                     crate::sim::superweapon::grant_provided_supers(self, rules, owner);
                 }
@@ -234,7 +230,7 @@ impl Simulation {
             index += 1;
         }
         if !defeat_pass {
-            return generated;
+            return;
         }
 
         // Check if all remaining alive houses are mutually allied → game over.
@@ -279,8 +275,8 @@ impl Simulation {
                 }
             }
         }
-        generated
     }
+
     /// The defeat gate's test (`0x004F8E92..0x004F8F77`): a house neither
     /// defeated nor `MultiplayPassive=` whose counts say it holds nothing.
     fn house_holds_nothing(

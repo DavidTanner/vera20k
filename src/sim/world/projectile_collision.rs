@@ -1624,7 +1624,6 @@ mod tests {
                 crate::rules::overlay_types::OverlayTypeRegistry::from_ini(&ini, Some(&art));
             let _ = runtime
                 .advance_frame(
-                    &[],
                     16,
                     crate::sim::world::TickLane::Ordinary,
                     crate::sim::world::FrameEffects::default(),
@@ -1715,7 +1714,6 @@ mod tests {
                 crate::rules::overlay_types::OverlayTypeRegistry::from_ini(&ini, Some(&art));
             let _ = runtime
                 .advance_frame(
-                    &[],
                     16,
                     TickLane::Ordinary,
                     crate::sim::world::FrameEffects::default(),
@@ -1786,7 +1784,6 @@ mod tests {
                 crate::rules::overlay_types::OverlayTypeRegistry::from_ini(&ini, Some(&art));
             let _ = runtime
                 .advance_frame(
-                    &[],
                     16,
                     TickLane::Ordinary,
                     crate::sim::world::FrameEffects::default(),
@@ -1794,7 +1791,6 @@ mod tests {
                 .expect("fixture frame must complete");
             let _ = resumed
                 .advance_frame(
-                    &[],
                     16,
                     TickLane::Ordinary,
                     crate::sim::world::FrameEffects::default(),
@@ -1923,7 +1919,6 @@ mod tests {
                 runtime.resources.rules = RuleSet::from_ini(&ini).unwrap();
                 let output = runtime
                     .advance_frame(
-                        &[],
                         16,
                         TickLane::Ordinary,
                         crate::sim::world::FrameEffects::default(),
@@ -2037,7 +2032,6 @@ mod tests {
             assert_eq!(rules.general.gravity, inputs["gravity"]);
             let output = runtime
                 .advance_frame(
-                    &[],
                     16,
                     TickLane::Ordinary,
                     crate::sim::world::FrameEffects::default(),
@@ -2146,7 +2140,6 @@ mod tests {
                             row["gravity_sequence"][frame].as_i64().unwrap() as i32;
                         let _ = runtime
                             .advance_frame(
-                                &[],
                                 16,
                                 TickLane::Ordinary,
                                 crate::sim::world::FrameEffects::default(),
@@ -2235,7 +2228,6 @@ mod tests {
         for expected in row["frames"].as_array().unwrap().iter().take(3) {
             let _ = runtime
                 .advance_frame(
-                    &[],
                     16,
                     TickLane::Ordinary,
                     crate::sim::world::FrameEffects::default(),
@@ -2315,7 +2307,6 @@ mod tests {
             crate::rules::overlay_types::OverlayTypeRegistry::from_ini(&ini, Some(&art));
         let _ = runtime
             .advance_frame(
-                &[],
                 16,
                 TickLane::Ordinary,
                 crate::sim::world::FrameEffects::default(),
@@ -2375,7 +2366,6 @@ mod tests {
         // original-byte comparisons; this checks the real AI-to-damage delivery.
         let _ = runtime
             .advance_frame(
-                &[],
                 16,
                 TickLane::Ordinary,
                 crate::sim::world::FrameEffects::default(),

@@ -773,7 +773,16 @@ fn retail_computer_dominator_sends_its_captives_hunting() {
     let tank = spawn(&mut sim, &rules, "MTNK", "Americans", TARGET);
     let gi = spawn(&mut sim, &rules, "E1", "Americans", (39, 40));
     charge_super(&mut sim, russians, DOMINATOR);
-    click(&mut sim, &rules, russians, DOMINATOR, TARGET);
+    // A computer house fires without an event: its AI calls Fire_SW itself.
+    let dominator = sim.interner.intern(DOMINATOR);
+    assert!(sim.fire_super_weapon(
+        &rules,
+        russians,
+        dominator,
+        TARGET,
+        None,
+        crate::sim::world::FrameEffects::default(),
+    ));
     let mut frames = 0;
     while sim.psychic_dominator.status_number() != 3 {
         step(&mut sim, &rules);

@@ -2751,12 +2751,12 @@ impl TacticalCaptureSession {
                 ] == neutral.map(|v| v as f32),
                 "gesture did not start at the sealed neutral cursor"
             );
-            let sim = &state
+            let runtime = state
                 .match_state
                 .sim_runtime
                 .as_ref()
-                .context("gesture simulation absent")?
-                .simulation;
+                .context("gesture simulation absent")?;
+            let sim = &runtime.simulation;
             let issued_simulation_tick = sim.session.tick;
             let issued_binary_frame = sim.session.binary_frame;
             let clock_before = MapClock::capture(state)?;
@@ -2765,7 +2765,7 @@ impl TacticalCaptureSession {
                 (issued_simulation_tick, issued_binary_frame) == expected_clock,
                 "gesture issue is outside exact-step boundary"
             );
-            let pending_before = sim.pending_command_snapshot();
+            let pending_before = sim.pending_command_snapshot(Some(&runtime.resources.rules));
             let local_input = profile.observes_local_input();
             let before = MapInputObservation::capture(state, local_input)?;
             let right = scheduled.gesture.is_right_button();
@@ -2972,19 +2972,19 @@ impl TacticalCaptureSession {
                     restored_audio_state,
                 })?;
             }
-            let sim = &state
+            let runtime = state
                 .match_state
                 .sim_runtime
                 .as_ref()
-                .context("gesture simulation disappeared")?
-                .simulation;
+                .context("gesture simulation disappeared")?;
+            let sim = &runtime.simulation;
             ensure!(
                 scheduled.gesture.is_quickload()
                     || (sim.session.tick == issued_simulation_tick
                         && sim.session.binary_frame == issued_binary_frame),
                 "gesture advanced simulation outside the exact-step owner"
             );
-            let pending_after = sim.pending_command_snapshot();
+            let pending_after = sim.pending_command_snapshot(Some(&runtime.resources.rules));
             ensure!(
                 scheduled.gesture.is_quickload() || pending_after.starts_with(&pending_before),
                 "gesture changed previously queued commands"

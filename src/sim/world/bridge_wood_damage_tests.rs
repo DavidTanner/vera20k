@@ -210,7 +210,7 @@ fn retail_wood_force_fire_collapses_then_engineer_rebuilds() {
     );
     scene
         .runtime
-        .advance_frame(
+        .advance_frame_issuing(
             std::slice::from_ref(&command),
             SIM_TICK_MS,
             crate::sim::world::TickLane::Ordinary,
@@ -235,7 +235,6 @@ fn retail_wood_force_fire_collapses_then_engineer_rebuilds() {
         let output = scene
             .runtime
             .advance_frame(
-                &[],
                 SIM_TICK_MS,
                 crate::sim::world::TickLane::Ordinary,
                 crate::sim::world::FrameEffects::default(),
@@ -302,7 +301,6 @@ fn retail_wood_force_fire_collapses_then_engineer_rebuilds() {
         let output = scene
             .runtime
             .advance_frame(
-                &[],
                 SIM_TICK_MS,
                 crate::sim::world::TickLane::Ordinary,
                 crate::sim::world::FrameEffects::default(),

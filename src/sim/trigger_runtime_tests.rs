@@ -1986,7 +1986,6 @@ fn parsed_event_records_match_native_list_and_production_predicates() {
             sim.trigger_runtime.locals_set.insert(9);
             let result = sim
                 .advance_app_frame(
-                    &[],
                     None,
                     None,
                     67,
@@ -2065,7 +2064,6 @@ fn parsed_variable_actions_match_native_reader_dispatch_and_restore() {
             let before_rng = sim.rng_state();
             let frame = sim
                 .advance_master_frame(
-                    &[],
                     None,
                     None,
                     67,
@@ -2150,7 +2148,6 @@ fn parsed_map_trigger_flags_gate_production_frames_and_survive_restore() {
         sim.resolved_terrain = Some(flat_trigger_playfield_terrain(32, 32));
         let frame = sim
             .advance_app_frame(
-                &[],
                 None,
                 None,
                 67,
@@ -2286,7 +2283,6 @@ fn trigger_action_40_normalizes_and_refreshes_authority_same_frame() {
 
     let tick = sim
         .advance_master_frame(
-            &[],
             None,
             None,
             67,
@@ -2608,7 +2604,6 @@ fn master_frame_polls_triggers_before_logic_houses_commit_and_delete() {
 
     let tick = sim
         .advance_master_frame(
-            &[],
             None,
             None,
             67,
@@ -2693,7 +2688,6 @@ fn master_frame_save_load_continues_trigger_projectile_and_delete_state() {
     original.initialize_map_triggers(&triggers, &HashMap::new());
     original
         .advance_master_frame(
-            &[],
             None,
             None,
             67,
@@ -2766,7 +2760,6 @@ fn master_frame_save_load_continues_trigger_projectile_and_delete_state() {
 
     let original_tick = original
         .advance_master_frame(
-            &[],
             None,
             None,
             67,
@@ -2784,10 +2777,14 @@ fn master_frame_save_load_continues_trigger_projectile_and_delete_state() {
         map_name: original.session.map_name.clone(),
         rules_hash: 0,
     });
-    replay_log.record_tick(original_tick.tick, Vec::new(), original_tick.state_hash);
+    replay_log.record_tick(
+        original_tick.tick,
+        Vec::new(),
+        None,
+        original_tick.state_hash,
+    );
     let restored_tick = restored
         .advance_master_frame(
-            &[],
             None,
             None,
             67,

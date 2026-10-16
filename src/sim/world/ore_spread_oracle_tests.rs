@@ -142,7 +142,6 @@ fn app_frames_match_original_ore_driver_histories_and_rng_continuation() {
             sim.session.binary_frame = frame;
             let (output, draws) = crate::sim::rng::trace_draws(|| {
                 sim.advance_app_frame(
-                    &[],
                     Some(&rules),
                     Some(&registry),
                     67,
@@ -207,7 +206,6 @@ fn app_ore_constructor_terminal_cleanup_matches_original_deferred_drain() {
         sim.session.binary_frame = row["input"]["frame"].as_i64().unwrap() as u32;
         let (output, draws) = crate::sim::rng::trace_draws(|| {
             sim.advance_app_frame(
-                &[],
                 Some(&rules),
                 Some(&registry),
                 67,

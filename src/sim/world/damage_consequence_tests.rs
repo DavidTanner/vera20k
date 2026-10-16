@@ -106,17 +106,19 @@ fn delivery_sounds(sim: &Simulation) -> Vec<String> {
 fn advance_lethal_shot(sim: &mut Simulation, rules: &RuleSet, attacker: u64, victim: u64) {
     let owner = sim.interner.intern("Americans");
     let grid = PathGrid::test_all_passable(64, 64);
-    sim.queue_command(CommandEnvelope::new(
-        owner,
-        sim.session.tick + 1,
-        Command::Attack {
-            attacker_id: attacker,
-            target_id: victim,
-        },
-    ));
+    sim.issue_fixture_commands(
+        &[CommandEnvelope::new(
+            owner,
+            sim.session.tick + 1,
+            Command::Attack {
+                attacker_id: attacker,
+                target_id: victim,
+            },
+        )],
+        Some(rules),
+    );
     for _ in 0..60 {
-        let commands = sim.take_due_commands();
-        sim.advance_tick(&commands, Some(rules), Some(&grid), None, 100);
+        sim.advance_tick(&[], Some(rules), Some(&grid), None, 100);
         if !sim.substrate.voxel_anims.is_empty() {
             return;
         }

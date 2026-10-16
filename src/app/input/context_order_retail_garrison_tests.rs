@@ -45,10 +45,8 @@ fn retail_garrison_scene() -> Option<(crate::headless_scenario::HeadlessScenario
 }
 
 fn advance_garrison_frame(runtime: &mut crate::sim::runtime::SimRuntime) {
-    let due = runtime.simulation.take_due_commands();
     runtime
         .advance_frame(
-            &due,
             crate::app::types::SIM_TICK_MS,
             TickLane::Ordinary,
             crate::sim::world::FrameEffects::default(),
@@ -60,10 +58,12 @@ fn queue_ordinary_order(runtime: &mut crate::sim::runtime::SimRuntime, order: Co
     let sim = &runtime.simulation;
     let envelope =
         CommandEnvelope::new(sim.session.current_house.unwrap(), sim.session.tick, order);
-    let envelope = crate::app::input::commands::roundtrip_local_order(sim, None, envelope)
+    let envelope = crate::app::input::commands::decoded_local_order(sim, None, envelope)
         .pop()
         .unwrap();
-    runtime.simulation.queue_commands(vec![envelope]);
+    runtime
+        .simulation
+        .issue_fixture_commands(&Vec::from_iter(vec![envelope]), None);
 }
 
 /// Five GIs south-east of CASTL03 (`Foundation=4x4`) on XMP03T4. Their walk
@@ -135,20 +135,20 @@ fn retail_gi_group_boards_a_4x4_garrison_from_its_far_side() {
         .into_iter()
         .map(|order| {
             let envelope = CommandEnvelope::new(owner, runtime.simulation.session.tick, order);
-            crate::app::input::commands::roundtrip_local_order(&runtime.simulation, None, envelope)
+            crate::app::input::commands::decoded_local_order(&runtime.simulation, None, envelope)
                 .pop()
                 .unwrap()
         })
         .collect();
-    runtime.simulation.queue_commands(envelopes);
+    runtime
+        .simulation
+        .issue_fixture_commands(&Vec::from_iter(envelopes), None);
     let castle_strength = rules.object("CASTL03").unwrap().strength;
 
     let mut boarded_frame = None;
     for frame in 0..600 {
-        let due = runtime.simulation.take_due_commands();
         runtime
             .advance_frame(
-                &due,
                 crate::app::types::SIM_TICK_MS,
                 TickLane::Ordinary,
                 crate::sim::world::FrameEffects::default(),

@@ -384,13 +384,13 @@ mod tests {
 
         let app_output = app_sim
             .advance_app_frame(
-                &[],
                 Some(&rules),
                 None,
                 67,
                 crate::sim::world::TickLane::Ordinary,
                 None,
-             crate::sim::world::FrameEffects::default(),)
+                crate::sim::world::FrameEffects::default(),
+            )
             .expect("fixture frame must complete");
         let headless_tick = headless_sim.advance_tick(&[], Some(&rules), None, None, 67);
 
@@ -417,13 +417,13 @@ mod tests {
         begin_refinery_unload_gate(&mut sim, &rules, 41);
         let output = sim
             .advance_app_frame(
-                &[],
                 Some(&rules),
                 None,
                 67,
                 crate::sim::world::TickLane::Ordinary,
                 None,
-             crate::sim::world::FrameEffects::default(),)
+                crate::sim::world::FrameEffects::default(),
+            )
             .expect("fixture frame must complete");
 
         assert!(output.tick.frame_committed);

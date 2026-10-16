@@ -26,7 +26,7 @@
 //! (`CommandQueueRoute`), is written into the simulation by the app before
 //! every admitted frame from this owner's mode.
 
-use crate::net::lockstep::MultiplayerChecksumHistory;
+use crate::sim::lockstep::MultiplayerChecksumHistory;
 use crate::sim::world::CommandQueueRoute;
 
 /// Front-end session mode, as the modal pump reads it to decide whether the

@@ -435,17 +435,6 @@ fn retail_repair_click_preserves_native_modifier_and_target_controls() {
     );
     let empty = sim.spawn_object("FV", OWNER, 20, 20, 64, rules).unwrap();
     assert_eq!(sim.unit_repair_action(empty, tank, owner, rules), None);
-    assert!(
-        !sim.apply_command(
-            OWNER,
-            &Command::Attack {
-                attacker_id: empty,
-                target_id: tank
-            },
-            Some(rules)
-        ),
-        "ordinary weapons still cannot order a friendly Attack"
-    );
     let (sim, gi_ifv, tank) = boarded_ifv(rules, "E1");
     assert_eq!(
         sim.unit_repair_action(

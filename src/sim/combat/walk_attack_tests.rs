@@ -339,7 +339,7 @@ fn walk_attack_range_entry_finishes_paid_head_then_accepts_new_move() {
     walk_command(
         &mut sim,
         &rules,
-        Command::Attack {
+        Command::ForceAttack {
             attacker_id: actor,
             target_id: victim,
         },
@@ -461,7 +461,7 @@ fn ordered_walk_attack_nulls_destination_but_preserves_paid_head_and_queues() {
                     target_ry: 10,
                 }
             } else {
-                Command::Attack {
+                Command::ForceAttack {
                     attacker_id: actor,
                     target_id: victim,
                 }

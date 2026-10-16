@@ -702,7 +702,6 @@ mod tests {
 
         let advance = |sim: &mut Simulation| {
             sim.advance_app_frame(
-                &[],
                 None,
                 None,
                 67,

@@ -314,7 +314,7 @@ impl Replay {
                 let command = match input["op"].as_str().unwrap() {
                     "stop" => Command::Stop { entity_id: s.miner },
                     _ => match input["mission"].as_str().unwrap() {
-                        "attack" => Command::Attack {
+                        "attack" => Command::ForceAttack {
                             attacker_id: s.miner,
                             target_id: if input["target"] == "second" {
                                 self.second

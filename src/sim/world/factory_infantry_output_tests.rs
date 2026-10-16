@@ -2016,22 +2016,23 @@ fn joined_two_paid_gi(route: OutputRoute) {
             && products[0].placed_frame.is_none()
         {
             let (rx, ry) = rally_cell.unwrap();
-            sim.queue_command(CommandEnvelope::new(
-                owner,
-                sim.session.tick + 1,
-                Command::SetRally {
-                    rx,
-                    ry,
-                    producer_ids: vec![producer],
-                },
-            ));
+            sim.issue_fixture_commands(
+                &[CommandEnvelope::new(
+                    owner,
+                    sim.session.tick + 1,
+                    Command::SetRally {
+                        rx,
+                        ry,
+                        producer_ids: vec![producer],
+                    },
+                )],
+                Some(&rules),
+            );
         }
         // The ordinary app drains player ingress before advancing each frame.
-        let due = sim.take_due_commands();
         if route == OutputRoute::RallyBetweenCompletionAndPlace {
-            let mut output = sim
+            let _output = sim
                 .advance_app_frame(
-                    &due,
                     Some(&rules),
                     Some(&registry),
                     TICK_MS,
@@ -2040,21 +2041,14 @@ fn joined_two_paid_gi(route: OutputRoute) {
                     crate::sim::world::FrameEffects::default(),
                 )
                 .expect("the ordinary app frame completes");
-            let admitted = output.take_admitted_commands();
+            let admitted = sim.take_dispatched_records_for_test();
             if products[0].completed_frame.is_some() && products[0].placed_frame.is_none() {
                 let phase: Value = serde_json::from_str(crate::test_fixture::text(
                     "src/sim/world/fixtures/factory_infantry_publication_native.json",
                 ))
                 .unwrap();
                 assert_eq!(phase["native_sha256"], native["native_sha256"]);
-                let event_types: Vec<_> = admitted
-                    .iter()
-                    .map(|command| match command.payload {
-                        Command::SetRally { .. } => 0x1E,
-                        Command::PlaceProducedMobile { .. } => 0x0B,
-                        _ => panic!("unexpected admitted race command: {command:?}"),
-                    })
-                    .collect();
+                let event_types: Vec<_> = admitted.iter().map(|record| record.opcode()).collect();
                 let before = &phase["cases"]["before_strip"];
                 assert_eq!(json!(event_types), before["executed_event_types"]);
                 let state = local_state(&sim, first);
@@ -2078,7 +2072,7 @@ fn joined_two_paid_gi(route: OutputRoute) {
                 );
             }
         } else {
-            sim.advance_tick(&due, Some(&rules), None, Some(&registry), TICK_MS);
+            sim.advance_tick(&[], Some(&rules), None, Some(&registry), TICK_MS);
         }
         let log = radio::take_transmit_log();
         if let Some(view) = sim
@@ -2119,7 +2113,7 @@ fn joined_two_paid_gi(route: OutputRoute) {
                 let entity = sim.substrate.entities.get(held).unwrap();
                 assert!(entity.lifecycle.in_limbo() && !entity.in_logic_vector.is_member());
                 assert!(
-                    !sim.pending_command_snapshot().iter().any(|command| {
+                    !sim.pending_command_snapshot(None).iter().any(|command| {
                         matches!(command.payload, Command::PlaceProducedMobile { .. })
                     }),
                     "Factory completion retains its change flag until the next Strip prefix"
@@ -2347,7 +2341,7 @@ fn joined_two_paid_gi(route: OutputRoute) {
         .factories
         .view(owner, ProductionCategory::Infantry);
     assert!(factory.is_none_or(|view| view.object.is_none() && view.queue.is_empty()));
-    assert!(sim.pending_command_snapshot().is_empty());
+    assert!(sim.pending_command_snapshot(None).is_empty());
     assert_eq!(
         json!(sim.houses[&owner].economy.credits()),
         native["final_wallet"]["credits"]

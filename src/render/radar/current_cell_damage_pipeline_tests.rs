@@ -306,7 +306,6 @@ fn gsi_04_01_production_tick_keeps_pavement_damage_through_ordinary_overlay_repa
     for _ in 0..32 {
         let output = runtime
             .advance_frame(
-                &[],
                 67,
                 TickLane::Ordinary,
                 crate::sim::world::FrameEffects::default(),
@@ -452,7 +451,6 @@ fn gsi_04_01_production_tick_keeps_pavement_damage_through_ordinary_overlay_repa
     for _ in 0..100 {
         let _ = runtime
             .advance_frame(
-                &[],
                 67,
                 TickLane::Ordinary,
                 crate::sim::world::FrameEffects::default(),

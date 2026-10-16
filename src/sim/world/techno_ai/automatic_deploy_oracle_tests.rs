@@ -212,7 +212,6 @@ fn retail_gi_and_guardian_gi_complete_deploy_in_bound_runtime() {
     for _ in 0..250 {
         runtime
             .advance_frame(
-                &[],
                 22,
                 TickLane::Ordinary,
                 crate::sim::world::FrameEffects::default(),

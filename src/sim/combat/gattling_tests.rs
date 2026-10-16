@@ -540,12 +540,14 @@ impl Spin {
     /// acts on the order the frame after this one.
     fn order(&mut self, command: crate::sim::command::Command) {
         let owner = self.sim.interner.intern("YuriCountry");
-        self.sim
-            .queue_command(crate::sim::command::CommandEnvelope::new(
+        self.sim.issue_fixture_commands(
+            &[crate::sim::command::CommandEnvelope::new(
                 owner,
                 self.sim.session.tick + 1,
                 command,
-            ));
+            )],
+            Some(&self.rules),
+        );
         self.tick();
     }
 
@@ -557,9 +559,8 @@ impl Spin {
     fn tick(&mut self) -> (Vec<String>, Vec<crate::sim::world::SimSoundEvent>) {
         self.sim.fire_events.clear();
         self.sim.sound_events.clear();
-        let commands = self.sim.take_due_commands();
         self.sim
-            .advance_tick(&commands, Some(&self.rules), Some(&self.grid), None, 67);
+            .advance_tick(&[], Some(&self.rules), Some(&self.grid), None, 67);
         let fired = self
             .sim
             .fire_events

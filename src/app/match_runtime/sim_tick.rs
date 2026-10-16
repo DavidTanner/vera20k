@@ -776,9 +776,11 @@ fn advance_in_game_runtime_mode(
 /// Tick simulation: advance movement and animation systems.
 fn should_record_replay_tick(
     tick_result: &crate::sim::world::TickResult,
-    due_commands: &[crate::sim::command::CommandEnvelope],
+    issued_records: &[crate::sim::command::CommandRecord],
 ) -> bool {
-    tick_result.frame_committed || !due_commands.is_empty() || tick_result.terminal_score_finalized
+    tick_result.frame_committed
+        || !issued_records.is_empty()
+        || tick_result.terminal_score_finalized
 }
 
 fn advance_one_simulation_frame(
@@ -852,11 +854,6 @@ fn advance_one_simulation_frame(
             // Delay-zero AnimClass construction can emit StartSound during the
             // final map-load sweep. Keep it until this first tactical drain;
             // `drain(..)` below still consumes every event exactly once.
-            let due_commands = if tick_lane == TickLane::Ordinary {
-                sim.take_due_commands()
-            } else {
-                Vec::new()
-            };
             // F07: the runtime is the one production frame API — bound
             // resources, no caller-substitutable inputs.
             let mut output = {
@@ -888,15 +885,11 @@ fn advance_one_simulation_frame(
                     &mut state.match_state.match_audio.sound_events,
                     &mut admit_radar,
                 );
-                rt.advance_frame(
-                    &due_commands,
-                    SIM_TICK_MS,
-                    tick_lane,
-                    FrameEffects::for_sound(&boundary),
-                )
-                .expect("simulation frame failed; prior world mutations remain")
+                rt.advance_frame(SIM_TICK_MS, tick_lane, FrameEffects::for_sound(&boundary))
+                    .expect("simulation frame failed; prior world mutations remain")
             };
-            let admitted_commands = output.take_admitted_commands();
+            let issued_records = output.take_issued_records();
+            let issued_game_speed = output.issued_game_speed;
             let SimFrameOutput {
                 tick: tick_result,
                 trigger_effects: frame_trigger_effects,
@@ -1037,10 +1030,15 @@ fn advance_one_simulation_frame(
             // Both terminal routes belong to the deterministic stream even
             // though Main_Tick skips its frame commit. EventClass EXIT carries
             // a command; natural win/loss carries the one-shot score/RNG latch.
-            if should_record_replay_tick(&tick_result, &admitted_commands)
+            if should_record_replay_tick(&tick_result, &issued_records)
                 && let Some(log) = &mut state.match_state.match_diagnostics.replay_log
             {
-                log.record_tick(tick_result.tick, admitted_commands, tick_result.state_hash);
+                log.record_tick(
+                    tick_result.tick,
+                    issued_records,
+                    issued_game_speed,
+                    tick_result.state_hash,
+                );
             }
         }
         if frame_committed {

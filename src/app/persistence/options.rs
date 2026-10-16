@@ -87,27 +87,28 @@ fn apply_in_game_options(state: &mut AppState) {
             .in_game_options
             .game_speed,
     );
-    if state.match_state.sim_runtime.is_some() {
-        let owner = crate::app::input::commands::preferred_local_owner_name(state);
-        let speed = u8::try_from(
-            state
-                .match_state
-                .match_presentation
-                .in_game_options
-                .game_speed,
-        )
-        .ok();
-        let scheduled = match (owner, speed) {
-            (Some(owner), Some(speed)) => crate::app::input::commands::try_schedule_command(
-                state,
-                &owner,
-                crate::sim::command::Command::SetGameSpeed { speed },
-            ),
-            _ => None,
+    // Offline Options stores the speed at once (modes 0 and 5 send no
+    // GAMESPEED event).
+    let owner = crate::app::input::commands::preferred_local_owner_name(state);
+    let speed = u8::try_from(
+        state
+            .match_state
+            .match_presentation
+            .in_game_options
+            .game_speed,
+    )
+    .ok();
+    if let Some(rt) = state.match_state.sim_runtime.as_mut() {
+        let applied = match (
+            owner.and_then(|owner| rt.simulation.interner.get(&owner)),
+            speed,
+        ) {
+            (Some(owner), Some(speed)) => rt.simulation.apply_local_game_speed(owner, speed),
+            _ => false,
         };
-        if scheduled.is_none() {
+        if !applied {
             log::warn!(
-                "In-game Options could not queue GameSpeed={} for the local house",
+                "In-game Options could not apply GameSpeed={} for the local house",
                 state
                     .match_state
                     .match_presentation

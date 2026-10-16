@@ -824,7 +824,7 @@ mod tests {
                 map_name: simulation.session.map_name.clone(),
                 rules_hash: rules.simulation_config_hash(),
             });
-            replay.record_tick(1, Vec::new(), Some(simulation.state_hash()));
+            replay.record_tick(1, Vec::new(), None, Some(simulation.state_hash()));
             let replay_log = Some(replay);
 
             let startup = startup_authority(LOAD_FIXTURE_SEED);
@@ -1248,7 +1248,6 @@ mod tests {
         let tick_before = runtime.simulation.session.tick;
         runtime
             .advance_frame(
-                &[],
                 33,
                 crate::sim::world::TickLane::Ordinary,
                 crate::sim::world::FrameEffects::default(),
@@ -1333,7 +1332,6 @@ mod tests {
         let tick = runtime.simulation.session.tick;
         runtime
             .advance_frame(
-                &[],
                 1,
                 crate::sim::world::TickLane::Ordinary,
                 crate::sim::world::FrameEffects::default(),
@@ -1399,7 +1397,6 @@ mod tests {
             let tick = runtime.simulation.session.tick;
             runtime
                 .advance_frame(
-                    &[],
                     1,
                     crate::sim::world::TickLane::Ordinary,
                     crate::sim::world::FrameEffects::default(),

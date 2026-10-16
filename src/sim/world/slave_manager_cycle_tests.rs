@@ -18,9 +18,8 @@ use crate::sim::world::SimSoundEvent;
 
 fn frame(s: &mut SlaveScene) {
     let grid = s.scene.sim.path_grid_snapshot();
-    let commands = s.scene.sim.take_due_commands();
     s.scene.sim.advance_tick(
-        &commands,
+        &[],
         Some(&s.scene.rules),
         grid.as_deref(),
         Some(registry()),
@@ -369,15 +368,18 @@ fn a_harvest_order_sends_the_slave_miner_to_deploy_beside_the_field() {
     s.scene.sim.production.ore_growth_config = OreGrowthConfig::disabled();
     let owner = s.scene.sim.interner.get("Americans").unwrap();
     let tick = s.scene.sim.session.tick;
-    s.scene.sim.queue_command(CommandEnvelope::new(
-        owner,
-        tick + 1,
-        Command::HarvestCell {
-            entity_id: s.master,
-            target_rx: 24,
-            target_ry: 20,
-        },
-    ));
+    s.scene.sim.issue_fixture_commands(
+        &[CommandEnvelope::new(
+            owner,
+            tick + 1,
+            Command::HarvestCell {
+                entity_id: s.master,
+                target_rx: 24,
+                target_ry: 20,
+            },
+        )],
+        None,
+    );
     let mut hunting_after = None;
     for n in 0..60 {
         frame(&mut s);
@@ -436,15 +438,18 @@ fn a_move_order_takes_the_slave_miner_off_its_hunt() {
     }));
     let owner = s.scene.sim.interner.get("Americans").unwrap();
     let tick = s.scene.sim.session.tick;
-    s.scene.sim.queue_command(CommandEnvelope::new(
-        owner,
-        tick + 1,
-        Command::Move {
-            entity_id: s.master,
-            target_rx: 10,
-            target_ry: 20,
-        },
-    ));
+    s.scene.sim.issue_fixture_commands(
+        &[CommandEnvelope::new(
+            owner,
+            tick + 1,
+            Command::Move {
+                entity_id: s.master,
+                target_rx: 10,
+                target_ry: 20,
+            },
+        )],
+        None,
+    );
     for _ in 0..3 {
         frame(&mut s);
     }
@@ -589,15 +594,18 @@ fn a_destroyed_refinery_frees_its_slaves_to_the_killer() {
     // the queued Move then commences.
     let ordered = s.slaves[&1];
     let tick = s.scene.sim.session.tick;
-    s.scene.sim.queue_command(CommandEnvelope::new(
-        russians,
-        tick + 1,
-        Command::Move {
-            entity_id: ordered,
-            target_rx: 18,
-            target_ry: 17,
-        },
-    ));
+    s.scene.sim.issue_fixture_commands(
+        &[CommandEnvelope::new(
+            russians,
+            tick + 1,
+            Command::Move {
+                entity_id: ordered,
+                target_rx: 18,
+                target_ry: 17,
+            },
+        )],
+        None,
+    );
     let doing = |s: &SlaveScene, id: u64| {
         s.scene
             .sim
@@ -711,7 +719,7 @@ fn a_dead_slave_is_regrown_after_the_regen_rate_and_goes_out_again() {
 }
 
 /// Deploying a Slave Miner (`UnitClass::Deploy`, `deploy_mcv`) and undeploying
-/// its refinery (`undeploy_building` to its conversion in
+/// its refinery (`start_undeploy` to its conversion in
 /// `visit_building_down`) each hand the manager over (SetOwner `0x006AF580`):
 /// the slaves keep their nodes and follow it, and the manager the new
 /// object's constructor built frees its own fresh slaves (UnInit in limbo).
@@ -822,18 +830,13 @@ fn deploy_and_undeploy_hand_the_slave_manager_over() {
         );
     }
 
-    // Built up (`building_up` done), as `undeploy_building` requires, and
+    // Built up (`building_up` done), as the undeploy requires, and
     // elite: the unit takes the refinery's VeterancyClass (`0x0044A058`).
     let refinery = sim.substrate.entities.get_mut(yarefn).unwrap();
     refinery.finish_building_construction_for_test();
     refinery.veterancy.set_elite();
     assert!(
-        sim.undeploy_building(
-            yarefn,
-            &rules,
-            Some(registry()),
-            crate::sim::world::FrameEffects::default()
-        ),
+        start_undeploy(&mut sim, &rules, Some(registry()), yarefn),
         "undeploy to SMIN"
     );
     sim.substrate
@@ -1075,12 +1078,7 @@ fn an_attacker_of_a_packing_refinery_takes_the_slave_miner() {
         let _ = expected.next_u32();
     }
 
-    assert!(sim.undeploy_building(
-        refinery,
-        &rules,
-        Some(registry()),
-        crate::sim::world::FrameEffects::default()
-    ));
+    assert!(start_undeploy(&mut sim, &rules, Some(registry()), refinery));
     sim.substrate
         .entities
         .get_mut(refinery)
@@ -1120,4 +1118,39 @@ fn an_attacker_of_a_packing_refinery_takes_the_slave_miner() {
     rearmed.arm(frame, delay);
     assert_eq!(attacker.passive_scan.timer(), rearmed);
     assert_eq!(sim.scenario_rng.logical_state(), expected.logical_state());
+}
+
+/// Start a building's undeploy as its records execute: the ARCHIVE of its own
+/// Cell, then SELL, through their decoded receivers.
+fn start_undeploy(
+    sim: &mut crate::sim::world::Simulation,
+    rules: &crate::rules::ruleset::RuleSet,
+    registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
+    building: u64,
+) -> bool {
+    let entity = sim.substrate.entities.get(building).unwrap();
+    let owner = sim.interner.resolve(entity.owner()).to_string();
+    let [x, y] = crate::sim::movement::ground_pose::object_center_xy(entity);
+    let cell = |lepton| crate::util::lepton::lepton_to_cell(lepton) as u16;
+    sim.can_undeploy_building_runtime(building, rules)
+        && [
+            crate::sim::command::Command::SetRally {
+                rx: cell(x),
+                ry: cell(y),
+                producer_ids: vec![building],
+            },
+            crate::sim::command::Command::SellBuilding {
+                entity_id: building,
+            },
+        ]
+        .iter()
+        .all(|command| {
+            sim.apply_command_with_overlays(
+                &owner,
+                command,
+                Some(rules),
+                registry,
+                crate::sim::world::FrameEffects::default(),
+            )
+        })
 }

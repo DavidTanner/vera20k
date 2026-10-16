@@ -86,7 +86,6 @@ fn paid_ready_fixture() -> Option<Fixture> {
     // run their real timers and charge the same House economy during these frames.
     for _ in 0..4096 {
         sim.advance_app_frame(
-            &[],
             Some(&rules),
             Some(&overlays),
             67,
@@ -457,12 +456,12 @@ fn cancel_envelope(fixture: &Fixture, name: &str) -> CommandEnvelope {
 }
 
 fn advance_commands(fixture: &mut Fixture, commands: &[CommandEnvelope]) -> SimFrameOutput {
-    fixture.sim.queue_commands(commands.iter().cloned());
-    let due = fixture.sim.take_due_commands();
+    fixture
+        .sim
+        .issue_fixture_commands(commands, Some(&fixture.rules));
     fixture
         .sim
         .advance_app_frame(
-            &due,
             Some(&fixture.rules),
             Some(&fixture.overlays),
             67,

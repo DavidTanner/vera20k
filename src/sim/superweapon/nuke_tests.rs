@@ -659,8 +659,7 @@ fn the_launch_matches_native() {
 }
 
 fn step(sim: &mut Simulation, rules: &RuleSet) {
-    let commands = sim.take_due_commands();
-    sim.advance_tick(&commands, Some(rules), None, None, 33);
+    sim.advance_tick(&[], Some(rules), None, None, 33);
 }
 
 /// Steps until `done` holds, at most `frames` times; the frames it took.
@@ -803,15 +802,18 @@ fn retail_nuclear_missile_rises_falls_and_strikes_its_target() {
         .or_default()
         .insert(sw_type, instance);
 
-    sim.queue_command(CommandEnvelope::new(
-        russians,
-        sim.session.tick + 1,
-        Command::LaunchSuperWeapon {
-            sw_type_id: sw_type,
-            target_rx: TARGET.0,
-            target_ry: TARGET.1,
-        },
-    ));
+    sim.issue_fixture_commands(
+        &[CommandEnvelope::new(
+            russians,
+            sim.session.tick + 1,
+            Command::LaunchSuperWeapon {
+                sw_type_id: sw_type,
+                target_rx: TARGET.0,
+                target_ry: TARGET.1,
+            },
+        )],
+        Some(&rules),
+    );
     let launch_frame = sim.session.binary_frame as i32;
     run_until(&mut sim, &rules, 3, |sim| {
         !bullets_of(sim, "NukeCarrier").is_empty()

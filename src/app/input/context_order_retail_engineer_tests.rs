@@ -60,7 +60,7 @@ fn building_orders(
         .into_iter()
         .map(|payload| CommandEnvelope::new(owner, sim.session.tick, payload))
         .map(|envelope| {
-            crate::app::input::commands::roundtrip_local_order(sim, None, envelope)
+            crate::app::input::commands::decoded_local_order(sim, None, envelope)
                 .pop()
                 .unwrap()
         })
@@ -175,7 +175,9 @@ fn retail_building_repair_input_walk_art_sound_house_and_retirement() {
         plant,
         true,
     ));
-    runtime.simulation.queue_commands(envelopes);
+    runtime
+        .simulation
+        .issue_fixture_commands(&Vec::from_iter(envelopes), None);
     let mut repaired_sound = 0;
     let mut healed_frame = None;
     let trace_path =
@@ -184,10 +186,8 @@ fn retail_building_repair_input_walk_art_sound_house_and_retirement() {
     for _ in 0..80 {
         // The ordinary app tick drains the input queue before submitting the
         // frame transaction (match_runtime::sim_tick). Follow that same edge.
-        let due = runtime.simulation.take_due_commands();
         let output = runtime
             .advance_frame(
-                &due,
                 crate::app::types::SIM_TICK_MS,
                 TickLane::Ordinary,
                 crate::sim::world::FrameEffects::default(),
@@ -227,7 +227,6 @@ fn retail_building_repair_input_walk_art_sound_house_and_retirement() {
     assert_eq!(repaired_sound, 1);
     runtime
         .advance_frame(
-            &[],
             crate::app::types::SIM_TICK_MS,
             TickLane::Ordinary,
             crate::sim::world::FrameEffects::default(),

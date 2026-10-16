@@ -191,8 +191,7 @@ fn run_until(
     mut done: impl FnMut(&Simulation) -> bool,
 ) -> bool {
     for _ in 0..frames {
-        let commands = sim.take_due_commands();
-        sim.advance_tick(&commands, Some(rules), Some(grid), None, 33);
+        sim.advance_tick(&[], Some(rules), Some(grid), None, 33);
         events.append(&mut sim.sound_events);
         if done(sim) {
             return true;
@@ -268,15 +267,18 @@ fn height(sim: &Simulation, id: u64) -> i32 {
 /// Orders the player's `id` to the cell `target`.
 fn order_move(sim: &mut Simulation, id: u64, target: (u16, u16)) {
     let americans = sim.interner.get("Americans").unwrap();
-    sim.queue_command(CommandEnvelope::new(
-        americans,
-        sim.session.tick + 1,
-        Command::Move {
-            entity_id: id,
-            target_rx: target.0,
-            target_ry: target.1,
-        },
-    ));
+    sim.issue_fixture_commands(
+        &[CommandEnvelope::new(
+            americans,
+            sim.session.tick + 1,
+            Command::Move {
+                entity_id: id,
+                target_rx: target.0,
+                target_ry: target.1,
+            },
+        )],
+        None,
+    );
 }
 
 /// GAROBO's operational edges through the production frame: its first

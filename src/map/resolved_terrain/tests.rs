@@ -734,7 +734,6 @@ fn projectile_level_uses_loaded_theater_interval_through_runtime() {
         let mut runtime = SimRuntime::from_simulation(sim);
         let _ = runtime
             .advance_frame(
-                &[],
                 16,
                 TickLane::Ordinary,
                 crate::sim::world::FrameEffects::default(),

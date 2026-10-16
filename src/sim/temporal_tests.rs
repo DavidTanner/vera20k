@@ -1054,20 +1054,24 @@ fn erasing_a_superweapon_building_revokes_its_super() {
     let americans = sim.interner.get("Americans").unwrap();
     let nuke = sim.interner.get("NukeSpecial").unwrap();
     let owner = sim.interner.intern("Russians");
-    sim.queue_command(CommandEnvelope::new(
-        owner,
-        sim.session.tick + 1,
-        Command::Attack {
-            attacker_id: cleg,
-            target_id: silo,
-        },
-    ));
+    // The order is the player's event (`IsHuman || PlayerControl`).
+    sim.houses.get_mut(&owner).unwrap().player_control = true;
+    sim.issue_fixture_commands(
+        &[CommandEnvelope::new(
+            owner,
+            sim.session.tick + 1,
+            Command::Attack {
+                attacker_id: cleg,
+                target_id: silo,
+            },
+        )],
+        Some(&rules),
+    );
     let mut held = false;
     let mut erased_at = None;
     for frame in 0..200 {
         sim.sound_events.clear();
-        let commands = sim.take_due_commands();
-        sim.advance_tick(&commands, Some(&rules), Some(&grid), None, 33);
+        sim.advance_tick(&[], Some(&rules), Some(&grid), None, 33);
         if erased(&sim, silo) {
             erased_at = Some(frame);
             break;
@@ -1214,19 +1218,23 @@ fn a_chrono_legionnaire_erases_a_tank() {
         );
     }
     let owner = sim.interner.intern("Russians");
-    sim.queue_command(CommandEnvelope::new(
-        owner,
-        sim.session.tick + 1,
-        Command::Attack {
-            attacker_id: cleg,
-            target_id: tank,
-        },
-    ));
+    // The order is the player's event (`IsHuman || PlayerControl`).
+    sim.houses.get_mut(&owner).unwrap().player_control = true;
+    sim.issue_fixture_commands(
+        &[CommandEnvelope::new(
+            owner,
+            sim.session.tick + 1,
+            Command::Attack {
+                attacker_id: cleg,
+                target_id: tank,
+            },
+        )],
+        Some(&rules),
+    );
     let mut started = None;
     let mut erased_after = None;
     for frame in 0..700 {
-        let commands = sim.take_due_commands();
-        sim.advance_tick(&commands, Some(&rules), Some(&grid), None, 33);
+        sim.advance_tick(&[], Some(&rules), Some(&grid), None, 33);
         if started.is_none() && head_of(&sim, tank) == Some(cleg) {
             started = Some(frame);
             assert_eq!(entity(&sim, tank).health.current(), 400, "no damage");
@@ -1284,19 +1292,23 @@ fn a_legionnaires_inviso_bullet_warps_after_existing_object_turns() {
             (cleg, spawn(&mut sim, &rules, "HTNK", "Americans", 13, 10))
         };
         let owner = sim.interner.intern("Russians");
-        sim.queue_command(CommandEnvelope::new(
-            owner,
-            sim.session.tick + 1,
-            Command::Attack {
-                attacker_id: cleg,
-                target_id: tank,
-            },
-        ));
+        // The order is the player's event (`IsHuman || PlayerControl`).
+        sim.houses.get_mut(&owner).unwrap().player_control = true;
+        sim.issue_fixture_commands(
+            &[CommandEnvelope::new(
+                owner,
+                sim.session.tick + 1,
+                Command::Attack {
+                    attacker_id: cleg,
+                    target_id: tank,
+                },
+            )],
+            Some(&rules),
+        );
         let mut started = false;
         for _ in 0..60 {
             let before = entity(&sim, tank).mission.ai_counter();
-            let commands = sim.take_due_commands();
-            sim.advance_tick(&commands, Some(&rules), Some(&grid), None, 33);
+            sim.advance_tick(&[], Some(&rules), Some(&grid), None, 33);
             if head_of(&sim, tank) == Some(cleg) {
                 assert_eq!(
                     entity(&sim, tank).mission.ai_counter(),
@@ -1336,17 +1348,21 @@ fn only_temporal_fire_reaches_a_warped_target() {
         crate::sim::world::FrameEffects::default(),
     );
     let owner = sim.interner.intern("Russians");
-    sim.queue_command(CommandEnvelope::new(
-        owner,
-        sim.session.tick + 1,
-        Command::Attack {
-            attacker_id: gi,
-            target_id: tank,
-        },
-    ));
+    // The order is the player's event (`IsHuman || PlayerControl`).
+    sim.houses.get_mut(&owner).unwrap().player_control = true;
+    sim.issue_fixture_commands(
+        &[CommandEnvelope::new(
+            owner,
+            sim.session.tick + 1,
+            Command::Attack {
+                attacker_id: gi,
+                target_id: tank,
+            },
+        )],
+        Some(&rules),
+    );
     for _ in 0..40 {
-        let commands = sim.take_due_commands();
-        sim.advance_tick(&commands, Some(&rules), Some(&grid), None, 33);
+        sim.advance_tick(&[], Some(&rules), Some(&grid), None, 33);
     }
     assert_eq!(head_of(&sim, tank), Some(cleg), "still warped");
     assert_eq!(entity(&sim, tank).health.current(), 400);
@@ -1369,41 +1385,46 @@ fn moving_releases_the_target() {
     let cleg = spawn(&mut sim, &rules, "CLEG", "Russians", 10, 10);
     let tank = spawn(&mut sim, &rules, "HTNK", "Americans", 13, 10);
     let owner = sim.interner.intern("Russians");
-    sim.queue_command(CommandEnvelope::new(
-        owner,
-        sim.session.tick + 1,
-        Command::Attack {
-            attacker_id: cleg,
-            target_id: tank,
-        },
-    ));
+    // The orders are the player's events (`IsHuman || PlayerControl`).
+    sim.houses.get_mut(&owner).unwrap().player_control = true;
+    sim.issue_fixture_commands(
+        &[CommandEnvelope::new(
+            owner,
+            sim.session.tick + 1,
+            Command::Attack {
+                attacker_id: cleg,
+                target_id: tank,
+            },
+        )],
+        Some(&rules),
+    );
     let step = |sim: &mut Simulation, commands: &[CommandEnvelope]| {
         sim.advance_tick(commands, Some(&rules), Some(&grid), None, 33);
     };
     for _ in 0..200 {
-        let commands = sim.take_due_commands();
-        step(&mut sim, &commands);
+        step(&mut sim, &[]);
         if head_of(&sim, tank).is_some() {
             break;
         }
     }
     assert_eq!(head_of(&sim, tank), Some(cleg));
     for _ in 0..30 {
-        let commands = sim.take_due_commands();
-        step(&mut sim, &commands);
+        step(&mut sim, &[]);
     }
-    sim.queue_command(CommandEnvelope::new(
-        owner,
-        sim.session.tick + 1,
-        Command::Move {
-            entity_id: cleg,
-            target_rx: 4,
-            target_ry: 10,
-        },
-    ));
+    sim.issue_fixture_commands(
+        &[CommandEnvelope::new(
+            owner,
+            sim.session.tick + 1,
+            Command::Move {
+                entity_id: cleg,
+                target_rx: 4,
+                target_ry: 10,
+            },
+        )],
+        None,
+    );
     for _ in 0..120 {
-        let commands = sim.take_due_commands();
-        step(&mut sim, &commands);
+        step(&mut sim, &[]);
         if head_of(&sim, tank).is_none() {
             break;
         }
@@ -1663,18 +1684,22 @@ fn stop_retains_the_legionnaires_victim_until_attack_dispatch() {
     let tank = spawn(&mut sim, &rules, "HTNK", "Americans", 13, 10);
     let cleg = spawn(&mut sim, &rules, "CLEG", "Russians", 10, 10);
     let owner = sim.interner.intern("Russians");
+    // The orders are the player's events (`IsHuman || PlayerControl`).
+    sim.houses.get_mut(&owner).unwrap().player_control = true;
     let step = |sim: &mut Simulation| {
-        let commands = sim.take_due_commands();
-        sim.advance_tick(&commands, Some(&rules), Some(&grid), None, 33);
+        sim.advance_tick(&[], Some(&rules), Some(&grid), None, 33);
     };
-    sim.queue_command(CommandEnvelope::new(
-        owner,
-        sim.session.tick + 1,
-        Command::Attack {
-            attacker_id: cleg,
-            target_id: tank,
-        },
-    ));
+    sim.issue_fixture_commands(
+        &[CommandEnvelope::new(
+            owner,
+            sim.session.tick + 1,
+            Command::Attack {
+                attacker_id: cleg,
+                target_id: tank,
+            },
+        )],
+        Some(&rules),
+    );
     for _ in 0..200 {
         step(&mut sim);
         if head_of(&sim, tank).is_some() {
@@ -1731,18 +1756,20 @@ fn a_released_mover_does_not_resume_its_order() {
     let cleg = spawn(&mut sim, &rules, "CLEG", "Russians", 4, 26);
     let owner = sim.interner.intern("Americans");
     let step = |sim: &mut Simulation| {
-        let commands = sim.take_due_commands();
-        sim.advance_tick(&commands, Some(&rules), Some(&grid), None, 33);
+        sim.advance_tick(&[], Some(&rules), Some(&grid), None, 33);
     };
-    sim.queue_command(CommandEnvelope::new(
-        owner,
-        sim.session.tick + 1,
-        Command::Move {
-            entity_id: tank,
-            target_rx: 28,
-            target_ry: 16,
-        },
-    ));
+    sim.issue_fixture_commands(
+        &[CommandEnvelope::new(
+            owner,
+            sim.session.tick + 1,
+            Command::Move {
+                entity_id: tank,
+                target_rx: 28,
+                target_ry: 16,
+            },
+        )],
+        None,
+    );
     for _ in 0..40 {
         step(&mut sim);
     }

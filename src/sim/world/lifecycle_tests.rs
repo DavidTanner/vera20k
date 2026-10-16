@@ -5409,7 +5409,6 @@ fn homing_ground_impact_reaches_damage_and_cleanup_through_runtime_frame() {
 
         let _ = runtime
             .advance_frame(
-                &[],
                 16,
                 super::TickLane::Ordinary,
                 crate::sim::world::FrameEffects::default(),
@@ -5438,7 +5437,6 @@ fn homing_ground_impact_reaches_damage_and_cleanup_through_runtime_frame() {
             );
             let _ = runtime
                 .advance_frame(
-                    &[],
                     16,
                     super::TickLane::Ordinary,
                     crate::sim::world::FrameEffects::default(),

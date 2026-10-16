@@ -424,13 +424,13 @@ pub(crate) fn load_with_launch(
 }
 
 impl HeadlessScenario {
-    /// Advance one committed simulation frame with no player commands,
-    /// through the same bound-resource runtime transaction the app uses.
+    /// Advance one committed simulation frame through the same bound-resource
+    /// runtime transaction the app uses; its tail dispatches whatever records
+    /// were issued into the command queue.
     pub fn tick(&mut self) {
         let _ = self
             .runtime
             .advance_frame(
-                &[],
                 SIM_TICK_MS,
                 crate::sim::world::TickLane::Ordinary,
                 crate::sim::world::FrameEffects::default(),
@@ -1251,7 +1251,7 @@ mod retail_construction_tests {
             );
             scenario
                 .runtime
-                .advance_frame(
+                .advance_frame_issuing(
                     &[deploy],
                     SIM_TICK_MS,
                     crate::sim::world::TickLane::Ordinary,
@@ -1458,7 +1458,7 @@ mod retail_construction_tests {
             );
             scenario
                 .runtime
-                .advance_frame(
+                .advance_frame_issuing(
                     &[deploy],
                     SIM_TICK_MS,
                     crate::sim::world::TickLane::Ordinary,
@@ -2184,11 +2184,9 @@ mod retail_construction_tests {
     fn tick_with_due_commands(
         scenario: &mut HeadlessScenario,
     ) -> crate::sim::world::SimFrameOutput {
-        let commands = scenario.runtime.simulation.take_due_commands();
         scenario
             .runtime
             .advance_frame(
-                &commands,
                 SIM_TICK_MS,
                 crate::sim::world::TickLane::Ordinary,
                 crate::sim::world::FrameEffects::default(),
@@ -2230,14 +2228,17 @@ mod retail_construction_tests {
             &["E1"],
         )[0];
         let tick = sim.session.tick;
-        sim.queue_command(CommandEnvelope::new(
-            america,
-            tick + 1,
-            Command::Attack {
-                attacker_id: gi,
-                target_id: rhino,
-            },
-        ));
+        sim.issue_fixture_commands(
+            &[CommandEnvelope::new(
+                america,
+                tick + 1,
+                Command::Attack {
+                    attacker_id: gi,
+                    target_id: rhino,
+                },
+            )],
+            None,
+        );
         let full = sim.entities().get(rhino).unwrap().health.current();
         let move_mission = MissionId::from_known(MissionType::Move);
         let (mut hit, mut charged, mut moved, mut died) = (None, None, None, None);
@@ -2430,14 +2431,17 @@ mod retail_construction_tests {
             .filter(|&(rx, ry)| (rx - at.0).abs().max((ry - at.1).abs()) >= 3);
         let spy = spawn_on_free_cells(sim, rules, america, cells, &["SPY"])[0];
         let tick = sim.session.tick;
-        sim.queue_command(CommandEnvelope::new(
-            america,
-            tick + 1,
-            Command::CaptureBuilding {
-                engineer_id: spy,
-                target_building_id: reactor,
-            },
-        ));
+        sim.issue_fixture_commands(
+            &[CommandEnvelope::new(
+                america,
+                tick + 1,
+                Command::CaptureBuilding {
+                    engineer_id: spy,
+                    target_building_id: reactor,
+                },
+            )],
+            None,
+        );
         let mut announced = None;
         for _ in 0..600 {
             let output = tick_with_due_commands(&mut scenario);
@@ -2770,14 +2774,17 @@ mod retail_construction_tests {
             .filter(|&(rx, ry)| (rx - at.0).abs().max((ry - at.1).abs()) >= 2);
         let tank = spawn_on_free_cells(sim, rules, america, cells, &["MTNK"])[0];
         let tick = sim.session.tick;
-        sim.queue_command(CommandEnvelope::new(
-            america,
-            tick + 1,
-            Command::Attack {
-                attacker_id: tank,
-                target_id: miner,
-            },
-        ));
+        sim.issue_fixture_commands(
+            &[CommandEnvelope::new(
+                america,
+                tick + 1,
+                Command::Attack {
+                    attacker_id: tank,
+                    target_id: miner,
+                },
+            )],
+            None,
+        );
         let enter = MissionId::from_known(MissionType::Enter);
         let (mut entered, mut docked) = (None, None);
         for frame in 1..=900u32 {

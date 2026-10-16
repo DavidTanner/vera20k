@@ -192,7 +192,6 @@ fn wallet_survives_prepared_load_and_active_cancellation() {
     for frame in 0..30 {
         runtime
             .advance_frame(
-                &[],
                 67,
                 crate::sim::world::TickLane::Ordinary,
                 crate::sim::world::FrameEffects::default(),
@@ -200,7 +199,6 @@ fn wallet_survives_prepared_load_and_active_cancellation() {
             .expect("restored active frame");
         reference
             .advance_frame(
-                &[],
                 67,
                 crate::sim::world::TickLane::Ordinary,
                 crate::sim::world::FrameEffects::default(),
@@ -242,7 +240,6 @@ fn wallet_survives_prepared_load_and_active_cancellation() {
     );
     runtime
         .advance_frame(
-            &[],
             67,
             crate::sim::world::TickLane::Ordinary,
             crate::sim::world::FrameEffects::default(),

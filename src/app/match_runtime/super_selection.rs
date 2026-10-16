@@ -483,15 +483,18 @@ mod tests {
         // A click whose event executes three frames on, as input delay does.
         let click = |sim: &mut Simulation, name: &str, (rx, ry): (u16, u16)| {
             let sw_type_id = sim.interner.intern(name);
-            sim.queue_command(CommandEnvelope::new(
-                americans,
-                sim.session.tick + 3,
-                Command::LaunchSuperWeapon {
-                    sw_type_id,
-                    target_rx: rx,
-                    target_ry: ry,
-                },
-            ));
+            sim.issue_fixture_commands(
+                &[CommandEnvelope::new(
+                    americans,
+                    sim.session.tick + 3,
+                    Command::LaunchSuperWeapon {
+                        sw_type_id,
+                        target_rx: rx,
+                        target_ry: ry,
+                    },
+                )],
+                Some(&rules),
+            );
         };
         let mut targeting = selected("ChronoSphereSpecial");
         let mut hidden = BTreeSet::new();

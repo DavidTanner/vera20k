@@ -1,10 +1,6 @@
-//! Boundary tests (F14): raw lockstep command records converging with
-//! semantic simulation execution.
-//!
-//! These tests exercise `net::lockstep` admission/dispatch against the full
-//! `Simulation`, so they live on the net side of the sim/net boundary —
-//! `sim/` itself never names `crate::net`. Moved verbatim from the
-//! `sim::world` test module (whose fixtures they still share).
+//! Boundary tests (F14): raw lockstep command records converging with the
+//! live producer path, both dispatched by the production frame tail
+//! (`Simulation::dispatch_due_command_queue`).
 
 use crate::rules::ruleset::RuleSet;
 use crate::sim::command::{Command, CommandEnvelope};
@@ -30,6 +26,7 @@ fn gsi_04_07_wall_sell_raw_lockstep_replay_converges_with_semantic_execution() {
     }
 
     let (mut semantic, semantic_rules, semantic_overlays, semantic_receiver) = seeded_world();
+    // The live producer path: the order is issued as its record.
     semantic.advance_tick(
         &[CommandEnvelope::new(
             semantic_receiver,
@@ -70,10 +67,10 @@ fn gsi_04_07_wall_sell_raw_lockstep_replay_converges_with_semantic_execution() {
             .expect("native replay decode");
     let replay_record = decoded.frames[0].commands.as_ref().unwrap()[0].clone();
 
-    let mut queue = crate::net::lockstep::SynchronizedCommandQueue::new();
+    let mut queue = crate::sim::lockstep::SynchronizedCommandQueue::new();
     assert!(
-        queue.admit(crate::net::lockstep::SynchronizedCommand::opaque(
-            replay_record
+        queue.admit(crate::sim::lockstep::SynchronizedCommand::opaque(
+            replay_record.clone()
         ))
     );
     let dispatch_houses = raw
@@ -83,7 +80,7 @@ fn gsi_04_07_wall_sell_raw_lockstep_replay_converges_with_semantic_execution() {
         .copied()
         .enumerate()
         .map(|(index, owner)| {
-            crate::net::lockstep::CommandDispatchHouse::new(
+            crate::sim::lockstep::CommandDispatchHouse::new(
                 owner,
                 index as i8,
                 raw.houses[&owner].event_dispatch_eligible(),
@@ -96,7 +93,9 @@ fn gsi_04_07_wall_sell_raw_lockstep_replay_converges_with_semantic_execution() {
         &dispatch_houses,
         |_, _| {},
         |_, command, _| {
-            if let Some(envelope) = command.decode_for_simulation(&raw, None, raw.session.tick) {
+            if let Some(envelope) =
+                raw.decode_native_command_record(command.record(), None, raw.session.tick)
+            {
                 due.push(envelope);
             }
         },
@@ -108,14 +107,18 @@ fn gsi_04_07_wall_sell_raw_lockstep_replay_converges_with_semantic_execution() {
         &dispatch_houses,
         |_, _| {},
         |_, command, _| {
-            if let Some(envelope) = command.decode_for_simulation(&raw, None, raw.session.tick) {
+            if let Some(envelope) =
+                raw.decode_native_command_record(command.record(), None, raw.session.tick)
+            {
                 due.push(envelope);
             }
         },
     );
     assert_eq!(due_summary.executed, 1);
     assert_eq!(due.len(), 1);
-    raw.advance_tick(&due, Some(&raw_rules), None, Some(&raw_overlays), 67);
+    // The replayed bytes through the production queue and tail.
+    assert!(raw.issue_recorded_command(replay_record));
+    raw.advance_tick(&[], Some(&raw_rules), None, Some(&raw_overlays), 67);
     assert_eq!(
         raw.overlay_grid.as_ref().unwrap().cell(1, 1).overlay_id,
         None
@@ -131,15 +134,13 @@ fn gsi_04_07_wall_sell_raw_lockstep_replay_converges_with_semantic_execution() {
     .encode()
     .unwrap();
     assert!(
-        crate::net::lockstep::SynchronizedCommand::opaque(invalid_house)
-            .decode_for_simulation(&raw, None, raw.session.tick)
+        raw.decode_native_command_record(&invalid_house, None, raw.session.tick)
             .is_none()
     );
     let invalid_opcode =
         crate::sim::command::CommandRecord::encode(0x16, 1, 0, &[1, 0, 1, 0]).unwrap();
     assert!(
-        crate::net::lockstep::SynchronizedCommand::opaque(invalid_opcode)
-            .decode_for_simulation(&raw, None, raw.session.tick)
+        raw.decode_native_command_record(&invalid_opcode, None, raw.session.tick)
             .is_none()
     );
 }
@@ -161,8 +162,8 @@ fn gsi_04_07_wall_sell_raw_signed_linear_coordinates_use_canonical_cell() {
         }
         .encode()
         .expect("wall-sale record");
-        let envelope = crate::net::lockstep::SynchronizedCommand::opaque(record)
-            .decode_for_simulation(sim, None, sim.session.tick)
+        let envelope = sim
+            .decode_native_command_record(&record, None, sim.session.tick)
             .expect("registered receiver decodes");
         let receiver = sim.interner.resolve(envelope.owner).to_string();
         sim.apply_command_with_overlays(
@@ -214,17 +215,15 @@ fn gsi_04_07_wall_sell_raw_signed_linear_coordinates_use_canonical_cell() {
 }
 
 /// Stage 0 determinism guard: two multiplayer-route instances of one combat
-/// scene, one fed the live semantic commands and the other the same orders as
-/// native records through the lockstep queue, store identical retail sync
-/// checksums every frame; one extra Scenario RNG draw is then caught.
+/// scene, one issuing the orders through the live producer path and the other
+/// admitting the same orders as native records built by the lockstep
+/// scheduler, store identical retail sync checksums every frame; one extra
+/// Scenario RNG draw is then caught.
 #[test]
 fn two_instance_multiplayer_checksums_match_every_frame_and_catch_a_desync() {
-    use crate::net::lockstep::{
-        CommandDispatchHouse, LockstepScheduler, MultiplayerChecksumHistory, SynchronizedCommand,
-        SynchronizedCommandQueue,
-    };
     use crate::rules::ini_parser::IniFile;
     use crate::sim::combat::TargetKind;
+    use crate::sim::lockstep::{LockstepScheduler, MultiplayerChecksumHistory};
     use crate::sim::world::{CommandQueueRoute, FrameEffects, TickLane};
 
     const FRAMES: u32 = 150;
@@ -292,10 +291,9 @@ fn two_instance_multiplayer_checksums_match_every_frame_and_catch_a_desync() {
         (sim, rules, actor, guard, enemy)
     }
 
-    fn frame(sim: &mut Simulation, rules: &RuleSet, commands: &[CommandEnvelope]) -> u32 {
+    fn frame(sim: &mut Simulation, rules: &RuleSet) -> u32 {
         let sync = sim
             .advance_app_frame(
-                commands,
                 Some(rules),
                 None,
                 67,
@@ -327,14 +325,12 @@ fn two_instance_multiplayer_checksums_match_every_frame_and_catch_a_desync() {
         _ => None,
     };
 
-    let mut queue = SynchronizedCommandQueue::new();
     let mut live_history = MultiplayerChecksumHistory::new();
     let mut raw_history = MultiplayerChecksumHistory::new();
     for _ in 0..FRAMES {
         let native_frame = live.session.binary_frame;
         assert_eq!(raw.session.binary_frame, native_frame);
         let execute_tick = live.session.tick + 1;
-        let mut live_commands = Vec::new();
         if let Some(order) = orders(native_frame) {
             let record = match order {
                 Command::Scatter { entity_id } => raw.encode_target_event_record(
@@ -354,40 +350,21 @@ fn two_instance_multiplayer_checksums_match_every_frame_and_catch_a_desync() {
                 )
                 .unwrap();
             assert_eq!(issued.record(), &record);
-            assert!(queue.issue(issued));
-            live_commands.push(CommandEnvelope::new(local, execute_tick, order));
+            assert!(raw.issue_recorded_command(issued.into_record()));
+            let live_issued = live.issue_local_commands(
+                &[CommandEnvelope::new(local, execute_tick, order)],
+                Some(&rules),
+            );
+            assert_eq!(live_issued, [record], "frame {native_frame}");
         }
-        queue.transfer_single_player();
-        let houses = raw
-            .session
-            .house_order
-            .iter()
-            .enumerate()
-            .map(|(index, owner)| {
-                CommandDispatchHouse::new(
-                    *owner,
-                    index as i8,
-                    raw.houses[owner].event_dispatch_eligible(),
-                )
-            })
-            .collect::<Vec<_>>();
-        let mut raw_commands = Vec::new();
-        queue.dispatch_due_offline(
-            native_frame as i32,
-            &houses,
-            |_, _| {},
-            |_, command: &SynchronizedCommand, _| {
-                raw_commands.push(
-                    command
-                        .decode_for_simulation(&raw, None, execute_tick)
-                        .expect("dispatched record decodes"),
-                )
-            },
+        assert_eq!(
+            live.pending_command_snapshot(Some(&rules)),
+            raw.pending_command_snapshot(Some(&rules)),
+            "frame {native_frame}"
         );
-        assert_eq!(raw_commands, live_commands, "frame {native_frame}");
 
-        let live_checksum = frame(&mut live, &rules, &live_commands);
-        let raw_checksum = frame(&mut raw, &rules, &raw_commands);
+        let live_checksum = frame(&mut live, &rules);
+        let raw_checksum = frame(&mut raw, &rules);
         live_history.record(native_frame, live_checksum);
         raw_history.record(native_frame, raw_checksum);
         assert_eq!(
@@ -415,8 +392,8 @@ fn two_instance_multiplayer_checksums_match_every_frame_and_catch_a_desync() {
     // stored checksum exposes.
     let _ = raw.scenario_rng.next_u32();
     let native_frame = live.session.binary_frame;
-    live_history.record(native_frame, frame(&mut live, &rules, &[]));
-    raw_history.record(native_frame, frame(&mut raw, &rules, &[]));
+    live_history.record(native_frame, frame(&mut live, &rules));
+    raw_history.record(native_frame, frame(&mut raw, &rules));
     assert_ne!(
         live_history.get(native_frame),
         raw_history.get(native_frame)

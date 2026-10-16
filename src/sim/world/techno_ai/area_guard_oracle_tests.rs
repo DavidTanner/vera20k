@@ -470,18 +470,20 @@ fn area_guard_snapshot_retains_pending_order_post_and_retask_references() {
     let mut f = fixture(row, &boundary["before"], &rules);
     let command = delivered_command(&f, row, boundary);
     let owner = f.sim.substrate.entities.get(1).unwrap().owner();
-    f.sim
-        .queue_command(crate::sim::command::CommandEnvelope::new(
+    f.sim.issue_fixture_commands(
+        &[crate::sim::command::CommandEnvelope::new(
             owner,
             f.sim.session.tick + 1,
             command,
-        ));
+        )],
+        None,
+    );
     let saved = GameSnapshot::save(&f.sim, 0, 0, "Area Guard pending retask", 0);
     let mut restored = GameSnapshot::load(&saved).unwrap().sim;
     restored.restore_after_snapshot_load().unwrap();
     assert_eq!(
-        restored.pending_command_snapshot(),
-        f.sim.pending_command_snapshot()
+        restored.pending_command_snapshot(None),
+        f.sim.pending_command_snapshot(None)
     );
     // The Scenario reset and process RNG policy belong to the load owner.
     // Compare persisted references here; neither a no-load RNG continuation
@@ -499,12 +501,12 @@ fn area_guard_snapshot_retains_pending_order_post_and_retask_references() {
     );
     assert_eq!(actor.archive_target(), original.archive_target());
 
-    let owner = f.sim.interner.resolve(owner).to_owned();
-    let pending = f.sim.take_due_commands();
+    let pending = f.sim.pending_command_snapshot(Some(&rules));
     assert_eq!(pending.len(), 1);
-    assert!(
-        f.sim
-            .apply_command(&owner, &pending[0].payload, Some(&rules))
+    f.sim.dispatch_due_command_queue(
+        Some(&rules),
+        None,
+        crate::sim::world::FrameEffects::default(),
     );
     let saved = GameSnapshot::save(&f.sim, 0, 0, "Area Guard committed post", 0);
     let mut restored = GameSnapshot::load(&saved).unwrap().sim;
@@ -517,5 +519,5 @@ fn area_guard_snapshot_retains_pending_order_post_and_retask_references() {
     assert!(actor.archive_target().is_some());
     assert!(actor.suspended_attack_target.target().is_none());
     assert!(actor.navigation.suspended_nav_com().is_none());
-    assert!(restored.pending_command_snapshot().is_empty());
+    assert!(restored.pending_command_snapshot(None).is_empty());
 }

@@ -130,21 +130,23 @@ impl Arena {
     fn attack(&mut self, attacker: u64, target: u64) {
         let owner = self.sim.substrate.entities.get(attacker).unwrap().owner();
         let tick = self.sim.session.tick + 1;
-        self.sim.queue_command(CommandEnvelope::new(
-            owner,
-            tick,
-            Command::Attack {
-                attacker_id: attacker,
-                target_id: target,
-            },
-        ));
+        self.sim.issue_fixture_commands(
+            &[CommandEnvelope::new(
+                owner,
+                tick,
+                Command::Attack {
+                    attacker_id: attacker,
+                    target_id: target,
+                },
+            )],
+            None,
+        );
     }
 
     fn step(&mut self, rules: &RuleSet) {
-        let commands = self.sim.take_due_commands();
         let _ = self
             .sim
-            .advance_tick(&commands, Some(rules), Some(&self.grid), None, 33);
+            .advance_tick(&[], Some(rules), Some(&self.grid), None, 33);
     }
 
     fn frame(&self) -> u32 {
@@ -731,9 +733,8 @@ fn a_teleport_warp_drops_the_drone_onto_ore_through_the_frames_overlay_table() {
             0,
         ),
     ));
-    let commands = arena.sim.take_due_commands();
     let _ = arena.sim.advance_tick(
-        &commands,
+        &[],
         Some(&rules),
         Some(&arena.grid),
         Some(overlay_registry()),

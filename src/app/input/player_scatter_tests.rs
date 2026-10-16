@@ -85,7 +85,7 @@ fn player_scatter_matches_native_selected_order_cue_and_no_voice_rng() {
             .filter(|call| call["kind"] == "TargetEvent_Construct")
             .map(|call| f.native_ids[&(call["args"][2].as_u64().unwrap())])
             .collect();
-        let pending = f.sim.pending_command_snapshot();
+        let pending = f.sim.pending_command_snapshot(None);
         let actual_ids: Vec<_> = pending
             .iter()
             .map(|cmd| {

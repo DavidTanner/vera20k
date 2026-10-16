@@ -988,19 +988,21 @@ mod gsi_05_13_electric_bolt_sparks {
         let owner_id = sim.interner.intern("Americans");
         let grid = PathGrid::test_all_passable(64, 64);
 
-        sim.queue_command(CommandEnvelope::new(
-            owner_id,
-            sim.session.tick + 1,
-            Command::Attack {
-                attacker_id: attacker,
-                target_id: target,
-            },
-        ));
+        sim.issue_fixture_commands(
+            &[CommandEnvelope::new(
+                owner_id,
+                sim.session.tick + 1,
+                Command::Attack {
+                    attacker_id: attacker,
+                    target_id: target,
+                },
+            )],
+            Some(&rules),
+        );
 
         let mut spark_system_id = None;
         for _ in 0..200 {
-            let pending = sim.take_due_commands();
-            sim.advance_tick(&pending, Some(&rules), Some(&grid), None, 100);
+            sim.advance_tick(&[], Some(&rules), Some(&grid), None, 100);
             if let Some((&id, _)) = sim.particle_systems().iter().next() {
                 spark_system_id = Some(id);
                 break;
@@ -1063,19 +1065,21 @@ mod gsi_05_13_electric_bolt_sparks {
 
         let owner_id = sim.interner.intern("Americans");
         let grid = PathGrid::test_all_passable(64, 64);
-        sim.queue_command(CommandEnvelope::new(
-            owner_id,
-            sim.session.tick + 1,
-            Command::Attack {
-                attacker_id: attacker,
-                target_id: target,
-            },
-        ));
+        sim.issue_fixture_commands(
+            &[CommandEnvelope::new(
+                owner_id,
+                sim.session.tick + 1,
+                Command::Attack {
+                    attacker_id: attacker,
+                    target_id: target,
+                },
+            )],
+            Some(&rules),
+        );
 
         let mut fired = false;
         for _ in 0..200 {
-            let pending = sim.take_due_commands();
-            sim.advance_tick(&pending, Some(&rules), Some(&grid), None, 100);
+            sim.advance_tick(&[], Some(&rules), Some(&grid), None, 100);
             if !sim.fire_events.is_empty() {
                 fired = true;
             }

@@ -152,9 +152,8 @@ impl Fixture {
     }
 
     fn tick(&mut self) {
-        let commands = self.sim.take_due_commands();
         self.sim
-            .advance_tick(&commands, Some(&self.rules), Some(&self.grid), None, 33);
+            .advance_tick(&[], Some(&self.rules), Some(&self.grid), None, 33);
     }
 
     /// Advance until team `team` is past line `line`, at most `frames`.

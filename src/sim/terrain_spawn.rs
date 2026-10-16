@@ -1413,15 +1413,18 @@ mod tests {
         );
 
         let grid = PathGrid::test_all_passable(64, 64);
-        sim.queue_command(CommandEnvelope::new(
-            owner_id,
-            sim.session.tick + 1,
-            Command::ForceAttackCell {
-                attacker_id,
-                target_rx: 10,
-                target_ry: 5,
-            },
-        ));
+        sim.issue_fixture_commands(
+            &[CommandEnvelope::new(
+                owner_id,
+                sim.session.tick + 1,
+                Command::ForceAttackCell {
+                    attacker_id,
+                    target_rx: 10,
+                    target_ry: 5,
+                },
+            )],
+            Some(&rules),
+        );
 
         let mut damaged = false;
         let mut destroyed = false;
@@ -1429,8 +1432,7 @@ mod tests {
         let mut targeted = false;
         let mut last_health = 200;
         for _ in 0..600 {
-            let pending = sim.take_due_commands();
-            sim.advance_tick(&pending, Some(&rules), Some(&grid), None, 100);
+            sim.advance_tick(&[], Some(&rules), Some(&grid), None, 100);
             shots += sim.fire_events.len();
             targeted |= sim
                 .substrate

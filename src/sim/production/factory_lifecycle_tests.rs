@@ -215,20 +215,26 @@ fn retail_prerequisite_loss_refunds_after_the_factory_charge_sweep() {
             simulation: sim,
             resources,
         };
-        let mut output = runtime
+        let output = runtime
             .advance_frame(
-                &[],
                 67,
                 crate::sim::world::TickLane::Ordinary,
                 crate::sim::world::FrameEffects::default(),
             )
             .expect("bound production loss frame");
-        let admitted = output.take_admitted_commands();
-        let event_kinds: Vec<_> = admitted
+        let dispatched = runtime.simulation.take_dispatched_records_for_test();
+        let event_kinds: Vec<_> = dispatched
             .iter()
-            .map(|command| {
+            .map(|record| {
+                let command = runtime
+                    .simulation
+                    .decode_native_command_record(
+                        record,
+                        Some(&runtime.resources.rules),
+                        output.tick.tick,
+                    )
+                    .expect("the strip's events decode");
                 assert_eq!(command.owner, owner);
-                assert_eq!(command.execute_tick, output.tick.tick);
                 match command.payload {
                     crate::sim::command::Command::CancelProductionByType { type_id, all } => {
                         assert_eq!(runtime.simulation.interner.resolve(type_id), "MGTK");
@@ -369,27 +375,35 @@ fn prerequisite_loss_events_preserve_player_copies_cleanup_and_snapshot_replay()
         },
     );
     let mut output = live
-        .advance_frame(
+        .advance_frame_issuing(
             &[input.clone()],
             67,
             TickLane::Ordinary,
             FrameEffects::default(),
         )
         .expect("loss and player cancel frame");
-    let admitted_commands = output.take_admitted_commands();
+    let issued_records = output.take_issued_records();
+    let dispatched: Vec<_> = live
+        .simulation
+        .take_dispatched_records_for_test()
+        .iter()
+        .map(|record| {
+            live.simulation
+                .decode_native_command_record(record, Some(&live.resources.rules), 0)
+                .expect("dispatched ABANDON decodes")
+                .payload
+        })
+        .collect();
     assert_eq!(
-        admitted_commands,
+        dispatched,
         [
-            input.clone(),
-            input,
-            CommandEnvelope::new(
-                owner,
-                output.tick.tick,
-                Command::CancelProductionByType { type_id, all: true }
-            )
+            input.payload.clone(),
+            input.payload,
+            Command::CancelProductionByType { type_id, all: true }
         ],
         "the player's identical ABANDON and the strip's ABANDON both reach the event tail"
     );
+    assert_eq!(issued_records.len(), 1, "the log holds only the player's");
     assert_eq!(output.tick.executed_commands, 3);
     assert_gone(&live.simulation, parent, &child_ids);
     assert!(!live.simulation.houses[&owner].tech_recheck_pending());
@@ -415,16 +429,22 @@ fn prerequisite_loss_events_preserve_player_copies_cleanup_and_snapshot_replay()
             .is_empty()
     );
     let mut log = ReplayLog::new(header);
-    log.record_tick(output.tick.tick, admitted_commands, output.tick.state_hash);
+    log.record_tick(
+        output.tick.tick,
+        issued_records,
+        None,
+        output.tick.state_hash,
+    );
     let hashes =
         ReplayRunner::run_runtime(&mut replay, &log, 67).expect("recorded production replay");
     assert_eq!(hashes, [Some(live.simulation.state_hash())]);
     assert_gone(&replay.simulation, parent, &child_ids);
-    let mut next = live
-        .advance_frame(&[], 67, TickLane::Ordinary, FrameEffects::default())
+    live.advance_frame(67, TickLane::Ordinary, FrameEffects::default())
         .expect("post-loss frame");
     assert!(
-        next.take_admitted_commands().is_empty(),
+        live.simulation
+            .take_dispatched_records_for_test()
+            .is_empty(),
         "the consumed dirty flag emits no repeated cancellation"
     );
 }
@@ -1621,7 +1641,7 @@ fn occupied_barracks_radio_refunds_discards_and_promotes_one_gi() {
     assert!(dispatch_production_changes_for_tests(
         &mut sim, &rules, None
     ));
-    assert!(sim.pending_command_snapshot().is_empty());
+    assert!(sim.pending_command_snapshot(None).is_empty());
     let first_entity = sim.substrate.entities.get(first).unwrap();
     assert!(!first_entity.lifecycle.in_limbo() && first_entity.in_logic_vector.is_member());
     let first_contacts = first_entity.radio_contacts.clone();
@@ -1674,7 +1694,7 @@ fn occupied_barracks_radio_refunds_discards_and_promotes_one_gi() {
         0
     );
     super::publish_production_changes(&mut sim, &rules);
-    let pending = sim.pending_command_snapshot();
+    let pending = sim.pending_command_snapshot(None);
     assert_eq!(pending.len(), 1);
     assert_eq!(pending[0].owner, owner);
     assert!(matches!(
@@ -1712,7 +1732,7 @@ fn occupied_barracks_radio_refunds_discards_and_promotes_one_gi() {
     assert!(!dispatch_production_changes_for_tests(
         &mut sim, &rules, None
     ));
-    assert!(sim.pending_command_snapshot().is_empty());
+    assert!(sim.pending_command_snapshot(None).is_empty());
     assert!(
         !sim.substrate.entities.contains(refused),
         "scalar cleanup is synchronous"

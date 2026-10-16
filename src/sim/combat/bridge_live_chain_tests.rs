@@ -278,7 +278,6 @@ fn assert_live_projectile_restore_continuation(
         let first_output = scenario
             .runtime
             .advance_frame(
-                &[],
                 SIM_TICK_MS,
                 TickLane::Ordinary,
                 crate::sim::world::FrameEffects::default(),
@@ -292,7 +291,6 @@ fn assert_live_projectile_restore_continuation(
         let second_output = scenario
             .runtime
             .advance_frame(
-                &[],
                 SIM_TICK_MS,
                 TickLane::Ordinary,
                 crate::sim::world::FrameEffects::default(),
@@ -377,7 +375,6 @@ fn assert_debris_restore_continuation(
         scenario
             .runtime
             .advance_frame(
-                &[],
                 SIM_TICK_MS,
                 TickLane::Ordinary,
                 crate::sim::world::FrameEffects::default(),
@@ -393,7 +390,6 @@ fn assert_debris_restore_continuation(
         scenario
             .runtime
             .advance_frame(
-                &[],
                 SIM_TICK_MS,
                 TickLane::Ordinary,
                 crate::sim::world::FrameEffects::default(),
@@ -548,7 +544,7 @@ fn retail_bridge_forcefire_chain(vehicle_name: &str, weapon_name: &str, projecti
         };
         let output = scenario
             .runtime
-            .advance_frame(
+            .advance_frame_issuing(
                 &commands,
                 SIM_TICK_MS,
                 TickLane::Ordinary,

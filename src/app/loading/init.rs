@@ -1075,7 +1075,6 @@ mod map_wall_owner_candidate_tests {
         rt.resources.rules = rules;
         let frame = rt
             .advance_frame(
-                &[],
                 16,
                 crate::sim::world::TickLane::Ordinary,
                 crate::sim::world::FrameEffects::default(),
@@ -1104,7 +1103,6 @@ mod map_wall_owner_candidate_tests {
         );
         let next = rt
             .advance_frame(
-                &[],
                 16,
                 crate::sim::world::TickLane::Ordinary,
                 crate::sim::world::FrameEffects::default(),

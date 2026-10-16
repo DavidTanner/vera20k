@@ -648,7 +648,7 @@ fn retail_gi_ifv_fires_its_selected_weapon_without_changing_the_turret() {
         .expect("spawn target");
     assert!(sim.apply_command(
         OWNER,
-        &Command::Attack {
+        &Command::ForceAttack {
             attacker_id: ifv,
             target_id: target,
         },

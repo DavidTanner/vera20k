@@ -467,7 +467,7 @@ fn retail_shrapnel_repair_reaches_moving_water_neighbor() {
         let lifetime_start = scene.sim().lifecycle_test_events_for_test().len();
         let output = scene
             .runtime
-            .advance_frame(
+            .advance_frame_issuing(
                 envelope.as_slice(),
                 SIM_TICK_MS,
                 TickLane::Ordinary,
@@ -693,7 +693,6 @@ fn retail_shrapnel_repair_reaches_moving_water_neighbor() {
             let output = scene
                 .runtime
                 .advance_frame(
-                    &[],
                     SIM_TICK_MS,
                     TickLane::Ordinary,
                     crate::sim::world::FrameEffects::default(),

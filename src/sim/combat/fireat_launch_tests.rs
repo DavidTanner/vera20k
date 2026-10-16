@@ -646,8 +646,7 @@ fn grand_cannon_recoil_follows_successful_launch_ai_and_snapshot() {
     );
     for _ in 3..46 {
         duel.tick();
-        let commands = restored.take_due_commands();
-        restored.advance_tick(&commands, Some(&duel.rules), Some(&duel.grid), None, 67);
+        restored.advance_tick(&[], Some(&duel.rules), Some(&duel.grid), None, 67);
         assert_eq!(
             restored
                 .substrate
@@ -745,19 +744,21 @@ impl Duel {
 
     fn order(&mut self, owner: &str, command: Command) {
         let owner = self.sim.interner.intern(owner);
-        self.sim.queue_command(CommandEnvelope::new(
-            owner,
-            self.sim.session.tick + 1,
-            command,
-        ));
+        self.sim.issue_fixture_commands(
+            &[CommandEnvelope::new(
+                owner,
+                self.sim.session.tick + 1,
+                command,
+            )],
+            Some(&self.rules),
+        );
     }
 
     fn tick(&mut self) {
         self.sim.fire_events.clear();
         self.before = self.sim.projectiles.iter().map(|(&id, _)| id).collect();
-        let commands = self.sim.take_due_commands();
         self.sim
-            .advance_tick(&commands, Some(&self.rules), Some(&self.grid), None, 67);
+            .advance_tick(&[], Some(&self.rules), Some(&self.grid), None, 67);
     }
 
     fn health(&self, id: u64) -> i32 {

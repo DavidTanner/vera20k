@@ -517,18 +517,20 @@ fn a_move_onto_a_tank_walks_the_gi_beside_it() {
             + (i32::from(a.ry()) - i32::from(b.ry())).abs()
     };
     let start = distance(&sim);
-    sim.queue_command(crate::sim::command::CommandEnvelope::new(
-        owner,
-        sim.session.tick,
-        crate::sim::command::Command::MoveToObject {
-            entity_id: gi,
-            target_id: target,
-        },
-    ));
+    sim.issue_fixture_commands(
+        &[crate::sim::command::CommandEnvelope::new(
+            owner,
+            sim.session.tick,
+            crate::sim::command::Command::MoveToObject {
+                entity_id: gi,
+                target_id: target,
+            },
+        )],
+        Some(&rules),
+    );
     for _ in 0..60 {
-        let due = sim.take_due_commands();
         let grid = sim.path_grid_snapshot();
-        let result = sim.advance_tick(&due, Some(&rules), grid.as_deref(), None, 67);
+        let result = sim.advance_tick(&[], Some(&rules), grid.as_deref(), None, 67);
         assert!(result.frame_committed, "{result:?}");
     }
     let tank = sim.entities().get(target).unwrap().position;

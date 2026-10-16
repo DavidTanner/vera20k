@@ -696,7 +696,6 @@ fn all01_due_charge_and_damage_share_the_production_house_power_phase() {
     let identity = sim.super_weapons[&owner][&dominator].native_unique_id();
     for _ in 0..15 {
         sim.advance_app_frame(
-            &[],
             Some(&rules),
             None,
             67,
@@ -722,7 +721,6 @@ fn all01_due_charge_and_damage_share_the_production_house_power_phase() {
     assert!(!sim.super_weapons[&owner][&dominator].is_suspended);
     sim.trigger_runtime.action_trace.clear();
     sim.advance_app_frame(
-        &[],
         Some(&rules),
         None,
         67,
@@ -794,7 +792,6 @@ fn all01_due_charge_and_damage_share_the_production_house_power_phase() {
     assert!(before_pause.iter().all(|(_, _, paused)| !paused));
     sim.trigger_runtime.action_trace.clear();
     sim.advance_app_frame(
-        &[],
         Some(&rules),
         None,
         67,

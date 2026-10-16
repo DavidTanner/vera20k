@@ -193,15 +193,18 @@ impl SimRuntime {
     }
 
     /// One Ordinary-lane frame for side binaries (parity-digest, sim-bench):
-    /// the same bound-resource transaction as `advance_frame`, with the
-    /// crate-private frame output discarded so no internal type goes public.
+    /// `commands` are issued as their click producer's records
+    /// (`Simulation::issue_local_commands`), then the same bound-resource
+    /// transaction as `advance_frame` runs, with the crate-private frame
+    /// output discarded so no internal type goes public.
     pub fn advance_frame_for_tooling(
         &mut self,
         commands: &[crate::sim::command::CommandEnvelope],
         tick_ms: u32,
     ) -> Result<(), crate::sim::world::FrameAdvanceError> {
+        self.simulation
+            .issue_local_commands(commands, Some(&self.resources.rules));
         self.advance_frame(
-            commands,
             tick_ms,
             crate::sim::world::TickLane::Ordinary,
             crate::sim::world::FrameEffects::default(),
@@ -212,16 +215,15 @@ impl SimRuntime {
     /// The production frame transaction: advance one lane-tagged frame using
     /// the bound immutable resources. Callers cannot substitute rules, maps,
     /// registries, definitions, or navigation (the simulation pins its own
-    /// canonical path snapshot internally).
+    /// canonical path snapshot internally). Commands reach it only as records
+    /// already issued into the simulation's command queue.
     pub(crate) fn advance_frame(
         &mut self,
-        commands: &[crate::sim::command::CommandEnvelope],
         tick_ms: u32,
         lane: crate::sim::world::TickLane,
         effects: crate::sim::world::FrameEffects<'_>,
     ) -> Result<crate::sim::world::SimFrameOutput, crate::sim::world::FrameAdvanceError> {
         self.simulation.advance_app_frame(
-            commands,
             Some(&self.resources.rules),
             Some(&self.resources.overlay_registry),
             tick_ms,
@@ -240,6 +242,20 @@ impl SimRuntime {
 
 #[cfg(test)]
 impl SimRuntime {
+    /// Fixture frame: issue `commands` as their click producer's records
+    /// (`Simulation::issue_fixture_commands`), then run the production frame.
+    pub(crate) fn advance_frame_issuing(
+        &mut self,
+        commands: &[crate::sim::command::CommandEnvelope],
+        tick_ms: u32,
+        lane: crate::sim::world::TickLane,
+        effects: crate::sim::world::FrameEffects<'_>,
+    ) -> Result<crate::sim::world::SimFrameOutput, crate::sim::world::FrameAdvanceError> {
+        self.simulation
+            .issue_fixture_commands(commands, Some(&self.resources.rules));
+        self.advance_frame(tick_ms, lane, effects)
+    }
+
     /// Replace a same-content restored simulation in place. Resource ownership
     /// never changes and callers must already have a running match.
     pub(crate) fn replace_simulation(&mut self, simulation: Simulation) {
@@ -296,7 +312,6 @@ mod tests {
         let run = |runtime: &mut SimRuntime| {
             runtime
                 .advance_frame(
-                    &[],
                     67,
                     TickLane::Ordinary,
                     crate::sim::world::FrameEffects::default(),
@@ -439,7 +454,6 @@ mod tests {
 
         let _ = runtime
             .advance_frame(
-                &[],
                 33,
                 crate::sim::world::TickLane::Ordinary,
                 crate::sim::world::FrameEffects::default(),

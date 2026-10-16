@@ -36,16 +36,13 @@ impl GameEntity {
     pub(crate) fn install_building_down(&mut self, route: BuildingDown) {
         self.building_sale = Some(route);
     }
-    pub(crate) fn sale_is_undeploy_order(&self) -> bool {
-        self.building_down() && self.building_sale.is_some_and(BuildingDown::undeploy_order)
-    }
     /// `BuildingClass::Mission_Selling @ 0x00449C30`'s stage visit: its `+0x6DD`
     /// read (`0x00449C99`) and stage 0's clear (`0x0044AB61`).
     pub(crate) fn advance_building_down(&mut self, status: &mut u32) -> PackUpFrame {
         let ready = self.building_ready_latch() != 0;
         let visit = self
             .building_sale
-            .unwrap_or_else(|| BuildingDown::commenced(0, false))
+            .unwrap_or_else(|| BuildingDown::commenced(0))
             .visit(status, ready);
         if visit == PackUpFrame::StageZero {
             self.mission_leaf.set_building_ready_latch(0);

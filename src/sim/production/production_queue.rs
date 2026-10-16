@@ -157,21 +157,28 @@ pub fn publish_production_changes(sim: &mut Simulation, rules: &RuleSet) {
             continue;
         };
         factory_lifecycle::publish_completion(sim, rules, owner, category);
-        if sim.object_type(type_id, rules).is_some_and(|object| {
-            object.category != crate::rules::object_type::ObjectCategory::Building
-        }) {
-            sim.queue_command(crate::sim::command::CommandEnvelope::new(
+        // Strip AI appends its mobile PLACE to the OutList inline
+        // (`0x006A8EE8..0x006A8F3D`; dropped while it holds 0x80 records).
+        // Only the player's sidebar has a Strip, as for its ABANDONs
+        // (`recalculate_strips`).
+        if sim.houses.get(&owner).is_some_and(|house| house.is_human)
+            && sim.object_type(type_id, rules).is_some_and(|object| {
+                object.category != crate::rules::object_type::ObjectCategory::Building
+            })
+            && let Some(record) = sim.encode_production_record(
                 owner,
-                sim.session.tick.saturating_add(1),
-                crate::sim::command::Command::PlaceProducedMobile { category },
-            ));
+                &crate::sim::command::Command::PlaceProducedMobile { category },
+                rules,
+            )
+        {
+            sim.issue_command_record(record);
         }
     }
 }
 
 /// Exercise the next frame's prefix publication and its event tail in focused owner tests,
 /// without running unrelated world AI. The ordinary production runtime uses
-/// publish_production_changes plus the world's existing scheduled tail.
+/// publish_production_changes plus the world's tail dispatch.
 #[cfg(test)]
 pub(crate) fn dispatch_production_changes_for_tests(
     sim: &mut Simulation,
@@ -181,11 +188,8 @@ pub(crate) fn dispatch_production_changes_for_tests(
     sim.session.tick = sim.session.tick.saturating_add(1);
     sim.session.binary_frame = sim.session.binary_frame.wrapping_add(1);
     publish_production_changes(sim, rules);
-    let due = sim.take_due_commands();
-    let (_, spawned) = sim.apply_due_commands(
-        &due,
+    let (_, spawned) = sim.dispatch_due_command_queue(
         Some(rules),
-        sim.session.tick.saturating_add(1),
         overlay_registry,
         crate::sim::world::FrameEffects::default(),
     );

@@ -15,10 +15,8 @@ const CENTERS: [(u16, u16); 3] = [(17, 24), (31, 24), (24, 17)];
 const DOG_CELL: (u16, u16) = (24, 24);
 
 fn advance(sim: &mut Simulation, rules: &RuleSet) -> super::SimFrameOutput {
-    let commands = sim.take_due_commands();
     let output = sim
         .advance_app_frame(
-            &commands,
             Some(rules),
             None,
             33,

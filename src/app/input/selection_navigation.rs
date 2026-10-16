@@ -783,7 +783,6 @@ mod tests {
             }
             sim.reveal(20);
             sim.advance_app_frame(
-                &[],
                 None,
                 None,
                 67,
@@ -827,7 +826,6 @@ mod tests {
             assert!(sim.entities().get(20).unwrap().is_object_alive());
             let frame = sim
                 .advance_app_frame(
-                    &[],
                     None,
                     None,
                     67,
@@ -889,7 +887,6 @@ mod tests {
             assert!(sim.entities().get(20).unwrap().is_object_alive());
             let next = sim
                 .advance_app_frame(
-                    &[],
                     None,
                     None,
                     67,

@@ -387,7 +387,6 @@ fn infantry_terminal_same_frame_firer_death_keeps_electric_consequences() {
         }
         let frame = sim
             .advance_app_frame(
-                &[],
                 Some(&rules),
                 None,
                 67,

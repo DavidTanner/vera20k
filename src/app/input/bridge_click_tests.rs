@@ -5,7 +5,7 @@
 
 use std::collections::BTreeMap;
 
-use crate::app::input::commands::roundtrip_local_order;
+use crate::app::input::commands::decoded_local_order;
 use crate::app::match_runtime::sim_tick::{screen_point_to_world_with_camera, world_point_to_cell};
 use crate::map::terrain::TacticalBridgeCell;
 use crate::sim::command::{Command, CommandEnvelope};
@@ -46,7 +46,7 @@ fn ordinary_move(
     // The active ordinary-click path calls this in context_order::finish_order.
     // It encodes and decodes the native MegaMission record (4C6860), rather than
     // allowing a test-only semantic command to bypass destination serialization.
-    let decoded = roundtrip_local_order(sim, None, issued.clone())
+    let decoded = decoded_local_order(sim, None, issued.clone())
         .pop()
         .expect("ordinary Move must survive its native record codec");
     assert_eq!(decoded, issued, "the codec must preserve the clicked cell");
@@ -120,7 +120,7 @@ fn native_bridge_destinations_survive_camera_zoom_and_ordinary_move_records() {
         "tools/bridge_click_oracle/vectors.json",
     ))
     .expect("native bridge inverse fixture JSON");
-    let (mut sim, owner, movers) = commandable_movers();
+    let (sim, owner, movers) = commandable_movers();
     let mut cases_checked = 0;
     let mut negative_x_checked = false;
     for scenario in fixtures["inverse_scenarios"].as_array().unwrap() {
@@ -197,8 +197,12 @@ fn native_bridge_destinations_survive_camera_zoom_and_ordinary_move_records() {
                     );
                     for mover in movers {
                         let command = ordinary_move(&sim, owner, mover, goal);
-                        sim.queue_command(command.clone());
-                        assert_eq!(sim.take_due_commands(), vec![command]);
+                        let decoded = crate::app::input::commands::decoded_local_order(
+                            &sim,
+                            None,
+                            command.clone(),
+                        );
+                        assert_eq!(decoded, vec![command]);
                     }
                 }
             }
@@ -320,18 +324,19 @@ fn follow_clicked_goal(
         "retail click must keep the intended bridge/ground Cell"
     );
     let order = ordinary_move(scenario.sim(), owner, entity_id, admitted);
-    scenario.runtime.simulation.queue_command(order);
+    scenario
+        .runtime
+        .simulation
+        .issue_fixture_commands(&[order], None);
     let mut arrived = false;
     for frame in 0..2_000 {
         // HeadlessScenario::tick deliberately advances an empty command batch.
         // Ordinary app frames instead drain their queued commands first (the
         // production sim_tick::advance_one_simulation_frame path). Preserve
         // that ingress here so the Move actually reaches command execution.
-        let due = scenario.runtime.simulation.take_due_commands();
         let output = scenario
             .runtime
             .advance_frame(
-                &due,
                 crate::headless_scenario::SIM_TICK_MS,
                 crate::sim::world::TickLane::Ordinary,
                 crate::sim::world::FrameEffects::default(),
@@ -439,9 +444,8 @@ fn retail_hills_ground_click_keeps_gi_beneath_bridge() {
 }
 
 fn advance_input_fixture(sim: &mut Simulation, rules: &crate::rules::ruleset::RuleSet) {
-    let due = sim.take_due_commands();
     let grid = sim.path_grid_snapshot();
-    let result = sim.advance_tick(&due, Some(rules), grid.as_deref(), None, 67);
+    let result = sim.advance_tick(&[], Some(rules), grid.as_deref(), None, 67);
     assert!(
         result.frame_committed,
         "ordinary scheduled frame failed: {result:?}"
@@ -484,7 +488,7 @@ fn shift_walk_cell_input_uses_ordinary_resolver_and_move_record() {
         },
     );
     assert_eq!(
-        roundtrip_local_order(&sim, None, issued.clone())
+        decoded_local_order(&sim, None, issued.clone())
             .pop()
             .unwrap(),
         ordinary_move(&sim, owner, actor, ordinary)
@@ -511,7 +515,7 @@ fn ordinary_walk_cell_input_reaches_near_bank_and_valid_high_bridge() {
             );
         }
         let envelope = ordinary_move(&sim, owner, actor, chosen);
-        sim.queue_command(envelope);
+        sim.issue_fixture_commands(&[envelope], None);
         advance_input_fixture(&mut sim, &rules);
         let e = sim.entities().get(actor).unwrap();
         assert_eq!(
@@ -561,14 +565,13 @@ fn encoded_walk_destination_survives_topology_change_before_due_frame() {
     // The scheduler drains commands for the NEXT frame. Leave one full
     // object turn before this already-encoded destination becomes due.
     order.execute_tick = sim.session.tick + 2;
-    sim.queue_command(order.clone());
+    sim.issue_fixture_commands(&[order.clone()], None);
     sim.close_walk_input_test_bridge(&rules);
     assert_ne!(
         super::commands::ordinary_cell_move_goal(&sim, &rules, None, owner, actor, clicked, false),
         Some(clicked),
         "the later input query must discriminate the changed topology"
     );
-    assert!(sim.take_due_commands().is_empty());
     advance_input_fixture(&mut sim, &rules);
     advance_input_fixture(&mut sim, &rules);
     let e = sim.entities().get(actor).unwrap();
@@ -593,15 +596,18 @@ fn direct_simulation_walk_move_is_an_already_resolved_destination() {
         super::commands::ordinary_cell_move_goal(&sim, &rules, None, owner, actor, (9, 5), false),
         Some((9, 5))
     );
-    sim.queue_command(CommandEnvelope::new(
-        owner,
-        sim.session.tick,
-        Command::Move {
-            entity_id: actor,
-            target_rx: 9,
-            target_ry: 5,
-        },
-    ));
+    sim.issue_fixture_commands(
+        &[CommandEnvelope::new(
+            owner,
+            sim.session.tick,
+            Command::Move {
+                entity_id: actor,
+                target_rx: 9,
+                target_ry: 5,
+            },
+        )],
+        None,
+    );
     advance_input_fixture(&mut sim, &rules);
     let e = sim.entities().get(actor).unwrap();
     assert_eq!(

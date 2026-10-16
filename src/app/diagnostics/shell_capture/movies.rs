@@ -1122,7 +1122,7 @@ impl MoviesCapture {
                 ensure!(
                     !runtime
                         .simulation
-                        .pending_command_snapshot()
+                        .pending_command_snapshot(None)
                         .iter()
                         .any(|command| matches!(
                             command.payload,
@@ -1147,7 +1147,7 @@ impl MoviesCapture {
                     .context("Leave lost its installed runtime")?
                     .simulation;
                 let exits = sim
-                    .pending_command_snapshot()
+                    .pending_command_snapshot(None)
                     .into_iter()
                     .filter(|command| {
                         matches!(command.payload, crate::sim::command::Command::ExitMatch)
@@ -1187,7 +1187,7 @@ impl MoviesCapture {
                     ensure!(
                         sim.quit_requested
                             && !sim
-                                .pending_command_snapshot()
+                                .pending_command_snapshot(None)
                                 .iter()
                                 .any(|command| matches!(
                                     command.payload,
@@ -1649,7 +1649,7 @@ fn campaign_abort_cleanup_receipt(state: &AppState) -> Result<Value> {
         .campaign_mission_counter()
         .context("retained runtime lost campaign state")?;
     let pending_exit_commands = sim
-        .pending_command_snapshot()
+        .pending_command_snapshot(None)
         .iter()
         .filter(|command| matches!(command.payload, crate::sim::command::Command::ExitMatch))
         .count();

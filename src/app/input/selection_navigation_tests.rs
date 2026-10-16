@@ -1245,7 +1245,7 @@ fn combatant_refused_selection_commit_keeps_native_cleanup_scope() {
     assert_eq!(input.type_select.selection_scope_view().0, "combatant");
     assert!(input.type_select.across_map);
     assert!(
-        sim.pending_command_snapshot().is_empty(),
+        sim.pending_command_snapshot(None).is_empty(),
         "selection queues nothing"
     );
 }

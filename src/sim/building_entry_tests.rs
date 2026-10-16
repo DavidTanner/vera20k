@@ -195,8 +195,7 @@ fn run_until(
         if done(sim) {
             return true;
         }
-        let commands = sim.take_due_commands();
-        sim.advance_tick(&commands, Some(rules), Some(grid), None, 33);
+        sim.advance_tick(&[], Some(rules), Some(grid), None, 33);
     }
     done(sim)
 }

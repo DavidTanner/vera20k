@@ -22,7 +22,7 @@ fn mixed_engineer_c4_batches_restore_original_selection_order() {
         wrap(c4.clone()),
         wrap(attack.clone()),
     ];
-    restore_selection_dispatch_order(&mut queued, &[30, 10, 20]);
+    restore_selection_dispatch_order(&mut queued, |envelope| &envelope.payload, &[30, 10, 20]);
     assert_eq!(
         queued.iter().map(|e| &e.payload).collect::<Vec<_>>(),
         vec![&c4, &attack, &capture]
@@ -42,7 +42,7 @@ fn same_actor_orders_keep_their_original_sequence() {
             target_building_id: 100,
         }),
     ];
-    restore_selection_dispatch_order(&mut queued, &[10, 20]);
+    restore_selection_dispatch_order(&mut queued, |envelope| &envelope.payload, &[10, 20]);
     assert_eq!(command_actor_id(&queued[0].payload), Some(10));
     assert!(matches!(queued[1].payload, Command::Stop { entity_id: 20 }));
     assert!(matches!(
@@ -75,7 +75,7 @@ fn prepared_factory_rallies_and_mobile_orders_keep_native_selection_order() {
             target_ry: 8,
         }),
     ];
-    restore_selection_dispatch_order(&mut queued, &[30, 10, 20]);
+    restore_selection_dispatch_order(&mut queued, |envelope| &envelope.payload, &[30, 10, 20]);
     assert_eq!(
         queued
             .iter()
@@ -113,6 +113,6 @@ fn aggregated_rally_batch_keeps_existing_dispatch_order() {
         ),
     ];
     let original = queued.clone();
-    restore_selection_dispatch_order(&mut queued, &[30, 10, 20]);
+    restore_selection_dispatch_order(&mut queued, |envelope| &envelope.payload, &[30, 10, 20]);
     assert_eq!(queued, original);
 }

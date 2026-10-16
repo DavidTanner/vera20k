@@ -20,7 +20,6 @@ use crate::map::entities::{EntityCategory, MapEntity};
 use crate::map::resolved_terrain::ResolvedTerrainGrid;
 use crate::rules::foundation::foundation_dimensions;
 use crate::rules::object_type::{Ability, ObjectCategory, ObjectType};
-use crate::rules::overlay_types::OverlayTypeRegistry;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::base_plan::pack_base_plan_cell;
 use crate::sim::base_plan_generation::{preflight_recalc, recalc_base_plan};
@@ -2353,30 +2352,6 @@ impl Simulation {
         }
 
         true
-    }
-
-    /// The player's undeploy order (VERA's stand-in for the retail undeploy
-    /// click, `BuildingClass::Active_Click_With 0x004436F0`, whose SELL event
-    /// follows the event that sets the building's ArchiveTarget): a building
-    /// that can undeploy takes `Sell_Back(-1)`, and its Selling mission packs
-    /// it up and converts it into its `UndeploysInto=` unit
-    /// ([`Self::finish_undeploy`]).
-    pub(crate) fn undeploy_building(
-        &mut self,
-        stable_id: u64,
-        rules: &RuleSet,
-        registry: Option<&OverlayTypeRegistry>,
-        frame_effects: FrameEffects<'_>,
-    ) -> bool {
-        self.can_undeploy_building_runtime(stable_id, rules)
-            && production::sell_back(
-                self,
-                rules,
-                stable_id,
-                production::SellOrder::Undeploy,
-                registry,
-                frame_effects,
-            )
     }
 
     /// `BuildingClass::Mission_Selling`'s UndeploysInto conversion (`0x00449CEA`), on

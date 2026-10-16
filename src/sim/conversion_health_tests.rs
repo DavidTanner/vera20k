@@ -145,12 +145,7 @@ fn building_conversion_reads_health_when_animation_finishes() {
         .spawn_object_at_height("YARD", "Neutral", 10, 10, 0, 0, &rules)
         .unwrap();
     damage(&mut sim, source, 750);
-    assert!(sim.undeploy_building(
-        source,
-        &rules,
-        None,
-        crate::sim::world::FrameEffects::default()
-    ));
+    assert!(start_undeploy(&mut sim, &rules, None, source));
     damage(&mut sim, source, 250);
     sim.substrate
         .entities
@@ -188,7 +183,7 @@ fn deploy(sim: &mut Simulation, rules: &RuleSet, source: u64, into: &str) -> u64
         .stable_id()
 }
 
-/// The building's undeploy (`undeploy_building`) run to its conversion
+/// The building's undeploy (`start_undeploy`) run to its conversion
 /// (the Selling mission's completing visit), answering the unit it became. A just-deployed
 /// building is taken as built up, as the undeploy requires.
 fn undeploy(sim: &mut Simulation, rules: &RuleSet, building: u64, into: &str) -> u64 {
@@ -197,12 +192,7 @@ fn undeploy(sim: &mut Simulation, rules: &RuleSet, building: u64, into: &str) ->
         .get_mut(building)
         .unwrap()
         .finish_building_construction_for_test();
-    assert!(sim.undeploy_building(
-        building,
-        rules,
-        None,
-        crate::sim::world::FrameEffects::default()
-    ));
+    assert!(start_undeploy(sim, rules, None, building));
     sim.substrate
         .entities
         .get_mut(building)
@@ -290,12 +280,7 @@ fn all_four_conversion_callers_preserve_results_above_u16() {
         sim.advance_tick(&[], Some(&rules), None, None, 22);
     }
     assert!(!sim.substrate.entities.get(yard).unwrap().building_up());
-    assert!(sim.undeploy_building(
-        yard,
-        &rules,
-        None,
-        crate::sim::world::FrameEffects::default()
-    ));
+    assert!(start_undeploy(&mut sim, &rules, None, yard));
     sim.substrate
         .entities
         .get_mut(yard)
@@ -401,4 +386,39 @@ fn mcv_building_slots_wait_for_completion_and_use_converted_health() {
         expected_rng.logical_state()
     );
     assert_ne!(sim.scenario_rng.state(), before_rng);
+}
+
+/// Start a building's undeploy as its records execute: the ARCHIVE of its own
+/// Cell, then SELL, through their decoded receivers.
+fn start_undeploy(
+    sim: &mut Simulation,
+    rules: &RuleSet,
+    registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
+    building: u64,
+) -> bool {
+    let entity = sim.substrate.entities.get(building).unwrap();
+    let owner = sim.interner.resolve(entity.owner()).to_string();
+    let [x, y] = crate::sim::movement::ground_pose::object_center_xy(entity);
+    let cell = |lepton| crate::util::lepton::lepton_to_cell(lepton) as u16;
+    sim.can_undeploy_building_runtime(building, rules)
+        && [
+            crate::sim::command::Command::SetRally {
+                rx: cell(x),
+                ry: cell(y),
+                producer_ids: vec![building],
+            },
+            crate::sim::command::Command::SellBuilding {
+                entity_id: building,
+            },
+        ]
+        .iter()
+        .all(|command| {
+            sim.apply_command_with_overlays(
+                &owner,
+                command,
+                Some(rules),
+                registry,
+                crate::sim::world::FrameEffects::default(),
+            )
+        })
 }

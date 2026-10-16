@@ -896,7 +896,6 @@ mod tests {
                 let output = loaded
                     .runtime
                     .advance_frame(
-                        &[],
                         crate::app::types::SIM_TICK_MS,
                         TickLane::Ordinary,
                         crate::sim::world::FrameEffects::default(),
@@ -958,7 +957,7 @@ mod tests {
                 );
                 let output = loaded
                     .runtime
-                    .advance_frame(
+                    .advance_frame_issuing(
                         &[exit],
                         crate::app::types::SIM_TICK_MS,
                         TickLane::Ordinary,

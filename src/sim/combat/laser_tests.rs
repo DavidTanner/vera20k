@@ -376,7 +376,6 @@ fn production_frame_orders_laser_update_before_delayed_support_birth() {
     sim.lifecycle_outputs.clear();
     let frame = sim
         .advance_app_frame(
-            &[],
             Some(&rules),
             None,
             67,
@@ -485,7 +484,6 @@ fn retail_delayed_main_uses_preclear_count_and_failed_admission_emits_no_laser()
         sim.lifecycle_outputs.clear();
         let frame = sim
             .advance_app_frame(
-                &[],
                 Some(rules),
                 None,
                 67,

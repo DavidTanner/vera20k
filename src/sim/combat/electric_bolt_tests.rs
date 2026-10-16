@@ -515,7 +515,6 @@ fn fatal_coil_bolt_releases_navigation_before_the_next_logic_reader() {
     }
     for _ in 0..2 {
         sim.advance_app_frame(
-            &[],
             Some(rules),
             None,
             67,
@@ -581,7 +580,6 @@ fn delayed_building_fire_skips_spark_after_bullet_compaction_until_the_next_pass
     });
     let frame = sim
         .advance_app_frame(
-            &[],
             Some(rules),
             None,
             67,
@@ -690,7 +688,6 @@ fn delayed_building_fire_skips_spark_after_bullet_compaction_until_the_next_pass
     sim.clear_lifecycle_test_events_for_test();
     let next = sim
         .advance_app_frame(
-            &[],
             Some(rules),
             None,
             67,
@@ -819,7 +816,6 @@ fn natural_charge_expiry_preserves_native_bullet_and_spark_visit_order() {
         source_entity.mission_leaf.set_building_ready_latch(1);
         for _ in 0..start {
             sim.advance_app_frame(
-                &[],
                 Some(rules),
                 None,
                 67,
@@ -840,7 +836,6 @@ fn natural_charge_expiry_preserves_native_bullet_and_spark_visit_order() {
                 "{name}"
             );
             sim.advance_app_frame(
-                &[],
                 Some(rules),
                 None,
                 67,
@@ -897,7 +892,6 @@ fn natural_charge_expiry_preserves_native_bullet_and_spark_visit_order() {
         {
             let frame = sim
                 .advance_app_frame(
-                    &[],
                     Some(rules),
                     None,
                     67,

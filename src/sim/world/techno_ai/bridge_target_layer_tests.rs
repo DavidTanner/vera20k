@@ -428,7 +428,7 @@ fn move_retail_fv(
             )
         });
         runtime
-            .advance_frame(
+            .advance_frame_issuing(
                 if frame == 0 {
                     std::slice::from_ref(&command)
                 } else {
@@ -676,7 +676,6 @@ pub(super) fn retail_hills_collapsed_scene(
         let runtime = &mut scenario.runtime;
         runtime
             .advance_frame(
-                &[],
                 crate::headless_scenario::SIM_TICK_MS,
                 crate::sim::world::TickLane::Ordinary,
                 crate::sim::world::FrameEffects::default(),
@@ -685,7 +684,6 @@ pub(super) fn retail_hills_collapsed_scene(
         std::mem::swap(&mut runtime.simulation, &mut first);
         runtime
             .advance_frame(
-                &[],
                 crate::headless_scenario::SIM_TICK_MS,
                 crate::sim::world::TickLane::Ordinary,
                 crate::sim::world::FrameEffects::default(),
@@ -794,7 +792,6 @@ fn collapse_retail_scene(
         let runtime = &mut scenario.runtime;
         runtime
             .advance_frame(
-                &[],
                 crate::headless_scenario::SIM_TICK_MS,
                 crate::sim::world::TickLane::Ordinary,
                 crate::sim::world::FrameEffects::default(),
@@ -803,7 +800,6 @@ fn collapse_retail_scene(
         std::mem::swap(&mut runtime.simulation, &mut first);
         runtime
             .advance_frame(
-                &[],
                 crate::headless_scenario::SIM_TICK_MS,
                 crate::sim::world::TickLane::Ordinary,
                 crate::sim::world::FrameEffects::default(),

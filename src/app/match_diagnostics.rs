@@ -117,7 +117,7 @@ mod tests {
             map_name: "gsi_17_08.map".to_owned(),
             rules_hash: 0x5678,
         });
-        log.record_tick(41, Vec::new(), Some(0x9abc));
+        log.record_tick(41, Vec::new(), None, Some(0x9abc));
         log
     }
 

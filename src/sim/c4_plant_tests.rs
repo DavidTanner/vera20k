@@ -116,21 +116,23 @@ fn spawn(sim: &mut Simulation, rules: &RuleSet, kind: &str, owner: &str, rx: u16
 }
 
 fn step(sim: &mut Simulation, rules: &RuleSet, grid: &PathGrid) {
-    let commands = sim.take_due_commands();
-    sim.advance_tick(&commands, Some(rules), Some(grid), None, 33);
+    sim.advance_tick(&[], Some(rules), Some(grid), None, 33);
 }
 
 fn order_plant(sim: &mut Simulation, owner: &str, attacker_id: u64, target_building_id: u64) {
     let owner = sim.interner.intern(owner);
     let tick = sim.session.tick + 1;
-    sim.queue_command(CommandEnvelope::new(
-        owner,
-        tick,
-        Command::PlantC4 {
-            attacker_id,
-            target_building_id,
-        },
-    ));
+    sim.issue_fixture_commands(
+        &[CommandEnvelope::new(
+            owner,
+            tick,
+            Command::PlantC4 {
+                attacker_id,
+                target_building_id,
+            },
+        )],
+        None,
+    );
 }
 
 /// Steps until `building` holds a charge, for at most 300 frames. Answers

@@ -257,8 +257,7 @@ fn seed_hut_fallback_without_starter(sim: &mut Simulation) {
 }
 
 fn step(sim: &mut Simulation, rules: &RuleSet) -> TickResult {
-    let due = sim.take_due_commands();
-    sim.advance_tick(&due, Some(rules), None, None, 67)
+    sim.advance_tick(&[], Some(rules), None, None, 67)
 }
 
 fn step_with_overlay_registry(
@@ -266,8 +265,7 @@ fn step_with_overlay_registry(
     rules: &RuleSet,
     registry: &crate::rules::overlay_types::OverlayTypeRegistry,
 ) -> TickResult {
-    let due = sim.take_due_commands();
-    sim.advance_tick(&due, Some(rules), None, Some(registry), 67)
+    sim.advance_tick(&[], Some(rules), None, Some(registry), 67)
 }
 
 fn advance_pending_c4_to_detonation(sim: &mut Simulation, rules: &RuleSet) -> bool {
@@ -338,14 +336,17 @@ fn c4_order_from_a_distance_reaches_the_building_while_moving_or_idle() {
                 );
             }
             let owner = sim.interner.intern("Americans");
-            sim.queue_command(crate::sim::command::CommandEnvelope::new(
-                owner,
-                sim.session.tick + 1,
-                Command::PlantC4 {
-                    attacker_id: seal,
-                    target_building_id: cabhut,
-                },
-            ));
+            sim.issue_fixture_commands(
+                &[crate::sim::command::CommandEnvelope::new(
+                    owner,
+                    sim.session.tick + 1,
+                    Command::PlantC4 {
+                        attacker_id: seal,
+                        target_building_id: cabhut,
+                    },
+                )],
+                None,
+            );
             let planted = (0..400).any(|_| {
                 step_with_overlay_registry(&mut sim, &rules, &registry);
                 sim.substrate
@@ -578,14 +579,17 @@ fn queued_hut_capture_survives_repair_before_event_execution() {
             (9, 10)
         ));
         let actor_owner = sim.interner.intern("Americans");
-        sim.queue_command(crate::sim::command::CommandEnvelope::new(
-            actor_owner,
-            sim.session.tick + 1,
-            Command::CaptureBuilding {
-                engineer_id: engineer,
-                target_building_id: hut,
-            },
-        ));
+        sim.issue_fixture_commands(
+            &[crate::sim::command::CommandEnvelope::new(
+                actor_owner,
+                sim.session.tick + 1,
+                Command::CaptureBuilding {
+                    engineer_id: engineer,
+                    target_building_id: hut,
+                },
+            )],
+            None,
+        );
         for &(rx, ry) in BRIDGE_CELLS {
             sim.resolved_terrain
                 .as_mut()
@@ -599,7 +603,7 @@ fn queued_hut_capture_survives_repair_before_event_execution() {
             &sim,
             (9, 10)
         ));
-        let due = sim.take_due_commands();
+        let due = sim.pending_command_snapshot(Some(&rules));
         assert_eq!(due.len(), 1);
         let rng_before = (
             sim.scenario_rng.logical_state(),
@@ -658,14 +662,17 @@ fn c4_on_cabhut_collapses_bridge_and_hut_survives() {
         .spawn_object_at_height("GHOST", "Americans", 16, 15, 0, 0, &rules)
         .expect("SEAL must be constructed with a Walk locomotor in the adjacent cell");
     let owner = sim.interner.intern("Americans");
-    sim.queue_command(crate::sim::command::CommandEnvelope::new(
-        owner,
-        sim.session.tick + 1,
-        Command::PlantC4 {
-            attacker_id: seal,
-            target_building_id: cabhut,
-        },
-    ));
+    sim.issue_fixture_commands(
+        &[crate::sim::command::CommandEnvelope::new(
+            owner,
+            sim.session.tick + 1,
+            Command::PlantC4 {
+                attacker_id: seal,
+                target_building_id: cabhut,
+            },
+        )],
+        None,
+    );
 
     // First tick: the order starts the walk to the CABHUT NavCom. It must not
     // plant until the SEAL's current cell resolves to the CABHUT.

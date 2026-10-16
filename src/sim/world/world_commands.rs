@@ -635,6 +635,68 @@ impl Simulation {
         .ok()
     }
 
+    /// The records a local producer sends for one order, built as that
+    /// producer builds them:
+    /// - Scatter, EXIT and the wall sale: their one-record events.
+    /// - The production family (`encode_production_record`), which needs
+    ///   `rules`.
+    /// - Stop, sell, repair, the superweapon click, rally and undeploy
+    ///   (`encode_single_event_records`); the deploy family too when it comes
+    ///   from the deploy key ([`LocalProducer::Key`]).
+    /// - Every other order is a click's MEGAMISSION
+    ///   (`encode_megamission_record`, ClickedMission `0x006FFBE0`), including
+    ///   the self-click's Unload for the deploy family.
+    ///
+    /// Offline Options speed and planning records are not issued here.
+    /// `None` when the order has no record, which its producer then drops.
+    ///
+    /// [`LocalProducer::Key`]: crate::sim::world::LocalProducer::Key
+    pub(crate) fn encode_local_command_records(
+        &self,
+        owner: crate::sim::intern::InternedId,
+        command: &Command,
+        rules: Option<&RuleSet>,
+        producer: super::LocalProducer,
+    ) -> Option<Vec<CommandRecord>> {
+        match *command {
+            Command::Scatter { entity_id } => self
+                .encode_target_event_record(owner, SCATTER_OPCODE, entity_id)
+                .map(|record| vec![record]),
+            Command::ExitMatch => self.encode_exit_record(owner).map(|record| vec![record]),
+            Command::SellWallAtCell { x, y } => self
+                .encode_sell_wall_at_cell_record(owner, x, y)
+                .map(|record| vec![record]),
+            Command::QueueProduction { .. }
+            | Command::SuspendProduction { .. }
+            | Command::CancelProductionByType { .. }
+            | Command::PlaceReadyBuilding { .. }
+            | Command::PlaceProducedMobile { .. }
+            | Command::CycleProducerFocus { .. }
+            | Command::TogglePrimaryFactory { .. } => self
+                .encode_production_record(owner, command, rules?)
+                .map(|record| vec![record]),
+            Command::DeployMcv { .. }
+            | Command::ToggleInfantryDeploy { .. }
+            | Command::UnloadPassengers { .. }
+                if producer == super::LocalProducer::Key =>
+            {
+                self.encode_single_event_records(owner, command, rules)
+            }
+            Command::Stop { .. }
+            | Command::SellBuilding { .. }
+            | Command::ToggleRepair { .. }
+            | Command::LaunchSuperWeapon { .. }
+            | Command::SetRally { .. }
+            | Command::UndeployBuilding { .. } => {
+                self.encode_single_event_records(owner, command, rules)
+            }
+            Command::SetGameSpeed { .. } | Command::PlanningRecord { .. } => None,
+            _ => self
+                .encode_megamission_record(owner, command)
+                .map(|record| vec![record]),
+        }
+    }
+
     /// Decode one synchronized record after its queue has admitted the stamped
     /// frame. The semantic envelope is only a typed execution view of the raw
     /// bytes; timing/processed-bit ownership remains with the raw queue.
@@ -1511,21 +1573,16 @@ impl Simulation {
                 }
                 true
             }
-            Command::Attack {
-                attacker_id,
-                target_id,
-            }
-            | Command::ForceAttack {
+            Command::ForceAttack {
                 attacker_id,
                 target_id,
             } => {
                 if !self.substrate.entities.contains(*target_id) {
                     return false;
                 }
-                // Both payloads are the same native Attack event, and its
-                // receiver (`EventClass::Execute` `0x004C7200..0x004C74A2`)
-                // has no alliance test: the click's What_Action already chose
-                // Attack. The two names only record the input-side choice.
+                // Every Attack MEGAMISSION decodes here, and its receiver
+                // (`EventClass::Execute` `0x004C7200..0x004C74A2`) has no
+                // alliance test: the click's What_Action already chose Attack.
                 // Native order admission: BOTH the actor and the clicked Target
                 // object are gated, and a failure on either abandons the whole
                 // order. A victim that dies in the same tick is still resolvable
@@ -1650,21 +1707,13 @@ impl Simulation {
                 }
                 crate::sim::deploy::issue_order(self, *entity_id, rules, frame_effects)
             }
-            // Retail undeploys a building only through a cell click
-            // (`0x004436F0`: the rally/ArchiveTarget event 0x1E, then SELL
-            // 0x16 -> `Sell_Back(-1) @ 0x00447110` queuing Selling), and
-            // local issue now sends those records
-            // (`encode_single_event_records`). This receiver runs only a
-            // saved or replayed UndeployBuilding: it starts the sale with no
-            // destination cell, so the pack-up times as an archive-bearing
-            // one but the unit is not sent anywhere after the conversion.
-            Command::UndeployBuilding { entity_id } => {
-                let Some(rules) = rules else { return false };
-                if !self.entity_owned_by_id(command_owner, *entity_id) {
-                    return false;
-                }
-                self.undeploy_building(*entity_id, rules, overlay_registry, frame_effects)
-            }
+            // Producer intents only: issue encodes them (Attack as the
+            // MEGAMISSION that decodes to ForceAttack, UndeployBuilding as
+            // ARCHIVE then SELL, CycleProducerFocus as the chosen factory's
+            // PRIMARY) and no record decodes to them.
+            Command::Attack { .. }
+            | Command::UndeployBuilding { .. }
+            | Command::CycleProducerFocus { .. } => false,
             // The synchronized self-deploy order queues Unload; the concrete
             // Infantry51F6E0 handler selects Doing27/31 on the object's visit.
             // CanDeploy700D50's UI tube-neighborhood gate484AE0 is a separate
@@ -1703,16 +1752,6 @@ impl Simulation {
             }
             Command::SuspendProduction { category } => {
                 production::suspend_production(self, command_owner, *category)
-            }
-            // A saved or replayed Factory-button command: issue sends its
-            // chosen building's PRIMARY instead (`encode_production_record`).
-            Command::CycleProducerFocus { category } => {
-                let Some(rules) = rules else { return false };
-                let Some(owner) = self.interner.get(command_owner) else {
-                    return false;
-                };
-                production::next_producer_focus(self, rules, owner, *category)
-                    .is_some_and(|id| production::toggle_primary_factory(self, rules, id))
             }
             Command::TogglePrimaryFactory { building_id } => {
                 let Some(rules) = rules else { return false };
@@ -1783,10 +1822,16 @@ impl Simulation {
                 };
                 self.sell_wall_at_cell(command_owner, *x, *y, rules, overlays)
             }
-            // Offline game-speed transitions are consumed at master-frame
-            // ingress so early authoritative animation work sees the new rate.
-            // Reaching the ordinary EventClass-shaped tail must not apply one.
-            Command::SetGameSpeed { .. } => false,
+            // GAMESPEED (`EventClass::Execute 0x004C794B`) stores the speed in
+            // the tail. Only a network game sends it; offline Options stores
+            // the speed at once (`Simulation::apply_local_game_speed`). The
+            // message for another house's change is not ported.
+            Command::SetGameSpeed { speed } => {
+                self.interner
+                    .get(command_owner)
+                    .is_some_and(|owner| self.houses.contains_key(&owner))
+                    && self.session.game_options.apply_in_game_speed(*speed)
+            }
             Command::ExitMatch => {
                 let Some(owner) = self.interner.get(command_owner) else {
                     return false;
@@ -2739,10 +2784,9 @@ impl Simulation {
     ///
     /// Residuals on this gate, recorded not fixed:
     ///
-    /// * **Two arms still ungated.** `Simulation::command_uses_megamission`
-    ///   already enumerates which VERA commands are MEGAMISSION-shaped — it is
-    ///   what splits due commands into the non-MEGAMISSION pass and the staged
-    ///   batch, mirroring opcode 0x04 in `net::lockstep`. Checked against it,
+    /// * **Two arms still ungated.** `Command::megamission_actor` enumerates
+    ///   which decoded commands are MEGAMISSION receivers (the tail stages
+    ///   opcode 0x04 records, `sim::lockstep`). Checked against it,
     ///   `EjectBunker` and `ToggleInfantryDeploy` carry only the ownership test.
     ///   Trigger: issuing
     ///   one of those to a dying or limboed actor. Player effect: the order runs
@@ -4091,7 +4135,7 @@ mod tests {
         assert!(!sim.order_object_token_admits(2));
         assert!(!sim.apply_command(
             "Americans",
-            &Command::Attack {
+            &Command::ForceAttack {
                 attacker_id: 1,
                 target_id: 2,
             },
@@ -5154,8 +5198,8 @@ mod tests {
     }
 
     /// Native Attack carries no alliance test (`EventClass::Execute`
-    /// `0x004C7200..0x004C74A2`), so an Attack on a friendly object is
-    /// admitted as its decoded ForceAttack is.
+    /// `0x004C7200..0x004C74A2`): an Attack on a friendly object decodes to
+    /// ForceAttack, which is admitted.
     #[test]
     fn attack_on_a_friendly_target_is_admitted_like_its_decoded_record() {
         let rules = amcv_move_rules();
@@ -5166,7 +5210,7 @@ mod tests {
         spawn_rule_backed_unit(&mut sim, 2, "AMCV", &rules);
         assert!(sim.apply_command(
             "Americans",
-            &Command::Attack {
+            &Command::ForceAttack {
                 attacker_id: 1,
                 target_id: 2,
             },

@@ -120,7 +120,7 @@ fn sov01_transport_crosses_water_below_golden_gate() {
     let tick = scenario.sim().session.tick + 1;
     scenario
         .runtime
-        .advance_frame(
+        .advance_frame_issuing(
             &[CommandEnvelope::new(
                 owner,
                 tick,

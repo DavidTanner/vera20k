@@ -278,7 +278,7 @@ fn area_guard_ingress_matches_native_order_current_cells_voices_and_rng() {
             })
         {
             assert_rng(&f.sim, row, &boundary["before"]);
-            let prior_count = f.sim.pending_command_snapshot().len();
+            let prior_count = f.sim.pending_command_snapshot(None).len();
             let events = queue_area_guard_orders(
                 &mut f.sim,
                 &f.rules,
@@ -319,7 +319,7 @@ fn area_guard_ingress_matches_native_order_current_cells_voices_and_rng() {
                     row["name"]
                 );
             }
-            let pending = f.sim.pending_command_snapshot();
+            let pending = f.sim.pending_command_snapshot(None);
             let actual: Vec<_> = pending[prior_count..]
                 .iter()
                 .map(|envelope| {
@@ -392,7 +392,7 @@ fn area_guard_uses_the_committed_selection_array_order() {
     queue_area_guard_orders(&mut f.sim, &f.rules, &selected, true);
     let guard_ids: Vec<_> = f
         .sim
-        .pending_command_snapshot()
+        .pending_command_snapshot(None)
         .iter()
         .map(|envelope| match envelope.payload {
             Command::Guard { entity_id, .. } => entity_id,

@@ -817,11 +817,9 @@ fn the_mechanism_runs_on_a_real_map() {
     let mut previous = start;
     let mut heals: Vec<(u32, u32, i32)> = Vec::new();
     for _ in 0..(cadence as usize * 3) {
-        let due = runtime.simulation.take_due_commands();
         let before = runtime.simulation.session.binary_frame;
         runtime
             .advance_frame(
-                &due,
                 crate::headless_scenario::SIM_TICK_MS,
                 crate::sim::world::TickLane::Ordinary,
                 crate::sim::world::FrameEffects::default(),

@@ -297,6 +297,9 @@ fn march(
             // No house owns a building, so exempt every house from the defeat
             // scan; objects still fight because only same-house pairs are allied.
             house.multiplay_passive = true;
+            // The march's orders are this house's events, which the tail
+            // dispatches only for `IsHuman || PlayerControl` houses.
+            house.player_control = true;
             sim.houses.insert(id, house);
             sim.session.house_order.push(id);
             id

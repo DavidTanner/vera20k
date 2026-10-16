@@ -347,7 +347,7 @@ fn retail_hills_engineer_enters_hut_and_repairs() {
     let mut approach_snapshot = None;
     for frame in 0..1200 {
         runtime
-            .advance_frame(
+            .advance_frame_issuing(
                 if frame == 0 {
                     std::slice::from_ref(&command)
                 } else {
@@ -440,7 +440,6 @@ fn retail_hills_engineer_enters_hut_and_repairs() {
         for _ in 0..2 {
             runtime
                 .advance_frame(
-                    &[],
                     crate::headless_scenario::SIM_TICK_MS,
                     TickLane::Ordinary,
                     crate::sim::world::FrameEffects::default(),

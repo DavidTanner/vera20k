@@ -1,7 +1,11 @@
 //! Deterministic simulation command model.
 //!
-//! All gameplay inputs are translated into explicit commands that can be
-//! scheduled by tick, logged, replayed, and sent over lockstep transport.
+//! The synchronized form of every gameplay input is a native 0x6F-byte
+//! [`CommandRecord`]: producers encode their orders into records, the command
+//! queue (`sim::lockstep`) carries only records, and the tail decodes each
+//! into a [`Command`] when it executes. A few [`Command`] variants are
+//! producer intents only (Attack, UndeployBuilding, CycleProducerFocus): they
+//! encode to records that decode to other variants.
 
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -1305,7 +1309,9 @@ impl Command {
     }
 }
 
-/// Command with deterministic execution metadata.
+/// A decoded command with its house and tick: what a record decodes to at
+/// execution, the queue's diagnostic view, and the order form fixtures and
+/// tooling issue through `Simulation::issue_local_commands`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CommandEnvelope {
     pub owner: InternedId,

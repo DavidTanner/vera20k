@@ -1353,17 +1353,21 @@ fn an_attack_order_captures_without_damage() {
     let gi = spawn(&mut sim, &rules, "E1", "Americans", 12, 10);
     let health = sim.substrate.entities.get(gi).unwrap().health.current();
     let owner_id = sim.interner.intern("YuriCountry");
-    sim.queue_command(CommandEnvelope::new(
-        owner_id,
-        sim.session.tick + 1,
-        Command::Attack {
-            attacker_id: mind,
-            target_id: gi,
-        },
-    ));
+    // The order is the player's event (`IsHuman || PlayerControl`).
+    sim.houses.get_mut(&owner_id).unwrap().player_control = true;
+    sim.issue_fixture_commands(
+        &[CommandEnvelope::new(
+            owner_id,
+            sim.session.tick + 1,
+            Command::Attack {
+                attacker_id: mind,
+                target_id: gi,
+            },
+        )],
+        Some(&rules),
+    );
     for _ in 0..90 {
-        let commands = sim.take_due_commands();
-        sim.advance_tick(&commands, Some(&rules), Some(&grid), None, 33);
+        sim.advance_tick(&[], Some(&rules), Some(&grid), None, 33);
         if sim
             .substrate
             .entities
@@ -1746,19 +1750,24 @@ fn an_iron_curtained_target_refuses_the_capture_at_fire_time() {
     );
     let health = sim.substrate.entities.get(gi).unwrap().health.current();
     let owner_id = sim.interner.intern("YuriCountry");
-    sim.queue_command(CommandEnvelope::new(
-        owner_id,
-        sim.session.tick + 1,
-        Command::Attack {
-            attacker_id: yuri,
-            target_id: gi,
-        },
-    ));
+    // The order is the player's event: the tail dispatches only a house that
+    // is human or under PlayerControl.
+    sim.houses.get_mut(&owner_id).unwrap().player_control = true;
+    sim.issue_fixture_commands(
+        &[CommandEnvelope::new(
+            owner_id,
+            sim.session.tick + 1,
+            Command::Attack {
+                attacker_id: yuri,
+                target_id: gi,
+            },
+        )],
+        Some(&rules),
+    );
     let mut attacked = false;
     let mut dropped = false;
     for _ in 0..120 {
-        let commands = sim.take_due_commands();
-        sim.advance_tick(&commands, Some(&rules), Some(&grid), None, 33);
+        sim.advance_tick(&[], Some(&rules), Some(&grid), None, 33);
         let targeting = sim
             .substrate
             .entities

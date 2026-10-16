@@ -358,7 +358,13 @@ const MIN_DISTINCT_DECK_CELLS: usize = 6;
 // Integrated StateHasher pin after executed scoped feed attribution. The test
 // below recovers current main exactly with retired feeds and preserves serialized
 // gameplay, the live Dummy and all three RNG streams; this is a Rust ratchet.
-const BRIDGE_HARNESS_FINAL_HASH: u64 = 0x4C4F_3B6D_6A3A_B21F;
+// Snapshot369 (networking 2e) issues the scripted orders as native records,
+// which name a registered house: the fixture registers the player's
+// Americans house, so its HouseState and House-rung visits enter the hash.
+// Hash composition only: per-frame replay, the actor checks and all three
+// RNG stream pins precede these pins and are unchanged.
+// Previous: final 0x4C4F_3B6D_6A3A_B21F, main 0x7762_A172_3DBE_DA89.
+const BRIDGE_HARNESS_FINAL_HASH: u64 = 0x8F55_DA67_3A63_FA4A;
 
 // ALL01 r6 (fork-local schema345) used DefaultHasher before main's
 // pinned StateHasher, entity/fog digests and owner migrations. These remain
@@ -366,7 +372,7 @@ const BRIDGE_HARNESS_FINAL_HASH: u64 = 0x4C4F_3B6D_6A3A_B21F;
 const BRIDGE_HARNESS_INCOMING_HASH: u64 = 0x38EB_6DC4_C87D_4E43;
 const BRIDGE_HARNESS_R6_FINAL_HASH: u64 = 0xA333_077C_B5E5_6DA3;
 // The legacy-feed control uses this main StateHasher reference.
-const BRIDGE_HARNESS_MAIN_HASH: u64 = 0x7762_A172_3DBE_DA89;
+const BRIDGE_HARNESS_MAIN_HASH: u64 = 0xE0FE_DD79_FCCA_88E5;
 
 fn bridge_ini() -> IniFile {
     // One armed ground vehicle and one distant infantryman on a second house, so
@@ -617,6 +623,8 @@ fn seed_bridge_scenario(sim: &mut Simulation, rules: &RuleSet) {
         sim.substrate.entities.get(TANK_ID).is_some(),
         "fixture tank must pass normal resolved-terrain constructor admission"
     );
+    // The player's house, whose scripted orders both passes issue.
+    sim.register_command_house_for_test("Americans");
 }
 
 const TANK_ID: u64 = 1;
@@ -704,15 +712,9 @@ fn bridge_crossing_replay_is_deterministic_and_baseline_stable() {
     let mut order_accepted_path: Option<usize> = None;
     for tick in 0..BRIDGE_HARNESS_TICKS {
         let due = due_commands(&rec, &script, tick);
-        let mut advance = || {
-            rec.advance_tick(
-                &due,
-                Some(&rules),
-                Some(&grid),
-                None,
-                BRIDGE_HARNESS_TICK_MS,
-            )
-        };
+        let issued = rec.issue_fixture_commands(&due, Some(&rules));
+        let mut advance =
+            || rec.advance_tick(&[], Some(&rules), Some(&grid), None, BRIDGE_HARNESS_TICK_MS);
         let (result, draws) = if diagnostic.is_some() {
             crate::sim::rng::trace_draws(advance)
         } else {
@@ -751,7 +753,7 @@ fn bridge_crossing_replay_is_deterministic_and_baseline_stable() {
             terrain_level: facts.signed_level(),
             structural: facts.has_structural_bridge(),
         });
-        log.record_tick(tick, due, result.state_hash);
+        log.record_tick(tick, issued, None, result.state_hash);
     }
 
     // ---- Coverage tripwires. These are the point of the fixture: without them

@@ -2282,7 +2282,6 @@ mod tests {
         assert!(unit_voice_facts(&restored).is_empty());
 
         sim.advance_app_frame(
-            &[],
             None,
             None,
             67,

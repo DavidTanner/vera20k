@@ -2260,7 +2260,6 @@ pub(crate) mod tests {
         let settled = sim.path_grid_snapshot().unwrap();
         let first = sim
             .advance_app_frame(
-                &[],
                 Some(&rules),
                 Some(&registry),
                 67,
@@ -2285,7 +2284,6 @@ pub(crate) mod tests {
         );
         let second = sim
             .advance_app_frame(
-                &[],
                 Some(&rules),
                 Some(&registry),
                 67,

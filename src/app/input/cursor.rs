@@ -2207,7 +2207,10 @@ Verses=100%,100%,100%,100%,100%,100%,100%,100%,100%,100%,100%
                 }
             };
             assert_eq!(sim.entities().get(house).unwrap().owner(), owner);
-            sim.queue_command(CommandEnvelope::new(owner, sim.session.tick + 1, command));
+            sim.issue_fixture_commands(
+                &[CommandEnvelope::new(owner, sim.session.tick + 1, command)],
+                Some(&rules),
+            );
             let grid = crate::sim::pathfinding::PathGrid::test_all_passable(32, 32);
             let state = |sim: &Simulation| {
                 let actor = sim.entities().get(house).unwrap();
@@ -2236,10 +2239,10 @@ Verses=100%,100%,100%,100%,100%,100%,100%,100%,100%,100%,100%
             let mut trace = vec![state(&sim)];
             let mut fired = false;
             for frame in 0..90 {
-                let pending = sim.take_due_commands();
-                sim.advance_tick(&pending, Some(&rules), Some(&grid), None, 100);
+                let pending = sim.pending_command_snapshot(Some(&rules)).len();
+                sim.advance_tick(&[], Some(&rules), Some(&grid), None, 100);
                 if frame < 8 || frame == 89 {
-                    trace.push(format!("commands={} {}", pending.len(), state(&sim)));
+                    trace.push(format!("commands={pending} {}", state(&sim)));
                 }
                 if sim
                     .fire_events

@@ -683,7 +683,13 @@ const FINAL_STREAM_STATES: (u64, u64, u64) = (
 // below recovers current main exactly with retired feeds and preserves serialized
 // gameplay, the live Dummy and all three RNG streams; this is a Rust ratchet.
 // Re-pinned after merging main's +0x438/+0x439 latches into the hash.
-const GLOBAL_HARNESS_FINAL_HASH: u64 = 0x3B11_939D_CFE5_8242;
+// Snapshot369 (networking 2e) issues the script's orders as native records,
+// which name a registered house: the test registers a human Issuer house,
+// whose HouseState and House-rung visits enter the hash. Hash composition
+// only: every gameplay tripwire, the per-frame replay and the RNG stream
+// checkpoints precede these pins and are unchanged.
+// Previous: final 0x3B11_939D_CFE5_8242, main 0x6616_10FD_E8C9_ADDE.
+const GLOBAL_HARNESS_FINAL_HASH: u64 = 0x9B13_FFBC_D87E_4FC9;
 
 // ALL01 r6 (fork-local schema345) used DefaultHasher before main's
 // pinned StateHasher, entity/fog digests and owner migrations. These remain
@@ -692,7 +698,7 @@ const GLOBAL_HARNESS_INCOMING_HASH: u64 = 0x0D69_4099_AD39_5D63;
 const GLOBAL_HARNESS_R6_FINAL_HASH: u64 = 0x488E_0917_87DF_8E1A;
 // The legacy-feed control uses this main StateHasher reference, which
 // includes the +0x438/+0x439 infantry tracking latches.
-const GLOBAL_HARNESS_MAIN_HASH: u64 = 0x6616_10FD_E8C9_ADDE;
+const GLOBAL_HARNESS_MAIN_HASH: u64 = 0x61D9_CD36_90D4_D6CA;
 
 fn harness_ini() -> IniFile {
     // Multi-faction vehicles + infantry + buildings (war factory, refinery) plus a
@@ -924,8 +930,11 @@ fn harness_script() -> Vec<(u64, Command)> {
 }
 
 /// Owner of every scripted command (all are issued by the Allied player).
+/// The script's orders for frame `tick`, from the human `Issuer` house
+/// (registered by the test): the harness houses are computer houses, which send
+/// no events, and an event's actor need not be its house's (Event4C71CA).
 fn due_commands(sim: &Simulation, script: &[(u64, Command)], tick: u64) -> Vec<CommandEnvelope> {
-    let owner = sim.interner.get("Americans").expect("Americans interned");
+    let owner = sim.interner.get("Issuer").expect("Issuer registered");
     script
         .iter()
         .filter(|(t, _)| *t == tick + 1)
@@ -938,10 +947,16 @@ fn cross_house_move_executes_and_replays_without_changing_actor_owner() {
     let rules = harness_rules();
     let overlays = harness_overlays();
     let grid = PathGrid::new(HARNESS_CELL_SIDE, HARNESS_CELL_SIDE);
-    let mut recorded = Simulation::with_seed(HARNESS_SEED);
-    seed_scenario(&mut recorded, &rules, &overlays);
+    // The harness houses are computer houses outside the House order; the
+    // order comes from a separate human house, in both runs.
+    let seeded = || {
+        let mut sim = Simulation::with_seed(HARNESS_SEED);
+        seed_scenario(&mut sim, &rules, &overlays);
+        let issuer = sim.register_command_house_for_test("Issuer");
+        (sim, issuer)
+    };
+    let (mut recorded, issuer) = seeded();
     let actor_owner = recorded.substrate.entities.get(6).unwrap().owner();
-    let issuer = recorded.interner.get("Americans").unwrap();
     assert_ne!(actor_owner, issuer);
     let destination = (28 + HARNESS_COORD_SHIFT, 10 + HARNESS_COORD_SHIFT);
     let command = CommandEnvelope::new(
@@ -961,8 +976,9 @@ fn cross_house_move_executes_and_replays_without_changing_actor_owner() {
         map_name: "cross_house_move".into(),
         rules_hash: 0,
     });
+    let issued = recorded.issue_fixture_commands(std::slice::from_ref(&command), Some(&rules));
     let result = recorded.advance_tick(
-        std::slice::from_ref(&command),
+        &[],
         Some(&rules),
         Some(&grid),
         Some(&overlays),
@@ -981,10 +997,9 @@ fn cross_house_move_executes_and_replays_without_changing_actor_owner() {
             destination.1
         ))
     );
-    replay.record_tick(0, vec![command], result.state_hash);
+    replay.record_tick(0, issued, None, result.state_hash);
     let replay: ReplayLog = serde_json::from_slice(&serde_json::to_vec(&replay).unwrap()).unwrap();
-    let mut restored = Simulation::with_seed(HARNESS_SEED);
-    seed_scenario(&mut restored, &rules, &overlays);
+    let (mut restored, _) = seeded();
     let hashes = ReplayRunner::run_fixture_with_overlay_registry(
         &mut restored,
         &replay,
@@ -1024,6 +1039,7 @@ fn global_skirmish_replay_is_deterministic_and_baseline_stable() {
         (seed(), Vec::new())
     };
     record_replay_diagnostic(&mut diagnostic, &rec, None, &[], &seed_draws);
+    rec.register_command_house_for_test("Issuer");
     let mut log = ReplayLog::new(ReplayHeader {
         version: 1,
         pixel_conversion_bounds: rec.session.pixel_conversion_bounds,
@@ -1051,6 +1067,7 @@ fn global_skirmish_replay_is_deterministic_and_baseline_stable() {
     let mut post_guard_scan = None;
     for tick in 0..HARNESS_TICKS {
         let due = due_commands(&rec, &script, tick);
+        let issued = rec.issue_fixture_commands(&due, Some(&rules));
         let before_scan = {
             let tank = rec.substrate.entities.get(6).expect("surviving tank");
             (
@@ -1060,7 +1077,7 @@ fn global_skirmish_replay_is_deterministic_and_baseline_stable() {
         };
         let mut advance = || {
             rec.advance_tick(
-                &due,
+                &[],
                 Some(&rules),
                 Some(&grid),
                 Some(&overlays),
@@ -1157,7 +1174,7 @@ fn global_skirmish_replay_is_deterministic_and_baseline_stable() {
                 .as_ref()
                 .is_some_and(|miner| !miner.cargo().is_empty());
         }
-        log.record_tick(tick, due, result.state_hash);
+        log.record_tick(tick, issued, None, result.state_hash);
         if STREAM_CHECKPOINT_TICKS.contains(&tick) {
             recorded_streams.push((
                 tick,
@@ -1203,6 +1220,7 @@ fn global_skirmish_replay_is_deterministic_and_baseline_stable() {
     // cursors can be pinned between chunks. ----
     let mut rep = Simulation::with_seed(HARNESS_SEED);
     seed_scenario(&mut rep, &rules, &overlays);
+    rep.register_command_house_for_test("Issuer");
     let mut replayed: Vec<Option<u64>> = Vec::with_capacity(log.ticks.len());
     let mut replayed_streams: Vec<(u64, u64, u64, u64)> = Vec::new();
     let mut chunk_start = 0usize;
@@ -1329,9 +1347,10 @@ fn global_skirmish_replay_is_deterministic_and_baseline_stable() {
         "tank 6 takes four 105mm hits (65 * 75% heavy)"
     );
     let legacy_super_owner = rep.interner.get("Americans").expect("building owner");
-    assert!(
-        rep.session.house_order.is_empty(),
-        "this fixture runs no House AI"
+    assert_eq!(
+        rep.session.house_order,
+        [rep.interner.get("Issuer").unwrap()],
+        "this fixture runs no computer House AI: only the human Issuer house is registered"
     );
     assert!(
         rep.super_weapons.is_empty(),

@@ -33,11 +33,12 @@ fn fixture_with_sound(
     (sim, rules, id)
 }
 fn tick(sim: &mut Simulation, rules: &RuleSet, command: Option<Command>) -> TickResult {
+    // An order comes from the player's house, which the tail dispatches.
     let cmds: Vec<_> = command
         .into_iter()
         .map(|cmd| {
             CommandEnvelope::new(
-                sim.interner.get("Americans").unwrap(),
+                sim.register_command_house_for_test("Americans"),
                 sim.session.tick + 1,
                 cmd,
             )
@@ -926,7 +927,6 @@ fn retail_frame(scenario: &mut crate::headless_scenario::HeadlessScenario) {
     scenario
         .runtime
         .advance_frame(
-            &[],
             crate::headless_scenario::SIM_TICK_MS,
             crate::sim::world::TickLane::Ordinary,
             crate::sim::world::FrameEffects::default(),

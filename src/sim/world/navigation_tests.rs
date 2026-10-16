@@ -336,7 +336,6 @@ fn held_factory_and_attached_upgrade_stay_off_navigation_through_frame_and_resto
         .place_overlay(12, 12, 0, 0);
     let output = sim
         .advance_app_frame(
-            &[],
             Some(&rules),
             Some(&overlays),
             67,

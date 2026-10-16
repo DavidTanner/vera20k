@@ -1048,7 +1048,10 @@ use crate::sim::world::Simulation;
 // 366 -> 367: authoritative PlanMgr nodes/tokens and local planning input mode.
 // 367 -> 368: local selection is no longer a command. `Command::Select` leaves
 // the saved queue's variant table and the local view drops its pending flag.
-const SNAPSHOT_VERSION: u32 = 368;
+// 368 -> 369: the command queue is the native OutList and DoList of 0x6F-byte
+// records (`sim::lockstep`), replacing the CommandEnvelope list. Older saves,
+// whose pending commands no longer have a reader, are refused.
+const SNAPSHOT_VERSION: u32 = 369;
 
 const SNAPSHOT_PRODUCT_MAGIC: [u8; 8] = *b"VERA20K\0";
 const SNAPSHOT_ENVELOPE_VERSION: u32 = 1;
@@ -4531,7 +4534,8 @@ mod tests {
         // 365 -> 366: process scalable Bullet order and type cadence.
         // 366 -> 367: synchronized planning nodes, paths and local input mode.
         // 367 -> 368: no saved Select command or pending local selection.
-        assert_eq!(super::SNAPSHOT_VERSION, 368);
+        // 368 -> 369: the saved command queue holds native records.
+        assert_eq!(super::SNAPSHOT_VERSION, 369);
     }
 
     #[test]
@@ -6035,7 +6039,7 @@ mod tests {
             .insert(owner, HouseState::new(owner, 0, None, true, 0, 10));
         sim.session.house_order.push(owner);
         let hash_without_pending_input = sim.state_hash();
-        sim.queue_command(CommandEnvelope::new(owner, 17, Command::ExitMatch));
+        sim.issue_fixture_commands(&[CommandEnvelope::new(owner, 17, Command::ExitMatch)], None);
         assert_eq!(
             sim.state_hash(),
             hash_without_pending_input,
@@ -6048,16 +6052,18 @@ mod tests {
         let mut restored = GameSnapshot::load(&bytes).expect("v75 EXIT snapshot").sim;
 
         assert_eq!(
-            restored.pending_command_snapshot(),
-            sim.pending_command_snapshot()
+            restored.pending_command_snapshot(None),
+            sim.pending_command_snapshot(None)
         );
         assert!(!restored.quit_requested);
         assert_eq!(restored.take_executed_exit_owner(), None);
         assert_eq!(restored.state_hash(), expected_hash);
     }
 
+    /// The saved queue keeps a record for a later frame; the restored
+    /// simulation dispatches it once, in that frame.
     #[test]
-    fn pending_game_speed_transition_roundtrips_in_current_version_and_executes_once() {
+    fn pending_record_roundtrips_in_current_version_and_executes_in_its_frame() {
         use crate::sim::command::{Command, CommandEnvelope};
         use crate::sim::house_state::HouseState;
 
@@ -6067,36 +6073,30 @@ mod tests {
             .insert(owner, HouseState::new(owner, 0, None, true, 0, 10));
         sim.session.house_order.push(owner);
         let hash_without_pending_input = sim.state_hash();
-        sim.queue_command(CommandEnvelope::new(
-            owner,
-            1,
-            Command::SetGameSpeed { speed: 4 },
-        ));
+        let issued =
+            sim.issue_fixture_commands(&[CommandEnvelope::new(owner, 2, Command::ExitMatch)], None);
+        assert_eq!(issued[0].frame_stamp(), 1);
         assert_eq!(sim.state_hash(), hash_without_pending_input);
 
-        let bytes = GameSnapshot::save(&sim, 1, 2, "speed.map", 0);
-        let header = GameSnapshot::read_header(&bytes).expect("current GameSpeed header");
+        let bytes = GameSnapshot::save(&sim, 1, 2, "exit.map", 0);
+        let header = GameSnapshot::read_header(&bytes).expect("current header");
         assert_eq!(header.version, SNAPSHOT_VERSION);
-        let mut restored = GameSnapshot::load(&bytes)
-            .expect("current GameSpeed snapshot")
-            .sim;
+        let mut restored = GameSnapshot::load(&bytes).expect("current snapshot").sim;
         assert_eq!(
-            restored.pending_command_snapshot(),
-            sim.pending_command_snapshot()
+            restored.pending_command_snapshot(None),
+            sim.pending_command_snapshot(None)
         );
-        assert_eq!(restored.session.game_options.game_speed, 1);
-        assert_eq!(restored.projected_in_game_options_speed(), Some(4));
 
-        let due = restored.take_due_commands();
-        let result = restored.advance_tick(&due, None, None, None, 67);
-        assert_eq!(result.executed_commands, 1);
-        assert_eq!(restored.session.game_options.game_speed, 4);
-        assert!(restored.pending_command_snapshot().is_empty());
-        assert_eq!(result.state_hash, Some(restored.state_hash()));
+        let first = restored.advance_tick(&[], None, None, None, 67);
+        assert_eq!(first.executed_commands, 0);
+        assert!(!restored.quit_requested);
+        assert_eq!(restored.pending_command_snapshot(None).len(), 1);
 
         let second = restored.advance_tick(&[], None, None, None, 67);
-        assert_eq!(second.executed_commands, 0);
-        assert_eq!(restored.session.game_options.game_speed, 4);
+        assert_eq!(second.executed_commands, 1);
+        assert!(restored.quit_requested);
+        assert!(restored.pending_command_snapshot(None).is_empty());
+        assert_eq!(second.state_hash, Some(restored.state_hash()));
     }
 
     #[test]
@@ -6433,11 +6433,14 @@ mod tests {
         sim.houses.insert(owner, house);
         sim.session.house_order.push(owner);
         sim.session.game_mode_nonzero = true;
-        sim.queue_command(crate::sim::command::CommandEnvelope::new(
-            owner,
-            17,
-            crate::sim::command::Command::SellWallAtCell { x: -3, y: 9 },
-        ));
+        sim.issue_fixture_commands(
+            &[crate::sim::command::CommandEnvelope::new(
+                owner,
+                17,
+                crate::sim::command::Command::SellWallAtCell { x: -3, y: 9 },
+            )],
+            None,
+        );
         // Native in-scenario load restarts Scenario RNG from Seed0; isolate
         // pending-command/house-mode persistence on that post-load cursor.
         sim.scenario_rng = crate::sim::rng::SimRng::new(0);
@@ -6454,8 +6457,8 @@ mod tests {
             .expect("v60 wall-sale snapshot")
             .sim;
         assert_eq!(
-            restored.pending_command_snapshot(),
-            sim.pending_command_snapshot()
+            restored.pending_command_snapshot(None),
+            sim.pending_command_snapshot(None)
         );
         assert!(restored.houses.get(&owner).unwrap().player_control);
         assert!(restored.session.game_mode_nonzero);
@@ -7496,11 +7499,14 @@ mod tests {
         sim.session.binary_frame = u32::MAX - 2;
         sim.session.total_sim_ms = 12_345;
         sim.session.house_order.push(owner);
-        sim.queue_command(CommandEnvelope::new(
-            owner,
-            sim.session.tick + 3,
-            Command::Stop { entity_id: 71 },
-        ));
+        sim.issue_fixture_commands(
+            &[CommandEnvelope::new(
+                owner,
+                sim.session.tick + 3,
+                Command::Stop { entity_id: 71 },
+            )],
+            None,
+        );
         sim.scenario_rng.next_u32();
         sim.main_rng.next_u32();
         sim.mapgen_rng.next_u32();
@@ -7516,8 +7522,8 @@ mod tests {
         assert_eq!(restored.sim.session.total_sim_ms, 12_345);
         assert_eq!(restored.sim.session.house_order, vec![owner]);
         assert_eq!(
-            restored.sim.pending_command_snapshot(),
-            sim.pending_command_snapshot()
+            restored.sim.pending_command_snapshot(None),
+            sim.pending_command_snapshot(None)
         );
         assert_eq!(
             restored.sim.scenario_rng.logical_state(),

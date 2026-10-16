@@ -955,7 +955,7 @@ pub(super) fn retail_frame(
 ) -> crate::sim::world::SimFrameOutput {
     scenario
         .runtime
-        .advance_frame(
+        .advance_frame_issuing(
             &orders,
             crate::headless_scenario::SIM_TICK_MS,
             crate::sim::world::TickLane::Ordinary,

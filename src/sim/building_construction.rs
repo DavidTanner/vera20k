@@ -255,9 +255,7 @@ impl BuildingUp {
 
 /// Sale route bookkeeping; body, ready and mission state stay with their owners.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
-pub(crate) struct BuildingDown {
-    undeploy_order: bool,
-}
+pub(crate) struct BuildingDown;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum PackUpFrame {
     StageZero,
@@ -266,11 +264,8 @@ pub(crate) enum PackUpFrame {
     Complete,
 }
 impl BuildingDown {
-    pub(crate) const fn commenced(_now: i32, undeploy_order: bool) -> Self {
-        Self { undeploy_order }
-    }
-    pub(crate) const fn undeploy_order(self) -> bool {
-        self.undeploy_order
+    pub(crate) const fn commenced(_now: i32) -> Self {
+        Self
     }
     pub(crate) fn visit(self, status: &mut u32, ready: bool) -> PackUpFrame {
         match *status {
@@ -493,7 +488,7 @@ mod tests {
         // Begin_Mode(0) restart until the actual stage-one tail.
         actor.bind_building_construction_control(control(input));
         actor.begin_building_body(BuildingBodyMode::Idle, 0);
-        actor.install_building_down(BuildingDown::commenced(0, false));
+        actor.install_building_down(BuildingDown::commenced(0));
         let mut status = 0;
         let mut completed = false;
         for frame in row["frames"].as_array().unwrap() {

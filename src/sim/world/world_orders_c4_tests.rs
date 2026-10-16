@@ -129,8 +129,7 @@ fn spawn_building(sim: &mut Simulation, type_str: &str, owner: &str, rx: u16, ry
 /// Advance one tick, draining any pending commands first (mirrors the
 /// production app sim-tick loop).
 fn step(sim: &mut Simulation, rules: &RuleSet) {
-    let due = sim.take_due_commands();
-    sim.advance_tick(&due, Some(rules), None, None, 67);
+    sim.advance_tick(&[], Some(rules), None, None, 67);
 }
 
 /// `seal`'s C4 charge on `target`, planted this frame.
@@ -281,11 +280,14 @@ fn a_planted_charge_survives_its_planters_stop() {
             CdTimer::started(plant_start as i32, rules.c4_delay_frames()),
             Some(seal),
         )));
-    sim.queue_command(CommandEnvelope::new(
-        owner,
-        sim.session.tick + 1,
-        Command::Stop { entity_id: seal },
-    ));
+    sim.issue_fixture_commands(
+        &[CommandEnvelope::new(
+            owner,
+            sim.session.tick + 1,
+            Command::Stop { entity_id: seal },
+        )],
+        None,
+    );
     step(&mut sim, &rules);
     assert!(
         sim.substrate
@@ -321,14 +323,17 @@ fn cannot_c4_building_rejects_plant_command() {
     let oil = spawn_building(&mut sim, "CAMISC01", "Soviets", 10, 10);
 
     let owner = sim.interner.intern("Americans");
-    sim.queue_command(CommandEnvelope::new(
-        owner,
-        sim.session.tick + 1,
-        Command::PlantC4 {
-            attacker_id: seal,
-            target_building_id: oil,
-        },
-    ));
+    sim.issue_fixture_commands(
+        &[CommandEnvelope::new(
+            owner,
+            sim.session.tick + 1,
+            Command::PlantC4 {
+                attacker_id: seal,
+                target_building_id: oil,
+            },
+        )],
+        None,
+    );
     step(&mut sim, &rules);
     let seal = sim.substrate.entities.get(seal).unwrap();
     assert!(
@@ -357,14 +362,17 @@ fn non_c4_unit_rejects_plant_command() {
     let bld = spawn_building(&mut sim, "GAPILE", "Soviets", 10, 10);
 
     let owner = sim.interner.intern("Americans");
-    sim.queue_command(CommandEnvelope::new(
-        owner,
-        sim.session.tick + 1,
-        Command::PlantC4 {
-            attacker_id: gi,
-            target_building_id: bld,
-        },
-    ));
+    sim.issue_fixture_commands(
+        &[CommandEnvelope::new(
+            owner,
+            sim.session.tick + 1,
+            Command::PlantC4 {
+                attacker_id: gi,
+                target_building_id: bld,
+            },
+        )],
+        None,
+    );
     step(&mut sim, &rules);
     let gi = sim.substrate.entities.get(gi).unwrap();
     assert!(

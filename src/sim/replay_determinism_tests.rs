@@ -34,6 +34,8 @@ fn make_test_sim() -> Simulation {
         trigger_tag: None,
     };
     sim.spawn_from_map(&[entity], None);
+    // The player's house, whose recorded orders playback re-issues.
+    sim.register_command_house_for_test("Americans");
     sim
 }
 
@@ -83,9 +85,10 @@ fn run_with_frame_profile(total_ms: u32, frame_ms: u32) -> (u64, Vec<Option<u64>
                 }
             });
 
-            let result = sim.advance_tick(&due, None, Some(&grid), None, TICK_MS);
+            let issued = sim.issue_fixture_commands(&due, None);
+            let result = sim.advance_tick(&[], None, Some(&grid), None, TICK_MS);
             hashes.push(result.state_hash);
-            replay.record_tick(result.tick, due, result.state_hash);
+            replay.record_tick(result.tick, issued, None, result.state_hash);
         }
     }
 
@@ -145,6 +148,7 @@ fn replay_reapplies_header_seed() {
             trigger_tag: None,
         };
         sim.spawn_from_map(&[entity], None);
+        sim.register_command_house_for_test("Americans");
         sim
     }
 
@@ -185,8 +189,9 @@ fn replay_reapplies_header_seed() {
                 true
             }
         });
-        let r = sim.advance_tick(&due, None, Some(&grid), None, TICK_MS);
-        replay.record_tick(r.tick, due, r.state_hash);
+        let issued = sim.issue_fixture_commands(&due, None);
+        let r = sim.advance_tick(&[], None, Some(&grid), None, TICK_MS);
+        replay.record_tick(r.tick, issued, None, r.state_hash);
         live.push(r.state_hash);
     }
 

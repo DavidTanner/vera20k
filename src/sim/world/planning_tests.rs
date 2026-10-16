@@ -2,7 +2,7 @@
 
 use super::PlanningPath;
 use crate::rules::ruleset::RuleSet;
-use crate::sim::command::{Command, CommandRecord};
+use crate::sim::command::{Command, CommandRecord, MegaMissionRecord};
 use crate::sim::intern::InternedId;
 use crate::sim::world::Simulation;
 use serde_json::Value;
@@ -146,11 +146,14 @@ fn fixture() -> (Simulation, RuleSet, InternedId) {
     (sim, rules, owner)
 }
 
+/// Execute one record's receiver as the tail does, then the tail's planning
+/// flush (`0x00637550` at `0x0055DE45`).
 fn apply(sim: &mut Simulation, rules: &RuleSet, record: CommandRecord) {
     let envelope = sim
         .decode_native_command_record(&record, None, sim.session.tick)
         .unwrap();
     assert!(sim.apply_command("Americans", &envelope.payload, Some(rules)));
+    sim.flush_staged_planning_records();
 }
 
 fn append(sim: &mut Simulation, rules: &RuleSet, owner: InternedId, actor: u64, cell: (u16, u16)) {
@@ -324,7 +327,7 @@ fn special_ordinary_retask_cancels_shared_route(kind: &str) {
         !sim.planning_enter_idle(actor),
         "{kind} must not restart an old leg"
     );
-    assert!(sim.pending_command_snapshot().is_empty());
+    assert!(sim.pending_command_snapshot(None).is_empty());
 }
 
 #[test]
@@ -460,13 +463,48 @@ fn guard_commit_consumes_first_node_stages_deliberate_and_retains_next_node() {
             .known(),
         Some(crate::sim::mission::MissionType::Deliberate)
     );
-    assert!(sim.take_due_commands().is_empty());
-    sim.session.tick += 1;
-    let due = sim.take_due_commands();
-    assert_eq!(due.len(), 1);
-    assert_eq!(due[0].execute_tick, sim.session.tick + 1);
-    assert!(matches!(&due[0].payload, Command::PlanningRecord { record }
-        if record.payload()[22] == 2 && record.frame_stamp() == sim.session.binary_frame as i32 + 1));
+    // 0x00652230 prepends the flag2 order to the DoList for the next frame.
+    let pending = sim.pending_command_snapshot(Some(&rules));
+    assert_eq!(pending.len(), 1);
+    assert_eq!(pending[0].execute_tick, sim.session.tick + 1);
+    assert!(
+        matches!(&pending[0].payload, Command::PlanningRecord { record }
+        if record.payload()[22] == 2 && record.frame_stamp() == sim.session.binary_frame as i32 + 1)
+    );
+}
+
+/// One commit starting two actors publishes both flag-2 orders through the
+/// staging vector: `0x00637550` prepends them from the last, so the DoList
+/// holds them in generation (actor) order.
+#[test]
+fn a_commit_publishes_its_actors_orders_in_generation_order() {
+    use crate::sim::mission::{MissionId, MissionType};
+    let (mut sim, rules, owner) = fixture();
+    append(&mut sim, &rules, owner, 1, (12, 15));
+    append(&mut sim, &rules, owner, 2, (16, 15));
+    for actor in [1, 2] {
+        sim.substrate
+            .entities
+            .get_mut(actor)
+            .unwrap()
+            .mission
+            .set_current_for_test(MissionId::from_known(MissionType::Guard), 0);
+    }
+    let commit = sim.encode_plan_commit_record(owner).unwrap();
+    apply(&mut sim, &rules, commit);
+    let sources: Vec<_> = sim
+        .pending_command_snapshot(None)
+        .into_iter()
+        .map(|command| {
+            let Command::PlanningRecord { record } = command.payload else {
+                panic!("a published flag-2 order: {command:?}");
+            };
+            let mut ordinary = record;
+            ordinary.payload_mut()[22] = 0;
+            MegaMissionRecord::decode(&ordinary).unwrap().source_id
+        })
+        .collect();
+    assert_eq!(sources, [1, 2]);
 }
 
 #[test]
@@ -522,7 +560,7 @@ fn ownership_transfer_detaches_path_preserves_generated_event_and_restores_snaps
     }
     let commit = sim.encode_plan_commit_record(owner).unwrap();
     apply(&mut sim, &rules, commit);
-    let generated = sim.pending_command_snapshot();
+    let generated = sim.pending_command_snapshot(None);
     assert_eq!(generated.len(), 1);
     let new_owner = sim.interner.intern("Russians");
     sim.houses.insert(
@@ -542,7 +580,7 @@ fn ownership_transfer_detaches_path_preserves_generated_event_and_restores_snaps
             .all(|node| !node.orders.contains_key(&1))
     );
     assert_eq!(sim.planning_paths(owner)[0].cells, vec![(20, 15)]);
-    assert_eq!(sim.pending_command_snapshot(), generated);
+    assert_eq!(sim.pending_command_snapshot(None), generated);
     let hash = sim.state_hash();
     let bytes = GameSnapshot::save(&sim, 0, 0, "planning", 0);
     let mut restored = GameSnapshot::load(&bytes).unwrap().sim;
@@ -551,12 +589,9 @@ fn ownership_transfer_detaches_path_preserves_generated_event_and_restores_snaps
     assert!(!restored.planning.paths.contains_key(&1));
     assert_eq!(restored.planning_paths(owner)[0].cells, vec![(20, 15)]);
     sim.session.tick += 1;
-    let due = sim.take_due_commands();
-    assert_eq!(due, generated);
-    sim.apply_due_commands(
-        &due,
+    sim.session.binary_frame += 1;
+    sim.dispatch_due_command_queue(
         Some(&rules),
-        sim.session.tick + 1,
         None,
         crate::sim::world::FrameEffects::default(),
     );
@@ -571,7 +606,6 @@ fn ownership_transfer_detaches_path_preserves_generated_event_and_restores_snaps
 
 #[test]
 fn same_batch_commit_precedes_staged_edit_and_next_batch_commit_starts_path() {
-    use crate::sim::command::CommandEnvelope;
     use crate::sim::world::FrameEffects;
     let (mut sim, rules, owner) = fixture();
     sim.substrate
@@ -594,31 +628,29 @@ fn same_batch_commit_precedes_staged_edit_and_next_batch_commit_starts_path() {
         )
         .unwrap();
     let commit = sim.encode_plan_commit_record(owner).unwrap();
-    let batch = [edit, commit]
-        .map(|record| CommandEnvelope::new(owner, 1, Command::PlanningRecord { record }));
-    sim.apply_due_commands(&batch, Some(&rules), 1, None, FrameEffects::default());
+    for record in [edit, commit] {
+        assert!(sim.issue_command_record(record));
+    }
+    sim.dispatch_due_command_queue(Some(&rules), None, FrameEffects::default());
     assert_eq!(
         sim.planning.paths[&1].pending, 0,
         "commit runs before staged flag1 even when flag1 was inserted first"
     );
     assert!(!sim.planning.paths[&1].executing);
-    assert!(sim.take_due_commands().is_empty());
-    let commit = sim.encode_plan_commit_record(owner).unwrap();
-    let batch = [CommandEnvelope::new(
-        owner,
-        2,
-        Command::PlanningRecord { record: commit },
-    )];
+    assert!(sim.pending_command_snapshot(None).is_empty());
     sim.session.tick = 1;
-    sim.apply_due_commands(&batch, Some(&rules), 2, None, FrameEffects::default());
+    sim.session.binary_frame = 1;
+    let commit = sim.encode_plan_commit_record(owner).unwrap();
+    assert!(sim.issue_command_record(commit));
+    sim.dispatch_due_command_queue(Some(&rules), None, FrameEffects::default());
     assert_eq!(sim.planning.paths[&1].pending, -1);
     assert!(sim.planning.paths[&1].executing);
-    assert!(sim.take_due_commands().is_empty());
-    sim.session.tick += 1;
-    let due = sim.take_due_commands();
-    assert_eq!(due.len(), 1);
+    // The published flag2 order waits in the DoList for the next frame.
+    let pending = sim.pending_command_snapshot(None);
+    assert_eq!(pending.len(), 1);
     assert!(
-        matches!(&due[0].payload, Command::PlanningRecord { record } if record.payload()[22] == 2)
+        matches!(&pending[0].payload, Command::PlanningRecord { record }
+            if record.payload()[22] == 2 && record.frame_stamp() == 2)
     );
 }
 
@@ -728,8 +760,7 @@ fn two_planned_move_legs_progress_through_spawn_and_master_frame_lifecycle() {
     let mut saw_first = false;
     let mut finished = false;
     for _ in 0..600 {
-        let due = sim.take_due_commands();
-        sim.advance_tick(&due, Some(&rules), grid.as_deref(), Some(&registry), 67);
+        sim.advance_tick(&[], Some(&rules), grid.as_deref(), Some(&registry), 67);
         let entity = sim.substrate.entities.get(actor).unwrap();
         saw_first |= entity.position.rx() == 16 && entity.position.ry() == 15;
         if entity.position.rx() == 17
@@ -869,7 +900,7 @@ fn object_node_sharing_compares_z_and_screen_hit_box_is_half_open() {
 
 #[test]
 fn planning_target_priority_is_secondary_auxiliary_destination() {
-    use crate::sim::command::{MegaMissionOrder, MegaMissionRecord, MegaMissionTarget};
+    use crate::sim::command::{MegaMissionOrder, MegaMissionTarget};
     let mut record = CommandRecord::encode(4, 0, 0, &[]).unwrap();
     MegaMissionRecord {
         house_id: 0,
@@ -1096,7 +1127,8 @@ fn planned_force_attack_preserves_admitted_friendly_target_through_native_dispat
     let commit = sim.encode_plan_commit_record(owner).unwrap();
     apply(&mut sim, &rules, commit);
     sim.session.tick += 1;
-    let due = sim.take_due_commands();
+    sim.session.binary_frame += 1;
+    let due = sim.pending_command_snapshot(Some(&rules));
     assert_eq!(due.len(), 1);
     assert!(
         matches!(&due[0].payload, Command::PlanningRecord { record } if record.payload()[22] == 2)
@@ -1164,7 +1196,9 @@ fn captured_actor_path_commits_for_current_house_and_preserves_original_issuer()
         .decode_native_command_record(&record, None, sim.session.tick)
         .unwrap();
     assert!(sim.apply_command("Russians", &envelope.payload, Some(&rules)));
-    let generated = sim.pending_command_snapshot();
+    // The tail's planning flush follows the receiver (`0x0055DE45`).
+    sim.flush_staged_planning_records();
+    let generated = sim.pending_command_snapshot(None);
     assert_eq!(generated.len(), 1);
     assert_eq!(generated[0].owner, owner);
     assert!(
@@ -1174,7 +1208,8 @@ fn captured_actor_path_commits_for_current_house_and_preserves_original_issuer()
     sim.planning = bincode::deserialize(&bytes).unwrap();
     sim.validate_planning_references().unwrap();
     sim.session.tick += 1;
-    let due = sim.take_due_commands();
+    sim.session.binary_frame += 1;
+    let due = sim.pending_command_snapshot(Some(&rules));
     assert!(sim.apply_command("Americans", &due[0].payload, Some(&rules)));
     assert_eq!(
         sim.substrate.entities.get(1).unwrap().navigation.nav_com(),

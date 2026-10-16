@@ -937,7 +937,7 @@ fn human_mobile_completion_retains_identity_until_next_frame_place() {
                 .is_some_and(|factory| factory.complete_object().is_some())
         })
         .expect("the paid native step ladder completes");
-    assert!(sim.pending_command_snapshot().is_empty());
+    assert!(sim.pending_command_snapshot(None).is_empty());
     sim.session.tick += 1;
     sim.session.binary_frame = sim.session.binary_frame.wrapping_add(1);
     super::publish_production_changes(&mut sim, &rules);
@@ -954,20 +954,22 @@ fn human_mobile_completion_retains_identity_until_next_frame_place() {
         .unwrap();
     assert_eq!(factory.object.unwrap().entity_id, Some(held));
     assert_eq!(factory.queue.len(), 1, "StartNextQueued follows PLACE");
-    let pending = sim.pending_command_snapshot();
+    let pending = sim.pending_command_snapshot(None);
     assert_eq!(pending.len(), 1);
     // The next frame's prefix appends PLACE for its own event tail, after
-    // already accepted player events and before that frame's Factory sweep.
-    assert_eq!(pending[0].execute_tick, u64::from(completed_frame) + 2);
+    // already accepted player events and before that frame's Factory sweep:
+    // it carries the current frame (the snapshot reports the issue tick).
+    assert_eq!(pending[0].execute_tick, u64::from(completed_frame) + 1);
     super::publish_production_changes(&mut sim, &rules);
-    assert_eq!(sim.pending_command_snapshot().len(), 1);
+    assert_eq!(sim.pending_command_snapshot(None).len(), 1);
 }
 
-/// The live app records the Strip-augmented batch; playback regenerates the
-/// same completion and must consume its recorded PLACE exactly once. The
-/// completion itself is a supplied ready prior here, covered by the paid chain.
+/// The Strip's PLACE follows the already issued rally in the frame's tail.
+/// The diagnostic log records only the issued rally; playback regenerates the
+/// PLACE and reaches the same state. The completion itself is a supplied
+/// ready prior here, covered by the paid chain.
 #[test]
-fn completion_prefix_records_one_place_and_playback_consumes_its_copy() {
+fn completion_prefix_place_follows_issued_rally_and_replays_from_issued_records() {
     let rules = factory_constructor_rules();
     let make = || {
         let mut sim = Simulation::with_seed(0xFAC7_0003);
@@ -995,14 +997,13 @@ fn completion_prefix_records_one_place_and_playback_consumes_its_copy() {
                 .factories
                 .test_arm_ready(owner, ProductionCategory::Infantry)
         );
-        // This unrelated future event belongs to the scheduler throughout both
-        // frames; admitting the prefix must not drain or retime it.
+        // This unrelated future event stays in the queue throughout both
+        // frames; the Strip's prefix must not drain or retime it.
         let future = crate::sim::command::CommandEnvelope::new(
             owner,
             9,
-            crate::sim::command::Command::Stop { entity_id: 999 },
+            crate::sim::command::Command::Stop { entity_id: 1 },
         );
-        sim.queue_command(future.clone());
         (sim, owner, future)
     };
     let (mut live, owner, future) = make();
@@ -1024,9 +1025,9 @@ fn completion_prefix_records_one_place_and_playback_consumes_its_copy() {
             producer_ids: vec![1],
         },
     );
+    live.issue_fixture_commands(&[future.clone(), rally], Some(&rules));
     let mut output = live
         .advance_app_frame(
-            std::slice::from_ref(&rally),
             Some(&rules),
             None,
             67,
@@ -1035,19 +1036,22 @@ fn completion_prefix_records_one_place_and_playback_consumes_its_copy() {
             crate::sim::world::FrameEffects::default(),
         )
         .unwrap();
-    let admitted = output.take_admitted_commands();
+    let issued = output.take_issued_records();
     assert_eq!(
-        admitted,
-        [
-            rally,
-            crate::sim::command::CommandEnvelope::new(
-                owner,
-                1,
-                crate::sim::command::Command::PlaceProducedMobile {
-                    category: ProductionCategory::Infantry,
-                },
-            )
-        ]
+        issued
+            .iter()
+            .map(|record| record.opcode())
+            .collect::<Vec<_>>(),
+        [0x06, 0x1E],
+        "the log holds the issued IDLE and rally, not the Strip's PLACE"
+    );
+    assert_eq!(
+        live.take_dispatched_records_for_test()
+            .iter()
+            .map(|record| record.opcode())
+            .collect::<Vec<_>>(),
+        [0x1E, 0x0B],
+        "ARCHIVE, then the Strip's PLACE"
     );
     assert!(
         !live
@@ -1077,16 +1081,20 @@ fn completion_prefix_records_one_place_and_playback_consumes_its_copy() {
             .lifecycle
             .in_limbo()
     );
-    assert_eq!(
-        live.pending_command_snapshot(),
-        std::slice::from_ref(&future)
-    );
+    let payloads = |sim: &Simulation| {
+        sim.pending_command_snapshot(Some(&rules))
+            .into_iter()
+            .map(|command| command.payload)
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(payloads(&live), [future.payload.clone()]);
 
     let (mut replay, _, _) = make();
-    let due = replay.take_due_replay_commands(admitted.clone());
-    let mut replay_output = replay
+    for record in &issued {
+        assert!(replay.issue_recorded_command(record.clone()));
+    }
+    let replay_output = replay
         .advance_app_frame(
-            &due,
             Some(&rules),
             None,
             67,
@@ -1095,9 +1103,16 @@ fn completion_prefix_records_one_place_and_playback_consumes_its_copy() {
             crate::sim::world::FrameEffects::default(),
         )
         .unwrap();
-    assert_eq!(replay_output.take_admitted_commands(), admitted);
+    assert_eq!(
+        replay
+            .take_dispatched_records_for_test()
+            .iter()
+            .map(|record| record.opcode())
+            .collect::<Vec<_>>(),
+        [0x1E, 0x0B]
+    );
     assert_eq!(replay_output.tick.state_hash, output.tick.state_hash);
-    assert_eq!(replay.pending_command_snapshot(), [future]);
+    assert_eq!(payloads(&replay), [future.payload]);
     assert_eq!(
         replay
             .production

@@ -62,13 +62,12 @@ fn target(sim: &mut Simulation, id: u64, target: u64) {
 fn order(sim: &mut Simulation, owner: &str, command: Command) {
     let owner = sim.interner.intern(owner);
     let tick = sim.session.tick + 1;
-    sim.queue_command(CommandEnvelope::new(owner, tick, command));
+    sim.issue_fixture_commands(&[CommandEnvelope::new(owner, tick, command)], None);
 }
 
 fn step(sim: &mut Simulation, rules: &RuleSet) {
-    let commands = sim.take_due_commands();
     let grid = sim.path_grid_snapshot();
-    sim.advance_tick(&commands, Some(rules), grid.as_deref(), None, 33);
+    sim.advance_tick(&[], Some(rules), grid.as_deref(), None, 33);
 }
 
 /// What one frame left of the pursuer and its Target.
@@ -331,9 +330,11 @@ fn a_rhino_stops_short_of_its_approach_cell_when_its_target_closes_in() {
             target_id: tank,
         },
     );
+    // A computer house sends no events; the player's house issues the move
+    // (an event's actor need not be its house's, Event4C71CA).
     order(
         &mut sim,
-        "Russians",
+        "Americans",
         Command::Move {
             entity_id: tank,
             target_rx: 4,
@@ -601,9 +602,11 @@ fn a_hunting_conscript_drops_his_walk_to_approach_his_quarry() {
     let mut sim = arena(&rules);
     let conscript = spawn(&mut sim, &rules, "E2", "Russians", (4, 10));
     let tank = spawn(&mut sim, &rules, "MTNK", "Americans", (24, 10));
+    // A computer house sends no events; the player's house issues the move
+    // (an event's actor need not be its house's, Event4C71CA).
     order(
         &mut sim,
-        "Russians",
+        "Americans",
         Command::Move {
             entity_id: conscript,
             target_rx: 4,

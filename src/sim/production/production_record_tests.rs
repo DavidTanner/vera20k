@@ -371,7 +371,7 @@ fn factory_world() -> (Simulation, RuleSet, InternedId) {
 
 /// The Factory button sends the chosen building's PRIMARY (Building
 /// ClickedAction `0x00443494`, constructor `0x004C65E0`), and the decoded
-/// TogglePrimaryFactory leaves the same state the semantic command does.
+/// TogglePrimaryFactory leaves the state the button's cycle names.
 #[test]
 fn producer_focus_sends_primary_and_matches_the_semantic_cycle() {
     let (mut semantic, rules, owner) = factory_world();
@@ -405,7 +405,11 @@ fn producer_focus_sends_primary_and_matches_the_semantic_cycle() {
                 }
             )
         );
-        assert!(semantic.apply_command("Americans", &cycle, Some(&rules)));
+        // The button's choice, then its PRIMARY's receiver.
+        let chosen =
+            super::next_producer_focus(&semantic, &rules, owner, ProductionCategory::Vehicle)
+                .unwrap();
+        assert!(super::toggle_primary_factory(&mut semantic, &rules, chosen));
         assert!(decoded_world.apply_command("Americans", &decoded.payload, Some(&rules)));
         for sim in [&semantic, &decoded_world] {
             assert_eq!(

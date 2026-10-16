@@ -614,6 +614,18 @@ const ARENA_RULES: &str = "[Countries]\n0=Americans\n1=Russians\n[Sides]\nAllied
              [AudioVisual]\nCrateMoneySound=CrateMoney\nCrateUnitSound=CrateFreeUnit\n\
              [Powerups]\nMoney=20,MONEY,yes,2000\nUnit=20,<none>,no\nHealBase=10,HEALALL,yes\n";
 
+/// Register the arena's house in the House order for an ordered run: the
+/// tail dispatches its orders, and its counted building keeps the defeat
+/// scan off it.
+fn register_ordering_house(sim: &mut Simulation, owner: InternedId) {
+    sim.houses
+        .get_mut(&owner)
+        .unwrap()
+        .tracking
+        .set_buildings_for_test(1);
+    sim.session.house_order.push(owner);
+}
+
 fn arena() -> (Simulation, RuleSet, OverlayTypeRegistry, InternedId, u64) {
     let rules = RuleSet::from_ini_with_fixed_art_for_test(
         &IniFile::from_str(ARENA_RULES),
@@ -860,6 +872,7 @@ fn force_track_onto_a_crate_cell_picks_it_up() {
 fn a_moving_tank_picks_up_the_crate_on_its_path() {
     use crate::sim::command::{Command, CommandEnvelope};
     let (mut sim, rules, registry, owner, actor) = arena();
+    register_ordering_house(&mut sim, owner);
     place_registered_crate(&mut sim, &registry, (22, 22), POWERUP_MONEY as u8);
     let credits = sim.houses[&owner].economy.credits();
     let grid = sim.path_grid_snapshot();
@@ -929,6 +942,7 @@ fn force_track_onto_a_unit_crate_drops_the_head() {
 fn a_walking_soldier_picks_up_the_crate_on_his_path() {
     use crate::sim::command::{Command, CommandEnvelope};
     let (mut sim, rules, registry, owner, _tank) = arena();
+    register_ordering_house(&mut sim, owner);
     let soldier = sim
         .spawn_object("E1", "Americans", 10, 10, 0, &rules)
         .expect("the soldier spawns");

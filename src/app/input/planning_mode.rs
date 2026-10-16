@@ -4,7 +4,6 @@
 use crate::app::AppState;
 use crate::app::input::hotkeys::{HotkeyCommand, HotkeyResolution};
 use crate::audio::events::GameSoundEvent;
-use crate::net::lockstep::SynchronizedCommand;
 use crate::sim::command::CommandEnvelope;
 use winit::event::ElementState;
 use winit::keyboard::KeyCode;
@@ -164,18 +163,14 @@ fn set_active(state: &mut AppState, active: bool) {
     if state.match_state.input.planning.active == active {
         return;
     }
-    // Native637A10 sends an empty PLANCOMMIT before dropping the input byte.
+    // Native637A10 sends an empty PLANCOMMIT through LocalEvent6521C0
+    // before dropping the input byte.
     if !active
         && let Some(rt) = state.match_state.sim_runtime.as_mut()
         && let Some(owner) = rt.simulation.session.current_house()
         && let Some(record) = rt.simulation.encode_plan_commit_record(owner)
-        && let Some(envelope) = SynchronizedCommand::opaque(record).decode_for_simulation(
-            &rt.simulation,
-            None,
-            rt.simulation.session.tick,
-        )
     {
-        rt.simulation.queue_command(envelope);
+        rt.simulation.issue_command_record(record);
     }
     state.match_state.input.planning.active = active;
     state.match_state.input.selection_state.cancel_drag();
@@ -206,12 +201,7 @@ fn queue_orders_in_sim(
         let Some(record) = sim.encode_planning_order_record(order.owner, &order.payload) else {
             continue;
         };
-        if let Some(envelope) =
-            SynchronizedCommand::opaque(record).decode_for_simulation(sim, None, order.execute_tick)
-        {
-            sim.queue_command(envelope);
-            added = true;
-        }
+        added |= sim.issue_command_record(record);
     }
     added
 }
@@ -282,13 +272,8 @@ pub(crate) fn connect_at_cursor(state: &mut AppState) -> bool {
             if let Some(record) = rt
                 .simulation
                 .encode_plan_connect_record_at_screen(owner, actor, point)
-                && let Some(command) = SynchronizedCommand::opaque(record).decode_for_simulation(
-                    &rt.simulation,
-                    None,
-                    rt.simulation.session.tick,
-                )
             {
-                rt.simulation.queue_command(command);
+                rt.simulation.issue_command_record(record);
             }
         }
     }
@@ -305,13 +290,8 @@ pub(crate) fn delete_at_cursor(state: &mut AppState) {
         && let Some(record) = rt
             .simulation
             .encode_plan_node_delete_record_at_screen(owner, point)
-        && let Some(command) = SynchronizedCommand::opaque(record).decode_for_simulation(
-            &rt.simulation,
-            None,
-            rt.simulation.session.tick,
-        )
     {
-        rt.simulation.queue_command(command);
+        rt.simulation.issue_command_record(record);
     }
 }
 
@@ -450,7 +430,7 @@ mod tests {
                 &mut sim,
                 vec![CommandEnvelope::new(local, 0, payload)]
             ));
-            assert!(sim.pending_command_snapshot().is_empty());
+            assert!(sim.pending_command_snapshot(None).is_empty());
         }
     }
 
@@ -472,11 +452,11 @@ mod tests {
             })
             .collect();
         assert!(queue_orders_in_sim(&mut sim, orders.clone()));
-        let pending = sim.pending_command_snapshot();
+        let pending = sim.pending_command_snapshot(None);
         assert_eq!(pending.len(), 2);
         for (planned, ordinary) in pending.iter().zip(&orders) {
             assert_eq!(planned.owner, ordinary.owner);
-            assert_eq!(planned.execute_tick, ordinary.execute_tick);
+            assert_eq!(planned.execute_tick, sim.session.tick, "issued this frame");
             assert_eq!(
                 planned.payload,
                 Command::PlanningRecord {

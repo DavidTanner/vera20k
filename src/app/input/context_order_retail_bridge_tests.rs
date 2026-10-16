@@ -167,12 +167,16 @@ fn resolve_hut_orders(
         .into_iter()
         .map(|payload| CommandEnvelope::new(owner, sim.session.tick, payload))
         .map(|envelope| {
-            crate::app::input::commands::roundtrip_local_order(sim, None, envelope)
+            crate::app::input::commands::decoded_local_order(sim, None, envelope)
                 .pop()
                 .unwrap()
         })
         .collect();
-    restore_selection_dispatch_order(&mut envelopes, &original_selection);
+    restore_selection_dispatch_order(
+        &mut envelopes,
+        |envelope| &envelope.payload,
+        &original_selection,
+    );
     assert_eq!(sim.state_hash(), before_hash);
     assert_eq!(
         serde_json::to_value(sim.entities().get(engineer).unwrap()).unwrap(),
@@ -236,7 +240,7 @@ fn probe_healthy_hut(
             hut_coord
         )
     );
-    let before_pending = runtime.simulation.pending_command_snapshot();
+    let before_pending = runtime.simulation.pending_command_snapshot(None);
     let before_hash = runtime.simulation.state_hash();
     let envelopes = resolve_hut_orders(
         &runtime.simulation,
@@ -247,9 +251,11 @@ fn probe_healthy_hut(
         receipts,
     );
     assert!(envelopes.is_empty());
-    runtime.simulation.queue_commands(envelopes);
+    runtime
+        .simulation
+        .issue_fixture_commands(&Vec::from_iter(envelopes), None);
     assert_eq!(
-        runtime.simulation.pending_command_snapshot(),
+        runtime.simulation.pending_command_snapshot(None),
         before_pending
     );
     assert_eq!(runtime.simulation.state_hash(), before_hash);

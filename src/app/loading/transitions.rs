@@ -33,9 +33,8 @@ pub(crate) fn sync_in_game_options_speed_from_sim(state: &mut AppState) {
         .match_state
         .sim_runtime
         .as_ref()
-        .map(|rt| &rt.simulation)
-        .and_then(crate::sim::world::Simulation::projected_in_game_options_speed)
-        .map(u32::from)
+        .and_then(|rt| u32::try_from(rt.simulation.session.game_options.game_speed).ok())
+        .filter(|&speed| speed <= u32::from(crate::sim::game_options::IN_GAME_OPTIONS_MAX_SPEED))
     else {
         return;
     };
@@ -613,27 +612,4 @@ pub(crate) fn clear_screen(encoder: &mut wgpu::CommandEncoder, view: &wgpu::Text
         timestamp_writes: None,
         occlusion_query_set: None,
     });
-}
-
-#[cfg(test)]
-mod game_speed_tests {
-    use crate::sim::command::{Command, CommandEnvelope};
-    use crate::sim::house_state::HouseState;
-    use crate::sim::world::Simulation;
-
-    #[test]
-    fn loaded_lobby_speed_projection_includes_due_transition() {
-        let mut sim = Simulation::new();
-        let owner = sim.interner.intern("Local");
-        sim.houses
-            .insert(owner, HouseState::new(owner, 0, None, true, 0, 10));
-        sim.session.house_order.push(owner);
-        sim.queue_command(CommandEnvelope::new(
-            owner,
-            1,
-            Command::SetGameSpeed { speed: 4 },
-        ));
-
-        assert_eq!(sim.projected_in_game_options_speed(), Some(4));
-    }
 }

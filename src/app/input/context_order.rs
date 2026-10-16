@@ -674,10 +674,14 @@ fn command_actor_id(command: &Command) -> Option<u64> {
 /// single-object events, including each prepared factory rally. Legacy aggregate
 /// commands cannot be placed at one actor's index and keep dispatcher order.
 /// This index derives from input selection.
-fn restore_selection_dispatch_order(queued: &mut [CommandEnvelope], selected: &[u64]) {
+fn restore_selection_dispatch_order<T>(
+    queued: &mut [T],
+    payload: impl Fn(&T) -> &Command,
+    selected: &[u64],
+) {
     if queued
         .iter()
-        .any(|envelope| command_actor_id(&envelope.payload).is_none())
+        .any(|order| command_actor_id(payload(order)).is_none())
     {
         return;
     }
@@ -686,8 +690,8 @@ fn restore_selection_dispatch_order(queued: &mut [CommandEnvelope], selected: &[
         .enumerate()
         .map(|(index, &id)| (id, index))
         .collect();
-    queued.sort_by_key(|envelope| {
-        command_actor_id(&envelope.payload)
+    queued.sort_by_key(|order| {
+        command_actor_id(payload(order))
             .and_then(|id| positions.get(&id).copied())
             .unwrap_or(usize::MAX)
     });
@@ -829,6 +833,7 @@ fn finish_order(
         let mut queued = queued;
         restore_selection_dispatch_order(
             &mut queued,
+            |envelope| &envelope.payload,
             &selected_stable_ids_in_order(
                 state
                     .match_state
@@ -842,11 +847,11 @@ fn finish_order(
         crate::app::input::planning_mode::queue_orders(state, queued);
         return true;
     }
-    let mut queued = if let Some(rt) = state.match_state.sim_runtime.as_ref() {
+    let mut orders = if let Some(rt) = state.match_state.sim_runtime.as_ref() {
         queued
             .into_iter()
             .flat_map(|envelope| {
-                crate::app::input::commands::roundtrip_local_order(
+                crate::app::input::commands::encode_local_order(
                     &rt.simulation,
                     Some(&rt.resources.rules),
                     envelope,
@@ -854,12 +859,12 @@ fn finish_order(
             })
             .collect::<Vec<_>>()
     } else {
-        queued
+        Vec::new()
     };
-    let queued_any = !queued.is_empty();
-    if queued_any {
+    if !orders.is_empty() {
         restore_selection_dispatch_order(
-            &mut queued,
+            &mut orders,
+            |(_, decoded)| &decoded.payload,
             &selected_stable_ids_in_order(
                 state
                     .match_state
@@ -871,7 +876,8 @@ fn finish_order(
             ),
         );
         if let Some(speaker_id) = speaker_id {
-            emit_resolved_order_voice(state, speaker_id, &queued);
+            let decoded: Vec<_> = orders.iter().map(|(_, decoded)| decoded.clone()).collect();
+            emit_resolved_order_voice(state, speaker_id, &decoded);
         }
         if let Some(sim) = state
             .match_state
@@ -879,7 +885,7 @@ fn finish_order(
             .as_mut()
             .map(|rt| &mut rt.simulation)
         {
-            sim.queue_commands(queued);
+            crate::app::input::commands::issue_local_order_records(sim, orders);
         }
     }
     if let Some(frame) = state

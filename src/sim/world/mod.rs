@@ -5,7 +5,7 @@
 //! systems, and exposes deterministic state hashing for replay/desync checks.
 //!
 //! Responsibility boundaries:
-//! - `command_schedule.rs`: queue admission, due batches, house order and group destinations
+//! - `command_schedule.rs`: command record issue, the tail dispatch and group destinations
 //! - `world_commands.rs`: individual payloads and selection/ownership helpers
 //! - `world_hash.rs` — deterministic state-hash folds
 //! - `world_spawn.rs` — entity spawning from map data and production
@@ -122,6 +122,7 @@ pub(crate) use techno_ai::techno_unlimbo_idle_mode;
 pub(crate) use techno_ai::{BuildingDelayedFire, DelayedFire};
 pub(crate) use techno_ai::{can_fire_at, weapon_at_index};
 mod command_schedule;
+pub(crate) use command_schedule::LocalProducer;
 mod planning;
 pub(crate) use planning::{PlanningBadgeKind, PlanningDrawSegment};
 mod selection_voice;
@@ -205,6 +206,7 @@ use crate::rules::ruleset::RuleSet;
 use crate::sim::animation;
 use crate::sim::bridge_state::BridgeRuntimeState;
 use crate::sim::combat::combat_weapon::WeaponSlot;
+#[cfg(test)]
 use crate::sim::command::CommandEnvelope;
 use crate::sim::components::{AnimClassSpawnDescriptor, DriveCoord, Position};
 use crate::sim::entity_store::EntityStore;
@@ -279,12 +281,13 @@ pub struct TickResult {
     pub movement: movement::MovementTickStats,
 }
 
-/// The master spine retains its admitted command batch for the live recorder.
+/// The master spine retains the records issued into it for the live recorder.
 /// Fixture callers can consume the tick without draining presentation queues.
 #[derive(Debug)]
 pub(crate) struct MasterFrameOutput {
     tick: TickResult,
-    admitted_commands: Vec<CommandEnvelope>,
+    issued_records: Vec<crate::sim::command::CommandRecord>,
+    issued_game_speed: Option<u8>,
 }
 
 impl MasterFrameOutput {
@@ -301,7 +304,13 @@ impl MasterFrameOutput {
 /// not invent a single mixed event timeline.
 #[derive(Debug)]
 pub(crate) struct SimFrameOutput {
-    admitted_commands: Vec<CommandEnvelope>,
+    /// The records issued from outside the simulation since the previous
+    /// frame's tail, in issue order: what the diagnostic log replays. The
+    /// frame's own producers (Strip, House, planning) are not included.
+    issued_records: Vec<crate::sim::command::CommandRecord>,
+    /// The offline Options speed stored since the previous frame, which the
+    /// diagnostic log records beside the records.
+    pub(crate) issued_game_speed: Option<u8>,
     pub tick: TickResult,
     pub trigger_effects: Vec<TriggerEffect>,
     pub lifecycle_outputs: Vec<LifecycleOutput>,
@@ -346,18 +355,19 @@ pub(crate) enum CommandQueueRoute {
 }
 
 impl SimFrameOutput {
-    pub(crate) fn take_admitted_commands(&mut self) -> Vec<CommandEnvelope> {
-        std::mem::take(&mut self.admitted_commands)
+    pub(crate) fn take_issued_records(&mut self) -> Vec<crate::sim::command::CommandRecord> {
+        std::mem::take(&mut self.issued_records)
     }
 }
 
 /// Front-end admission lane for one Main_Tick call.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum TickLane {
-    /// Normal gameplay: session ingress before live Logic, then EventClass
-    /// gameplay dispatch in the Main_Tick tail.
+    /// Normal gameplay: the Strip's prefix before live Logic, then the
+    /// command queue's EventClass dispatch in the Main_Tick tail.
     Ordinary,
-    /// LAN/WOL modal pump: service PerTickUpdate and the late tail only.
+    /// LAN/WOL modal pump: service PerTickUpdate and the late tail only. The
+    /// tail still transfers and dispatches the queue.
     NetworkModal,
 }
 
@@ -1173,6 +1183,10 @@ pub struct Simulation {
     #[cfg(test)]
     #[serde(skip)]
     master_frame_test_trace: Vec<MasterFrameTestRung>,
+    /// Every record the tail dispatch executed, in execution order.
+    #[cfg(test)]
+    #[serde(skip)]
+    dispatched_records_test_trace: Vec<crate::sim::command::CommandRecord>,
     /// Focused ordering observer for the bounded House-update activation seam.
     #[cfg(test)]
     #[serde(skip)]
@@ -1410,17 +1424,16 @@ pub struct Simulation {
     /// A frame that ends the match hashes regardless. Never saved or hashed.
     #[serde(skip, default = "every_frame")]
     state_hash_interval: std::num::NonZeroU64,
-    /// Pending gameplay commands waiting for their scheduled execution tick.
-    /// Admitted through `queue_command(s)` and drained each tick when
-    /// `cmd.execute_tick <= current_tick + 1`.
-    pending_commands: Vec<CommandEnvelope>,
+    /// The live command path: the native OutList and DoList. Producers issue
+    /// records into it (`command_schedule`); the Main_Tick tail transfers and
+    /// dispatches it. Saved with the snapshot; not part of the state hash.
+    command_queue: crate::sim::lockstep::SynchronizedCommandQueue,
+    /// The offline Options speed stored since the last frame, for the
+    /// diagnostic log; the speed itself lives in the session. Transient.
+    #[serde(skip)]
+    local_game_speed_input: Option<u8>,
     /// PlanMgr is the sole owner of shared nodes and per-actor plan tokens.
     planning: planning::PlanningState,
-    /// Diagnostic playback supplies a batch already containing generated
-    /// events. Transient admission context, not gameplay or saved state.
-    #[cfg(test)]
-    #[serde(skip)]
-    replaying_recorded_commands: bool,
     /// Serialized map trigger state, initialized and mutated by trigger_runtime.
     /// Remains installed while actions call other Simulation mechanisms.
     pub(crate) trigger_runtime: TriggerRuntime,
@@ -3393,6 +3406,8 @@ impl Simulation {
             #[cfg(test)]
             master_frame_test_trace: Vec::new(),
             #[cfg(test)]
+            dispatched_records_test_trace: Vec::new(),
+            #[cfg(test)]
             house_ai_activation_order_test_trace: Vec::new(),
             #[cfg(test)]
             house_update_append_after_test: None,
@@ -3448,10 +3463,9 @@ impl Simulation {
             command_queue_route: CommandQueueRoute::SinglePlayer,
             frame_sync_checksum: None,
             state_hash_interval: every_frame(),
-            pending_commands: Vec::new(),
+            command_queue: Default::default(),
+            local_game_speed_input: None,
             planning: planning::PlanningState::default(),
-            #[cfg(test)]
-            replaying_recorded_commands: false,
             trigger_runtime: TriggerRuntime::default(),
         };
         debug_assert_eq!(out.scenario_rng.state(), out.main_rng.state());
@@ -4134,6 +4148,31 @@ impl Simulation {
     #[cfg(test)]
     pub(crate) fn take_master_frame_test_trace(&mut self) -> Vec<MasterFrameTestRung> {
         std::mem::take(&mut self.master_frame_test_trace)
+    }
+
+    /// Register `name` as a human house at the end of the HouseClass order
+    /// unless it is registered already, so a fixture's orders for it encode
+    /// and reach the tail dispatch (`IsHuman || PlayerControl`).
+    #[cfg(test)]
+    pub(crate) fn register_command_house_for_test(&mut self, name: &str) -> InternedId {
+        let owner = self.interner.intern(name);
+        if !self.houses.contains_key(&owner) {
+            let index = self.session.house_order.len() as u8;
+            self.houses
+                .insert(owner, HouseState::new(owner, index, None, true, 0, 10));
+        }
+        if !self.session.house_order.contains(&owner) {
+            self.session.house_order.push(owner);
+        }
+        owner
+    }
+
+    /// The records the tail dispatch executed since the last call, in order.
+    #[cfg(test)]
+    pub(crate) fn take_dispatched_records_for_test(
+        &mut self,
+    ) -> Vec<crate::sim::command::CommandRecord> {
+        std::mem::take(&mut self.dispatched_records_test_trace)
     }
 
     #[cfg(test)]
@@ -6525,11 +6564,9 @@ impl Simulation {
     /// the terminating call skips frame commit and pending-delete processing.
     fn run_late_region(
         &mut self,
-        commands: &mut Vec<CommandEnvelope>,
         rules: Option<&RuleSet>,
         overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
         tick_ms: u32,
-        execute_tick: u64,
         executed_commands: &mut usize,
         spawned_entities: &mut bool,
         effects: FrameEffects<'_>,
@@ -6549,16 +6586,7 @@ impl Simulation {
         // which construction and the frame-end pending-delete drain move: a
         // death reaches the gate on the next frame. Each house's strategy tick
         // (`house_strategy.rs`) and building choice follow its own gate.
-        let generated = self.house_rung(rules, overlay_registry, self.session.tick > 0, effects);
-        #[cfg(test)]
-        let commands_include_generated = self.replaying_recorded_commands;
-        #[cfg(not(test))]
-        let commands_include_generated = false;
-        self.admit_generated_frame_commands(commands, generated, commands_include_generated);
-        #[cfg(test)]
-        {
-            self.replaying_recorded_commands = false;
-        }
+        self.house_rung(rules, overlay_registry, self.session.tick > 0, effects);
         #[cfg(test)]
         if self.session.tick > 0 {
             self.trace_house_ai_activation_order(HouseAiActivationOrderTestEvent::DefeatProcessed);
@@ -6577,8 +6605,7 @@ impl Simulation {
         // EventClass dispatch is a Main_Tick tail rung: the complete live
         // Logic walk observes frame N's pre-command state, so an accepted
         // command first changes that object's AI behavior on frame N+1.
-        let (executed, spawned) =
-            self.apply_due_commands(commands, rules, execute_tick, overlay_registry, effects);
+        let (executed, spawned) = self.dispatch_due_command_queue(rules, overlay_registry, effects);
         *executed_commands += executed;
         *spawned_entities |= spawned;
 
@@ -6627,7 +6654,7 @@ impl Simulation {
 
         // The separate Rust session tick has no direct native field; preserve
         // its existing post-debug-validation relation.
-        self.session.tick = execute_tick;
+        self.session.tick = self.session.tick.saturating_add(1);
         true
     }
 
@@ -6753,7 +6780,9 @@ impl Simulation {
     }
 
     /// Fixture-only frame adapter (F09): unit tests drive one Main_Tick-shaped
-    /// frame with explicitly supplied rules/heights/navigation. Production and
+    /// frame with explicitly supplied rules/heights/navigation. `commands` are
+    /// issued first as their click producer's records
+    /// ([`Self::issue_fixture_commands`]). Production and
     /// tooling advance exclusively through `SimRuntime::advance_frame`, whose
     /// resources are bound at construction and cannot be substituted per call.
     #[cfg(test)]
@@ -6766,8 +6795,8 @@ impl Simulation {
         tick_ms: u32,
     ) -> TickResult {
         self.install_fixture_path_grid(path_grid);
+        self.issue_fixture_commands(commands, rules);
         self.advance_master_frame(
-            commands,
             rules,
             overlay_registry,
             tick_ms,
@@ -6781,13 +6810,13 @@ impl Simulation {
 
     /// App-facing authoritative frame transaction.
     ///
-    /// The app submits commands and immutable map/rules inputs, then consumes
+    /// The app issues records into the command queue beforehand and supplies
+    /// the immutable map/rules inputs here, then consumes
     /// the returned facts instead of reaching back into Simulation-owned
     /// transient queues. `SimRuntime::advance_frame` is the sole production
     /// caller (F09); headless and replay execution go through the runtime.
     pub(crate) fn advance_app_frame(
         &mut self,
-        commands: &[CommandEnvelope],
         rules: Option<&RuleSet>,
         overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
         tick_ms: u32,
@@ -6796,7 +6825,6 @@ impl Simulation {
         effects: FrameEffects<'_>,
     ) -> Result<SimFrameOutput, FrameAdvanceError> {
         let frame = self.advance_master_frame(
-            commands,
             rules,
             overlay_registry,
             tick_ms,
@@ -6845,7 +6873,8 @@ impl Simulation {
     ) -> SimFrameOutput {
         let MasterFrameOutput {
             tick,
-            admitted_commands,
+            issued_records,
+            issued_game_speed,
         } = frame;
         let lighting_events = std::mem::take(&mut self.lighting_sources.pending);
         let trigger_effects = std::mem::take(&mut self.trigger_effects);
@@ -6866,7 +6895,8 @@ impl Simulation {
         let sound_events_delivered = effects.delivered_sound_events();
         assert!(sound_events_delivered <= sound_events.len());
         SimFrameOutput {
-            admitted_commands,
+            issued_records,
+            issued_game_speed,
             tick,
             trigger_effects,
             lifecycle_outputs,
@@ -6889,7 +6919,6 @@ impl Simulation {
     /// supplies its map definitions through `trigger_inputs`.
     pub(crate) fn advance_master_frame(
         &mut self,
-        commands: &[CommandEnvelope],
         rules: Option<&RuleSet>,
         overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
         tick_ms: u32,
@@ -6906,11 +6935,9 @@ impl Simulation {
         self.pending_projectile_detonations.clear();
         self.pending_wave_damage_requests.clear();
         let animation_sequences = rules.map(RuleSet::animation_sequences);
-        // The wrapping native frame counter is committed LATE (end of this fn,
-        // beside self.session.tick) so every phase sees the same pre-increment
-        // frame N. execute_tick stays here: command scheduling below filters on
-        // the separate monotonic ordinal.
-        let execute_tick = self.session.tick.saturating_add(1);
+        // The wrapping native frame counter is committed LATE (in the late
+        // region, beside self.session.tick) so every phase sees the same
+        // pre-increment frame N; the tail dispatches records stamped N.
         let mut executed_commands = 0usize;
         let mut spawned_entities = false;
         let mut destroyed_structure = false;
@@ -6924,17 +6951,19 @@ impl Simulation {
         // aircraft, …) are dying-gated, so a corpse is excluded until that drain.
         let mut bridge_state_changed = false;
 
-        if lane == TickLane::Ordinary {
-            executed_commands += self.apply_due_frame_ingress_commands(commands, execute_tick);
-        }
         #[cfg(test)]
         self.trace_master_frame_rung(MasterFrameTestRung::SessionCommands);
 
-        let mut commands = if lane == TickLane::Ordinary {
-            self.admit_frame_commands(commands, rules)
-        } else {
-            Vec::new()
-        };
+        // The records issued since the last tail are the frame's external
+        // input. Native MainTick55D8AB -> Strip6A8B30 then appends the Strip's
+        // mobile PLACE behind them, before Logic55DC9E/Factory55B680, for this
+        // frame's tail (an already issued Building443860 SetRally precedes it).
+        let (issued_records, issued_game_speed) = self.take_frame_input();
+        if lane == TickLane::Ordinary
+            && let Some(rules) = rules
+        {
+            crate::sim::production::publish_production_changes(self, rules);
+        }
 
         // MainTick55DBC8 precedes Logic55DC9E (including trigger polling).
         self.sort_display_ground(rules);
@@ -7184,11 +7213,9 @@ impl Simulation {
         // (incl. defeat) in the tail and commits the frame counter late; AI
         // placement is project-deferred and kept in its current slot.
         let frame_committed = self.run_late_region(
-            &mut commands,
             rules,
             overlay_registry,
             tick_ms,
-            execute_tick,
             &mut executed_commands,
             &mut spawned_entities,
             effects,
@@ -7245,7 +7272,8 @@ impl Simulation {
                 .is_multiple_of(self.state_hash_interval.get()))
         .then(|| self.state_hash());
         Ok(MasterFrameOutput {
-            admitted_commands: commands,
+            issued_records,
+            issued_game_speed,
             tick: TickResult {
                 tick: self.session.tick,
                 frame_committed,

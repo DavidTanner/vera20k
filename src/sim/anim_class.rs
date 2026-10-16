@@ -3708,7 +3708,6 @@ mod tests {
                 }
                 let output = runtime
                     .advance_frame(
-                        &[],
                         67,
                         TickLane::Ordinary,
                         crate::sim::world::FrameEffects::default(),

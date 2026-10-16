@@ -1304,8 +1304,8 @@ impl HouseState {
             .unwrap_or(0)
     }
 
-    /// Active offline EventClass house-scan eligibility.
-    #[cfg(test)]
+    /// Active offline EventClass house-scan eligibility (`IsHuman ||
+    /// PlayerControl`), read by the tail dispatch.
     pub const fn event_dispatch_eligible(&self) -> bool {
         self.is_human || self.player_control
     }

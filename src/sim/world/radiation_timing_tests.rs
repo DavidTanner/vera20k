@@ -11,10 +11,8 @@ use crate::sim::mission::state::MissionTestFixture;
 use crate::sim::mission::{MissionDispatchTimer, MissionId, MissionType};
 
 fn advance(sim: &mut Simulation, rules: &RuleSet) -> super::SimFrameOutput {
-    let commands = sim.take_due_commands();
     let output = sim
         .advance_app_frame(
-            &commands,
             Some(rules),
             None,
             33,

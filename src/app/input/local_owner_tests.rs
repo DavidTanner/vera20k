@@ -92,10 +92,8 @@ fn saved_current_house_drives_app_fog_and_command_owner_after_load() {
     let viewer = sim.interner.get(&owner).unwrap();
     assert!(sim.fog.is_cell_revealed(viewer, 3, 4));
     assert!(!sim.fog.is_cell_revealed(outgoing, 3, 4));
-    assert!(
-        schedule_command_in_sim(sim, None, &owner, Command::SetGameSpeed { speed: 4 }).is_some()
-    );
-    assert_eq!(sim.pending_command_snapshot()[0].owner, player);
+    assert!(schedule_command_in_sim(sim, None, &owner, Command::ExitMatch).is_some());
+    assert_eq!(sim.pending_command_snapshot(None)[0].owner, player);
 }
 
 #[test]

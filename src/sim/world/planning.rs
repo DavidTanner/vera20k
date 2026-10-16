@@ -5,7 +5,7 @@
 
 use super::Simulation;
 use crate::sim::command::{
-    Command, CommandEnvelope, CommandRecord, MegaMissionOrder, MegaMissionRecord, MegaMissionTarget,
+    Command, CommandRecord, MegaMissionOrder, MegaMissionRecord, MegaMissionTarget,
 };
 use crate::sim::components::DriveCoord;
 use crate::sim::intern::InternedId;
@@ -23,6 +23,12 @@ pub(super) struct PlanningState {
     #[serde(skip)]
     dynamic_nodes: BTreeSet<u64>,
     paths: BTreeMap<u64, PlanningPath>,
+    /// The flag-2 orders published since the last flush, in generation order:
+    /// the staging vector `0x00AC4B48` that `0x00637550` drains. Both flushes
+    /// run inside the frame tail, so it is empty between frames; not saved
+    /// or hashed.
+    #[serde(skip)]
+    staged: Vec<CommandRecord>,
 }
 
 impl<'de> Deserialize<'de> for PlanningState {
@@ -40,6 +46,7 @@ impl<'de> Deserialize<'de> for PlanningState {
             locations: BTreeMap::new(),
             dynamic_nodes: BTreeSet::new(),
             paths: stored.paths,
+            staged: Vec::new(),
         };
         state.restore_index().map_err(serde::de::Error::custom)?;
         Ok(state)
@@ -1337,13 +1344,13 @@ impl Simulation {
         else {
             return false;
         };
-        let Some(owner) = usize::try_from(record.house_id())
+        if usize::try_from(record.house_id())
             .ok()
             .and_then(|index| self.session.house_order.get(index))
-            .copied()
-        else {
+            .is_none()
+        {
             return false;
-        };
+        }
         record.payload_mut()[22] = 2;
         record.set_issue_header(
             4,
@@ -1371,14 +1378,20 @@ impl Simulation {
             self.session.binary_frame,
             &crate::sim::mission::authority::EntityReadyInputProvider,
         );
-        // 637550 ->652230: deferred publication stamps frame+1. Reverse
-        // pending traversal plus ring prepend restores generation order.
-        self.queue_command(CommandEnvelope::new(
-            owner,
-            self.session.tick.saturating_add(2),
-            Command::PlanningRecord { record },
-        ));
+        // 6385C0 stages the publication (stamped frame+1 above) for the next
+        // flush ([`Self::flush_staged_planning_records`]).
+        self.planning.staged.push(record);
         true
+    }
+
+    /// `0x00637550`, called after Logic (`0x0055DD9B`) and after the command
+    /// queues (`0x0055DE45`): drain the staged orders from the last to the
+    /// first, prepending each to the DoList (`0x00652230`), so the DoList head
+    /// holds them in generation order.
+    pub(super) fn flush_staged_planning_records(&mut self) {
+        for record in std::mem::take(&mut self.planning.staged).into_iter().rev() {
+            self.prepend_command_record(record);
+        }
     }
 }
 

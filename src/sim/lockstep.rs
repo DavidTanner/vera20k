@@ -1,5 +1,12 @@
 //! Deterministic lockstep command staging and dispatch.
 //!
+//! The live command path: `Simulation` owns one [`SynchronizedCommandQueue`]
+//! and persists it in snapshots. Producers issue native records into the
+//! OutList; the Main_Tick tail transfers and dispatches them
+//! (`Simulation::dispatch_due_command_queue`). The queue lives in sim/ because
+//! the frame tail dispatches it and sim/ never depends on net/; a later
+//! transport in net/ drives the network transfer and dispatch below.
+//!
 //! Local commands retain their issue frame until transfer. Single-player
 //! transfer admits that frame unchanged; network transfer overwrites every
 //! staged record with the send frame plus the negotiated ahead window.
@@ -32,12 +39,9 @@ pub const MEGAMISSION_STAGE_CAPACITY: usize = 0x100;
 const FRAMEINFO_CHECKSUM_PAYLOAD_OFFSET: usize = 0;
 const FRAMEINFO_TIMING_WORD_PAYLOAD_OFFSET: usize = 4;
 const FRAMEINFO_DELAY_PAYLOAD_OFFSET: usize = 6;
-#[cfg(test)]
 const QUEUE_ONLY_EVENT_OPCODE_0C: u8 = 0x0c;
-#[cfg(test)]
 const QUEUE_ONLY_EVENT_OPCODE_22: u8 = 0x22;
 
-#[cfg(test)]
 #[inline]
 const fn queue_consumes_without_execute(opcode: u8) -> bool {
     matches!(
@@ -227,7 +231,6 @@ impl MultiplayerChecksumHistory {
         self.values[(frame & 0xff) as usize]
     }
 
-    #[cfg(test)]
     fn compare(&self, frame_info: FrameInfo) -> Result<(), ChecksumMismatch> {
         let history_index = frame_info.history_index();
         let local_checksum = self.values[history_index];
@@ -302,18 +305,6 @@ impl SynchronizedCommand {
         self.record
     }
 
-    /// Decode the bounded native command set at the synchronized execution
-    /// seam. No semantic sidecar is retained beside the authoritative bytes.
-    pub(crate) fn decode_for_simulation(
-        &self,
-        sim: &crate::sim::world::Simulation,
-        rules: Option<&crate::rules::ruleset::RuleSet>,
-        execute_tick: u64,
-    ) -> Option<crate::sim::command::CommandEnvelope> {
-        sim.decode_native_command_record(&self.record, rules, execute_tick)
-    }
-
-    #[cfg(test)]
     fn stages_as_megamission(&self) -> bool {
         self.record.opcode() == MEGAMISSION_EVENT_OPCODE
     }
@@ -345,10 +336,16 @@ pub struct DispatchSummary {
     pub retired: usize,
 }
 
-#[cfg(test)]
 #[derive(Debug, Clone, Copy)]
 enum DispatchMode<'a> {
     Offline,
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "network dispatch arrives with the stage 3 transport"
+        )
+    )]
     Network {
         checksum_history: &'a MultiplayerChecksumHistory,
         frame_info_gate: FrameInfoCompareGate,
@@ -407,12 +404,10 @@ impl SynchronizedCommandQueue {
         self.do_list.len()
     }
 
-    #[cfg(test)]
     pub fn local_records(&self) -> impl Iterator<Item = &SynchronizedCommand> {
         self.local.iter()
     }
 
-    #[cfg(test)]
     pub fn synchronized_records(&self) -> impl Iterator<Item = &SynchronizedCommand> {
         self.do_list.iter()
     }
@@ -489,8 +484,20 @@ impl SynchronizedCommandQueue {
         Ok(self.admit(SynchronizedCommand::opaque(record)))
     }
 
+    /// Prepend one record to the DoList head, as the planning publisher
+    /// `0x00652230` does after stamping its frame. It bypasses the OutList.
+    /// A full DoList drops the record in modes 0 and 5 (`0x006522B7..0x006522C7`);
+    /// the network modes' abort path there is not ported.
+    pub fn prepend(&mut self, mut command: SynchronizedCommand) -> bool {
+        if self.do_list.len() >= DO_LIST_CAPACITY {
+            return false;
+        }
+        command.record.clear_processed();
+        self.do_list.push_front(command);
+        true
+    }
+
     /// Single-player transfer: preserve the issue-frame and house bytes.
-    #[cfg(test)]
     pub fn transfer_single_player(&mut self) -> usize {
         let drained = self.local.len();
         while let Some(mut command) = self.local.pop_front() {
@@ -562,7 +569,6 @@ impl SynchronizedCommandQueue {
     /// member executes. The execute callback runs before bit 0 is marked.
     /// House ids and native dispatch eligibility are supplied explicitly by
     /// the session owner.
-    #[cfg(test)]
     pub fn dispatch_due_offline<A, F>(
         &mut self,
         current_frame: i32,
@@ -619,7 +625,6 @@ impl SynchronizedCommandQueue {
         )
     }
 
-    #[cfg(test)]
     fn dispatch_due_inner<L, A, F>(
         &mut self,
         current_frame: i32,

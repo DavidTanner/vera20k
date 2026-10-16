@@ -141,8 +141,7 @@ fn spawn(sim: &mut Simulation, rules: &RuleSet, kind: &str, owner: &str, at: (u1
 }
 
 pub(crate) fn step(sim: &mut Simulation, rules: &RuleSet) {
-    let commands = sim.take_due_commands();
-    sim.advance_tick(&commands, Some(rules), None, None, 33);
+    sim.advance_tick(&[], Some(rules), None, None, 33);
 }
 
 /// A charged Chronosphere for `owner`: its recharge timer has run out.
@@ -248,15 +247,18 @@ pub(crate) fn click(
     at: (u16, u16),
 ) {
     let sw_type_id = sim.interner.intern(name);
-    sim.queue_command(CommandEnvelope::new(
-        owner,
-        sim.session.tick + 1,
-        Command::LaunchSuperWeapon {
-            sw_type_id,
-            target_rx: at.0,
-            target_ry: at.1,
-        },
-    ));
+    sim.issue_fixture_commands(
+        &[CommandEnvelope::new(
+            owner,
+            sim.session.tick + 1,
+            Command::LaunchSuperWeapon {
+                sw_type_id,
+                target_rx: at.0,
+                target_ry: at.1,
+            },
+        )],
+        Some(rules),
+    );
     step(sim, rules);
 }
 

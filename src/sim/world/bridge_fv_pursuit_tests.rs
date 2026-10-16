@@ -248,7 +248,6 @@ fn prepared_paid_scene(stage: &str) -> (HeadlessScenario, AmbientAnims) {
         scene
             .runtime
             .advance_frame(
-                &[],
                 SIM_TICK_MS,
                 TickLane::Ordinary,
                 crate::sim::world::FrameEffects::default(),
@@ -368,7 +367,6 @@ fn retail_fv_paid_pursuit_fire_impacts_and_cleanup_match_native() {
                     scene
                         .runtime
                         .advance_frame(
-                            &[],
                             SIM_TICK_MS,
                             TickLane::Ordinary,
                             crate::sim::world::FrameEffects::default(),
@@ -747,7 +745,7 @@ fn retail_fv_approaches_a_firing_cell_before_its_first_paid_step() {
         },
     );
     runtime
-        .advance_frame(
+        .advance_frame_issuing(
             &[command],
             SIM_TICK_MS,
             TickLane::Ordinary,
@@ -756,7 +754,6 @@ fn retail_fv_approaches_a_firing_cell_before_its_first_paid_step() {
         .unwrap();
     runtime
         .advance_frame(
-            &[],
             SIM_TICK_MS,
             TickLane::Ordinary,
             crate::sim::world::FrameEffects::default(),

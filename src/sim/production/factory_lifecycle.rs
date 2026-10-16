@@ -777,19 +777,20 @@ pub(in crate::sim) fn revalidate_and_step_factories(
 /// No RNG/timer/detach writes occur here; event execution reuses the owning
 /// factory's cancellation/promotion and held-object lifecycle.
 ///
-/// Residual: native client-local sidebar entry order and saturated/network
-/// OutList transport are separate mechanisms. VERA represents every human
+/// Each event is appended to the OutList inline, as Strip Recalculate does
+/// (`0x006AA7EC..0x006AA817` for ABANDON, `0x006AA8D2..0x006AA8FD` for
+/// ABANDON_ALL, both dropped while the OutList holds 0x80 records), from
+/// PlayerPtr's house; VERA names the strip's human owner.
+///
+/// Residual: native client-local sidebar entry order and network OutList
+/// transport are separate mechanisms. VERA represents every human
 /// strip in deterministic House order; a single rejected stock MGTK cameo
 /// has no cross-entry ordering ambiguity. Trigger-action recheck writers and
 /// unpowered-factory cameo admission remain separate existing gaps.
-pub(in crate::sim) fn recalculate_strips(
-    sim: &Simulation,
-    rules: &RuleSet,
-    owner: InternedId,
-) -> Vec<crate::sim::command::CommandEnvelope> {
-    use crate::sim::command::{Command, CommandEnvelope};
+pub(in crate::sim) fn recalculate_strips(sim: &mut Simulation, rules: &RuleSet, owner: InternedId) {
+    use crate::sim::command::Command;
     if !sim.houses.get(&owner).is_some_and(|house| house.is_human) {
-        return Vec::new();
+        return;
     }
     let mut abandons = Vec::new();
     for (factory_owner, category, types) in sim.production.factories.house_build_types() {
@@ -816,27 +817,22 @@ pub(in crate::sim) fn recalculate_strips(
         }
     }
     let mut events = Vec::new();
-    let execute_tick = sim.session.tick.saturating_add(1);
     for (type_id, own_factory, kind_factory) in abandons {
         if own_factory {
-            events.push(CommandEnvelope::new(
-                owner,
-                execute_tick,
-                Command::CancelProductionByType {
-                    type_id,
-                    all: false,
-                },
-            ));
+            events.push(Command::CancelProductionByType {
+                type_id,
+                all: false,
+            });
         }
         if kind_factory {
-            events.push(CommandEnvelope::new(
-                owner,
-                execute_tick,
-                Command::CancelProductionByType { type_id, all: true },
-            ));
+            events.push(Command::CancelProductionByType { type_id, all: true });
         }
     }
-    events
+    for event in events {
+        if let Some(record) = sim.encode_production_record(owner, &event, rules) {
+            sim.issue_command_record(record);
+        }
+    }
 }
 
 /// House508D88 invokes the existing Factory rate owner after power changes.

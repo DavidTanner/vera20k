@@ -1831,7 +1831,7 @@ fn retail_dustbowl_flak_shoots_a_harrier_down() {
     );
     scenario
         .runtime
-        .advance_frame(
+        .advance_frame_issuing(
             &[order],
             crate::headless_scenario::SIM_TICK_MS,
             super::TickLane::Ordinary,
@@ -1859,7 +1859,6 @@ fn retail_dustbowl_flak_shoots_a_harrier_down() {
         let output = scenario
             .runtime
             .advance_frame(
-                &[],
                 crate::headless_scenario::SIM_TICK_MS,
                 super::TickLane::Ordinary,
                 crate::sim::world::FrameEffects::default(),
@@ -2141,7 +2140,7 @@ fn retail_dustbowl_flak_shoots_down_a_nighthawk_and_a_kirov() {
         .collect();
     scenario
         .runtime
-        .advance_frame(
+        .advance_frame_issuing(
             &orders,
             crate::headless_scenario::SIM_TICK_MS,
             super::TickLane::Ordinary,
@@ -2174,7 +2173,6 @@ fn retail_dustbowl_flak_shoots_down_a_nighthawk_and_a_kirov() {
         let output = scenario
             .runtime
             .advance_frame(
-                &[],
                 crate::headless_scenario::SIM_TICK_MS,
                 super::TickLane::Ordinary,
                 crate::sim::world::FrameEffects::default(),

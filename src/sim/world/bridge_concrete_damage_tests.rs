@@ -342,7 +342,7 @@ fn force_fire_scene() -> (HeadlessScenario, u64, String) {
     // imports this boundary, before Logic visits the source at frame1.
     scene
         .runtime
-        .advance_frame(
+        .advance_frame_issuing(
             std::slice::from_ref(&command),
             SIM_TICK_MS,
             crate::sim::world::TickLane::Ordinary,
@@ -361,7 +361,6 @@ fn retail_force_fire_emits_native_muzzle_from_real_command() {
         scene
             .runtime
             .advance_frame(
-                &[],
                 SIM_TICK_MS,
                 crate::sim::world::TickLane::Ordinary,
                 crate::sim::world::FrameEffects::default(),
@@ -431,7 +430,6 @@ fn retail_force_fire_collapses_concrete_then_engineer_rebuilds_it() {
         let output = scene
             .runtime
             .advance_frame(
-                &[],
                 SIM_TICK_MS,
                 crate::sim::world::TickLane::Ordinary,
                 crate::sim::world::FrameEffects::default(),
@@ -501,7 +499,6 @@ fn retail_force_fire_collapses_concrete_then_engineer_rebuilds_it() {
         let output = scene
             .runtime
             .advance_frame(
-                &[],
                 SIM_TICK_MS,
                 crate::sim::world::TickLane::Ordinary,
                 crate::sim::world::FrameEffects::default(),

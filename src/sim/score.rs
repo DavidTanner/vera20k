@@ -483,7 +483,7 @@ mod tests {
             map_name: "terminal-score.map".to_string(),
             rules_hash: 0,
         });
-        replay.record_tick(tick.tick, Vec::new(), tick.state_hash);
+        replay.record_tick(tick.tick, Vec::new(), None, tick.state_hash);
 
         let mut playback = natural_terminal_sim(seed);
         let hashes = ReplayRunner::run_fixture(&mut playback, &replay, None, None, 67);

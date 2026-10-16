@@ -604,7 +604,7 @@ fn production_attack_during_paid_walk_step_case(boosted: bool) {
     }
     command(
         &mut sim,
-        Command::Attack {
+        Command::ForceAttack {
             attacker_id: firer,
             target_id: target,
         },

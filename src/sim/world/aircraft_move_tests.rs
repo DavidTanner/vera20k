@@ -72,8 +72,7 @@ fn fly_and_jumpjet_planned_move_legs_progress_through_native_arrival() {
         let mut saw_first = false;
         let mut finished = false;
         for _ in 0..1200 {
-            let due = sim.take_due_commands();
-            sim.advance_tick(&due, Some(&rules), grid.as_deref(), Some(&registry), 67);
+            sim.advance_tick(&[], Some(&rules), grid.as_deref(), Some(&registry), 67);
             let entity = sim.substrate.entities.get(actor).unwrap();
             saw_first |=
                 entity.position.rx().abs_diff(18) <= 1 && entity.position.ry().abs_diff(15) <= 1;
@@ -93,7 +92,7 @@ fn fly_and_jumpjet_planned_move_legs_progress_through_native_arrival() {
                 .get(actor)
                 .map(|entity| entity.position),
             sim.planning_paths(owner),
-            sim.pending_command_snapshot(),
+            sim.pending_command_snapshot(None),
         );
         assert!(
             finished,

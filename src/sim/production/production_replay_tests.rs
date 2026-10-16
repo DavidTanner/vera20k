@@ -71,7 +71,12 @@ fn income_spending_and_factory_refund_share_the_runtime_wallet() {
             _ => Vec::new(),
         };
         runtime
-            .advance_frame(&commands, TICK_MS, crate::sim::world::TickLane::Ordinary, crate::sim::world::FrameEffects::default())
+            .advance_frame_issuing(
+                &commands,
+                TICK_MS,
+                crate::sim::world::TickLane::Ordinary,
+                crate::sim::world::FrameEffects::default(),
+            )
             .expect("production frame");
         let cash = runtime.simulation.houses[&owner].economy.credits();
         assert_eq!(
@@ -236,12 +241,27 @@ fn record(
         rules_hash: 0,
     });
     let mut hashes = Vec::with_capacity(ticks as usize);
-    sim.queue_commands(pending);
+    // Every order is issued up front with its own frame; the first tick's
+    // log entry holds them all, as the frames' issued records.
+    sim.issue_fixture_commands(&pending, Some(rules));
     for _ in 0..ticks {
-        let due = sim.take_due_commands();
-        let r = sim.advance_tick(&due, Some(rules), None, None, TICK_MS);
-        hashes.push(r.state_hash);
-        log.record_tick(r.tick, due, r.state_hash);
+        let mut output = sim
+            .advance_app_frame(
+                Some(rules),
+                None,
+                TICK_MS,
+                crate::sim::world::TickLane::Ordinary,
+                None,
+                crate::sim::world::FrameEffects::default(),
+            )
+            .expect("recorded frame");
+        hashes.push(output.tick.state_hash);
+        log.record_tick(
+            output.tick.tick,
+            output.take_issued_records(),
+            output.issued_game_speed,
+            output.tick.state_hash,
+        );
     }
     (hashes, log)
 }
@@ -390,11 +410,10 @@ fn economy_conservation_over_replay() {
         .map(|o| sim.houses[o].economy.credits() as i64)
         .sum();
 
-    sim.queue_commands(pending);
+    sim.issue_fixture_commands(&Vec::from_iter(pending), Some(&rules));
     let mut any_spent = false;
     for _ in 0..TICKS {
-        let due = sim.take_due_commands();
-        sim.advance_tick(&due, Some(&rules), None, None, TICK_MS);
+        sim.advance_tick(&[], Some(&rules), None, None, TICK_MS);
 
         let total: i64 = [am, al]
             .iter()
@@ -453,19 +472,22 @@ fn economy_conservation_through_cancel_refund() {
 
     // Americans: ONLY an MTNK (Cost 900 -> guaranteed mid-build at the cancel tick),
     // cancelled mid-build. Alliance: an E1 + an MTNK that run uninterrupted.
-    sim.queue_commands(vec![
-        queue(am, mtnk, 1),
-        queue(al, e1, 1),
-        queue(al, mtnk, 2),
-        env(
-            am,
-            CANCEL_TICK,
-            Command::CancelProductionByType {
-                type_id: mtnk,
-                all: false,
-            },
-        ),
-    ]);
+    sim.issue_fixture_commands(
+        &Vec::from_iter(vec![
+            queue(am, mtnk, 1),
+            queue(al, e1, 1),
+            queue(al, mtnk, 2),
+            env(
+                am,
+                CANCEL_TICK,
+                Command::CancelProductionByType {
+                    type_id: mtnk,
+                    all: false,
+                },
+            ),
+        ]),
+        Some(&rules),
+    );
 
     let initial: i64 = [am, al]
         .iter()
@@ -483,8 +505,7 @@ fn economy_conservation_through_cancel_refund() {
     let mut cumulative_refunded: i64 = 0;
 
     for _ in 0..TICKS {
-        let due = sim.take_due_commands();
-        sim.advance_tick(&due, Some(&rules), None, None, TICK_MS);
+        sim.advance_tick(&[], Some(&rules), None, None, TICK_MS);
 
         // Every per-owner credit INCREASE is a refund (no deposits in this scenario).
         for &o in &[am, al] {
@@ -585,10 +606,9 @@ fn revalidate_abandons_active_on_factory_loss_partial_refund() {
     let (am, _, _, mtnk) = ids(&sim);
     // Enqueue MTNK via the real command path (eligible — Americans owns GAWEAP), then charge
     // partway.
-    sim.queue_command(queue(am, mtnk, 1));
+    sim.issue_fixture_commands(&[queue(am, mtnk, 1)], Some(&rules));
     for _ in 0..40 {
-        let due = sim.take_due_commands();
-        sim.advance_tick(&due, Some(&rules), None, None, TICK_MS);
+        sim.advance_tick(&[], Some(&rules), None, None, TICK_MS);
     }
     // Mid-build before factory loss; read the spent portion = the expected refund.
     let spent = {
@@ -642,10 +662,9 @@ fn revalidate_abandons_active_on_factory_loss_partial_refund() {
 fn revalidate_keeps_buildable_build_untouched() {
     let (mut sim, rules) = scenario();
     let (am, _, _, mtnk) = ids(&sim);
-    sim.queue_command(queue(am, mtnk, 1));
+    sim.issue_fixture_commands(&[queue(am, mtnk, 1)], Some(&rules));
     for _ in 0..40 {
-        let due = sim.take_due_commands();
-        sim.advance_tick(&due, Some(&rules), None, None, TICK_MS);
+        sim.advance_tick(&[], Some(&rules), None, None, TICK_MS);
     }
     let view = sim
         .production

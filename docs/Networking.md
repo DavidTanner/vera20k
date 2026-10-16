@@ -90,14 +90,14 @@ The authoritative files are `V3GameTunnelHandler.cs`, `TunnelHandler.cs` and
 
 | Area | State |
 |---|---|
-| `src/net/lockstep.rs` | Ported native command staging and dispatch: send policies, FrameInfo (opcode `0x1c`), checksum history, single-player and network transfer. Test-only; no production caller. |
-| `src/net/lockstep_sim_convergence_tests.rs` | Convergence tests over the queue, including the stage 0 two-instance test: live semantic commands against the same orders as native records (Move, Area Guard, Scatter), with sync checksums compared every frame and an injected desync caught. |
+| `src/sim/lockstep.rs` | Stage 2 done: the live command path. Native command staging and dispatch: send policies, FrameInfo (opcode `0x1c`), checksum history, single-player and network transfer. `Simulation` owns the queue (OutList and DoList) and saves it in snapshots; producers issue native records and the frame tail transfers and dispatches them offline. Network transfer and dispatch stay test-only until stage 3. |
+| `src/sim/lockstep_sim_convergence_tests.rs` | Convergence tests over the queue, including the stage 0 two-instance test: one instance issues orders through the live producer path, the other admits the same orders as raw native records (Move, Area Guard, Scatter); both dispatch through the production tail, with sync checksums compared every frame and an injected desync caught. |
 | `src/sim/multiplayer_checksum.rs` | Stage 0: per-frame sync checksum ported from `0x0064DAB0`, computed in the frame tail before command dispatch only on the multiplayer `Queue_AI` route (`CommandQueueRoute`, which the app writes from `MatchSession` before each frame). `MatchSession` records it into the `MultiplayerChecksumHistory` ring, with the native frame-0 ring reset. Offline frames never compute it. Its parity is bounded by VERA's object registries (open display-layer writers in `display_registry.rs`). |
 | `MatchSession` (`src/app/match_runtime/session.rs`) | Stage 1 done: the live session owner (mode, participant list, local participant, host flag). The launch path writes Campaign or Skirmish and the saved-game restore follows the persisted classification; the modal pump, elapsed clock and command bar read it. No writer produces `Lan` or `Wol` yet. |
 | `src/app/frontend/skirmish_session.rs` | Reads the local multiplayer preferences (handle, game mode) that native refreshes before the Network dialog. |
 | `src/skirmish_launch.rs` | Pre-fill plan already models several human nodes plus AI slots. |
 | Main menu Network button | `bounce_network_to_main_menu` in `src/app/shell_main_menu.rs` reproduces native's silent return when the IPX socket fails. Native takes the same exit (`0x0052E425`: GameMode 0, state 0x12, no message) when the player backs out of the LAN lobby. |
-| Sockets, protocol, lobby | None. `src/net/mod.rs` reserves `protocol`. |
+| Sockets, protocol, lobby | None. `src/net/mod.rs` reserves `protocol` and holds no module yet. |
 
 ## Native reference
 
@@ -351,7 +351,7 @@ in mode 4 only, on frames where `frame & 7 == 7`. The mode-4 heartbeat is the
 
 | Responsibility | Owner |
 |---|---|
-| Command staging, frame stamps, dispatch order, checksum history | `net::lockstep` (exists) |
+| Command staging, frame stamps, dispatch order, checksum history | `sim::lockstep`, the queue owned by `Simulation` (moved from `net::lockstep` in 2e: the frame tail dispatches it and snapshots persist it) |
 | Wire framing, peer table, send and receive, tunnel header | `net::protocol` (new) |
 | LAN discovery: announce, listen, game list | `net::discovery` (new, stage 7) |
 | Tunnel discovery: master list, ping, selection | `net::tunnel` (new, stage 8) |
@@ -409,7 +409,7 @@ host flag. Skirmish and campaign keep writing their modes.
 Done when: the modal pump, elapsed clock and any other `is_network` consumer read the
 live value, and offline play is unchanged.
 
-### Stage 2: lockstep queue in production, offline path
+### Stage 2: lockstep queue in production, offline path (done)
 
 Goal: route live command issue through `SynchronizedCommandQueue`, using
 `transfer_single_player` and `dispatch_due_offline`. Delete the direct command path it
@@ -547,7 +547,7 @@ Delivered:
   natively). The button sends nothing when its choice is already primary (a single
   factory), because PRIMARY would clear it.
 - The strip's own PLACE and ABANDON events encode through the same encoder.
-  They are still queued as commands; routing them through the queue is 2e.
+  2e issues them into the queue.
 
 Residuals:
 - A Unit record whose naval dword disagrees with the type's `Naval=` does not
@@ -668,9 +668,8 @@ Residuals:
   miss arm does that only for a redeployable Construction Yard. Effect: a Slave Miner
   refinery's undeploy also sends the Slave Miner to the refinery's centre Cell.
 - The semantic UndeployBuilding receiver, `SellOrder::Undeploy` and
-  `BuildingDown::undeploy_order` still run saved and replayed commands. Issue no
-  longer reaches them. Remove them with `pending_commands` in 2e, once saved-command
-  compatibility is decided.
+  `BuildingDown::undeploy_order` ran only saved and replayed commands. 2e removed
+  them.
 - EjectBunker ejects at its receiver. Native ejects at the occupant's Unload visit,
   then continues into its deploy arms, so a bunkered MCV would also deploy. Trigger:
   every eject click. Effect: the occupant leaves about one mission visit earlier.
@@ -691,9 +690,8 @@ Residuals:
   refuses them. A transport type that is also a simple deployer decodes to the
   transport arm: an empty one is refused where VERA's deploy key chose DeployMcv.
   Frequency in retail data is unchecked.
-- Offline, the receiver is chosen at issue, from the state at issue. Natively the
-  class's Unload mission chooses it a frame later. In 2e the decode moves to the
-  record's execution frame.
+- Before 2e the receiver was chosen at issue. Since 2e the record decodes when it
+  executes; natively the class's Unload mission chooses it on its visit after that.
 - SELL of a Unit or Aircraft standing on a building (sell click action 0xD) decodes
   to SellBuilding, which refuses a non-structure. An ARCHIVE naming an object, and
   the sidebar's no-target SPECIAL_PLACE (`SelectClass::Action 0x006AAF3C`, Cell 0,0),
@@ -703,8 +701,8 @@ Residuals:
 - GAMESPEED for network play: issue must send the record and not apply the speed
   locally. Its execution belongs in the EventClass tail; `SetGameSpeed` applies at
   frame ingress. The decoder accepts only the Options range 0..=6, where native
-  stores any dword, and the other-house message is not ported. 2e or stage 3 must
-  give the decoded event tail timing before network play.
+  stores any dword, and the other-house message is not ported. Since 2e the decoded
+  event executes in the tail; issue for network play is stage 3.
 - In planning mode ClickedEvent hands IDLE and DEPLOY to the planner
   (`0x00639FD0`). The Stop key refuses in planning mode, as before; the deploy key
   still issues. This was not changed here.
@@ -712,8 +710,8 @@ Residuals:
   Stop, Scatter, DeployMcv and MegaMission actors, not for SELL, REPAIR or ARCHIVE,
   which name buildings.
 
-Nothing here blocks 2d. 2e must handle GAMESPEED's tail timing, decoding at the
-execution frame, and the leftover UndeployBuilding paths.
+2e handled GAMESPEED's tail timing, decoding at the execution frame, and the
+leftover UndeployBuilding paths.
 
 #### 2d: Local selection
 
@@ -803,13 +801,109 @@ Residuals:
 
 2e has no selection work left. The network transport must never carry selection.
 
+#### 2e: Switchover
+
+Native routing, read in `gamemd-shared-2026-10-13` (not executed):
+
+| Event | Producer | Queue |
+|---|---|---|
+| Player input (keys, sidebar, EXIT, PLANCOMMIT from `0x00637A10`) | `LocalEvent` `0x006521C0` | Stamps the current Frame (`0x00A8ED84`) and appends to the OutList ring (`0x00A802D4`, count `0x00A802C8`, tail `0x00A802D0`); a full list (0x80) drops the event |
+| Click orders (ClickedMission `0x006FFBE0`, one per selected object) | `0x00646E90` builds the MEGAMISSION (`0x004C6860`) | OutList inline (`0x00646EF5..0x00646F48`), the same append and drop |
+| Strip AI mobile PLACE | `0x006A8EE8`, inline `0x006A8EED..0x006A8F3D` | OutList, the same append and drop |
+| Strip Recalculate ABANDON, ABANDON_ALL | `0x006AA7E7`, `0x006AA8CD`, from PlayerPtr's house | OutList, the same append and drop |
+| Planning flag-2 order | `0x006385C0` stages it in the vector `0x00AC4B48`; `0x00637550` drains it after Logic (`0x0055DD9B`) and after the command queues (`0x0055DE45`), last to first, through `0x00652230` | `0x00652230` stamps Frame+1 (rounded up to FrameSendRate under protocol 2) and prepends to the DoList ring (`0x008B4204`, count `0x008B41F8`, head `0x008B41FC`), so the head holds the batch in generation order; a full DoList (0x4000) drops it in modes 0 and 5 |
+
+Computer houses send no events; VERA's House rung raises only the human strip's
+ABANDONs.
+
+Delivered:
+- Owner: `Simulation` owns the one `SynchronizedCommandQueue` (`command_queue`),
+  saved in snapshots and left out of the state hash, as the old list was. The
+  module moved from `net::lockstep` to `sim::lockstep`: the frame tail dispatches it
+  and snapshots persist it, and `sim/` never depends on `net/`. `net/` holds no
+  module until stage 3, whose transport drives the queue's network transfer and
+  dispatch (still test-only).
+- Issue: `Simulation::issue_command_record` (`LocalEvent`, which stamps the current
+  frame) and `prepend_command_record` (`0x00652230`); the planning staging vector
+  and its flush (`flush_staged_planning_records`, `0x00637550`) live with PlanMgr's
+  state. `issue_recorded_command` keeps a record's own frame, for diagnostic
+  playback and tooling orders for later frames. One variant dispatch,
+  `Simulation::encode_local_command_records`, builds each local order's records;
+  `LocalProducer` picks the deploy key's DEPLOY or the self-click's MEGAMISSION
+  Unload. The app's key and sidebar route (`schedule_command_in_sim`), its click
+  route (`encode_local_order`, which also decodes for the voice and the selection
+  order), planning input and EXIT issue records; so do the Strip's PLACE
+  (`publish_production_changes`) and ABANDONs (`recalculate_strips`), both for the
+  human house's strip only, and the planning publication.
+- Frame placement, frame N: the records issued since the last tail are the frame's
+  external input; the Strip prefix appends PLACE; Logic; the House rung appends
+  ABANDON; the multiplayer route stores its checksum; then
+  `dispatch_due_command_queue` flushes the staged planning orders, runs
+  `transfer_single_player` and `dispatch_due_offline` at Frame N over the HouseClass
+  order, scanning houses with `IsHuman || PlayerControl`, staging each house's
+  MEGAMISSION records through the group spread
+  (`adjust_staged_megamission_destinations`, now on the record bytes) and decoding
+  each record when it executes, then flushes the orders a plan commit staged; then
+  the termination check and the frame commit. The insertion order per frame (issued
+  records, Strip PLACE, House ABANDON, planning orders at the head) is the old path's,
+  and the per-house order is the old dispatcher's; this rests on reading and on the
+  migrated tests, not on a comparison with the deleted path. The convergence and
+  stage 0 tests now check that the producer path and raw records give the same
+  records and checksums.
+- Offline Options speed is stored at once (`Simulation::apply_local_game_speed`), as
+  modes 0 and 5 do; the frame-ingress arm and its projection are gone. GAMESPEED
+  decodes to SetGameSpeed and executes in the tail.
+- Diagnostics: `ReplayLog` ticks record the issued records and the offline speed
+  stored before the tick; playback re-issues them and the simulation regenerates its
+  own events, so playback no longer deduplicates regenerated commands.
+  `pending_command_snapshot` is a decoded view of the queue for receipts and tests.
+  Tooling (`advance_frame_for_tooling`, sim-bench, headless) issues semantic orders
+  through `issue_local_commands`.
+- Compatibility: `SNAPSHOT_VERSION` 369. Older saves are refused by the version gate;
+  their envelope list has no reader. Old `ReplayLog` JSON no longer parses. The
+  receivers no record decodes to are removed: UndeployBuilding's (with
+  `undeploy_building`, `SellOrder::Undeploy` and `BuildingDown`'s undeploy flag),
+  CycleProducerFocus's, and the Attack arm. Those variants stay as producer intents.
+
+Changes toward native, all same-frame or rare:
+- The deploy key's DEPLOY executes in its house's scan; a self-click's MEGAMISSION
+  Unload is staged with the house's MEGAMISSIONs. Before, the staging followed the
+  decoded receiver.
+- The receiver is chosen at execution, from the state earlier records left.
+
+Residuals:
+- The OutList holds 0x80 records: the 129th issued before a tail is dropped, as
+  natively. Before 2e VERA had no limit. Trigger: one order to more than 128
+  selected units, or more than 128 records in one frame. Effect: the excess units
+  ignore the order. It conflicts with the 20,000-unit goal; whether to keep it is
+  open. The tail also stages at most 0x100 MEGAMISSIONs per house and frame.
+- Network GAMESPEED issue is not wired; stage 3 must send the record instead of
+  storing the speed.
+- `0x00652230`'s protocol-2 FrameSendRate rounding is not ported (network only).
+- The network-modal lane transfers and dispatches the queue; before 2e it held the
+  player's commands back for an ordinary frame. Whether the native pump dispatches
+  was not read. Unreachable until a LAN or WOL session exists.
+- Both app routes still decode at issue and drop an order whose records do not
+  decode, as before; native sends the record and its receiver refuses it.
+- VERA's undeploy archives the building's own Cell (2c): after converting, the unit
+  drives to the yard's centre Cell.
+- Test fixtures issue through `issue_fixture_commands`, which registers an
+  unregistered owner as a human house, as the old dispatcher appended fixture
+  owners; an order from a computer house panics. Tooling's `issue_local_commands`
+  issues such an order, which the tail then skips. sim-bench's march houses are
+  PlayerControl, which, outside a multiplayer game mode, also makes them count as
+  human-controlled (`HouseClass::IsControlledByHuman`).
+- The slice6 and bridge harness hash pins moved because their fixtures now register
+  the player's house; their per-frame replay and RNG pins did not. The attribution
+  was reasoned, not reproduced on the old path.
+
 ### Stage 3: UDP transport and network lockstep
 
 Scope: `net::protocol` with a `Transport` abstraction over a UDP socket bound to a
 configurable address, loopback for the CnCNet bridge and the LAN interface for native
 play. Wire format: a small versioned little-endian header (protocol version, game id,
 player id, packet kind) followed by lockstep command records. Peer table keyed by
-player id with an address per peer. Enable `transfer_network` and `dispatch_due_network`, exchange
+player id with an address per peer. Enable `sim::lockstep`'s `transfer_network` and `dispatch_due_network`, exchange
 FrameInfo, compare checksums, raise a desync event.
 
 Done when: two VERA20k instances on one machine, started from a test harness or a
@@ -855,7 +949,7 @@ the following native behavior (see [Native reference](#timing-maxahead-and-frame
 - The PROCESS_TIME `0x21` and host TIMING `0x20` events that retune MaxAhead and FSR.
 - The wait-for-peers stall with its reconnecting dialog and the per-mode timeouts.
 - Timeout kicks and REMOVEPLAYER `0x23`.
-- Opcode `0x13` EXIT routing for local versus remote players, which `net::lockstep`
+- Opcode `0x13` EXIT routing for local versus remote players, which `sim::lockstep`
   leaves to the session owner.
 
 Mode-4-only behavior (ABOUTTOEXIT host migration, statistics, squads) is out of

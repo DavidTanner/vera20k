@@ -1,9 +1,11 @@
-//! Command admission and scheduled batch execution.
+//! The live command path: issue into the native queue and its tail dispatch.
 //!
-//! Preserves envelope insertion order, due filtering, house order and staged
-//! group destinations. The world frame chooses ingress and tail call positions;
-//! `world_commands` implements each individual command payload. Queue state
-//! remains on Simulation for persistence and replay.
+//! `Simulation` owns the one [`SynchronizedCommandQueue`] (persisted in
+//! snapshots). Local producers issue native records into its OutList
+//! (`LocalEvent`), the planning publisher prepends to its DoList, and the
+//! Main_Tick tail transfers and dispatches it
+//! ([`Simulation::dispatch_due_command_queue`]). Records decode at execution;
+//! `world_commands` implements each decoded payload.
 
 use super::Simulation;
 use crate::sim::world::FrameEffects;
@@ -14,68 +16,185 @@ use crate::map::entities::EntityCategory;
 use crate::map::resolved_terrain::{NativeCellQuery, ResolvedTerrainGrid};
 use crate::rules::locomotor_type::MovementZone;
 use crate::rules::ruleset::RuleSet;
-use crate::sim::command::{Command, CommandEnvelope};
+use crate::sim::command::{
+    Command, CommandEnvelope, CommandRecord, MEGAMISSION_OPCODE, MegaMissionTarget,
+};
 use crate::sim::intern::InternedId;
+use crate::sim::lockstep::{CommandDispatchHouse, SynchronizedCommand};
 use crate::sim::movement::group_destination;
 use crate::sim::movement::infantry_entry::InfantryEntryArgs;
 use crate::sim::pathfinding::zone_map::ZoneGrid;
 use crate::util::lepton::BRIDGE_DECK_HEIGHT_LEVELS;
 
+/// Which local producer a command comes from, where the two send different
+/// records for the same order: the deploy key sends DEPLOY
+/// (`Selection::IssueDeployCommand 0x00730AF0`), a self-click sends the Foot
+/// self-click's MEGAMISSION Unload (`0x004D74E0` action 4).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum LocalProducer {
+    /// Keys, the sidebar and targeting clicks.
+    Key,
+    /// Order clicks on the tactical map (`ClickedAction` routes).
+    Click,
+}
+
 impl Simulation {
-    /// Queue one already-prepared command for future execution.
-    ///
-    /// This is an append-only ingress: it preserves the command owner, execution
-    /// tick, and insertion position exactly. It does not sort, retime, normalize,
-    /// intern, deduplicate, or apply the negotiated input delay.
-    pub fn queue_command(&mut self, command: CommandEnvelope) {
-        self.queue_commands([command]);
+    /// `LocalEvent` (`0x006521C0`): stamp the current frame and append one
+    /// locally issued record to the OutList. Retail drops a record while the
+    /// 128-slot OutList is full; so does this.
+    pub(crate) fn issue_command_record(&mut self, mut record: CommandRecord) -> bool {
+        record.set_frame_stamp(self.session.binary_frame as i32);
+        self.issue_recorded_command(record)
     }
 
-    /// Queue an already-ordered batch for future execution.
-    ///
-    /// Commands are appended in iterator order with their owners, execution
-    /// ticks, and payloads unchanged. Native byte round-trips and network timing
-    /// remain the responsibility of the producer that prepares each envelope.
-    pub fn queue_commands(&mut self, commands: impl IntoIterator<Item = CommandEnvelope>) {
-        self.pending_commands.extend(commands);
+    /// Append a record to the OutList with the frame it already carries: a
+    /// diagnostic log's record, or a tooling order for a later frame.
+    pub(crate) fn issue_recorded_command(&mut self, record: CommandRecord) -> bool {
+        self.command_queue
+            .issue(SynchronizedCommand::opaque(record))
     }
 
-    /// Defensive queue snapshot for sealed input diagnostics and tests.
-    /// Insertion order, stamps and payloads are copied without admitting,
-    /// draining or exposing writable queue state. Ordinary rendering does not
-    /// call this diagnostic boundary.
-    pub(crate) fn pending_command_snapshot(&self) -> Vec<CommandEnvelope> {
-        self.pending_commands.clone()
+    /// The planning publisher `0x00652230`: prepend an already stamped record
+    /// to the DoList head, bypassing the OutList.
+    pub(super) fn prepend_command_record(&mut self, record: CommandRecord) -> bool {
+        self.command_queue
+            .prepend(SynchronizedCommand::opaque(record))
     }
 
-    /// Speed the next ordinary frame will observe after all due offline
-    /// Options transitions execute in canonical house/insertion order.
+    /// Encode one local order as its producer's records and issue them, with
+    /// the record frame `execute_tick` names: the current frame for the next
+    /// tick or earlier, one frame later per later tick. Offline Options speed
+    /// is not an event (native stores it at once in modes 0 and 5), so a
+    /// SetGameSpeed applies here; a planning record is issued as it is. An
+    /// order without records is dropped, as its producer drops it. Returns
+    /// the records the OutList accepted, in issue order.
     ///
-    /// This read-only projection lets fresh-map and snapshot replacement sync
-    /// client UI without consuming or applying a pending authoritative command.
-    pub(crate) fn projected_in_game_options_speed(&self) -> Option<u8> {
-        let mut projected = u8::try_from(self.session.game_options.game_speed)
-            .ok()
-            .filter(|speed| *speed <= crate::sim::game_options::IN_GAME_OPTIONS_MAX_SPEED);
-        let execute_tick = self.session.tick.saturating_add(1);
-        for owner in self.due_command_house_order(&self.pending_commands, execute_tick) {
-            for command in self
-                .pending_commands
-                .iter()
-                .filter(|command| command.execute_tick <= execute_tick && command.owner == owner)
-            {
-                if !self.houses.contains_key(&owner) {
+    /// Tooling and fixtures issue semantic orders through this; the app's
+    /// producers encode through [`Self::encode_local_command_records`].
+    pub fn issue_local_commands(
+        &mut self,
+        commands: &[CommandEnvelope],
+        rules: Option<&RuleSet>,
+    ) -> Vec<CommandRecord> {
+        let mut issued = Vec::new();
+        for command in commands {
+            let records = match &command.payload {
+                Command::SetGameSpeed { speed } => {
+                    self.apply_local_game_speed(command.owner, *speed);
                     continue;
                 }
-                let Command::SetGameSpeed { speed } = &command.payload else {
-                    continue;
-                };
-                if *speed <= crate::sim::game_options::IN_GAME_OPTIONS_MAX_SPEED {
-                    projected = Some(*speed);
+                Command::PlanningRecord { record } => vec![record.clone()],
+                payload => self
+                    .encode_local_command_records(
+                        command.owner,
+                        payload,
+                        rules,
+                        LocalProducer::Click,
+                    )
+                    .unwrap_or_default(),
+            };
+            let ahead = command
+                .execute_tick
+                .saturating_sub(self.session.tick.saturating_add(1));
+            for mut record in records {
+                if !matches!(command.payload, Command::PlanningRecord { .. }) {
+                    record.set_frame_stamp(
+                        (self.session.binary_frame as i32).wrapping_add(ahead as i32),
+                    );
+                }
+                if self.issue_recorded_command(record.clone()) {
+                    issued.push(record);
                 }
             }
         }
-        projected
+        issued
+    }
+
+    /// Fixture issue ([`Self::issue_local_commands`]) for orders from the
+    /// player. An owner without a house is registered as a human house, and
+    /// a house outside the HouseClass order joins it, as the former
+    /// dispatcher appended standalone fixture owners. An order from a house
+    /// the tail would skip (neither human nor PlayerControl) panics: a
+    /// computer house sends no events.
+    #[cfg(test)]
+    pub(crate) fn issue_fixture_commands(
+        &mut self,
+        commands: &[CommandEnvelope],
+        rules: Option<&RuleSet>,
+    ) -> Vec<CommandRecord> {
+        for command in commands {
+            let name = self.interner.resolve(command.owner).to_string();
+            assert!(
+                self.houses
+                    .get(&command.owner)
+                    .is_none_or(|house| house.event_dispatch_eligible()),
+                "fixture order from computer house {name}: the tail dispatches only \
+                 IsHuman || PlayerControl houses"
+            );
+            self.register_command_house_for_test(&name);
+        }
+        self.issue_local_commands(commands, rules)
+    }
+
+    /// Offline In-game Options: `OptionsClass::ApplyFromInGameDialog`
+    /// (`0x004E1E54`) stores the speed at once in modes 0 and 5 and sends no
+    /// event. Refuses an unregistered house and a speed outside the Options
+    /// range.
+    pub(crate) fn apply_local_game_speed(&mut self, owner: InternedId, speed: u8) -> bool {
+        let applied = self.houses.contains_key(&owner)
+            && self.session.game_options.apply_in_game_speed(speed);
+        if applied {
+            self.local_game_speed_input = Some(speed);
+        }
+        applied
+    }
+
+    /// Re-issue one diagnostic-log tick's external input before its frame:
+    /// the offline speed it stored, then its records in issue order.
+    #[cfg(test)]
+    pub(crate) fn replay_tick_input(&mut self, tick: &crate::sim::replay::ReplayTick) {
+        if let Some(speed) = tick.game_speed {
+            self.session.game_options.apply_in_game_speed(speed);
+        }
+        for record in &tick.commands {
+            self.issue_recorded_command(record.clone());
+        }
+    }
+
+    /// The records issued since the last tail and still in the OutList, in
+    /// issue order, and the offline speed stored since the last frame: the
+    /// external input a frame starts with before its own producers run.
+    pub(super) fn take_frame_input(&mut self) -> (Vec<CommandRecord>, Option<u8>) {
+        (
+            self.command_queue
+                .local_records()
+                .map(|command| command.record().clone())
+                .collect(),
+            self.local_game_speed_input.take(),
+        )
+    }
+
+    /// Diagnostic decoded view of the queue: DoList records not yet executed,
+    /// then the OutList in issue order. `execute_tick` follows the issue
+    /// receipts' convention: the current tick for a record stamped with the
+    /// current frame, one more per later frame. Records decode against the
+    /// current state; one the decoder does not represent is omitted. The
+    /// tail decodes again when each executes.
+    pub(crate) fn pending_command_snapshot(&self, rules: Option<&RuleSet>) -> Vec<CommandEnvelope> {
+        let frame = self.session.binary_frame as i32;
+        self.command_queue
+            .synchronized_records()
+            .filter(|command| !command.record().is_processed())
+            .chain(self.command_queue.local_records())
+            .filter_map(|command| {
+                let ahead = command.record().frame_stamp().wrapping_sub(frame).max(0) as u64;
+                self.decode_native_command_record(
+                    command.record(),
+                    rules,
+                    self.session.tick.saturating_add(ahead),
+                )
+            })
+            .collect()
     }
 
     /// Consume the terminal edge raised by one executed EXIT command.
@@ -83,109 +202,83 @@ impl Simulation {
         self.executed_exit_owner.take()
     }
 
-    /// Drain commands that are due for the next tick from `pending_commands`.
-    /// Returns owned commands; remaining commands stay queued.
-    pub fn take_due_commands(&mut self) -> Vec<CommandEnvelope> {
-        let execute_tick = self.session.tick.saturating_add(1);
-        let mut due = Vec::new();
-        let mut kept = Vec::new();
-        for cmd in std::mem::take(&mut self.pending_commands) {
-            if cmd.execute_tick <= execute_tick {
-                due.push(cmd);
-            } else {
-                kept.push(cmd);
-            }
-        }
-        self.pending_commands = kept;
-        due
-    }
-
-    /// Admit the current frame's Strip publication after the batch already
-    /// accepted by the app. Native MainTick55D8AB -> Strip6A8B30 precedes
-    /// Logic55DC9E/Factory55B680; LocalEvent6474EF preserves OutList insertion.
-    /// Thus an already queued Building443860 SetRally precedes mobile PLACE.
+    /// The single-player body of `Process_Command_Queues_For_Frame`
+    /// (`0x00647260`; modes 0 and 5 take `0x006474DC`): transfer the OutList
+    /// to the DoList unchanged, then dispatch every due record in HouseClass
+    /// registration order to `EventClass::Execute`. A house is scanned only
+    /// when `IsHuman || PlayerControl`. Each house's MEGAMISSION records are
+    /// staged and spread as a group before they execute
+    /// ([`Self::adjust_staged_megamission_destinations`]). A record decodes
+    /// when it executes, against the state earlier records left. Returns
+    /// `(executed_commands, spawned_entities)`; a sale or undeploy only starts
+    /// the Selling mission (`Simulation::visit_building_down`).
     ///
-    /// Playback may already contain that PLACE. Consume one exact fresh copy
-    /// for each recorded envelope, without deduplicating player commands or
-    /// draining unrelated/future work left in the scheduler.
-    pub(super) fn admit_frame_commands(
+    /// Planning orders published by Logic are flushed to the DoList first
+    /// (`0x0055DD9B`), and those a plan commit publishes during the scan after
+    /// it (`0x0055DE45`), as `0x00637550` does.
+    pub(crate) fn dispatch_due_command_queue(
         &mut self,
-        commands: &[CommandEnvelope],
         rules: Option<&RuleSet>,
-    ) -> Vec<CommandEnvelope> {
-        let previous_pending = self.pending_commands.len();
-        if let Some(rules) = rules {
-            crate::sim::production::publish_production_changes(self, rules);
-        }
-        let published = self.pending_commands.split_off(previous_pending);
-        let mut admitted = commands.to_vec();
-        self.admit_generated_frame_commands(&mut admitted, published, true);
-        admitted
-    }
-
-    /// Local events produced during the frame join the existing batch in
-    /// OutList insertion order before the canonical House-ordered dispatcher.
-    /// Recorded diagnostic batches already contain these events; consume one
-    /// exact regenerated copy per recorded entry only on that route. Ordinary
-    /// player cancellation and a strip cancellation may be identical and both
-    /// must execute. Future events stay with the one persisted queue owner.
-    pub(super) fn admit_generated_frame_commands(
-        &mut self,
-        admitted: &mut Vec<CommandEnvelope>,
-        mut generated: Vec<CommandEnvelope>,
-        commands_include_generated: bool,
-    ) {
+        overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
+        frame_effects: FrameEffects<'_>,
+    ) -> (usize, bool) {
+        self.flush_staged_planning_records();
+        let mut queue = std::mem::take(&mut self.command_queue);
+        queue.transfer_single_player();
+        let houses: Vec<_> = self
+            .session
+            .house_order
+            .iter()
+            .enumerate()
+            .filter_map(|(index, &owner)| {
+                Some(CommandDispatchHouse::new(
+                    owner,
+                    i8::try_from(index).ok()?,
+                    self.houses
+                        .get(&owner)
+                        .is_some_and(|house| house.event_dispatch_eligible()),
+                ))
+            })
+            .collect();
+        let current_frame = self.session.binary_frame as i32;
         let execute_tick = self.session.tick.saturating_add(1);
-        if commands_include_generated {
-            for command in admitted.iter() {
-                if command.execute_tick <= execute_tick
-                    && let Some(index) = generated.iter().position(|fresh| fresh == command)
-                {
-                    generated.remove(index);
-                }
-            }
-        }
-        for command in generated {
-            if command.execute_tick <= execute_tick {
-                admitted.push(command);
-            } else {
-                self.pending_commands.push(command);
-            }
-        }
-    }
-
-    /// Admit and drain a diagnostic-replay batch, consuming exact matching
-    /// due work regenerated by the simulation itself.
-    ///
-    /// The diagnostic log already contains the batch drained by the live app.
-    /// Playback can independently recreate later work such as C4 scatter, so
-    /// mixing that pending work with the recorded batch would admit it twice.
-    /// Consume one exact due regenerated copy for each recorded envelope, then
-    /// temporarily isolate the remaining queue:
-    /// the recorded batch still uses [`Self::queue_commands`] and the canonical
-    /// due filter, malformed future-stamped replay entries are discarded, and
-    /// unrelated/future simulation work remains untouched. Keeping a consumed
-    /// PLACE would leave replay/save state different from the ordinary app.
-    #[cfg(test)]
-    pub(crate) fn take_due_replay_commands(
-        &mut self,
-        commands: impl IntoIterator<Item = CommandEnvelope>,
-    ) -> Vec<CommandEnvelope> {
-        self.replaying_recorded_commands = true;
-        let commands: Vec<_> = commands.into_iter().collect();
-        let execute_tick = self.session.tick.saturating_add(1);
-        for recorded in &commands {
-            if recorded.execute_tick <= execute_tick
-                && let Some(index) = self.pending_commands.iter().position(|cmd| cmd == recorded)
-            {
-                self.pending_commands.remove(index);
-            }
-        }
-        let simulation_pending = std::mem::take(&mut self.pending_commands);
-        self.queue_commands(commands);
-        let due = self.take_due_commands();
-        self.pending_commands = simulation_pending;
-        due
+        let mut executed_commands = 0usize;
+        let mut spawned_entities = false;
+        // The adjust and execute callbacks never run at once; both reach the
+        // simulation through this one cell.
+        let sim = std::cell::RefCell::new(&mut *self);
+        queue.dispatch_due_offline(
+            current_frame,
+            &houses,
+            |_, staged| {
+                sim.borrow()
+                    .adjust_staged_megamission_destinations(staged, rules, overlay_registry)
+            },
+            |_, command, _| {
+                let mut sim = sim.borrow_mut();
+                executed_commands += 1;
+                #[cfg(test)]
+                sim.dispatched_records_test_trace
+                    .push(command.record().clone());
+                let Some(envelope) =
+                    sim.decode_native_command_record(command.record(), rules, execute_tick)
+                else {
+                    return;
+                };
+                let (_, spawned) =
+                    sim.apply_one_due_command(&envelope, rules, overlay_registry, frame_effects);
+                spawned_entities |= spawned;
+            },
+        );
+        // No receiver issues into the queue: plan commits stage their orders.
+        let issued_during_scan = std::mem::replace(&mut self.command_queue, queue);
+        debug_assert_eq!(
+            issued_during_scan,
+            Default::default(),
+            "a receiver issued into the command queue during its scan"
+        );
+        self.flush_staged_planning_records();
+        (executed_commands, spawned_entities)
     }
 
     /// VERA-only: one command and its spawn-refresh report: a Deploy whose MCV left
@@ -249,81 +342,41 @@ impl Simulation {
         .then_some(command.owner)
     }
 
-    fn command_uses_megamission(command: &Command) -> bool {
-        if let Command::PlanningRecord { record } = command {
-            return record.opcode() == 4;
+    /// The run key of `0x0064CDA0`'s caller over one staged MEGAMISSION record:
+    /// action, target and destination tokens (`0x0064CB0A..0x0064CB60`), planning
+    /// records included. `0x0064CDA0` returns at once unless the destination
+    /// token is a Cell (`0x0064CDCA..0x0064CDDC`), so a Move onto an object, an
+    /// Area Guard (its post is the target token) and an attack-move with an
+    /// object destination have no key: each ends a run and is never spread.
+    fn formation_key(record: &CommandRecord) -> Option<((u8, i32, u8), u16, u16)> {
+        if record.opcode() != MEGAMISSION_OPCODE {
+            return None;
         }
-        command.megamission_actor().is_some()
+        let p = record.payload();
+        if p[16] != 11 {
+            return None;
+        }
+        let destination = i32::from_le_bytes(p[12..16].try_into().ok()?);
+        let MegaMissionTarget::Cell { x, y } = MegaMissionTarget::from_token(destination, 11)?
+        else {
+            return None;
+        };
+        Some((
+            (p[5], i32::from_le_bytes(p[7..11].try_into().ok()?), p[11]),
+            x as u16,
+            y as u16,
+        ))
     }
 
-    /// The run key of `0x0064CDA0`'s caller: action, target and destination
-    /// tokens (`0x0064CB0A..0x0064CB60`). `0x0064CDA0` returns at once unless
-    /// the destination token is a Cell (`0x0064CDCA..0x0064CDDC`), so a Move
-    /// onto an object, and an attack-move with a target or an object
-    /// destination, have no key: each ends a run and is never spread. The
-    /// click never sends an attack-move with both tokens.
-    fn formation_key(command: &Command) -> Option<((u8, i32, u8), u16, u16)> {
-        match command {
-            Command::Move {
-                target_rx,
-                target_ry,
-                ..
-            } => Some(((2, 0, 0), *target_rx, *target_ry)),
-            Command::AttackMove {
-                target: None,
-                destination: Some(crate::sim::combat::TargetKind::Cell(rx, ry)),
-                ..
-            } => Some(((29, 0, 0), *rx, *ry)),
-            // Harvest10 carries the ore Cell as its destination token
-            // (ClickedAction_Cell `0x004D7D50` action 6), so a run spreads.
-            Command::HarvestCell {
-                target_rx,
-                target_ry,
-                ..
-            } => Some(((10, 0, 0), *target_rx, *target_ry)),
-            // 64CB0A..64CBDB groups all staged opcode4 records by mission,
-            // target and destination tokens, including planning flags1/2.
-            Command::PlanningRecord { record } if record.opcode() == 4 => {
-                let p = record.payload();
-                if p[16] != 11 {
-                    return None;
-                }
-                let destination = i32::from_le_bytes(p[12..16].try_into().ok()?);
-                let crate::sim::command::MegaMissionTarget::Cell { x, y } =
-                    crate::sim::command::MegaMissionTarget::from_token(destination, 11)?
-                else {
-                    return None;
-                };
-                Some((
-                    (p[5], i32::from_le_bytes(p[7..11].try_into().ok()?), p[11]),
-                    x as u16,
-                    y as u16,
-                ))
-            }
-            _ => None,
+    /// The staged record's source object (an Abstract token).
+    fn formation_entity_id(record: &CommandRecord) -> Option<u64> {
+        let p = record.payload();
+        if record.opcode() != MEGAMISSION_OPCODE || p[4] != 0x34 {
+            return None;
         }
+        u64::try_from(i32::from_le_bytes(p[0..4].try_into().ok()?)).ok()
     }
 
-    fn formation_entity_id(command: &Command) -> Option<u64> {
-        match command {
-            Command::Move { entity_id, .. }
-            | Command::AttackMove { entity_id, .. }
-            | Command::HarvestCell { entity_id, .. } => Some(*entity_id),
-            Command::PlanningRecord { record } if record.opcode() == 4 => {
-                let p = record.payload();
-                if p[4] != 0x34 {
-                    return None;
-                }
-                u64::try_from(i32::from_le_bytes(p[0..4].try_into().ok()?)).ok()
-            }
-            _ => None,
-        }
-    }
-
-    /// What `0x0064CDA0` reads once for each member it probes, before the
-    /// candidates: the target's height (`0x0064D2AA..0x0064D2DF`), and the
-    /// target's zone for the member type's MovementZone (`+0x5B4`, GetZoneID
-    /// `0x0056D230` with bridge resolution on, `0x0064D407..0x0064D42C`).
     fn group_member_target(
         &self,
         rules: &RuleSet,
@@ -425,7 +478,7 @@ impl Simulation {
     /// member's coordinates (Location) and source cell.
     pub(super) fn adjust_staged_megamission_destinations(
         &self,
-        commands: &mut [CommandEnvelope],
+        commands: &mut [SynchronizedCommand],
         rules: Option<&RuleSet>,
         registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
     ) {
@@ -438,20 +491,20 @@ impl Simulation {
         };
         let mut run_start = 0;
         while run_start < commands.len() {
-            let Some(key) = Self::formation_key(&commands[run_start].payload) else {
+            let Some(key) = Self::formation_key(commands[run_start].record()) else {
                 run_start += 1;
                 continue;
             };
             let mut run_end = run_start + 1;
             while run_end < commands.len()
-                && Self::formation_key(&commands[run_end].payload) == Some(key)
+                && Self::formation_key(commands[run_end].record()) == Some(key)
             {
                 run_end += 1;
             }
             if run_end - run_start > 1 {
                 let mut members = Vec::new();
                 for (command_index, command) in commands[run_start..run_end].iter().enumerate() {
-                    let Some(entity_id) = Self::formation_entity_id(&command.payload) else {
+                    let Some(entity_id) = Self::formation_entity_id(command.record()) else {
                         continue;
                     };
                     let Some(entity) = self.substrate.entities.get(entity_id) else {
@@ -512,145 +565,17 @@ impl Simulation {
                     else {
                         continue;
                     };
-                    match &mut command.payload {
-                        Command::Move {
-                            target_rx,
-                            target_ry,
-                            ..
-                        }
-                        | Command::AttackMove {
-                            destination:
-                                Some(crate::sim::combat::TargetKind::Cell(target_rx, target_ry)),
-                            ..
-                        }
-                        | Command::HarvestCell {
-                            target_rx,
-                            target_ry,
-                            ..
-                        } => {
-                            *target_rx = assignment.destination.0 as u16;
-                            *target_ry = assignment.destination.1 as u16;
-                        }
-                        Command::PlanningRecord { record } => {
-                            let destination = crate::sim::command::MegaMissionTarget::Cell {
-                                x: assignment.destination.0,
-                                y: assignment.destination.1,
-                            }
-                            .token()
-                            .expect("Cell target token");
-                            record.payload_mut()[12..16]
-                                .copy_from_slice(&destination.0.to_le_bytes());
-                        }
-                        _ => {}
+                    let destination = MegaMissionTarget::Cell {
+                        x: assignment.destination.0,
+                        y: assignment.destination.1,
                     }
+                    .token()
+                    .expect("Cell target token");
+                    command.payload_mut()[12..16].copy_from_slice(&destination.0.to_le_bytes());
                 }
             }
             run_start = run_end;
         }
-    }
-
-    /// Canonical receiver order for every due command in one master frame.
-    /// Registered HouseClass order wins; standalone-fixture owners are appended
-    /// in their first issue order, matching the established tail dispatcher.
-    fn due_command_house_order(
-        &self,
-        commands: &[CommandEnvelope],
-        execute_tick: u64,
-    ) -> Vec<InternedId> {
-        let mut house_order = self.session.house_order.clone();
-        for command in commands
-            .iter()
-            .filter(|command| command.execute_tick <= execute_tick)
-        {
-            if !house_order.contains(&command.owner) {
-                house_order.push(command.owner);
-            }
-        }
-        house_order
-    }
-
-    fn command_uses_frame_ingress(command: &Command) -> bool {
-        matches!(command, Command::SetGameSpeed { .. })
-    }
-
-    /// Apply session transitions before triggers and live Logic. Offline
-    /// Options stores GameSpeed before the next MainTick. Local selection is
-    /// not a command: input commits it at once (`Self::commit_local_selection`).
-    pub(super) fn apply_due_frame_ingress_commands(
-        &mut self,
-        commands: &[CommandEnvelope],
-        execute_tick: u64,
-    ) -> usize {
-        let mut executed_commands = 0usize;
-        for owner in self.due_command_house_order(commands, execute_tick) {
-            for command in commands.iter().filter(|command| {
-                command.execute_tick <= execute_tick
-                    && command.owner == owner
-                    && Self::command_uses_frame_ingress(&command.payload)
-            }) {
-                let Command::SetGameSpeed { speed } = &command.payload else {
-                    unreachable!("frame-ingress predicate admitted a tail command");
-                };
-                if self.houses.contains_key(&owner) {
-                    let _ = self.session.game_options.apply_in_game_speed(*speed);
-                }
-                // Preserve the established dispatcher convention: every due
-                // envelope is consumed/counts even when validation rejects it.
-                executed_commands += 1;
-            }
-        }
-        executed_commands
-    }
-
-    /// Apply all due tail commands in HouseClass registration
-    /// order. Each house preserves insertion order within the normal and
-    /// staged-megamission streams. Returns
-    /// `(executed_commands, spawned_entities)`. A sale or undeploy order only
-    /// starts the Selling mission: the building leaves the map at its last
-    /// visit (`Simulation::visit_building_down`).
-    pub(crate) fn apply_due_commands(
-        &mut self,
-        commands: &[CommandEnvelope],
-        rules: Option<&RuleSet>,
-        execute_tick: u64,
-        overlay_registry: Option<&crate::rules::overlay_types::OverlayTypeRegistry>,
-        frame_effects: FrameEffects<'_>,
-    ) -> (usize, bool) {
-        let mut executed_commands = 0usize;
-        let mut spawned_entities = false;
-
-        for owner in self.due_command_house_order(commands, execute_tick) {
-            for command in commands.iter().filter(|command| {
-                command.execute_tick <= execute_tick
-                    && command.owner == owner
-                    && !Self::command_uses_frame_ingress(&command.payload)
-                    && !Self::command_uses_megamission(&command.payload)
-            }) {
-                let (_, spawned) =
-                    self.apply_one_due_command(command, rules, overlay_registry, frame_effects);
-                spawned_entities |= spawned;
-                executed_commands += 1;
-            }
-
-            let mut staged = commands
-                .iter()
-                .filter(|command| {
-                    command.execute_tick <= execute_tick
-                        && command.owner == owner
-                        && Self::command_uses_megamission(&command.payload)
-                })
-                .cloned()
-                .collect::<Vec<_>>();
-            self.adjust_staged_megamission_destinations(&mut staged, rules, overlay_registry);
-            for command in &staged {
-                let (_, spawned) =
-                    self.apply_one_due_command(command, rules, overlay_registry, frame_effects);
-                spawned_entities |= spawned;
-                executed_commands += 1;
-            }
-        }
-
-        (executed_commands, spawned_entities)
     }
 }
 

@@ -158,7 +158,7 @@ fn board_infantry(fortress: &mut Fortress, kind: &str) -> u64 {
 fn retail_frame(scenario: &mut HeadlessScenario, orders: Vec<CommandEnvelope>) -> SimFrameOutput {
     scenario
         .runtime
-        .advance_frame(
+        .advance_frame_issuing(
             &orders,
             crate::headless_scenario::SIM_TICK_MS,
             TickLane::Ordinary,

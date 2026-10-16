@@ -1469,7 +1469,6 @@ fn repair_receiver_failure_stops_runtime_before_consumption_or_frame_commit() {
     };
     let error = runtime
         .advance_frame(
-            &[],
             67,
             crate::sim::world::TickLane::Ordinary,
             crate::sim::world::FrameEffects::default(),

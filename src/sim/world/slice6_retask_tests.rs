@@ -351,7 +351,13 @@ fn unit(owner: &str, type_id: &str, cx: u16, cy: u16, cat: EntityCategory) -> Ma
 // Integrated StateHasher pin after executed scoped feed attribution. The test
 // below recovers current main exactly with retired feeds and preserves serialized
 // gameplay, the live Dummy and all three RNG streams; this is a Rust ratchet.
-const SLICE6_BASELINE_HASH: u64 = 0x2884_EE4E_0340_B160;
+// Snapshot369 (networking 2e) issues the scripted orders as native records,
+// which name a registered house: the fixture registers the player's
+// Americans house, so its HouseState and House-rung visits enter the hash.
+// Hash composition only: per-frame replay, the actor checks and all three
+// RNG stream pins precede these pins and are unchanged.
+// Previous: final 0x2884_EE4E_0340_B160, main 0x7DBF_3798_6DCA_6E31.
+const SLICE6_BASELINE_HASH: u64 = 0xC3FE_D164_342F_5F1C;
 
 // ALL01 r6 (fork-local schema345) used DefaultHasher before main's
 // pinned StateHasher, entity/fog digests and owner migrations. These remain
@@ -360,7 +366,7 @@ const SLICE6_INCOMING_HASH: u64 = 0xC4B5_83A9_D807_77FD;
 const SLICE6_ANNOUNCEMENT_ONLY_HASH: u64 = 0x4645_6FE7_BB02_4917;
 const SLICE6_R6_BASELINE_HASH: u64 = 0x9041_91B9_31BD_8D18;
 // The legacy-feed control uses this main StateHasher reference.
-const SLICE6_MAIN_HASH: u64 = 0x7DBF_3798_6DCA_6E31;
+const SLICE6_MAIN_HASH: u64 = 0x0489_D98B_70BF_2D4E;
 
 #[test]
 fn replay_hash_stable_through_slice6() {
@@ -386,6 +392,8 @@ fn replay_hash_stable_through_slice6() {
     } else {
         (seed(), Vec::new())
     };
+    // The player's house, whose scripted orders both passes issue.
+    sim.register_command_house_for_test("Americans");
     super::global_parity_harness_tests::record_replay_diagnostic(
         &mut diagnostic,
         &sim,
@@ -394,7 +402,7 @@ fn replay_hash_stable_through_slice6() {
         &seed_draws,
     );
 
-    // (execute_tick, command) — apply_due_commands fires each when self.session.tick+1 == tick.
+    // (execute_tick, command): each is issued for the frame whose tail runs when self.session.tick+1 == tick.
     let script: &[(u64, Command)] = &[
         (
             1,
@@ -458,7 +466,8 @@ fn replay_hash_stable_through_slice6() {
             .filter(|(t, _)| *t == tick + 1)
             .map(|(t, c)| cmd_envelope(&sim, "Americans", *t, c.clone()))
             .collect();
-        let mut advance = || sim.advance_tick(&due, Some(&rules), Some(&grid), None, 67);
+        let issued = sim.issue_fixture_commands(&due, Some(&rules));
+        let mut advance = || sim.advance_tick(&[], Some(&rules), Some(&grid), None, 67);
         let (result, draws) = if diagnostic.is_some() {
             crate::sim::rng::trace_draws(advance)
         } else {
@@ -477,7 +486,7 @@ fn replay_hash_stable_through_slice6() {
             due.len(),
             "scripted envelope at {tick} must be consumed"
         );
-        log.record_tick(tick, due, result.state_hash);
+        log.record_tick(tick, issued, None, result.state_hash);
         if tick >= 11 {
             let infantry = sim.substrate.entities.get(3).unwrap();
             let coord = crate::sim::movement::ground_pose::position_world_coord(&infantry.position);
@@ -589,6 +598,7 @@ fn replay_hash_stable_through_slice6() {
         ],
         Some(&rules),
     );
+    replay.register_command_house_for_test("Americans");
     let replayed = ReplayRunner::run_fixture_with_overlay_registry(
         &mut replay,
         &log,

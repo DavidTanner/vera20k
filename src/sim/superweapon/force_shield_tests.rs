@@ -248,6 +248,9 @@ fn retail_force_shield_shields_allied_buildings_and_fades() {
         let far = spawn(&mut sim, "GAPOWR", "Russians", (44, 40));
         charge_super(&mut sim, russians, FORCE_SHIELD);
         let launch_frame = sim.session.binary_frame;
+        // A computer house fires without an event; this click is a PlayerControl
+        // house's SPECIAL_PLACE, which the tail dispatch admits.
+        sim.houses.get_mut(&russians).unwrap().player_control = true;
         click(&mut sim, &rules, russians, FORCE_SHIELD, (40, 40));
 
         let shield = |sim: &Simulation, id: u64| {
@@ -310,6 +313,9 @@ fn a_bridge_cell_walks_from_the_ground_centre() {
         .spawn_object_at_height("GAPOWR", "Russians", 43, 41, 0, 0, &rules)
         .unwrap();
     let sw_type = charge_super(&mut sim, russians, FORCE_SHIELD);
+    // A computer house fires without an event; this click is a PlayerControl
+    // house's SPECIAL_PLACE, which the tail dispatch admits.
+    sim.houses.get_mut(&russians).unwrap().player_control = true;
     click(&mut sim, &rules, russians, FORCE_SHIELD, (40, 40));
 
     assert_eq!(

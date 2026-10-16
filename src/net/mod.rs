@@ -10,13 +10,14 @@
 //! 3. Only input commands are transmitted, not game state
 //! 4. Each tick processes the same commands in the same order
 //!
+//! The command queue itself, with its native staging, frame stamps,
+//! dispatch order and checksum history, is `sim::lockstep`: the simulation
+//! owns and persists it and its frame tail dispatches it. net/ will move its
+//! records between peers.
+//!
 //! ## Dependency rules
 //! - net/ depends on: sim/ (feeds commands into simulation, nothing else)
 //! - net/ does NOT depend on: assets/, rules/, map/, render/, ui/, audio/
 
 // Future modules - uncomment as implemented:
 // pub mod protocol;
-
-pub mod lockstep;
-#[cfg(test)]
-mod lockstep_sim_convergence_tests;

@@ -135,7 +135,6 @@ fn retail_fv_pursuit_missiles_collapse_and_guard_survive_restore() {
         let output = scene
             .runtime
             .advance_frame(
-                &[],
                 SIM_TICK_MS,
                 TickLane::Ordinary,
                 crate::sim::world::FrameEffects::default(),
@@ -249,7 +248,6 @@ fn retail_fv_pursuit_missiles_collapse_and_guard_survive_restore() {
                 scene
                     .runtime
                     .advance_frame(
-                        &[],
                         SIM_TICK_MS,
                         TickLane::Ordinary,
                         crate::sim::world::FrameEffects::default(),

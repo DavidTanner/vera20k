@@ -438,15 +438,15 @@ fn repair_ordinary_bridge(
         !orders.is_empty(),
         "collapsed bridge input must produce a repair order"
     );
-    runtime.simulation.queue_commands(orders);
+    runtime
+        .simulation
+        .issue_fixture_commands(&Vec::from_iter(orders), None);
     let mut consumed = false;
     let mut published = false;
     for _ in 0..1200 {
-        let due = scene.runtime.simulation.take_due_commands();
         let output = scene
             .runtime
             .advance_frame(
-                &due,
                 SIM_TICK_MS,
                 crate::sim::world::TickLane::Ordinary,
                 crate::sim::world::FrameEffects::default(),

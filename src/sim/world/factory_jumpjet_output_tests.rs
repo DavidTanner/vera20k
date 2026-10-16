@@ -132,16 +132,15 @@ fn two_paid_rocketeers(rally: Option<(u16, u16)>) {
     let golden = &native["products"][0];
 
     for _ in 0..3_000 {
-        let due = sim.take_due_commands();
         let output = sim
             .advance_app_frame(
-                &due,
                 Some(&rules),
                 Some(&registry),
                 TICK_MS,
                 super::TickLane::Ordinary,
                 None,
-             crate::sim::world::FrameEffects::default(),)
+                crate::sim::world::FrameEffects::default(),
+            )
             .expect("the ordinary app frame completes");
         let frame = sim.session.binary_frame;
         let log = radio::take_transmit_log();

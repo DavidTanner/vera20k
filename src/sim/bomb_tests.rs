@@ -208,23 +208,28 @@ fn bomb(sim: &Simulation, id: u64) -> Option<Bomb> {
         .and_then(|entity| entity.bomb)
 }
 
+/// The attacker's house gives the order as the player's, under PlayerControl:
+/// the tail dispatches only `IsHuman || PlayerControl` houses.
 fn attack(sim: &mut Simulation, attacker: u64, target: u64) {
     let owner = entity(sim, attacker).owner();
-    sim.queue_command(CommandEnvelope::new(
-        owner,
-        sim.session.tick + 1,
-        Command::Attack {
-            attacker_id: attacker,
-            target_id: target,
-        },
-    ));
+    sim.houses.get_mut(&owner).unwrap().player_control = true;
+    sim.issue_fixture_commands(
+        &[CommandEnvelope::new(
+            owner,
+            sim.session.tick + 1,
+            Command::Attack {
+                attacker_id: attacker,
+                target_id: target,
+            },
+        )],
+        None,
+    );
 }
 
 /// One frame; returns the native frame it ran as.
 fn step(sim: &mut Simulation, rules: &RuleSet, grid: &crate::sim::pathfinding::PathGrid) -> i32 {
     let frame = sim.session.binary_frame as i32;
-    let commands = sim.take_due_commands();
-    sim.advance_tick(&commands, Some(rules), Some(grid), None, 33);
+    sim.advance_tick(&[], Some(rules), Some(grid), None, 33);
     frame
 }
 
@@ -829,14 +834,17 @@ fn retail_fire_once_defuse_releases_target_and_carrier() {
     // The ordinary DisarmBomb click emits ForceAttack for an allied object
     // (`app/input/context_order.rs::bomb_order`), retaining native Attack
     // admission without Command::Attack's enemy-only convenience gate.
-    sim.queue_command(CommandEnvelope::new(
-        entity(&sim, engineer).owner(),
-        sim.session.tick + 1,
-        Command::ForceAttack {
-            attacker_id: engineer,
-            target_id: tank,
-        },
-    ));
+    sim.issue_fixture_commands(
+        &[CommandEnvelope::new(
+            entity(&sim, engineer).owner(),
+            sim.session.tick + 1,
+            Command::ForceAttack {
+                attacker_id: engineer,
+                target_id: tank,
+            },
+        )],
+        None,
+    );
     run_until(&mut sim, rules, &grid, 100, |sim| bomb(sim, tank).is_none())
         .expect("the stock kit defuses the friendly tank");
     assert_eq!(entity(&sim, tank).health.current(), health);

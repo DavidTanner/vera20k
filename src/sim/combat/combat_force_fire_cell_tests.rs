@@ -139,21 +139,23 @@ fn force_fire_detonation_builds_an_anim_instance_and_plays_its_report() {
     let grid = PathGrid::test_all_passable(64, 64);
 
     // In range from the start, so the shot lands without an approach walk.
-    sim.queue_command(CommandEnvelope::new(
-        owner_id,
-        sim.session.tick + 1,
-        Command::ForceAttackCell {
-            attacker_id: 1,
-            target_rx: 8,
-            target_ry: 5,
-        },
-    ));
+    sim.issue_fixture_commands(
+        &[CommandEnvelope::new(
+            owner_id,
+            sim.session.tick + 1,
+            Command::ForceAttackCell {
+                attacker_id: 1,
+                target_rx: 8,
+                target_ry: 5,
+            },
+        )],
+        Some(&rules),
+    );
 
     let explosion_type = sim.interner.intern("TWLT036");
     let mut explosion = None;
     for _ in 0..60 {
-        let pending = sim.take_due_commands();
-        sim.advance_tick(&pending, Some(&rules), Some(&grid), None, 100);
+        sim.advance_tick(&[], Some(&rules), Some(&grid), None, 100);
         if let Some((&id, _)) = sim.anims().find(|(_, anim)| anim.type_id == explosion_type) {
             explosion = Some(id);
             break;
@@ -214,20 +216,22 @@ fn force_fire_cell_approach_then_fire_integration() {
     );
     let grid = (*sim.path_grid_snapshot().unwrap()).clone();
 
-    sim.queue_command(CommandEnvelope::new(
-        owner_id,
-        sim.session.tick + 1,
-        Command::ForceAttackCell {
-            attacker_id: 1,
-            target_rx: 15,
-            target_ry: 5,
-        },
-    ));
+    sim.issue_fixture_commands(
+        &[CommandEnvelope::new(
+            owner_id,
+            sim.session.tick + 1,
+            Command::ForceAttackCell {
+                attacker_id: 1,
+                target_rx: 15,
+                target_ry: 5,
+            },
+        )],
+        Some(&rules),
+    );
 
     // Tick 1: EventClass applies the command at the native Main_Tick tail,
     // after this frame's object walk has already completed.
-    let pending = sim.take_due_commands();
-    sim.advance_tick(&pending, Some(&rules), Some(&grid), None, 100);
+    sim.advance_tick(&[], Some(&rules), Some(&grid), None, 100);
 
     let entity = sim.substrate.entities.get(1).unwrap();
     assert!(
@@ -252,8 +256,7 @@ fn force_fire_cell_approach_then_fire_integration() {
     // Tick many times until the unit walks into range and fires.
     let mut fired = false;
     for _ in 0..400 {
-        let pending = sim.take_due_commands();
-        sim.advance_tick(&pending, Some(&rules), Some(&grid), None, 100);
+        sim.advance_tick(&[], Some(&rules), Some(&grid), None, 100);
         if !sim.fire_events.is_empty() {
             fired = true;
             break;
@@ -311,20 +314,22 @@ fn a_fired_shot_constructs_its_muzzle_anim_in_the_store() {
     let owner_id = sim.interner.intern("Americans");
     sim.reveal(tank);
     let grid = PathGrid::test_all_passable(64, 64);
-    sim.queue_command(CommandEnvelope::new(
-        owner_id,
-        sim.session.tick + 1,
-        Command::ForceAttackCell {
-            attacker_id: tank,
-            target_rx: 8,
-            target_ry: 5,
-        },
-    ));
+    sim.issue_fixture_commands(
+        &[CommandEnvelope::new(
+            owner_id,
+            sim.session.tick + 1,
+            Command::ForceAttackCell {
+                attacker_id: tank,
+                target_rx: 8,
+                target_ry: 5,
+            },
+        )],
+        Some(&rules),
+    );
 
     let mut shot = None;
     for _ in 0..200 {
-        let pending = sim.take_due_commands();
-        sim.advance_tick(&pending, Some(&rules), Some(&grid), None, 100);
+        sim.advance_tick(&[], Some(&rules), Some(&grid), None, 100);
         if let Some(event) = sim.fire_events.first() {
             shot = Some(event.clone());
             break;

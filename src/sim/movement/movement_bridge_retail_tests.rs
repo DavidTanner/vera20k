@@ -650,7 +650,12 @@ fn drive_across_high_bridge_with_order(
     );
     scenario
         .runtime
-        .advance_frame(&[order], SIM_TICK_MS, TickLane::Ordinary, crate::sim::world::FrameEffects::default())
+        .advance_frame_issuing(
+            &[order],
+            SIM_TICK_MS,
+            TickLane::Ordinary,
+            crate::sim::world::FrameEffects::default(),
+        )
         .expect("fixture frame must complete");
 
     let ordered_path = accepted_route(&scenario, entity_id);
@@ -1383,7 +1388,12 @@ fn drive_across_low_bridge(map_file: &str, unit_type: &str) {
     );
     scenario
         .runtime
-        .advance_frame(&[order], SIM_TICK_MS, TickLane::Ordinary, crate::sim::world::FrameEffects::default())
+        .advance_frame_issuing(
+            &[order],
+            SIM_TICK_MS,
+            TickLane::Ordinary,
+            crate::sim::world::FrameEffects::default(),
+        )
         .expect("fixture frame must complete");
 
     match accepted_route(&scenario, entity_id) {
@@ -2520,7 +2530,7 @@ fn tank_ordered_across_the_deadman_collapse_gap_never_drives_into_it() {
     let execute_tick = scenario.sim().session.tick + 1;
     scenario
         .runtime
-        .advance_frame(
+        .advance_frame_issuing(
             &[CommandEnvelope::new(
                 owner_id,
                 execute_tick,
@@ -2532,7 +2542,8 @@ fn tank_ordered_across_the_deadman_collapse_gap_never_drives_into_it() {
             )],
             SIM_TICK_MS,
             TickLane::Ordinary,
-         crate::sim::world::FrameEffects::default(),)
+            crate::sim::world::FrameEffects::default(),
+        )
         .expect("fixture frame must complete");
     let accepted = accepted_route(&scenario, entity_id).map(|path| (path.len(), path));
     println!(
@@ -2730,7 +2741,7 @@ fn tank_cannot_cross_a_destroyed_shrapnel_low_bridge() {
     let execute_tick = scenario.sim().session.tick + 1;
     scenario
         .runtime
-        .advance_frame(
+        .advance_frame_issuing(
             &[CommandEnvelope::new(
                 owner_id,
                 execute_tick,
@@ -2742,7 +2753,8 @@ fn tank_cannot_cross_a_destroyed_shrapnel_low_bridge() {
             )],
             SIM_TICK_MS,
             TickLane::Ordinary,
-         crate::sim::world::FrameEffects::default(),)
+            crate::sim::world::FrameEffects::default(),
+        )
         .expect("fixture frame must complete");
     let accepted = accepted_route(&scenario, entity_id).map(|path| path.len());
     println!("ordinary Command::Move across the destroyed strip: path={accepted:?}");
@@ -3358,7 +3370,7 @@ fn order_under_high_span(map_file: &str, unit_type: &str) -> Option<UnderSpanRun
     let execute_tick = scenario.sim().session.tick + 1;
     scenario
         .runtime
-        .advance_frame(
+        .advance_frame_issuing(
             &[CommandEnvelope::new(
                 owner_id,
                 execute_tick,
@@ -3370,7 +3382,8 @@ fn order_under_high_span(map_file: &str, unit_type: &str) -> Option<UnderSpanRun
             )],
             SIM_TICK_MS,
             TickLane::Ordinary,
-         crate::sim::world::FrameEffects::default(),)
+            crate::sim::world::FrameEffects::default(),
+        )
         .expect("fixture frame must complete");
     let path = accepted_route(&scenario, entity_id).map(|path| path.len());
     println!("ordinary Command::Move {start_cell:?} -> {under_b:?}: path={path:?}");
@@ -3972,7 +3985,12 @@ fn scale_benchmark_many_movers_on_hills() {
         let started = std::time::Instant::now();
         scenario
             .runtime
-            .advance_frame(batch, SIM_TICK_MS, TickLane::Ordinary, crate::sim::world::FrameEffects::default())
+            .advance_frame_issuing(
+                batch,
+                SIM_TICK_MS,
+                TickLane::Ordinary,
+                crate::sim::world::FrameEffects::default(),
+            )
             .expect("frame completes");
         let elapsed = started.elapsed();
         total += elapsed;

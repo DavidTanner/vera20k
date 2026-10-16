@@ -112,14 +112,8 @@ fn combatant_local_selection_commits_before_destroy_and_is_never_queued() {
         .health
         .set_for_test(0);
     sim.object_destroy_callback(1, UninitContext::default());
-    let due = sim.take_due_commands();
-    let (tail_count, spawned) = sim.apply_due_commands(
-        &due,
-        None,
-        1,
-        None,
-        crate::sim::world::FrameEffects::default(),
-    );
+    let (tail_count, spawned) =
+        sim.dispatch_due_command_queue(None, None, crate::sim::world::FrameEffects::default());
 
     assert!(
         !sim.entities().get(1).unwrap().selection.is_selected(),
@@ -139,51 +133,24 @@ fn combatant_local_selection_commits_before_destroy_and_is_never_queued() {
     assert!(sim.entities().get(1).unwrap().selection.is_selected());
 }
 
+/// Offline Options stores the speed at once (`0x004E1E54`, modes 0 and 5):
+/// nothing is queued, and the next frame runs at the new speed.
 #[test]
-fn game_speed_transition_applies_at_ingress_before_triggers_and_hash() {
+fn offline_game_speed_applies_at_once_and_is_never_queued() {
     let (mut sim, owner) = game_speed_command_sim();
     let (mut control, _) = game_speed_command_sim();
-    let command = CommandEnvelope::new(owner, 1, Command::SetGameSpeed { speed: 4 });
-
-    let result = sim
-        .advance_master_frame(
-            &[command],
-            None,
-            None,
-            67,
-            TickLane::Ordinary,
-            None,
-            crate::sim::world::FrameEffects::default(),
-        )
-        .expect("fixture frame must complete")
-        .into_tick();
-    let control_result = control
-        .advance_master_frame(
-            &[],
-            None,
-            None,
-            67,
-            TickLane::Ordinary,
-            None,
-            crate::sim::world::FrameEffects::default(),
-        )
-        .expect("fixture frame must complete")
-        .into_tick();
-
-    assert!(result.frame_committed);
-    assert_eq!(result.executed_commands, 1);
-    assert_eq!(result.tick, control_result.tick);
-    assert_eq!(sim.session.binary_frame, control.session.binary_frame);
+    assert!(sim.apply_local_game_speed(owner, 4));
     assert_eq!(sim.session.game_options.game_speed, 4);
+    assert!(sim.pending_command_snapshot(None).is_empty());
+
+    let result = sim.advance_tick(&[], None, None, None, 67);
+    let control_result = control.advance_tick(&[], None, None, None, 67);
+    assert!(result.frame_committed);
+    assert_eq!(result.executed_commands, 0);
+    assert_eq!(result.tick, control_result.tick);
     assert_eq!(control.session.game_options.game_speed, 1);
     assert_ne!(result.state_hash, control_result.state_hash);
     assert_eq!(result.state_hash, Some(sim.state_hash()));
-    assert!(sim.take_master_frame_test_trace().starts_with(&[
-        MasterFrameTestRung::SessionCommands,
-        MasterFrameTestRung::Triggers,
-        MasterFrameTestRung::TeamScript,
-        MasterFrameTestRung::LogicVector,
-    ]));
 }
 
 /// Every frame hashes its state unless the caller asks for fewer. Then only a
@@ -232,91 +199,47 @@ fn a_match_ending_frame_hashes_between_intervals() {
 }
 
 #[test]
-fn invalid_or_unknown_game_speed_transition_is_consumed_without_state_effect() {
-    let (mut invalid, owner) = game_speed_command_sim();
-    let (mut invalid_control, _) = game_speed_command_sim();
-    let invalid_result = invalid.advance_tick(
-        &[CommandEnvelope::new(
-            owner,
-            1,
-            Command::SetGameSpeed { speed: 7 },
-        )],
-        None,
-        None,
-        None,
-        67,
-    );
-    let invalid_control_result = invalid_control.advance_tick(&[], None, None, None, 67);
-    assert_eq!(invalid_result.executed_commands, 1);
-    assert_eq!(invalid.session.game_options.game_speed, 1);
-    assert_eq!(invalid_result.state_hash, invalid_control_result.state_hash);
-
-    let (mut unknown, _) = game_speed_command_sim();
-    let (mut unknown_control, _) = game_speed_command_sim();
-    let unknown_owner = unknown.interner.intern("Unknown");
-    let unknown_control_owner = unknown_control.interner.intern("Unknown");
-    assert_eq!(unknown_owner, unknown_control_owner);
-    let unknown_result = unknown.advance_tick(
-        &[CommandEnvelope::new(
-            unknown_owner,
-            1,
-            Command::SetGameSpeed { speed: 4 },
-        )],
-        None,
-        None,
-        None,
-        67,
-    );
-    let unknown_control_result = unknown_control.advance_tick(&[], None, None, None, 67);
-    assert_eq!(unknown_result.executed_commands, 1);
-    assert_eq!(unknown.session.game_options.game_speed, 1);
-    assert_eq!(unknown_result.state_hash, unknown_control_result.state_hash);
+fn invalid_or_unknown_offline_game_speed_changes_nothing() {
+    let (mut sim, owner) = game_speed_command_sim();
+    let before = sim.state_hash();
+    assert!(!sim.apply_local_game_speed(owner, 7));
+    let unknown = sim.interner.intern("Unknown");
+    assert!(!sim.apply_local_game_speed(unknown, 4));
+    assert_eq!(sim.session.game_options.game_speed, 1);
+    assert_eq!(sim.state_hash(), before);
 }
 
+/// A network game's GAMESPEED (`0x004C794B`) executes in the EventClass tail,
+/// in HouseClass order, beside the frame's other events: the local house's
+/// speed and EXIT run first, then the remote house's speed.
 #[test]
-fn game_speed_ingress_uses_house_order_and_survives_same_frame_exit() {
+fn gamespeed_events_execute_in_the_tail_in_house_order() {
     let (mut sim, local) = game_speed_command_sim();
     let remote = sim.interner.intern("Remote");
     sim.houses.insert(
         remote,
-        crate::sim::house_state::HouseState::new(remote, 1, None, false, 0, 10),
+        crate::sim::house_state::HouseState::new(remote, 1, None, true, 0, 10),
     );
     sim.session.house_order.push(remote);
-    let commands = [
-        CommandEnvelope::new(remote, 1, Command::SetGameSpeed { speed: 2 }),
-        CommandEnvelope::new(local, 1, Command::SetGameSpeed { speed: 4 }),
-        CommandEnvelope::new(local, 1, Command::ExitMatch),
-    ];
+    let speed = |sim: &Simulation, owner, speed| {
+        sim.encode_single_event_records(owner, &Command::SetGameSpeed { speed }, None)
+            .expect("GAMESPEED record")
+    };
+    for record in speed(&sim, remote, 2)
+        .into_iter()
+        .chain(speed(&sim, local, 4))
+        .chain(sim.encode_exit_record(local))
+    {
+        assert!(sim.issue_command_record(record));
+    }
 
-    let result = sim.advance_tick(&commands, None, None, None, 67);
+    let result = sim.advance_tick(&[], None, None, None, 67);
 
     assert!(!result.frame_committed);
     assert_eq!(result.executed_commands, 3);
     assert_eq!(sim.session.game_options.game_speed, 2);
     assert!(sim.quit_requested);
     assert_eq!(result.state_hash, Some(sim.state_hash()));
-}
-
-#[test]
-fn network_modal_does_not_execute_game_speed_ingress() {
-    let (mut sim, owner) = game_speed_command_sim();
-    let command = CommandEnvelope::new(owner, 1, Command::SetGameSpeed { speed: 4 });
-
-    let result = sim
-        .advance_master_frame(
-            &[command],
-            None,
-            None,
-            67,
-            TickLane::NetworkModal,
-            None,
-            crate::sim::world::FrameEffects::default(),
-        )
-        .expect("fixture frame must complete")
-        .into_tick();
-
-    assert_eq!(result.executed_commands, 0);
-    assert_eq!(sim.session.game_options.game_speed, 1);
 }
 
 fn animation_boundary_fixture() -> (Simulation, RuleSet) {
@@ -398,7 +321,6 @@ fn master_frame_hash_observes_living_animation_completion_facing() {
 
     let result = sim
         .advance_master_frame(
-            &[],
             Some(&rules),
             None,
             67,
@@ -423,7 +345,6 @@ fn app_and_headless_frames_hash_identically_for_animation_progress() {
 
     let app = app_sim
         .advance_app_frame(
-            &[],
             Some(&rules),
             None,
             67,
@@ -460,7 +381,6 @@ fn app_and_headless_frames_hash_identically_for_particle_frame_timing() {
     for frame in 1..=4 {
         let app = app_sim
             .advance_app_frame(
-                &[],
                 Some(&rules),
                 None,
                 67,
@@ -843,10 +763,10 @@ fn terminal_master_frame_visits_class_sequence_before_exit_without_frame_commit(
     let (mut sim, rules) = animation_boundary_fixture();
     let owner = insert_house_with_counts(&mut sim, "Americans", 1, 1);
     let exit = CommandEnvelope::new(owner, 1, Command::ExitMatch);
+    sim.issue_fixture_commands(&[exit], Some(&rules));
 
     let result = sim
         .advance_master_frame(
-            &[exit],
             Some(&rules),
             None,
             67,
@@ -890,7 +810,6 @@ fn app_frame_output_transfers_pre_tick_sound_exactly_once_without_hash_change() 
 
     let first = sim
         .advance_app_frame(
-            &[],
             None,
             None,
             67,
@@ -907,7 +826,6 @@ fn app_frame_output_transfers_pre_tick_sound_exactly_once_without_hash_change() 
 
     let second = sim
         .advance_app_frame(
-            &[],
             None,
             None,
             67,
@@ -935,7 +853,6 @@ fn app_frame_output_finalizes_overlay_navigation_and_delivers_updates_once() {
 
     let deferred = sim
         .advance_app_frame(
-            &[],
             Some(&rules),
             None,
             67,
@@ -954,7 +871,6 @@ fn app_frame_output_finalizes_overlay_navigation_and_delivers_updates_once() {
 
     let first = sim
         .advance_app_frame(
-            &[],
             Some(&rules),
             Some(&overlays),
             67,
@@ -976,7 +892,6 @@ fn app_frame_output_finalizes_overlay_navigation_and_delivers_updates_once() {
 
     let second = sim
         .advance_app_frame(
-            &[],
             Some(&rules),
             Some(&overlays),
             67,
@@ -1012,10 +927,10 @@ fn terminal_app_frame_finalizes_overlay_updates_before_hash() {
     }
     let owner = insert_house_with_counts(&mut sim, "Americans", 1, 1);
     let exit = CommandEnvelope::new(owner, 1, Command::ExitMatch);
+    sim.issue_fixture_commands(&[exit], Some(&rules));
 
     let output = sim
         .advance_app_frame(
-            &[exit],
             Some(&rules),
             Some(&overlays),
             67,
@@ -1052,7 +967,6 @@ fn terminal_app_frame_finalizes_overlay_updates_before_hash() {
 
     let next = sim
         .advance_app_frame(
-            &[],
             Some(&rules),
             Some(&overlays),
             67,
@@ -2590,16 +2504,19 @@ fn gsi_05_16_change_owner_moves_live_category_counts_once_and_noops() {
 }
 
 /// Create a CommandEnvelope with a string owner, interning it via the sim's interner.
+/// A fixture order from `owner`, registered as a human house so its record
+/// encodes and the tail dispatches it.
 fn cmd_envelope(
-    sim: &Simulation,
+    sim: &mut Simulation,
     owner: &str,
     execute_tick: u64,
     payload: Command,
 ) -> CommandEnvelope {
-    let owner_id = sim
-        .interner
-        .get(owner)
-        .unwrap_or_else(|| panic!("owner '{}' not interned", owner));
+    assert!(
+        sim.interner.get(owner).is_some(),
+        "owner '{owner}' not interned"
+    );
+    let owner_id = sim.register_command_house_for_test(owner);
     CommandEnvelope::new(owner_id, execute_tick, payload)
 }
 
@@ -3613,7 +3530,6 @@ fn guard_infantry_acquire_return_fire_and_finish_a_duel() {
     for _ in 0..600 {
         let output = runtime
             .advance_frame(
-                &[],
                 67,
                 TickLane::Ordinary,
                 crate::sim::world::FrameEffects::default(),
@@ -3683,7 +3599,6 @@ fn guard_infantry_acquire_return_fire_and_finish_a_duel() {
         }
         runtime
             .advance_frame(
-                &[],
                 67,
                 TickLane::Ordinary,
                 crate::sim::world::FrameEffects::default(),
@@ -3755,7 +3670,6 @@ fn sonic_fire_registers_immediately_but_later_techno_fires_before_wave_tail_ai()
     runtime.resources.rules = rules;
     let output = runtime
         .advance_frame(
-            &[],
             67,
             TickLane::Ordinary,
             crate::sim::world::FrameEffects::default(),
@@ -3934,7 +3848,6 @@ fn sonic_cell_fire_wave_damage_selects_level_two_bridge_plane() {
     runtime.resources.rules = rules;
     let output = runtime
         .advance_frame(
-            &[],
             67,
             TickLane::Ordinary,
             crate::sim::world::FrameEffects::default(),
@@ -3953,7 +3866,6 @@ fn sonic_cell_fire_wave_damage_selects_level_two_bridge_plane() {
     assert_eq!(runtime.simulation.waves.get(wave_id).unwrap().lifetime, 100);
     let output = runtime
         .advance_frame(
-            &[],
             67,
             TickLane::Ordinary,
             crate::sim::world::FrameEffects::default(),
@@ -5900,7 +5812,7 @@ fn test_real_ship_locomotor_move_command_crosses_water_cells() {
         .spawn_object("DEST", "Americans", 0, 0, 64, &rules)
         .expect("spawn destroyer");
     let cmd = cmd_envelope(
-        &sim,
+        &mut sim,
         "Americans",
         1,
         Command::Move {
@@ -5958,7 +5870,7 @@ fn test_real_ship_locomotor_crosses_water_surface_cells_with_non_water_land_type
         .spawn_object("DEST", "Americans", 0, 0, 64, &rules)
         .expect("spawn destroyer");
     let cmd = cmd_envelope(
-        &sim,
+        &mut sim,
         "Americans",
         1,
         Command::Move {
@@ -6025,7 +5937,7 @@ fn test_real_ship_move_command_can_path_under_bridge_when_too_big() {
         .spawn_object("DEST", "Americans", 0, 1, 64, &rules)
         .expect("spawn destroyer");
     let cmd = cmd_envelope(
-        &sim,
+        &mut sim,
         "Americans",
         1,
         Command::Move {
@@ -6123,7 +6035,7 @@ fn a_ship_order_routes_around_an_island_through_the_live_search() {
         .spawn_object("DEST", "Americans", 1, 3, 64, &rules)
         .expect("spawn destroyer");
     let cmd = cmd_envelope(
-        &sim,
+        &mut sim,
         "Americans",
         1,
         Command::Move {
@@ -6588,7 +6500,12 @@ fn test_deploy_mcv_replaces_vehicle_with_conyard() {
         e.selection.set_selected_for_test(true);
     }
 
-    let cmd = cmd_envelope(&sim, "Americans", 1, Command::DeployMcv { entity_id: mcv });
+    let cmd = cmd_envelope(
+        &mut sim,
+        "Americans",
+        1,
+        Command::DeployMcv { entity_id: mcv },
+    );
     let _ = sim.advance_tick(&[cmd], Some(&rules), None, None, 33);
     assert!(
         sim.substrate.entities.get(mcv).is_some(),
@@ -6752,7 +6669,7 @@ fn test_execute_tick_delay_blocks_early_execution() {
     );
     let grid = PathGrid::new(32, 32);
     let delayed = cmd_envelope(
-        &sim,
+        &mut sim,
         "Americans",
         3,
         Command::Move {
@@ -7267,7 +7184,7 @@ fn move_event_issuer_does_not_replace_actor_owner() {
     let grid = PathGrid::new(32, 32);
     sim.interner.intern("Russians"); // Ensure "Russians" is in sim's interner for cmd_envelope lookup.
     let cmd = cmd_envelope(
-        &sim,
+        &mut sim,
         "Russians",
         1,
         Command::Move {
@@ -7302,7 +7219,7 @@ fn test_move_command_chrono_miner_uses_ground_path() {
         .expect("spawn chrono miner");
     let grid = PathGrid::new(32, 32);
     let cmd = cmd_envelope(
-        &sim,
+        &mut sim,
         "Americans",
         1,
         Command::Move {
@@ -7343,7 +7260,7 @@ fn test_move_command_non_harvester_teleporter_drives() {
         .expect("spawn teleporter");
     let grid = PathGrid::new(32, 32);
     let cmd = cmd_envelope(
-        &sim,
+        &mut sim,
         "Americans",
         1,
         Command::Move {
@@ -7498,7 +7415,7 @@ fn test_attack_move_command_chrono_miner_uses_ground_path() {
         .expect("spawn chrono miner");
     let grid = PathGrid::new(32, 32);
     let cmd = cmd_envelope(
-        &sim,
+        &mut sim,
         "Americans",
         1,
         Command::AttackMove {
@@ -7605,7 +7522,7 @@ fn test_attack_move_auto_acquires_enemy() {
     let mut sim = attack_move_fight(&rules);
     let grid = PathGrid::new(64, 64);
     let cmd = cmd_envelope(
-        &sim,
+        &mut sim,
         "Americans",
         1,
         Command::AttackMove {
@@ -7665,7 +7582,7 @@ fn test_attack_move_lethal_hit_expires_the_target_at_the_kill() {
     }
     let grid = PathGrid::new(64, 64);
     let cmd = cmd_envelope(
-        &sim,
+        &mut sim,
         "Americans",
         1,
         Command::AttackMove {
@@ -7930,7 +7847,7 @@ fn test_infantry_attack_move_kills_on_the_way_and_walks_on() {
         .set_for_test(20);
     let grid = PathGrid::new(64, 64);
     let cmd = cmd_envelope(
-        &sim,
+        &mut sim,
         "Americans",
         1,
         Command::AttackMove {
@@ -8203,7 +8120,7 @@ fn test_area_guard_keeps_its_post_when_displaced_inside_the_native_leash() {
         Some(&rules),
     );
     let guard_cmd = cmd_envelope(
-        &sim,
+        &mut sim,
         "Americans",
         1,
         Command::Guard {
@@ -8312,7 +8229,12 @@ fn test_undeploy_conyard_spawns_mcv() {
     if let Some(e) = sim.substrate.entities.get_mut(mcv) {
         e.selection.set_selected_for_test(true);
     }
-    let deploy_cmd = cmd_envelope(&sim, "Americans", 1, Command::DeployMcv { entity_id: mcv });
+    let deploy_cmd = cmd_envelope(
+        &mut sim,
+        "Americans",
+        1,
+        Command::DeployMcv { entity_id: mcv },
+    );
     let _ = sim.advance_tick(&[deploy_cmd], Some(&rules), None, None, 33);
     let _ = sim.advance_tick(&[], Some(&rules), None, None, 33);
 
@@ -8333,10 +8255,11 @@ fn test_undeploy_conyard_spawns_mcv() {
 
     // Undeploy the ConYard: Sell's stage 0 and stage 1 visits, then the
     // build-up played in reverse from stage 1's Begin_Mode(0).
+    let execute_tick = sim.session.tick + 1;
     let undeploy_cmd = cmd_envelope(
-        &sim,
+        &mut sim,
         "Americans",
-        sim.session.tick + 1,
+        execute_tick,
         Command::UndeployBuilding { entity_id: yard_id },
     );
     let undeploy_frame = sim.session.binary_frame;
@@ -8927,7 +8850,7 @@ fn crusher_does_not_freeze_in_front_of_infantry() {
             .expect("tank spawns");
 
         let cmd = cmd_envelope(
-            &sim,
+            &mut sim,
             "Americans",
             1,
             Command::Move {
@@ -9052,7 +8975,7 @@ fn turning_mover_with_an_occupied_endpoint_still_makes_progress() {
         .expect("mover spawns");
 
     let cmd = cmd_envelope(
-        &sim,
+        &mut sim,
         "Americans",
         1,
         Command::Move {
@@ -9178,7 +9101,7 @@ fn parked_friendly_on_the_route_is_scattered_out_of_the_way() {
         .expect("mover spawns");
 
     let cmd = cmd_envelope(
-        &sim,
+        &mut sim,
         "Americans",
         1,
         Command::Move {
@@ -9760,7 +9683,7 @@ fn repro_second_vehicle_ordered_onto_an_occupied_cell() {
         .expect("mover spawns");
 
     let cmd = cmd_envelope(
-        &sim,
+        &mut sim,
         "Americans",
         1,
         Command::Move {
@@ -9924,7 +9847,7 @@ fn repro_group_move_of_eight_vehicles_to_one_cell() {
         .iter()
         .map(|&id| {
             cmd_envelope(
-                &sim,
+                &mut sim,
                 "Americans",
                 1,
                 Command::Move {
@@ -9938,8 +9861,7 @@ fn repro_group_move_of_eight_vehicles_to_one_cell() {
 
     // (a) What the group-destination distributor rewrites each command to.
     // Same &self read the tick performs, run before any tick mutates state.
-    let mut staged = commands.clone();
-    sim.adjust_staged_megamission_destinations(&mut staged, Some(&rules), None);
+    let staged = spread_staged(&sim, &commands, Some(&rules));
     let assigned: Vec<(u64, (u16, u16))> = staged
         .iter()
         .filter_map(|c| match &c.payload {
@@ -10096,7 +10018,7 @@ fn repro_group_move_short_range_traces_every_tick() {
         .iter()
         .map(|&id| {
             cmd_envelope(
-                &sim,
+                &mut sim,
                 "Americans",
                 1,
                 Command::Move {
@@ -10108,8 +10030,7 @@ fn repro_group_move_short_range_traces_every_tick() {
         })
         .collect();
 
-    let mut staged = commands.clone();
-    sim.adjust_staged_megamission_destinations(&mut staged, Some(&rules), None);
+    let staged = spread_staged(&sim, &commands, Some(&rules));
     println!("--- repro_group_move_short_range_traces_every_tick ---");
     println!("(a) distributor assignments:");
     for c in &staged {
@@ -10235,7 +10156,7 @@ fn repro_two_moving_vehicles_pass_through_each_other() {
 
     let commands = vec![
         cmd_envelope(
-            &sim,
+            &mut sim,
             "Americans",
             1,
             Command::Move {
@@ -10245,7 +10166,7 @@ fn repro_two_moving_vehicles_pass_through_each_other() {
             },
         ),
         cmd_envelope(
-            &sim,
+            &mut sim,
             "Americans",
             1,
             Command::Move {
@@ -10257,8 +10178,7 @@ fn repro_two_moving_vehicles_pass_through_each_other() {
     ];
     // Different targets => different formation keys => runs of length 1 =>
     // the group-destination distributor cannot touch either command.
-    let mut staged = commands.clone();
-    sim.adjust_staged_megamission_destinations(&mut staged, Some(&rules), None);
+    let staged = spread_staged(&sim, &commands, Some(&rules));
     println!("--- repro_two_moving_vehicles_pass_through_each_other ---");
     for c in &staged {
         if let Command::Move {
@@ -10489,7 +10409,7 @@ fn repro_two_moving_vehicles_reservation_trace() {
 
     let commands = vec![
         cmd_envelope(
-            &sim,
+            &mut sim,
             "Americans",
             1,
             Command::Move {
@@ -10499,7 +10419,7 @@ fn repro_two_moving_vehicles_reservation_trace() {
             },
         ),
         cmd_envelope(
-            &sim,
+            &mut sim,
             "Americans",
             1,
             Command::Move {
@@ -10627,7 +10547,7 @@ fn head_on_pair_resolves_without_deadlock() {
 
     let commands = vec![
         cmd_envelope(
-            &sim,
+            &mut sim,
             "Americans",
             1,
             Command::Move {
@@ -10637,7 +10557,7 @@ fn head_on_pair_resolves_without_deadlock() {
             },
         ),
         cmd_envelope(
-            &sim,
+            &mut sim,
             "Americans",
             1,
             Command::Move {
@@ -10713,7 +10633,7 @@ fn column_of_vehicles_all_arrive_without_stacking() {
         .zip(goals.iter())
         .map(|(&id, &(gx, gy))| {
             cmd_envelope(
-                &sim,
+                &mut sim,
                 "Americans",
                 1,
                 Command::Move {
@@ -10787,7 +10707,7 @@ fn diag_column_reservation_trace() {
         .zip(goals.iter())
         .map(|(&id, &(gx, gy))| {
             cmd_envelope(
-                &sim,
+                &mut sim,
                 "Americans",
                 1,
                 Command::Move {
@@ -10867,7 +10787,7 @@ fn group_move_never_draws_two_hulls_on_one_spot() {
         .iter()
         .map(|&id| {
             cmd_envelope(
-                &sim,
+                &mut sim,
                 "Americans",
                 1,
                 Command::Move {
@@ -10958,7 +10878,7 @@ fn diag_short_range_group_reservation_trace() {
         .iter()
         .map(|&id| {
             cmd_envelope(
-                &sim,
+                &mut sim,
                 "Americans",
                 1,
                 Command::Move {
@@ -11019,45 +10939,21 @@ fn rule_handles_accessor_panics_before_resolution() {
     let _ = sim.rule_handles();
 }
 
-/// F07 characterization: the production app frame seam — drain due commands,
-/// advance with the app-bound resources, then post-frame reads — pinned as a
-/// contract before the SimRuntime extraction. The app adapter internally pins
-/// its own canonical path snapshot (`advance_app_frame` has no path-grid
-/// parameter), so callers cannot substitute navigation.
+/// F07 characterization: the production app frame seam — records issued
+/// into the queue beforehand, advance with the app-bound resources, then
+/// post-frame reads. The app adapter internally pins its own canonical path
+/// snapshot (`advance_app_frame` has no path-grid parameter), so callers
+/// cannot substitute navigation. A record stamped one frame ahead waits in
+/// the DoList through the first tail and executes in the second.
 #[test]
 fn current_rust_frame_call_order_is_preserved() {
     let rules = RuleSet::from_ini(&IniFile::from_str("")).expect("empty rules parse");
     let (mut sim, owner) = game_speed_command_sim();
-    sim.queue_command(CommandEnvelope::new(
-        owner,
-        sim.session.tick + 2,
-        Command::SetGameSpeed { speed: 4 },
-    ));
+    let exit = CommandEnvelope::new(owner, sim.session.tick + 2, Command::ExitMatch);
+    assert_eq!(sim.issue_fixture_commands(&[exit], None).len(), 1);
 
-    // Not yet due (dispatch admits execute_tick <= tick + 1): the drain
-    // leaves the queue intact, and an empty-command frame carries it forward.
-    assert!(sim.take_due_commands().is_empty());
-    let _ = sim
-        .advance_app_frame(
-            &[],
-            Some(&rules),
-            None,
-            16,
-            TickLane::Ordinary,
-            None,
-            crate::sim::world::FrameEffects::default(),
-        )
-        .expect("fixture frame must complete");
-
-    // Step to the due tick with the exact app-shaped call: drained commands
-    // in, bound resources, Ordinary lane. The command must execute within
-    // THIS frame (drain-before-advance), not the next.
-    let tick_before = sim.session.tick;
-    let due = sim.take_due_commands();
-    assert_eq!(due.len(), 1, "the queued command is due exactly once");
     let output = sim
         .advance_app_frame(
-            &due,
             Some(&rules),
             None,
             16,
@@ -11067,58 +10963,67 @@ fn current_rust_frame_call_order_is_preserved() {
         )
         .expect("fixture frame must complete");
     assert!(output.tick.frame_committed);
-    assert_eq!(sim.session.tick, tick_before + 1);
-    assert_eq!(
-        sim.session.game_options.game_speed, 4,
-        "a due command executes in the frame that drained it"
-    );
-    // Once-per-pass drain: nothing left for a second consumer.
-    assert!(sim.take_due_commands().is_empty());
+    assert!(!sim.quit_requested);
+    assert_eq!(sim.pending_command_snapshot(None).len(), 1);
 
-    // Post-frame reads (the digest) observe the committed frame.
+    let output = sim
+        .advance_app_frame(
+            Some(&rules),
+            None,
+            16,
+            TickLane::Ordinary,
+            None,
+            crate::sim::world::FrameEffects::default(),
+        )
+        .expect("fixture frame must complete");
+    assert_eq!(output.tick.executed_commands, 1);
+    assert!(!output.tick.frame_committed);
+    assert!(
+        sim.quit_requested,
+        "the record executes in its stamped frame"
+    );
+    assert!(sim.pending_command_snapshot(None).is_empty());
+
+    // Post-frame reads (the digest) observe the frame.
     let _ = sim.parity_digest();
 }
 
-/// F07: the runtime API preserves the characterized seam — drain from the
-/// runtime's simulation, advance through `SimRuntime::advance_frame` with the
-/// bound resources, and the due command executes within that same frame.
+/// F07: the runtime API preserves the characterized seam: records issued
+/// into the runtime's simulation execute in the `SimRuntime::advance_frame`
+/// tail of their stamped frame.
 #[test]
 fn runtime_frame_call_order_matches_the_app_seam() {
     let (sim, owner) = game_speed_command_sim();
-    let speed = CommandEnvelope::new(
-        owner,
-        sim.session.tick + 2,
-        Command::SetGameSpeed { speed: 4 },
-    );
+    let exit = CommandEnvelope::new(owner, sim.session.tick + 2, Command::ExitMatch);
     let mut runtime = crate::sim::runtime::SimRuntime::from_simulation(sim);
-    runtime.simulation.queue_command(speed);
+    assert_eq!(
+        runtime
+            .simulation
+            .issue_fixture_commands(&[exit], None)
+            .len(),
+        1
+    );
 
-    assert!(runtime.simulation.take_due_commands().is_empty());
-    let _ = runtime
-        .advance_frame(
-            &[],
-            16,
-            TickLane::Ordinary,
-            crate::sim::world::FrameEffects::default(),
-        )
-        .expect("fixture frame must complete");
-
-    let due = runtime.simulation.take_due_commands();
-    assert_eq!(due.len(), 1);
     let output = runtime
         .advance_frame(
-            &due,
             16,
             TickLane::Ordinary,
             crate::sim::world::FrameEffects::default(),
         )
         .expect("fixture frame must complete");
     assert!(output.tick.frame_committed);
-    assert_eq!(
-        runtime.simulation.session.game_options.game_speed, 4,
-        "a due command executes in the runtime frame that drained it"
-    );
-    assert!(runtime.simulation.take_due_commands().is_empty());
+    assert!(!runtime.simulation.quit_requested);
+
+    let output = runtime
+        .advance_frame(
+            16,
+            TickLane::Ordinary,
+            crate::sim::world::FrameEffects::default(),
+        )
+        .expect("fixture frame must complete");
+    assert_eq!(output.tick.executed_commands, 1);
+    assert!(runtime.simulation.quit_requested);
+    assert!(runtime.simulation.pending_command_snapshot(None).is_empty());
 }
 
 /// F10: the debug-logging toggle is a sim-owned boundary method — enabling
@@ -11470,14 +11375,41 @@ fn defeat_of_a_non_passive_house_emits_player_defeated() {
     );
 }
 
+/// `commands` as one house's staged MEGAMISSION records through the tail's
+/// group spread (`Simulation::adjust_staged_megamission_destinations`),
+/// decoded back.
+fn spread_staged(
+    sim: &Simulation,
+    commands: &[CommandEnvelope],
+    rules: Option<&RuleSet>,
+) -> Vec<CommandEnvelope> {
+    let mut staged: Vec<_> = commands
+        .iter()
+        .map(|command| {
+            crate::sim::lockstep::SynchronizedCommand::opaque(
+                sim.encode_megamission_record(command.owner, &command.payload)
+                    .expect("MEGAMISSION record"),
+            )
+        })
+        .collect();
+    sim.adjust_staged_megamission_destinations(&mut staged, rules, None);
+    staged
+        .iter()
+        .map(|command| {
+            sim.decode_native_command_record(command.record(), rules, sim.session.tick + 1)
+                .expect("staged record decodes")
+        })
+        .collect()
+}
+
 /// One group Move order to (20, 20) for `ids`, as the staged run
 /// `0x0064CDA0` adjusts, and each member's adjusted target.
-fn group_spread(sim: &Simulation, rules: &RuleSet, ids: &[u64]) -> Vec<(u16, u16)> {
-    let mut staged = ids
+fn group_spread(sim: &mut Simulation, rules: &RuleSet, ids: &[u64]) -> Vec<(u16, u16)> {
+    let staged = ids
         .iter()
         .map(|&id| {
             cmd_envelope(
-                sim,
+                &mut *sim,
                 "Americans",
                 1,
                 Command::Move {
@@ -11488,7 +11420,7 @@ fn group_spread(sim: &Simulation, rules: &RuleSet, ids: &[u64]) -> Vec<(u16, u16
             )
         })
         .collect::<Vec<_>>();
-    sim.adjust_staged_megamission_destinations(&mut staged, Some(rules), None);
+    let staged = spread_staged(sim, &staged, Some(rules));
     staged
         .iter()
         .map(|command| match command.payload {
@@ -11528,7 +11460,7 @@ fn a_group_spread_asks_each_members_can_enter_cell_at_the_target_height() {
         .expect("tank spawns");
 
     fresh_oracle_seam::install(vec![7, 0], Vec::new());
-    let targets = group_spread(&sim, &rules, &[west, east]);
+    let targets = group_spread(&mut sim, &rules, &[west, east]);
     let (records, unused) = fresh_oracle_seam::finish();
 
     let asked = |cell, code| FreshCallRecord::CanEnter {
@@ -11569,7 +11501,7 @@ fn a_group_spread_keeps_aircraft_out_of_shrouded_cells() {
             assert!(sim.fog.is_ground_unshrouded(owner, 19, 20));
         }
 
-        let targets = group_spread(&sim, &rules, &[west, east]);
+        let targets = group_spread(&mut sim, &rules, &[west, east]);
 
         let western = if revealed { (19, 20) } else { (20, 20) };
         assert_eq!(targets, [western, (20, 20)], "revealed {revealed}");
@@ -11604,7 +11536,7 @@ fn a_group_spread_asks_infantry_with_a_flagged_targets_deck_height() {
         .expect("infantry spawns");
 
     fresh_oracle_seam::install(vec![0; 6], Vec::new());
-    let targets = group_spread(&sim, &rules, &[west, east]);
+    let targets = group_spread(&mut sim, &rules, &[west, east]);
     let (records, unused) = fresh_oracle_seam::finish();
 
     assert_eq!(unused, 0, "six probes, one Can_Enter_Cell each");

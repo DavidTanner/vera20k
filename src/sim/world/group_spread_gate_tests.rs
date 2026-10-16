@@ -3,51 +3,74 @@
 
 use super::{spread_height, within_spread_band};
 use crate::map::resolved_terrain::ResolvedTerrainGrid;
-use crate::sim::combat::TargetKind;
-use crate::sim::command::Command;
+use crate::sim::command::{
+    Command, CommandRecord, MegaMissionOrder, MegaMissionRecord, MegaMissionTarget,
+};
+use crate::sim::lockstep::SynchronizedCommand;
 use crate::sim::world::Simulation;
 use crate::sim::world::common_raw_test_terrain_cell;
 
+/// One MEGAMISSION record of `order` from object 1.
+fn megamission(order: MegaMissionOrder) -> CommandRecord {
+    let mut record =
+        CommandRecord::decode_exact(&[0; crate::sim::command::COMMAND_RECORD_LEN]).unwrap();
+    MegaMissionRecord {
+        house_id: 0,
+        frame: 0,
+        source_id: 1,
+        order,
+    }
+    .write_into(&mut record)
+    .unwrap();
+    record
+}
+
 /// `0x0064CDA0` returns at once unless the destination token is a Cell
-/// (`0x0064CDCA..0x0064CDDC`): a Move onto an object and an attack-move with a
-/// target or an object destination have no run key.
+/// (`0x0064CDCA..0x0064CDDC`): a Move onto an object, an Area Guard (its post
+/// is the target token) and an attack-move with a target or an object
+/// destination have no run key.
 #[test]
 fn only_a_cell_destination_has_a_spread_key() {
-    let attack_move = |target, destination| Command::AttackMove {
-        entity_id: 1,
-        target,
-        destination,
-    };
-    let move_to_cell = Command::Move {
-        entity_id: 1,
-        target_rx: 4,
-        target_ry: 5,
-    };
+    let cell = MegaMissionTarget::Cell { x: 4, y: 5 };
+    let object = MegaMissionTarget::Object { id: 2 };
     assert_eq!(
-        Simulation::formation_key(&move_to_cell),
+        Simulation::formation_key(&megamission(MegaMissionOrder::Move {
+            target_x: 4,
+            target_y: 5,
+        })),
         Some(((2, 0, 0), 4, 5))
     );
     assert_eq!(
-        Simulation::formation_key(&attack_move(None, Some(TargetKind::Cell(4, 5)))),
+        Simulation::formation_key(&megamission(MegaMissionOrder::AttackMove {
+            target: MegaMissionTarget::Null,
+            destination: cell,
+        })),
         Some(((29, 0, 0), 4, 5))
     );
     assert_eq!(
-        Simulation::formation_key(&Command::HarvestCell {
-            entity_id: 1,
-            target_rx: 4,
-            target_ry: 5,
-        }),
+        Simulation::formation_key(&megamission(MegaMissionOrder::Harvest {
+            target_x: 4,
+            target_y: 5,
+        })),
         Some(((10, 0, 0), 4, 5))
     );
-    for command in [
-        Command::MoveToObject {
-            entity_id: 1,
-            target_id: 2,
+    for order in [
+        MegaMissionOrder::MoveToObject { id: 2 },
+        MegaMissionOrder::AttackMove {
+            target: MegaMissionTarget::Null,
+            destination: object,
         },
-        attack_move(None, Some(TargetKind::Entity(2))),
-        attack_move(Some(TargetKind::Entity(2)), None),
+        MegaMissionOrder::AttackMove {
+            target: object,
+            destination: MegaMissionTarget::Null,
+        },
+        MegaMissionOrder::AreaGuard { post: cell },
     ] {
-        assert_eq!(Simulation::formation_key(&command), None, "{command:?}");
+        assert_eq!(
+            Simulation::formation_key(&megamission(order)),
+            None,
+            "{order:?}"
+        );
     }
 }
 
@@ -97,7 +120,7 @@ fn spread_heights_and_band_match_the_original_slices() {
 
 #[test]
 fn planning_flags_use_the_production_group_destination_distributor() {
-    use crate::sim::command::{CommandEnvelope, MegaMissionRecord};
+    use crate::sim::command::CommandEnvelope;
     let (mut sim, rules, registry) = crate::sim::world::entry_test_fixture::fixture_with_rules(
         "[VehicleTypes]\n0=PLANNER\n[PLANNER]\nStrength=100\nSpeed=8\nSpeedType=Track\nMovementZone=Normal\nLocomotor={4A582741-9839-11d1-B709-00A024DDAFD1}\n",
     );
@@ -136,8 +159,26 @@ fn planning_flags_use_the_production_group_destination_distributor() {
             )
         })
         .collect();
-    let mut ordinary = commands.clone();
-    sim.adjust_staged_megamission_destinations(&mut ordinary, Some(&rules), Some(&registry));
+    let spread = |commands: &[CommandEnvelope]| {
+        let mut staged: Vec<_> = commands
+            .iter()
+            .map(|command| {
+                SynchronizedCommand::opaque(
+                    sim.encode_megamission_record(command.owner, &command.payload)
+                        .unwrap(),
+                )
+            })
+            .collect();
+        sim.adjust_staged_megamission_destinations(&mut staged, Some(&rules), Some(&registry));
+        staged
+            .iter()
+            .map(|command| {
+                sim.decode_native_command_record(command.record(), Some(&rules), 1)
+                    .unwrap()
+            })
+            .collect::<Vec<_>>()
+    };
+    let ordinary = spread(&commands);
     assert!(
         ordinary
             .iter()
@@ -147,7 +188,7 @@ fn planning_flags_use_the_production_group_destination_distributor() {
     );
     // The run key has no mission filter (`0x0064CB0A..0x0064CB60`): a
     // Harvest10 run onto one ore Cell spreads exactly as a Move run does.
-    let mut harvest: Vec<_> = commands
+    let harvest: Vec<_> = commands
         .iter()
         .map(|command| {
             let Command::Move {
@@ -169,7 +210,7 @@ fn planning_flags_use_the_production_group_destination_distributor() {
             )
         })
         .collect();
-    sim.adjust_staged_megamission_destinations(&mut harvest, Some(&rules), Some(&registry));
+    let harvest = spread(&harvest);
     for (actual, expected) in harvest.iter().zip(&ordinary) {
         let (
             Command::HarvestCell {
@@ -196,14 +237,12 @@ fn planning_flags_use_the_production_group_destination_distributor() {
                     .encode_planning_order_record(owner, &command.payload)
                     .unwrap();
                 record.payload_mut()[22] = flag;
-                CommandEnvelope::new(owner, 1, Command::PlanningRecord { record })
+                SynchronizedCommand::opaque(record)
             })
             .collect();
         sim.adjust_staged_megamission_destinations(&mut planned, Some(&rules), Some(&registry));
         for (actual, expected) in planned.iter().zip(&ordinary) {
-            let Command::PlanningRecord { record } = &actual.payload else {
-                unreachable!()
-            };
+            let record = actual.record();
             assert_eq!(record.payload()[22], flag);
             let mut ordinary_record = record.clone();
             ordinary_record.payload_mut()[22] = 0;
@@ -218,7 +257,7 @@ fn planning_flags_use_the_production_group_destination_distributor() {
             };
             assert_eq!(
                 decoded.order,
-                crate::sim::command::MegaMissionOrder::Move {
+                MegaMissionOrder::Move {
                     target_x: target_rx as i16,
                     target_y: target_ry as i16
                 }

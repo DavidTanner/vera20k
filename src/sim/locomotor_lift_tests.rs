@@ -43,7 +43,7 @@ fn entity(sim: &Simulation, id: u64) -> &GameEntity {
 fn order(sim: &mut Simulation, house: &str, command: Command) {
     let owner = sim.interner.get(house).unwrap();
     let tick = sim.session.tick;
-    sim.queue_command(CommandEnvelope::new(owner, tick + 1, command));
+    sim.issue_fixture_commands(&[CommandEnvelope::new(owner, tick + 1, command)], None);
 }
 
 /// Runs the production frame until `done` holds, for at most `frames`
@@ -56,8 +56,7 @@ fn run_until(
     mut done: impl FnMut(&Simulation) -> bool,
 ) -> bool {
     for _ in 0..frames {
-        let commands = sim.take_due_commands();
-        sim.advance_tick(&commands, Some(rules), Some(grid), None, 33);
+        sim.advance_tick(&[], Some(rules), Some(grid), None, 33);
         if done(sim) {
             return true;
         }
@@ -235,10 +234,8 @@ fn retail_tank_let_go_over_a_unit_crashes_onto_it() {
     move_away(&mut sim, magnetron);
     let mut impact_lights = None;
     for _ in 0..400 {
-        let commands = sim.take_due_commands();
         let frame = sim
             .advance_app_frame(
-                &commands,
                 Some(&rules),
                 None,
                 33,

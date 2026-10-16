@@ -171,9 +171,12 @@ fn infantry_terminal_fatal_frame_exit_preserves_delivered_cleanup_through_load()
     ));
     saved.clear_lifecycle_test_events_for_test();
     let registry = OverlayTypeRegistry::empty();
+    saved.issue_fixture_commands(
+        &[CommandEnvelope::new(owner, 1, Command::ExitMatch)],
+        Some(&rules),
+    );
     let output = saved
         .advance_app_frame(
-            &[CommandEnvelope::new(owner, 1, Command::ExitMatch)],
             Some(&rules),
             Some(&registry),
             67,
@@ -246,7 +249,6 @@ fn infantry_terminal_fatal_frame_exit_preserves_delivered_cleanup_through_load()
     assert_eq!(restored.state_hash(), saved.state_hash());
     let next = restored
         .advance_app_frame(
-            &[],
             Some(&rules),
             Some(&registry),
             67,

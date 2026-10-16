@@ -916,8 +916,7 @@ fn run_team(
         if sim.team_script_vm.team(team).is_none_or(&done) {
             return;
         }
-        let commands = sim.take_due_commands();
-        sim.advance_tick(&commands, Some(rules), Some(grid), None, 33);
+        sim.advance_tick(&[], Some(rules), Some(grid), None, 33);
     }
 }
 
@@ -968,8 +967,7 @@ fn scatter_sends_every_member_to_a_neighbouring_cell() {
         {
             break;
         }
-        let commands = sim.take_due_commands();
-        sim.advance_tick(&commands, Some(&rules), Some(&grid), None, 33);
+        sim.advance_tick(&[], Some(&rules), Some(&grid), None, 33);
     }
 
     let state = sim.team_script_vm.team(team).expect("the team lives");
@@ -1401,9 +1399,8 @@ impl DeployTeam {
     }
 
     fn tick(&mut self) {
-        let commands = self.sim.take_due_commands();
         self.sim
-            .advance_tick(&commands, Some(&self.rules), Some(&self.grid), None, 33);
+            .advance_tick(&[], Some(&self.rules), Some(&self.grid), None, 33);
     }
 
     /// Runs action 9 for the team once, outside a frame.

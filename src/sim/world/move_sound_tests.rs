@@ -463,7 +463,6 @@ fn assert_retail_idle_timeline(retail_dir: &std::path::Path, row: &Value) {
         );
         let output = runtime
             .advance_frame(
-                &[],
                 crate::headless_scenario::SIM_TICK_MS,
                 TickLane::Ordinary,
                 crate::sim::world::FrameEffects::default(),

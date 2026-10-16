@@ -9,7 +9,7 @@ use crate::rules::ini_parser::IniFile;
 use crate::rules::ruleset::RuleSet;
 use crate::sim::base_plan::{BasePlanNode, pack_base_plan_cell};
 use crate::sim::combat::{Health, TargetKind};
-use crate::sim::command::Command;
+use crate::sim::command::{Command, CommandEnvelope};
 use crate::sim::game_entity::GameEntity;
 use crate::sim::house_state::HouseAiActivationLatches;
 use crate::sim::world::{SimSoundEvent, Simulation};
@@ -283,28 +283,42 @@ fn deploy_then_undeploy_returns_the_mcv_to_its_original_cell() {
         .expect("ConYard should exist after deploy");
 
     assert!(
-        sim.apply_command(
-            "Americans",
-            &Command::UndeployBuilding { entity_id: yard },
-            Some(&rules),
-        ),
+        sim.can_undeploy_building_runtime(yard, &rules),
         "the yard we just deployed should undeploy"
     );
+    let owner = sim.interner.get("Americans").unwrap();
+    sim.advance_tick(
+        &[CommandEnvelope::new(
+            owner,
+            sim.session.tick + 1,
+            Command::UndeployBuilding { entity_id: yard },
+        )],
+        Some(&rules),
+        None,
+        None,
+        22,
+    );
     // Undeploy runs the build-up animation in reverse and only spawns the
-    // vehicle when it finishes, so the cell under test does not exist yet.
-    tick_n(&mut sim, &rules, 40);
-    sim.flush_pending_delete();
-
+    // vehicle when it finishes. It lands on its undeploy cell; the ARCHIVE
+    // then sends it on to the archived Cell.
     let amcv_id = sim.interner.get("AMCV").expect("AMCV interned");
-    let landed = sim
-        .substrate
-        .entities
-        .values()
-        .find(|e| e.type_ref() == amcv_id)
-        .map(|e| (e.position.rx(), e.position.ry()))
-        .expect("MCV should exist again after undeploy");
+    let mut landed = None;
+    for _ in 0..40 {
+        tick_n(&mut sim, &rules, 1);
+        sim.flush_pending_delete();
+        landed = sim
+            .substrate
+            .entities
+            .values()
+            .find(|e| e.type_ref() == amcv_id)
+            .map(|e| (e.position.rx(), e.position.ry()));
+        if landed.is_some() {
+            break;
+        }
+    }
     assert_eq!(
-        landed, start,
+        landed.expect("MCV should exist again after undeploy"),
+        start,
         "deploy/undeploy must round-trip; drifting here compounds every cycle"
     );
 }
@@ -315,75 +329,41 @@ fn deploy_then_undeploy_returns_the_mcv_to_its_original_cell() {
 /// on the same frame as the semantic order, with no refund, and the MCV takes
 /// the archived Cell, the yard's own, as its destination (`0x0044A091`).
 #[test]
-fn undeploy_records_convert_the_yard_as_the_semantic_order_does() {
+fn undeploy_records_convert_the_yard_and_send_the_unit_to_the_archived_cell() {
     let mut rules = make_mcv_rules();
     rules.set_buildup_control_for_test("GACNST", [0, 29, 1]);
-    let run = |records: bool| {
-        let mut sim = deploy_sim(&rules);
-        sim.session.game_mode_nonzero = true;
-        add_house(&mut sim, "Americans", true);
-        let owner = sim.interner.get("Americans").unwrap();
-        sim.session.house_order = vec![owner];
-        let mcv = sim
-            .spawn_object("AMCV", "Americans", 20, 22, 128, &rules)
-            .expect("spawn MCV");
-        assert!(sim.deploy_mcv(
-            mcv,
-            &rules,
-            None,
-            crate::sim::world::FrameEffects::default()
-        ));
-        sim.flush_pending_delete();
-        tick_n(&mut sim, &rules, 60);
-        let yard = deployed_type(&sim, "GACNST").stable_id();
-        let order = Command::UndeployBuilding { entity_id: yard };
-        let commands = if records {
-            sim.encode_single_event_records(owner, &order, Some(&rules))
-                .unwrap()
-                .into_iter()
-                .map(|record| {
-                    sim.decode_native_command_record(&record, Some(&rules), 0)
-                        .unwrap()
-                        .payload
-                })
-                .collect()
-        } else {
-            vec![order]
-        };
-        // Through the frame's due-command dispatch, whose per-house
-        // insertion order runs ARCHIVE before SELL.
-        let execute_tick = sim.session.tick;
-        sim.queue_commands(commands.iter().cloned().map(|command| {
-            crate::sim::command::CommandEnvelope::new(owner, execute_tick, command)
-        }));
-        let due = sim.take_due_commands();
-        assert_eq!(due.len(), commands.len());
-        sim.advance_tick(&due, Some(&rules), None, None, 22);
-        let credits = sim.houses[&owner].economy.credits();
-        let amcv = sim.interner.get("AMCV").unwrap();
-        for frame in 0..80 {
-            tick_n(&mut sim, &rules, 1);
-            sim.flush_pending_delete();
-            if let Some(unit) = sim
-                .substrate
-                .entities
-                .values()
-                .find(|entity| entity.type_ref() == amcv)
-            {
-                assert!(sim.substrate.entities.get(yard).is_none());
-                assert_eq!(
-                    sim.houses[&owner].economy.credits(),
-                    credits,
-                    "no sale refund"
-                );
-                return (commands, frame, unit.navigation.nav_com());
-            }
-        }
-        panic!("the yard did not convert");
-    };
-    let (semantic, semantic_frame, semantic_destination) = run(false);
-    let (decoded, decoded_frame, decoded_destination) = run(true);
-    assert_eq!(semantic.len(), 1);
+    let mut sim = deploy_sim(&rules);
+    sim.session.game_mode_nonzero = true;
+    add_house(&mut sim, "Americans", true);
+    let owner = sim.interner.get("Americans").unwrap();
+    sim.session.house_order = vec![owner];
+    let mcv = sim
+        .spawn_object("AMCV", "Americans", 20, 22, 128, &rules)
+        .expect("spawn MCV");
+    assert!(sim.deploy_mcv(
+        mcv,
+        &rules,
+        None,
+        crate::sim::world::FrameEffects::default()
+    ));
+    sim.flush_pending_delete();
+    tick_n(&mut sim, &rules, 60);
+    let yard = deployed_type(&sim, "GACNST").stable_id();
+    // Through the frame's tail dispatch, whose per-house issue order runs
+    // ARCHIVE before SELL.
+    sim.issue_fixture_commands(
+        &[CommandEnvelope::new(
+            owner,
+            sim.session.tick,
+            Command::UndeployBuilding { entity_id: yard },
+        )],
+        Some(&rules),
+    );
+    let decoded: Vec<_> = sim
+        .pending_command_snapshot(Some(&rules))
+        .into_iter()
+        .map(|command| command.payload)
+        .collect();
     let [
         Command::SetRally {
             rx,
@@ -396,12 +376,31 @@ fn undeploy_records_convert_the_yard_as_the_semantic_order_does() {
         panic!("undeploy decodes to ARCHIVE then SELL: {decoded:?}");
     };
     assert_eq!(producer_ids.as_slice(), [*entity_id]);
-    assert_eq!(decoded_frame, semantic_frame);
-    assert_eq!(semantic_destination, None);
-    assert_eq!(
-        decoded_destination,
-        Some(crate::sim::components::NavTargetRef::cell(*rx, *ry))
-    );
+    assert_eq!(*entity_id, yard);
+    let archived = crate::sim::components::NavTargetRef::cell(*rx, *ry);
+    sim.advance_tick(&[], Some(&rules), None, None, 22);
+    let credits = sim.houses[&owner].economy.credits();
+    let amcv = sim.interner.get("AMCV").unwrap();
+    for _ in 0..80 {
+        tick_n(&mut sim, &rules, 1);
+        sim.flush_pending_delete();
+        if let Some(unit) = sim
+            .substrate
+            .entities
+            .values()
+            .find(|entity| entity.type_ref() == amcv)
+        {
+            assert!(sim.substrate.entities.get(yard).is_none());
+            assert_eq!(
+                sim.houses[&owner].economy.credits(),
+                credits,
+                "no sale refund"
+            );
+            assert_eq!(unit.navigation.nav_com(), Some(archived));
+            return;
+        }
+    }
+    panic!("the yard did not convert");
 }
 
 /// A computer house's MCV deploys into a yard that builds up before it opens:
@@ -1069,13 +1068,8 @@ fn conyard_redeploy_runtime_rejects_when_mcv_redeploy_disabled() {
         .expect("spawn ConYard");
     sim.session.game_options.mcv_redeploy = false;
 
-    let applied = sim.apply_command(
-        "Americans",
-        &Command::UndeployBuilding { entity_id: yard },
-        Some(&rules),
-    );
-
-    assert!(!applied);
+    // The undeploy click checks the runtime gate before it sends its records.
+    assert!(!sim.can_undeploy_building_runtime(yard, &rules));
     assert!(!sim.substrate.entities.get(yard).unwrap().building_down());
 }
 
@@ -1088,13 +1082,8 @@ fn conyard_redeploy_runtime_rejects_non_human_owner() {
         .spawn_object("GACNST", "Americans", 19, 21, 0, &rules)
         .expect("spawn ConYard");
 
-    let applied = sim.apply_command(
-        "Americans",
-        &Command::UndeployBuilding { entity_id: yard },
-        Some(&rules),
-    );
-
-    assert!(!applied);
+    // The undeploy click checks the runtime gate before it sends its records.
+    assert!(!sim.can_undeploy_building_runtime(yard, &rules));
     assert!(!sim.substrate.entities.get(yard).unwrap().building_down());
 }
 

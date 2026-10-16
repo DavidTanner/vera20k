@@ -149,7 +149,7 @@ pub(super) fn retail_frame(
 ) -> super::SimFrameOutput {
     scenario
         .runtime
-        .advance_frame(
+        .advance_frame_issuing(
             &orders,
             crate::headless_scenario::SIM_TICK_MS,
             super::TickLane::Ordinary,
@@ -625,6 +625,8 @@ fn retail_dustbowl_shot_down_rocketeer_falls_and_leaves_no_body() {
         .expect("Flak Track");
     sim.resolve_type_handles(&resources.rules);
     let russians = sim.interner.intern("Russians");
+    // The order is the player's event (`IsHuman || PlayerControl`).
+    sim.houses.get_mut(&russians).unwrap().player_control = true;
     let attack = CommandEnvelope::new(
         russians,
         sim.session.tick + 1,

@@ -380,8 +380,7 @@ fn run_until(
     mut done: impl FnMut(&Simulation) -> bool,
 ) -> bool {
     for _ in 0..frames {
-        let commands = sim.take_due_commands();
-        sim.advance_tick(&commands, Some(rules), Some(grid), None, 33);
+        sim.advance_tick(&[], Some(rules), Some(grid), None, 33);
         events.append(&mut sim.sound_events);
         if done(sim) {
             return true;
@@ -393,14 +392,17 @@ fn run_until(
 fn capture(sim: &mut Simulation, actor: u64, building: u64) {
     let owner = sim.interner.get("Americans").unwrap();
     let tick = sim.session.tick;
-    sim.queue_command(CommandEnvelope::new(
-        owner,
-        tick + 1,
-        Command::CaptureBuilding {
-            engineer_id: actor,
-            target_building_id: building,
-        },
-    ));
+    sim.issue_fixture_commands(
+        &[CommandEnvelope::new(
+            owner,
+            tick + 1,
+            Command::CaptureBuilding {
+                engineer_id: actor,
+                target_building_id: building,
+            },
+        )],
+        None,
+    );
 }
 
 /// The spy's Capture order walks it into the enemy power plant: its

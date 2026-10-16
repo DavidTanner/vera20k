@@ -639,6 +639,9 @@ fn retail_iron_curtain_through_production_frames() {
         .unwrap();
     let sw_type = charge_super(&mut sim, russians, IRON_CURTAIN);
     let launch_frame = sim.session.binary_frame as i32;
+    // A computer house fires without an event; this click is a PlayerControl
+    // house's SPECIAL_PLACE, which the tail dispatch admits.
+    sim.houses.get_mut(&russians).unwrap().player_control = true;
     click(&mut sim, &rules, russians, IRON_CURTAIN, (40, 40));
 
     let launch: Vec<&SimSoundEvent> = sim

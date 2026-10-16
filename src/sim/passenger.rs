@@ -2954,8 +2954,7 @@ ConditionYellow=50%
                 ),
             );
             crate::sim::mission::authority::commence_entity_mission(building, 0);
-            building
-                .install_building_down(crate::sim::components::BuildingDown::commenced(0, false));
+            building.install_building_down(crate::sim::components::BuildingDown::commenced(0));
 
             assert!(
                 !can_enter_garrison_fixture(&sim, &rules, pax, bldg),
