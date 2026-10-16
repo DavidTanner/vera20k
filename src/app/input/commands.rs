@@ -848,7 +848,14 @@ pub(super) fn schedule_command_in_sim(
         }
         payload => CommandEnvelope::new(owner_id, execute_tick, payload),
     };
-    let envelope = roundtrip_ordinary_local_megamission(sim, envelope)?;
+    let envelope = match envelope.payload {
+        // On this route Unload's two receivers come only from the deploy key:
+        // Selection::IssueDeployCommand `0x00730AF0` sends ClickedEvent
+        // `0x006FFE00` the DEPLOY event (`push 9` at `0x00730D10`), not the
+        // self-click's MEGAMISSION Unload. Its record belongs to stage 2c.
+        Command::ToggleInfantryDeploy { .. } | Command::UnloadPassengers { .. } => envelope,
+        _ => roundtrip_ordinary_local_megamission(sim, envelope)?,
+    };
     sim.queue_command(envelope);
     Some(execute_tick)
 }
@@ -898,14 +905,17 @@ pub(crate) fn object_move_destination(
         })
 }
 
-/// Make ordinary local Move and AreaGuard bytes authoritative at issue time.
+/// Make ordinary local MegaMission bytes authoritative at issue time.
 ///
-/// Active YR routes a cell click through `ClickedAction` (`0x004D7D50`), and a
-/// Move over an object through `0x004D74E0`, to
-/// `EventClass__BuildMegaMissionEnvelope` (`0x004C6860`). Guard key730D60
-/// reaches the same producer through QueueMegaMission6FFBE0. Move, to a Cell
-/// or an object, and AreaGuard share this codec; other semantic commands pass
-/// through until their native record is established.
+/// Active YR routes a cell click through `ClickedAction` (`0x004D7D50`), and an
+/// object click through `0x004D74E0` (Building `0x00443410`), to
+/// ClickedMission `0x006FFBE0` and `EventClass__BuildMegaMissionEnvelope`
+/// (`0x004C6860`). Guard key730D60 reaches the same producer. Every order that
+/// event carries (Move, Attack, AttackMove, AreaGuard, Enter, Capture,
+/// Sabotage, Harvest, Unload) is queued as its decoded record: an Enter order
+/// becomes `Command::Enter`, an Attack becomes `Command::ForceAttack`, and
+/// Unload becomes the class's receiver. Other semantic commands pass through
+/// until their native record is established.
 pub(crate) fn roundtrip_ordinary_local_megamission(
     sim: &crate::sim::world::Simulation,
     envelope: CommandEnvelope,
@@ -916,7 +926,22 @@ pub(crate) fn roundtrip_ordinary_local_megamission(
         payload,
     } = envelope;
     match payload {
-        Command::Move { .. } | Command::MoveToObject { .. } | Command::Guard { .. } => {
+        Command::Move { .. }
+        | Command::MoveToObject { .. }
+        | Command::Guard { .. }
+        | Command::Attack { .. }
+        | Command::ForceAttack { .. }
+        | Command::ForceAttackCell { .. }
+        | Command::AttackMove { .. }
+        | Command::MinerReturn { .. }
+        | Command::RepairAtDepot { .. }
+        | Command::EnterTransport { .. }
+        | Command::EnterBunker { .. }
+        | Command::CaptureBuilding { .. }
+        | Command::PlantC4 { .. }
+        | Command::HarvestCell { .. }
+        | Command::UnloadPassengers { .. }
+        | Command::ToggleInfantryDeploy { .. } => {
             let record = sim.encode_megamission_record(owner, &payload)?;
             SynchronizedCommand::opaque(record).decode_for_simulation(sim, execute_tick)
         }

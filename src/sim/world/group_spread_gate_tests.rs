@@ -31,6 +31,14 @@ fn only_a_cell_destination_has_a_spread_key() {
         Simulation::formation_key(&attack_move(None, Some(TargetKind::Cell(4, 5)))),
         Some(((29, 0, 0), 4, 5))
     );
+    assert_eq!(
+        Simulation::formation_key(&Command::HarvestCell {
+            entity_id: 1,
+            target_rx: 4,
+            target_ry: 5,
+        }),
+        Some(((10, 0, 0), 4, 5))
+    );
     for command in [
         Command::MoveToObject {
             entity_id: 1,
@@ -137,6 +145,49 @@ fn planning_flags_use_the_production_group_destination_distributor() {
             .any(|(a, b)| a.payload != b.payload),
         "fixture must exercise actual destination redistribution"
     );
+    // The run key has no mission filter (`0x0064CB0A..0x0064CB60`): a
+    // Harvest10 run onto one ore Cell spreads exactly as a Move run does.
+    let mut harvest: Vec<_> = commands
+        .iter()
+        .map(|command| {
+            let Command::Move {
+                entity_id,
+                target_rx,
+                target_ry,
+            } = command.payload
+            else {
+                unreachable!()
+            };
+            CommandEnvelope::new(
+                owner,
+                1,
+                Command::HarvestCell {
+                    entity_id,
+                    target_rx,
+                    target_ry,
+                },
+            )
+        })
+        .collect();
+    sim.adjust_staged_megamission_destinations(&mut harvest, Some(&rules), Some(&registry));
+    for (actual, expected) in harvest.iter().zip(&ordinary) {
+        let (
+            Command::HarvestCell {
+                target_rx,
+                target_ry,
+                ..
+            },
+            Command::Move {
+                target_rx: move_rx,
+                target_ry: move_ry,
+                ..
+            },
+        ) = (&actual.payload, &expected.payload)
+        else {
+            unreachable!()
+        };
+        assert_eq!((target_rx, target_ry), (move_rx, move_ry));
+    }
     for flag in [1, 2] {
         let mut planned: Vec<_> = commands
             .iter()

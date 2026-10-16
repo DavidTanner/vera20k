@@ -411,7 +411,7 @@ live value, and offline play is unchanged.
 
 ### Stage 2: lockstep queue in production, offline path
 
-Scope: route live command issue through `SynchronizedCommandQueue`, using
+Goal: route live command issue through `SynchronizedCommandQueue`, using
 `transfer_single_player` and `dispatch_due_offline`. Delete the direct command path it
 replaces. Keep RNG and same-frame ordering identical; the convergence tests and the
 stage 0 checksum test guard this.
@@ -421,6 +421,86 @@ the old path is gone.
 
 Why before transport: the queue's frame-stamp and ahead-window semantics are native
 behavior the game must already obey before a second client exists.
+
+The queue carries only native 0x6F-byte `EventClass` records and accepts no semantic
+sidecar, so every live `Command` needs a native encoding and decoding first. Before 2a the
+app and the sim both append semantic `CommandEnvelope`s to `Simulation::pending_commands`,
+which the frame tail already dispatches in native house order with MegaMission
+staging. Only Move, MoveToObject, Attack/ForceAttack, ForceAttackCell, AttackMove,
+Guard, Scatter, SellWallAtCell, ExitMatch and the planning records are encoded.
+gamemd's event name table (`0x008209DC`) lists 47 opcodes, `0x00` EMPTY to `0x2E`
+ABANDON_ALL. Stage 2 is therefore split into one PR per command family, then a
+switchover. Each family PR ports the encoding and decoding, and makes local issue
+queue what the record decodes to. Execution differences the bytes cannot carry are
+resolved toward native in that PR:
+
+| Part | Commands | Native events |
+|---|---|---|
+| 2a MegaMission (this PR) | Attack, ForceAttack, ForceAttackCell, AttackMove, EnterTransport, EnterBunker, RepairAtDepot, MinerReturn, CaptureBuilding, PlantC4, HarvestCell, UnloadPassengers, ToggleInfantryDeploy | MEGAMISSION `0x04`: Attack 1, AttackMove 29, Enter 7, Capture 8, Harvest 10, Unload 16, Sabotage 17 |
+| 2b Production | QueueProduction, SuspendProduction, CancelProductionByType, PlaceReadyBuilding, PlaceProducedMobile, CycleProducerFocus | PRODUCE `0x0E`, SUSPEND `0x0F`, ABANDON `0x10`, ABANDON_ALL `0x2E`, PLACE `0x0B`, PRIMARY `0x11` (*lead*) |
+| 2c Single events | Stop, DeployMcv, SellBuilding, ToggleRepair, LaunchSuperWeapon, SetGameSpeed, SetRally, UndeployBuilding, EjectBunker, and the deploy key's UnloadPassengers and ToggleInfantryDeploy | IDLE `0x06`, DEPLOY `0x09` (the deploy key, `0x00730AF0` -> ClickedEvent `0x006FFE00`), SELL `0x16`, REPAIR `0x15`, SPECIAL_PLACE `0x12`, GAMESPEED `0x0D`, ARCHIVE `0x1E` for rally; UndeployBuilding, EjectBunker and the MCV self-click (Foot action 4 sends Unload16) are *leads* |
+| 2d Local selection | Select | None: native selection is client-local and never an event |
+| 2e Switchover | Every producer, including sim-generated strip PLACE and ABANDON | The queue becomes the only command path; `pending_commands` is deleted |
+
+Each part's mapping is checked against the native producer and `EventClass::Execute`
+before it is ported. Mappings marked *lead* above are not yet established.
+
+#### 2a: MegaMission family
+
+Native producers: Foot `ClickedAction` (`0x004D74E0` object, `0x004D7D50` Cell) and
+Building `ClickedAction` (`0x00443410`) call `ClickedMission` (`0x006FFBE0`), which
+queues one MEGAMISSION record of (mission, target, destination):
+
+| Click | Mission | Target | Destination |
+|---|---|---|---|
+| Enter (action 3) on an object | 7 | NULL | the object |
+| Capture (action 9) | 8 | NULL | the building |
+| Sabotage (action 0x10, 0x1A) | 17 | NULL | the building |
+| Harvest (Cell action 6) | 10 | NULL | the Cell |
+| Foot self-click (action 4) | 16 | NULL | NULL |
+| Building self-click (action 4), garrison or absorber | 16 | the building | NULL |
+| Grinder (action 0xB) | 9 Eaten | NULL | the building |
+
+The receiver (`EventClass::Execute` `0x004C7200..0x004C74A2`) admits both tokens,
+skips a repeated Enter onto the current contact, queues the mission, and hands the
+target and destination to the class setters. It has no alliance test.
+
+Delivered: the record codec carries every row above. Issue time round-trips each of
+these orders through its record (`roundtrip_ordinary_local_megamission`), so the
+queued command is what the bytes decode to:
+- Attack decodes to ForceAttack. The VERA-only alliance check on the Attack receiver
+  is removed; What_Action already chose Attack.
+- Enter decodes to `Command::Enter`. Its execution picks MinerReturn, RepairAtDepot,
+  EnterBunker or EnterTransport from the live destination, where native's single
+  receiver leaves that to the destination's radio answer.
+- Unload decodes to ToggleInfantryDeploy for infantry (`0x0051F6E0`) and to
+  UnloadPassengers for every other class. Only the self-click round-trips this way;
+  the deploy key sends DEPLOY, which stays unencoded until 2c.
+- A Harvest run onto one Cell gets the group spread, like Move and AttackMove: the run
+  key (`0x0064CB0A..0x0064CB60`) has no mission filter.
+
+Residuals:
+- Planning mode records only Move, Attack, AttackMove and Area Guard; other orders
+  are dropped while planning, as before. Native's planning branch of
+  `ClickedMission` (`0x00637AA0`) has no mission filter. Trigger: an Enter, Capture,
+  Sabotage, Harvest or Unload click in planning mode.
+- The represented Enter and Unload receivers keep VERA-only gates that native leaves
+  to the destination's radio answer or mission: RepairAtDepot needs the same owner
+  as the depot, a damaged Unit and no deploy; EnterBunker needs the same owner;
+  MinerReturn re-checks the refinery; UnloadPassengers needs the same owner and
+  cargo. The click already applies the same tests, so a refusal needs the state to
+  change between issue and the frame tail. Effect: the order is dropped where native
+  would drive to the building and be refused there.
+- Unit Unload also deploys an MCV or Slave Miner (`0x0073D630`), and Building Unload
+  covers a gap generator. The decoder maps those to UnloadPassengers, which refuses
+  them. No VERA producer sends them yet.
+- Eaten (mission 9, the Grinder click) has no VERA producer and does not decode.
+- Enter receiver selection is made twice: by the click and by `enter_receiver` at
+  execution. Both are type-based and resolve in the same order.
+- The garrison Unload receiver does not run the building's target setter with
+  itself as the target.
+- Enter onto a Cell (Cell action 3) and Sabotage onto a Cell (Cell action 0x10) have
+  no VERA producer and do not decode.
 
 ### Stage 3: UDP transport and network lockstep
 

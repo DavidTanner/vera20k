@@ -45,8 +45,15 @@ const MEGAMISSION_OWNED_PAYLOAD_LEN: usize = 23;
 const ABSTRACT_OBJECT_TARGET_KIND: u8 = 0x34;
 const CELL_TARGET_KIND: u8 = 0x0b;
 const NULL_TARGET_KIND: u8 = 0;
+const ATTACK_ACTION: u8 = 1;
 const MOVE_ACTION: u8 = 2;
+const ENTER_ACTION: u8 = 7;
+const CAPTURE_ACTION: u8 = 8;
+const HARVEST_ACTION: u8 = 10;
 const AREA_GUARD_ACTION: u8 = 11;
+const UNLOAD_ACTION: u8 = 16;
+const SABOTAGE_ACTION: u8 = 17;
+const ATTACK_MOVE_ACTION: u8 = 29;
 const CELL_TOKEN_ROW_STRIDE: i32 = 1000;
 
 /// A malformed fixed-width synchronized command record.
@@ -387,6 +394,35 @@ pub enum MegaMissionOrder {
     AreaGuard {
         post: MegaMissionTarget,
     },
+    /// Enter with the clicked object as destination: Foot ClickedAction
+    /// (`0x004D74E0`) action 3 sends mission 7 with a NULL target. The Cell
+    /// arm's Enter (`0x004D7D50` action 3, a Cell destination) is not
+    /// represented.
+    Enter {
+        id: i32,
+    },
+    /// Capture (mission 8), the Foot object arm's action 9, building as
+    /// destination.
+    Capture {
+        id: i32,
+    },
+    /// Sabotage (mission 17), the Foot object arm's action 0x10 and 0x1A,
+    /// building as destination.
+    Sabotage {
+        id: i32,
+    },
+    /// Harvest (mission 10), the Foot Cell arm's (`0x004D7D50`) action 6,
+    /// ore Cell as destination.
+    Harvest {
+        target_x: i16,
+        target_y: i16,
+    },
+    /// Unload (mission 16) with no destination. A Foot self-click (action 4)
+    /// sends a NULL target; a Building self-click (`0x00443410`) sends the
+    /// building itself as the target.
+    Unload {
+        target: MegaMissionTarget,
+    },
 }
 
 /// A TargetClass token used by an ordinary Move or Area Guard order.
@@ -446,12 +482,13 @@ impl MegaMissionRecord {
 
         // Player_Send_Command6FFBE0 ->646E90 places a Guard post in the
         // first token. Move places its cell in the second token instead.
+        let destination_object = |id| (MegaMissionTarget::Null, MegaMissionTarget::Object { id });
         let (action, target, destination) = match self.order {
-            MegaMissionOrder::Attack { target } => (1, target, MegaMissionTarget::Null),
+            MegaMissionOrder::Attack { target } => (ATTACK_ACTION, target, MegaMissionTarget::Null),
             MegaMissionOrder::AttackMove {
                 target,
                 destination,
-            } => (29, target, destination),
+            } => (ATTACK_MOVE_ACTION, target, destination),
             MegaMissionOrder::Move { target_x, target_y } => (
                 MOVE_ACTION,
                 MegaMissionTarget::Null,
@@ -468,6 +505,27 @@ impl MegaMissionRecord {
             MegaMissionOrder::AreaGuard { post } => {
                 (AREA_GUARD_ACTION, post, MegaMissionTarget::Null)
             }
+            MegaMissionOrder::Enter { id } => {
+                let (target, destination) = destination_object(id);
+                (ENTER_ACTION, target, destination)
+            }
+            MegaMissionOrder::Capture { id } => {
+                let (target, destination) = destination_object(id);
+                (CAPTURE_ACTION, target, destination)
+            }
+            MegaMissionOrder::Sabotage { id } => {
+                let (target, destination) = destination_object(id);
+                (SABOTAGE_ACTION, target, destination)
+            }
+            MegaMissionOrder::Harvest { target_x, target_y } => (
+                HARVEST_ACTION,
+                MegaMissionTarget::Null,
+                MegaMissionTarget::Cell {
+                    x: target_x,
+                    y: target_y,
+                },
+            ),
+            MegaMissionOrder::Unload { target } => (UNLOAD_ACTION, target, MegaMissionTarget::Null),
         };
         let (target_value, target_kind) = target.token()?;
         let (destination_value, destination_kind) = destination.token()?;
@@ -489,8 +547,8 @@ impl MegaMissionRecord {
         Ok(())
     }
 
-    /// Decode represented ordinary Move, Attack, AttackMove and AreaGuard
-    /// forms. Planning flags are dispatched by the PlanMgr owner.
+    /// Decode the represented ordinary forms. Planning flags are dispatched by
+    /// the PlanMgr owner.
     pub fn decode(record: &CommandRecord) -> Option<Self> {
         if record.opcode() != MEGAMISSION_OPCODE || record.house_id() < 0 {
             return None;
@@ -525,8 +583,8 @@ impl MegaMissionRecord {
             payload[MEGAMISSION_DESTINATION_KIND_OFFSET],
         )?;
         let order = match (action, target, destination) {
-            (1, target, MegaMissionTarget::Null) => MegaMissionOrder::Attack { target },
-            (29, target, destination) => MegaMissionOrder::AttackMove {
+            (ATTACK_ACTION, target, MegaMissionTarget::Null) => MegaMissionOrder::Attack { target },
+            (ATTACK_MOVE_ACTION, target, destination) => MegaMissionOrder::AttackMove {
                 target,
                 destination,
             },
@@ -541,6 +599,27 @@ impl MegaMissionRecord {
             }
             (AREA_GUARD_ACTION, post, MegaMissionTarget::Null) => {
                 MegaMissionOrder::AreaGuard { post }
+            }
+            (ENTER_ACTION, MegaMissionTarget::Null, MegaMissionTarget::Object { id }) => {
+                MegaMissionOrder::Enter { id }
+            }
+            (CAPTURE_ACTION, MegaMissionTarget::Null, MegaMissionTarget::Object { id }) => {
+                MegaMissionOrder::Capture { id }
+            }
+            (SABOTAGE_ACTION, MegaMissionTarget::Null, MegaMissionTarget::Object { id }) => {
+                MegaMissionOrder::Sabotage { id }
+            }
+            (HARVEST_ACTION, MegaMissionTarget::Null, MegaMissionTarget::Cell { x, y }) => {
+                MegaMissionOrder::Harvest {
+                    target_x: x,
+                    target_y: y,
+                }
+            }
+            (UNLOAD_ACTION, target, MegaMissionTarget::Null)
+                if target == MegaMissionTarget::Null
+                    || target == MegaMissionTarget::Object { id: source_id } =>
+            {
+                MegaMissionOrder::Unload { target }
             }
             _ => return None,
         };
@@ -768,6 +847,13 @@ pub enum Command {
     /// Event7: Scatter(NULL, forced=true, no_kidding=false). Appended so
     /// existing saved/replayed command variant indices remain unchanged.
     Scatter { entity_id: u64 },
+    /// The MEGAMISSION Enter event (mission 7, NULL target, `target_id` as
+    /// destination) as decoded from its native record. Native has one
+    /// receiver (`EventClass::Execute` `0x004C7200..0x004C74A2`); execution
+    /// picks the represented Enter receiver (MinerReturn, RepairAtDepot,
+    /// EnterBunker or EnterTransport) from the live destination. Appended to
+    /// preserve saved indices.
+    Enter { entity_id: u64, target_id: u64 },
 }
 
 impl Command {
@@ -783,6 +869,7 @@ impl Command {
             | Self::MinerReturn { entity_id, .. }
             | Self::RepairAtDepot { entity_id, .. }
             | Self::HarvestCell { entity_id, .. }
+            | Self::Enter { entity_id, .. }
             | Self::ToggleInfantryDeploy { entity_id } => Some(*entity_id),
             Self::Attack { attacker_id, .. }
             | Self::ForceAttack { attacker_id, .. }
@@ -1084,6 +1171,117 @@ mod tests {
         record.payload_mut()[12..16].copy_from_slice(&0_i32.to_le_bytes());
         record.payload_mut()[16] = NULL_TARGET_KIND;
         assert_eq!(MegaMissionRecord::decode(&record), None);
+    }
+
+    /// Token placement follows each ClickedMission caller's arguments
+    /// (`0x006FFBE0(mission, target, destination, follow)`): Foot `0x004D74E0`
+    /// sends Enter7/Capture8/Sabotage17 as (NULL, object) and Unload16 as
+    /// (NULL, NULL); Foot Cell `0x004D7D50` sends Harvest10 as (NULL, Cell);
+    /// Building `0x00443410` sends Unload16 as (itself, NULL).
+    #[test]
+    fn megamission_family_orders_place_their_tokens_as_the_click_producers_do() {
+        let tokens: [(MegaMissionOrder, u8, (i32, u8), (i32, u8)); 6] = [
+            (
+                MegaMissionOrder::Enter { id: 0x0102_0304 },
+                7,
+                (0, NULL_TARGET_KIND),
+                (0x0102_0304, ABSTRACT_OBJECT_TARGET_KIND),
+            ),
+            (
+                MegaMissionOrder::Capture { id: 55 },
+                8,
+                (0, NULL_TARGET_KIND),
+                (55, ABSTRACT_OBJECT_TARGET_KIND),
+            ),
+            (
+                MegaMissionOrder::Sabotage { id: 56 },
+                17,
+                (0, NULL_TARGET_KIND),
+                (56, ABSTRACT_OBJECT_TARGET_KIND),
+            ),
+            (
+                MegaMissionOrder::Harvest {
+                    target_x: 31,
+                    target_y: 7,
+                },
+                10,
+                (0, NULL_TARGET_KIND),
+                (7_031, 0x0b),
+            ),
+            (
+                MegaMissionOrder::Unload {
+                    target: MegaMissionTarget::Null,
+                },
+                16,
+                (0, NULL_TARGET_KIND),
+                (0, NULL_TARGET_KIND),
+            ),
+            (
+                MegaMissionOrder::Unload {
+                    target: MegaMissionTarget::Object { id: 7 },
+                },
+                16,
+                (7, ABSTRACT_OBJECT_TARGET_KIND),
+                (0, NULL_TARGET_KIND),
+            ),
+        ];
+        for (order, mission, target, destination) in tokens {
+            let mut record = CommandRecord::decode_exact(&[0xcc; COMMAND_RECORD_LEN]).unwrap();
+            let typed = MegaMissionRecord {
+                house_id: 2,
+                frame: 9,
+                source_id: 7,
+                order,
+            };
+            typed.write_into(&mut record).unwrap();
+            let bytes = record.as_bytes();
+            assert_eq!(bytes[0], MEGAMISSION_OPCODE, "{order:?}");
+            assert_eq!(&bytes[7..11], &7_i32.to_le_bytes(), "{order:?}");
+            assert_eq!(bytes[12], mission, "{order:?}");
+            assert_eq!(bytes[13], 0xcc, "{order:?}: mission padding");
+            assert_eq!(&bytes[14..18], &target.0.to_le_bytes(), "{order:?}");
+            assert_eq!(bytes[18], target.1, "{order:?}");
+            assert_eq!(&bytes[19..23], &destination.0.to_le_bytes(), "{order:?}");
+            assert_eq!(bytes[23], destination.1, "{order:?}");
+            assert_eq!(MegaMissionRecord::decode(&record), Some(typed), "{order:?}");
+        }
+    }
+
+    #[test]
+    fn megamission_family_decoder_rejects_unrepresented_token_shapes() {
+        let encoded = |order| {
+            let mut record = CommandRecord::decode_exact(&[0; COMMAND_RECORD_LEN]).unwrap();
+            MegaMissionRecord {
+                house_id: 0,
+                frame: 1,
+                source_id: 7,
+                order,
+            }
+            .write_into(&mut record)
+            .unwrap();
+            record
+        };
+        // Enter with a Cell destination (the Cell arm's Enter) is outside
+        // the represented forms, as is a Capture with a target token.
+        let mut enter_cell = encoded(MegaMissionOrder::Enter { id: 9 });
+        enter_cell.payload_mut()[16] = 0x0b;
+        assert_eq!(MegaMissionRecord::decode(&enter_cell), None);
+        let mut capture_target = encoded(MegaMissionOrder::Capture { id: 9 });
+        capture_target.payload_mut()[7..11].copy_from_slice(&9_i32.to_le_bytes());
+        capture_target.payload_mut()[11] = ABSTRACT_OBJECT_TARGET_KIND;
+        assert_eq!(MegaMissionRecord::decode(&capture_target), None);
+        // A Building self-click names itself; any other Unload target is not
+        // a represented producer.
+        let other = encoded(MegaMissionOrder::Unload {
+            target: MegaMissionTarget::Object { id: 8 },
+        });
+        assert_eq!(MegaMissionRecord::decode(&other), None);
+        let mut harvest_object = encoded(MegaMissionOrder::Harvest {
+            target_x: 1,
+            target_y: 1,
+        });
+        harvest_object.payload_mut()[16] = ABSTRACT_OBJECT_TARGET_KIND;
+        assert_eq!(MegaMissionRecord::decode(&harvest_object), None);
     }
 
     #[test]

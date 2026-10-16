@@ -283,6 +283,13 @@ impl Simulation {
                 destination: Some(crate::sim::combat::TargetKind::Cell(rx, ry)),
                 ..
             } => Some(((29, 0, 0), *rx, *ry)),
+            // Harvest10 carries the ore Cell as its destination token
+            // (ClickedAction_Cell `0x004D7D50` action 6), so a run spreads.
+            Command::HarvestCell {
+                target_rx,
+                target_ry,
+                ..
+            } => Some(((10, 0, 0), *target_rx, *target_ry)),
             // 64CB0A..64CBDB groups all staged opcode4 records by mission,
             // target and destination tokens, including planning flags1/2.
             Command::PlanningRecord { record } if record.opcode() == 4 => {
@@ -308,9 +315,9 @@ impl Simulation {
 
     fn formation_entity_id(command: &Command) -> Option<u64> {
         match command {
-            Command::Move { entity_id, .. } | Command::AttackMove { entity_id, .. } => {
-                Some(*entity_id)
-            }
+            Command::Move { entity_id, .. }
+            | Command::AttackMove { entity_id, .. }
+            | Command::HarvestCell { entity_id, .. } => Some(*entity_id),
             Command::PlanningRecord { record } if record.opcode() == 4 => {
                 let p = record.payload();
                 if p[4] != 0x34 {
@@ -523,6 +530,11 @@ impl Simulation {
                         | Command::AttackMove {
                             destination:
                                 Some(crate::sim::combat::TargetKind::Cell(target_rx, target_ry)),
+                            ..
+                        }
+                        | Command::HarvestCell {
+                            target_rx,
+                            target_ry,
                             ..
                         } => {
                             *target_rx = assignment.destination.0 as u16;

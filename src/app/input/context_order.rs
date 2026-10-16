@@ -625,7 +625,8 @@ fn order_voice_key(command: &Command) -> Option<&'static str> {
         }
         Command::HarvestCell { .. } => Some("VoiceHarvest"),
         Command::CaptureBuilding { .. } => Some("VoiceCapture"),
-        Command::MinerReturn { .. }
+        Command::Enter { .. }
+        | Command::MinerReturn { .. }
         | Command::EnterTransport { .. }
         | Command::RepairAtDepot { .. }
         | Command::EnterBunker { .. } => Some("VoiceEnter"),
@@ -648,6 +649,7 @@ fn command_actor_id(command: &Command) -> Option<u64> {
         | Command::HarvestCell { entity_id, .. }
         | Command::MinerReturn { entity_id, .. }
         | Command::RepairAtDepot { entity_id, .. }
+        | Command::Enter { entity_id, .. }
         | Command::ToggleInfantryDeploy { entity_id }
         | Command::DeployMcv { entity_id }
         | Command::UndeployBuilding { entity_id }

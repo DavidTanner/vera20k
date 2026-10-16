@@ -418,6 +418,24 @@ impl Simulation {
         owner: InternedId,
         command: &Command,
     ) -> Option<CommandRecord> {
+        // RESIDUAL: ClickedMission `0x006FFBE0` builds a planning record for
+        // any mission while planning is active (its `0x00637AA0` branch has
+        // no mission filter). The represented planning path, its node
+        // targets and its later flag-2 dispatch cover these orders only;
+        // Enter, Capture, Sabotage, Harvest and Unload clicks are dropped
+        // while planning, as they were before their records existed.
+        if !matches!(
+            command,
+            Command::Move { .. }
+                | Command::MoveToObject { .. }
+                | Command::Attack { .. }
+                | Command::ForceAttack { .. }
+                | Command::ForceAttackCell { .. }
+                | Command::AttackMove { .. }
+                | Command::Guard { .. }
+        ) {
+            return None;
+        }
         let mut record = self.encode_megamission_record(owner, command)?;
         record.payload_mut()[22] = 1;
         Some(record)

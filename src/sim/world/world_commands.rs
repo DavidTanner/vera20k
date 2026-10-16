@@ -232,6 +232,83 @@ impl Simulation {
                 let post = token(target)?;
                 (entity_id, MegaMissionOrder::AreaGuard { post })
             }
+            // Foot ClickedAction `0x004D74E0` action 3 -> ClickedMission
+            // `0x006FFBE0`: Enter7 with a NULL target and the clicked object
+            // as destination, whatever that object is.
+            Command::Enter {
+                entity_id,
+                target_id,
+            }
+            | Command::MinerReturn {
+                entity_id,
+                target_refinery_id: Some(target_id),
+            }
+            | Command::RepairAtDepot {
+                entity_id,
+                depot_id: target_id,
+            }
+            | Command::EnterTransport {
+                passenger_id: entity_id,
+                transport_id: target_id,
+            }
+            | Command::EnterBunker {
+                unit_id: entity_id,
+                bunker_id: target_id,
+            } => (
+                entity_id,
+                MegaMissionOrder::Enter {
+                    id: i32::try_from(target_id).ok()?,
+                },
+            ),
+            // The same arm's action 9 (Capture8) and action 0x10 (Sabotage17).
+            Command::CaptureBuilding {
+                engineer_id,
+                target_building_id,
+            } => (
+                engineer_id,
+                MegaMissionOrder::Capture {
+                    id: i32::try_from(target_building_id).ok()?,
+                },
+            ),
+            Command::PlantC4 {
+                attacker_id,
+                target_building_id,
+            } => (
+                attacker_id,
+                MegaMissionOrder::Sabotage {
+                    id: i32::try_from(target_building_id).ok()?,
+                },
+            ),
+            // Foot ClickedAction_Cell `0x004D7D50` action 6: Harvest10 with
+            // the ore Cell as destination.
+            Command::HarvestCell {
+                entity_id,
+                target_rx,
+                target_ry,
+            } => (
+                entity_id,
+                MegaMissionOrder::Harvest {
+                    target_x: i16::try_from(target_rx).ok()?,
+                    target_y: i16::try_from(target_ry).ok()?,
+                },
+            ),
+            // Self-click Unload16: Foot action 4 (`0x004D74E0`) sends NULL
+            // tokens; Building action 4 (`0x00443410`) passes the clicked
+            // building, itself, as the target.
+            Command::UnloadPassengers {
+                transport_id: entity_id,
+            }
+            | Command::ToggleInfantryDeploy { entity_id } => {
+                let actor = self.substrate.entities.get(entity_id)?;
+                let target = if actor.category() == EntityCategory::Structure {
+                    MegaMissionTarget::Object {
+                        id: i32::try_from(entity_id).ok()?,
+                    }
+                } else {
+                    MegaMissionTarget::Null
+                };
+                (entity_id, MegaMissionOrder::Unload { target })
+            }
             _ => return None,
         };
         if !self.houses.contains_key(&command_owner)
@@ -406,6 +483,39 @@ impl Simulation {
                     entity_id,
                     target: target(post)?,
                 },
+                MegaMissionOrder::Enter { id } => Command::Enter {
+                    entity_id,
+                    target_id: u64::try_from(id).ok()?,
+                },
+                MegaMissionOrder::Capture { id } => Command::CaptureBuilding {
+                    engineer_id: entity_id,
+                    target_building_id: u64::try_from(id).ok()?,
+                },
+                MegaMissionOrder::Sabotage { id } => Command::PlantC4 {
+                    attacker_id: entity_id,
+                    target_building_id: u64::try_from(id).ok()?,
+                },
+                MegaMissionOrder::Harvest { target_x, target_y } => Command::HarvestCell {
+                    entity_id,
+                    target_rx: u16::try_from(target_x).ok()?,
+                    target_ry: u16::try_from(target_y).ok()?,
+                },
+                // Infantry Mission_Unload `0x0051F6E0` runs the deploy-fire
+                // toggle; the represented receiver for every other class
+                // empties its cargo. Unit Mission_Unload `0x0073D630` also
+                // deploys an MCV or Slave Miner, which no VERA producer
+                // sends as this event yet.
+                MegaMissionOrder::Unload { .. } => {
+                    if self.substrate.entities.get(entity_id)?.category()
+                        == EntityCategory::Infantry
+                    {
+                        Command::ToggleInfantryDeploy { entity_id }
+                    } else {
+                        Command::UnloadPassengers {
+                            transport_id: entity_id,
+                        }
+                    }
+                }
             };
             return Some(CommandEnvelope::new(owner, execute_tick, command));
         }
@@ -738,6 +848,18 @@ impl Simulation {
         } else {
             cmd
         };
+        let enter_receiver;
+        let cmd = match *cmd {
+            Command::Enter {
+                entity_id,
+                target_id,
+            } => {
+                let Some(rules) = rules else { return false };
+                enter_receiver = self.enter_receiver(entity_id, target_id, rules);
+                &enter_receiver
+            }
+            _ => cmd,
+        };
         let ordinary_actor = match cmd {
             Command::Stop { entity_id }
             | Command::Scatter { entity_id }
@@ -973,15 +1095,10 @@ impl Simulation {
                 if !self.substrate.entities.contains(*target_id) {
                     return false;
                 }
-                // Both payloads deliver the same native Attack event. The
-                // ForceAttack alias bypasses VERA's ordinary friendship guard
-                // for Ctrl and admitted friendly repair/defuse/Ivan actions;
-                // no persistent force-fire state or second receiver exists.
-                if matches!(cmd, Command::Attack { .. })
-                    && !self.can_attack_target_by_id(*attacker_id, *target_id)
-                {
-                    return false;
-                }
+                // Both payloads are the same native Attack event, and its
+                // receiver (`EventClass::Execute` `0x004C7200..0x004C74A2`)
+                // has no alliance test: the click's What_Action already chose
+                // Attack. The two names only record the input-side choice.
                 // Native order admission: BOTH the actor and the clicked Target
                 // object are gated, and a failure on either abandons the whole
                 // order. A victim that dies in the same tick is still resolvable
@@ -1987,6 +2104,7 @@ impl Simulation {
                 );
                 true
             }
+            Command::Enter { .. } => unreachable!("Enter was resolved to its receiver above"),
         }
     }
 
@@ -2306,20 +2424,46 @@ impl Simulation {
             && rules.harvester_can_dock_at(harvester_type, refinery_type)
     }
 
-    /// Check whether the attacker can attack the target (i.e. they are not allies).
-    /// Uses EntityStore for ownership lookup.
-    fn can_attack_target_by_id(&self, attacker_id: u64, target_id: u64) -> bool {
-        let Some(attacker) = self.substrate.entities.get(attacker_id) else {
-            return false;
-        };
-        let Some(target) = self.substrate.entities.get(target_id) else {
-            return false;
-        };
-        !are_houses_friendly(
-            &self.house_alliances,
-            self.interner.resolve(attacker.owner()),
-            self.interner.resolve(target.owner()),
-        )
+    /// The represented receiver a decoded Enter event runs. Native has one
+    /// MEGAMISSION receiver, which hands the destination to the class setter
+    /// (`0x004C747C`); the object's radio answer then decides between
+    /// docking, repair, bunkering and boarding. VERA keeps those as separate
+    /// receivers, chosen here from the live destination in the order the
+    /// click resolves them (`input::context_order`). Retail types are
+    /// disjoint across refinery, `UnitRepair=` and tank-bunker buildings.
+    fn enter_receiver(&self, entity_id: u64, target_id: u64, rules: &RuleSet) -> Command {
+        let target = self.substrate.entities.get(target_id);
+        let target_type = target.and_then(|target| self.object_type(target.type_ref(), rules));
+        let miner = self
+            .substrate
+            .entities
+            .get(entity_id)
+            .is_some_and(|actor| actor.miner.is_some());
+        if miner
+            && target.is_some_and(|target| {
+                rules.is_refinery_type(self.interner.resolve(target.type_ref()))
+            })
+        {
+            Command::MinerReturn {
+                entity_id,
+                target_refinery_id: Some(target_id),
+            }
+        } else if target_type.is_some_and(|object| object.unit_repair) {
+            Command::RepairAtDepot {
+                entity_id,
+                depot_id: target_id,
+            }
+        } else if target.is_some_and(|target| target.bunker_runtime.is_some()) {
+            Command::EnterBunker {
+                unit_id: entity_id,
+                bunker_id: target_id,
+            }
+        } else {
+            Command::EnterTransport {
+                passenger_id: entity_id,
+                transport_id: target_id,
+            }
+        }
     }
 
     /// TargetClass `0x006E6E20`: what an event token resolves to. An object
@@ -4286,6 +4430,314 @@ mod tests {
                 .unwrap()
                 .state(),
             BunkerState::Idle
+        );
+    }
+
+    /// Every MegaMission-family order the click producers send (Foot
+    /// `0x004D74E0`/`0x004D7D50`, Building `0x00443410`) round-trips through
+    /// its native record. Enter receivers collapse to the one native Enter
+    /// event, and Unload decodes to the class's receiver.
+    #[test]
+    fn megamission_family_records_reach_the_native_command_decoder() {
+        let mut sim = Simulation::new();
+        let local = sim.interner.intern("Local");
+        sim.houses
+            .insert(local, HouseState::new(local, 0, None, true, 0, 10));
+        sim.session.house_order = vec![local];
+        sim.session.binary_frame = 77;
+        gsi_16_01_insert_identity_entity(&mut sim, 42, local);
+        for (id, category) in [
+            (44, EntityCategory::Structure),
+            (45, EntityCategory::Infantry),
+        ] {
+            let type_ref = sim.interner.intern("TESTOBJECT");
+            let mut entity = GameEntity::new_at_frame_zero_for_test(
+                id,
+                10,
+                20,
+                0,
+                0,
+                local,
+                Health::new(100),
+                type_ref,
+                category,
+                0,
+                5,
+                false,
+            );
+            entity.lifecycle.set_in_limbo_for_test(false);
+            sim.substrate.entities.insert(entity);
+        }
+        let enter = Command::Enter {
+            entity_id: 42,
+            target_id: 44,
+        };
+        for (command, expected) in [
+            (
+                Command::MinerReturn {
+                    entity_id: 42,
+                    target_refinery_id: Some(44),
+                },
+                enter.clone(),
+            ),
+            (
+                Command::RepairAtDepot {
+                    entity_id: 42,
+                    depot_id: 44,
+                },
+                enter.clone(),
+            ),
+            (
+                Command::EnterTransport {
+                    passenger_id: 42,
+                    transport_id: 44,
+                },
+                enter.clone(),
+            ),
+            (
+                Command::EnterBunker {
+                    unit_id: 42,
+                    bunker_id: 44,
+                },
+                enter.clone(),
+            ),
+            (enter.clone(), enter.clone()),
+            (
+                Command::CaptureBuilding {
+                    engineer_id: 45,
+                    target_building_id: 44,
+                },
+                Command::CaptureBuilding {
+                    engineer_id: 45,
+                    target_building_id: 44,
+                },
+            ),
+            (
+                Command::PlantC4 {
+                    attacker_id: 45,
+                    target_building_id: 44,
+                },
+                Command::PlantC4 {
+                    attacker_id: 45,
+                    target_building_id: 44,
+                },
+            ),
+            (
+                Command::HarvestCell {
+                    entity_id: 42,
+                    target_rx: 31,
+                    target_ry: 7,
+                },
+                Command::HarvestCell {
+                    entity_id: 42,
+                    target_rx: 31,
+                    target_ry: 7,
+                },
+            ),
+            (
+                Command::UnloadPassengers { transport_id: 42 },
+                Command::UnloadPassengers { transport_id: 42 },
+            ),
+            (
+                Command::UnloadPassengers { transport_id: 44 },
+                Command::UnloadPassengers { transport_id: 44 },
+            ),
+            (
+                Command::ToggleInfantryDeploy { entity_id: 45 },
+                Command::ToggleInfantryDeploy { entity_id: 45 },
+            ),
+        ] {
+            let record = sim.encode_megamission_record(local, &command).unwrap();
+            assert_eq!(record.opcode(), crate::sim::command::MEGAMISSION_OPCODE);
+            assert_eq!(record.frame_stamp(), 77);
+            let decoded = sim.decode_native_command_record(&record, 900).unwrap();
+            assert_eq!(decoded.owner, local, "{command:?}");
+            assert_eq!(decoded.execute_tick, 900, "{command:?}");
+            assert_eq!(decoded.payload, expected, "{command:?}");
+        }
+
+        // Building `0x00443410` passes the clicked building as the Unload
+        // target; Foot `0x004D74E0` passes NULL.
+        let building = sim
+            .encode_megamission_record(local, &Command::UnloadPassengers { transport_id: 44 })
+            .unwrap();
+        assert_eq!(&building.payload()[7..11], &44_i32.to_le_bytes());
+        assert_eq!(building.payload()[11], 0x34);
+        let foot = sim
+            .encode_megamission_record(local, &Command::UnloadPassengers { transport_id: 42 })
+            .unwrap();
+        assert_eq!(&foot.payload()[7..12], &[0; 5]);
+
+        // A return order without a refinery has no event to send.
+        assert!(
+            sim.encode_megamission_record(
+                local,
+                &Command::MinerReturn {
+                    entity_id: 42,
+                    target_refinery_id: None,
+                },
+            )
+            .is_none()
+        );
+    }
+
+    /// One fixture per represented Enter receiver: the destination's
+    /// classification in [`Simulation::enter_receiver`].
+    #[test]
+    fn decoded_enter_selects_the_receiver_its_destination_names() {
+        let rules = RuleSet::from_ini(&IniFile::from_str(
+            "[InfantryTypes]\n0=E1\n[VehicleTypes]\n0=HARV\n1=TANK\n[AircraftTypes]\n\
+             [BuildingTypes]\n0=GAREFN\n1=GADEPT\n2=NATBNK\n3=GAPILE\n\
+             [E1]\nStrength=125\n\
+             [HARV]\nHarvester=yes\nDock=GAREFN\nStrength=600\n\
+             [TANK]\nStrength=400\n\
+             [GAREFN]\nRefinery=yes\nDockUnload=yes\nStrength=900\n\
+             [GADEPT]\nUnitRepair=yes\nStrength=900\n\
+             [NATBNK]\nBunker=yes\nStrength=1000\n\
+             [GAPILE]\nStrength=800\n",
+        ))
+        .expect("enter receiver rules");
+        let mut sim = Simulation::new();
+        spawn_miner(&mut sim, 1);
+        spawn_bunkerable(&mut sim, 2, "Americans", "TANK", 14, 14);
+        spawn_refinery(&mut sim, 10, "GAREFN", 10, 10);
+        spawn_refinery(&mut sim, 11, "GADEPT", 20, 10);
+        spawn_bunker_struct(&mut sim, 12, "Americans", 30, 10);
+        spawn_refinery(&mut sim, 13, "GAPILE", 40, 10);
+        for (entity_id, target_id, expected) in [
+            (
+                1,
+                10,
+                Command::MinerReturn {
+                    entity_id: 1,
+                    target_refinery_id: Some(10),
+                },
+            ),
+            // A miner clicked onto a depot repairs, as the click resolves it.
+            (
+                1,
+                11,
+                Command::RepairAtDepot {
+                    entity_id: 1,
+                    depot_id: 11,
+                },
+            ),
+            (
+                2,
+                11,
+                Command::RepairAtDepot {
+                    entity_id: 2,
+                    depot_id: 11,
+                },
+            ),
+            (
+                2,
+                12,
+                Command::EnterBunker {
+                    unit_id: 2,
+                    bunker_id: 12,
+                },
+            ),
+            // Only a miner docks at a refinery.
+            (
+                2,
+                10,
+                Command::EnterTransport {
+                    passenger_id: 2,
+                    transport_id: 10,
+                },
+            ),
+            (
+                2,
+                13,
+                Command::EnterTransport {
+                    passenger_id: 2,
+                    transport_id: 13,
+                },
+            ),
+        ] {
+            assert_eq!(
+                sim.enter_receiver(entity_id, target_id, &rules),
+                expected,
+                "{entity_id} -> {target_id}"
+            );
+        }
+    }
+
+    /// A decoded Enter reaches the same world state as the receiver the
+    /// click names, for the miner dock and the tank bunker fixtures.
+    #[test]
+    fn decoded_enter_matches_the_named_receiver_state() {
+        let miner_world = || {
+            let mut sim = Simulation::new();
+            spawn_miner(&mut sim, 1);
+            spawn_refinery(&mut sim, 3, "GAREFN", 30, 30);
+            (sim, miner_return_rules())
+        };
+        let bunker_world = || {
+            let mut sim = Simulation::new();
+            spawn_bunker_struct(&mut sim, 3, "Americans", 10, 10);
+            spawn_bunkerable(&mut sim, 1, "Americans", "TANK", 14, 14);
+            (sim, bunker_rules())
+        };
+        for (world, named) in [
+            (
+                &miner_world as &dyn Fn() -> (Simulation, RuleSet),
+                Command::MinerReturn {
+                    entity_id: 1,
+                    target_refinery_id: Some(3),
+                },
+            ),
+            (
+                &bunker_world,
+                Command::EnterBunker {
+                    unit_id: 1,
+                    bunker_id: 3,
+                },
+            ),
+        ] {
+            let (mut expected, rules) = world();
+            assert!(expected.apply_command("Americans", &named, Some(&rules)));
+            let (mut decoded, rules) = world();
+            assert!(decoded.apply_command(
+                "Americans",
+                &Command::Enter {
+                    entity_id: 1,
+                    target_id: 3,
+                },
+                Some(&rules),
+            ));
+            assert_eq!(
+                decoded.substrate.entities.get(1).unwrap().mission.queued(),
+                MissionId::from_known(MissionType::Enter),
+                "{named:?}"
+            );
+            assert_eq!(decoded.state_hash(), expected.state_hash(), "{named:?}");
+        }
+    }
+
+    /// Native Attack carries no alliance test (`EventClass::Execute`
+    /// `0x004C7200..0x004C74A2`), so an Attack on a friendly object is
+    /// admitted as its decoded ForceAttack is.
+    #[test]
+    fn attack_on_a_friendly_target_is_admitted_like_its_decoded_record() {
+        let rules = amcv_move_rules();
+        let mut sim = Simulation::new();
+        let grid = PathGrid::new(40, 40);
+        sim.install_fixture_path_grid(Some(&grid));
+        spawn_rule_backed_unit(&mut sim, 1, "AMCV", &rules);
+        spawn_rule_backed_unit(&mut sim, 2, "AMCV", &rules);
+        assert!(sim.apply_command(
+            "Americans",
+            &Command::Attack {
+                attacker_id: 1,
+                target_id: 2,
+            },
+            Some(&rules),
+        ));
+        assert_eq!(
+            sim.substrate.entities.get(1).unwrap().mission.queued(),
+            MissionId::from_known(MissionType::Attack)
         );
     }
 }

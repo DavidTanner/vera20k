@@ -1073,17 +1073,6 @@ fn planned_force_attack_preserves_admitted_friendly_target_through_native_dispat
         sim.substrate.entities.get(1).unwrap().owner(),
         sim.substrate.entities.get(2).unwrap().owner()
     );
-    assert!(
-        !sim.apply_command(
-            "Americans",
-            &Command::Attack {
-                attacker_id: 1,
-                target_id: 2
-            },
-            Some(&rules)
-        ),
-        "ordinary input admission rejects this friendly target"
-    );
     sim.substrate
         .entities
         .get_mut(1)

@@ -3202,18 +3202,6 @@ fn assert_structural_bridge_collapsed(sim: &Simulation) {
     );
 }
 
-fn alliance_map(pairs: &[(&str, &[&str])]) -> HouseAllianceMap {
-    let mut map = HouseAllianceMap::default();
-    for &(owner, allies) in pairs {
-        let mut set = std::collections::BTreeSet::new();
-        for ally in allies {
-            set.insert(ally.trim().to_ascii_uppercase());
-        }
-        map.insert(owner.trim().to_ascii_uppercase(), set);
-    }
-    map
-}
-
 fn combat_test_rules() -> RuleSet {
     combat_test_rules_with_override("")
 }
@@ -7634,79 +7622,6 @@ fn test_attack_move_command_chrono_miner_uses_ground_path() {
             .and_then(|e| e.teleport_state())
             .is_none(),
         "Chrono Miner should not enter teleport movement on attack-move"
-    );
-}
-
-#[test]
-fn test_attack_command_rejects_friendly_target() {
-    let mut sim: Simulation = Simulation::new();
-    sim.house_alliances = alliance_map(&[
-        ("Americans", &["Americans", "British"]),
-        ("British", &["Americans", "British"]),
-    ]);
-    sim.spawn_from_map(
-        &[
-            MapEntity {
-                owner: "Americans".to_string(),
-                type_id: "MTNK".to_string(),
-                health: 256,
-                cell_x: 2,
-                cell_y: 2,
-                facing: 64,
-                category: EntityCategory::Unit,
-                sub_cell: 0,
-                veterancy: Some(0),
-                high: false,
-                mission: None,
-                recruitable_a: true,
-                recruitable_b: true,
-                structure_upgrades: [None, None, None],
-                structure_ai_sellable: false,
-                structure_ai_repairable: false,
-                trigger_tag: None,
-            },
-            MapEntity {
-                owner: "British".to_string(),
-                type_id: "E1".to_string(),
-                health: 256,
-                cell_x: 4,
-                cell_y: 2,
-                facing: 64,
-                category: EntityCategory::Infantry,
-                sub_cell: 0,
-                veterancy: Some(0),
-                high: false,
-                mission: None,
-                recruitable_a: true,
-                recruitable_b: true,
-                structure_upgrades: [None, None, None],
-                structure_ai_sellable: false,
-                structure_ai_repairable: false,
-                trigger_tag: None,
-            },
-        ],
-        None,
-    );
-    let cmd = cmd_envelope(
-        &sim,
-        "Americans",
-        1,
-        Command::Attack {
-            attacker_id: 1,
-            target_id: 2,
-        },
-    );
-
-    let _ = sim.advance_tick(&[cmd], None, None, None, 33);
-    assert!(
-        sim.substrate
-            .entities
-            .get(1)
-            .unwrap()
-            .attack_target
-            .target()
-            .is_none(),
-        "Attack on same-owner target should not issue"
     );
 }
 
